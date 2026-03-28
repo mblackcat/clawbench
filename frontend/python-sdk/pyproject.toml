@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "clawbench-sdk"
+version = "1.0.0"
+description = "Python SDK for the ClawBench Desktop App"
+requires-python = ">= 3.8"
+license = {text = "MIT"}
+
+[project.urls]
+Homepage = "https://github.com/clawbench/python-sdk"
+
+[tool.setuptools.packages.find]
+include = ["clawbench_sdk*"]

@@ -1,0 +1,152 @@
+{
+  "name": "clawbench",
+  "version": "0.3.2",
+  "description": "ClawBench Desktop App - 你的智能助理工作台",
+  "author": "Joey Zhao",
+  "main": "./out/main/index.js",
+  "homepage": "https://github.com/mblackcat/clawbench",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "build:mac": "electron-vite build && electron-builder --mac --publish never",
+    "build:win": "electron-vite build && electron-builder --win --publish never",
+    "build:all": "electron-vite build && electron-builder --mac --win --publish never",
+    "upload:mac": "node scripts/upload-release.mjs mac",
+    "upload:win": "node scripts/upload-release.mjs win",
+    "build:upload:mac": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && electron-vite build && electron-builder --mac --publish never && node scripts/upload-release.mjs mac",
+    "build:upload:win": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && electron-vite build && electron-builder --win --publish never && node scripts/upload-release.mjs win",
+    "build:upload:all": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && electron-vite build && electron-builder --mac --win --publish never && node scripts/upload-release.mjs all",
+    "rebuild": "electron-rebuild -f -w node-pty",
+    "postinstall": "electron-rebuild -w node-pty",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --ext .ts,.tsx"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.76",
+    "@anthropic-ai/sdk": "^0.77.0",
+    "@google/generative-ai": "^0.24.1",
+    "@larksuiteoapi/node-sdk": "^1.59.0",
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-web-links": "^0.12.0",
+    "@xterm/xterm": "^5.5.0",
+    "allotment": "^1.20.5",
+    "better-sqlite3": "^12.6.2",
+    "dotenv": "^17.3.1",
+    "electron-log": "^5.4.3",
+    "electron-store": "^8.2.0",
+    "electron-updater": "^6.1.0",
+    "mongodb": "^7.1.0",
+    "mysql2": "^3.19.1",
+    "node-pty": "^1.1.0",
+    "openai": "^6.22.0",
+    "pg": "^8.20.0"
+  },
+  "devDependencies": {
+    "@ant-design/icons": "^5.3.0",
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@electron-toolkit/preload": "^3.0.0",
+    "@electron-toolkit/utils": "^3.0.0",
+    "@handsontable/react": "^16.2.0",
+    "@monaco-editor/react": "^4.7.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20.11.0",
+    "@types/pg": "^8.18.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@vitejs/plugin-react": "^4.2.0",
+    "antd": "^5.15.0",
+    "electron": "^28.2.0",
+    "electron-builder": "^24.9.0",
+    "electron-rebuild": "^3.2.9",
+    "electron-vite": "^2.0.0",
+    "handsontable": "^16.2.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-markdown": "^10.1.0",
+    "react-refresh": "^0.14.0",
+    "react-router-dom": "^6.22.0",
+    "rehype-highlight": "^7.0.2",
+    "remark-gfm": "^4.0.1",
+    "typescript": "^5.3.0",
+    "vite": "^5.1.0",
+    "zustand": "^4.5.0"
+  },
+  "build": {
+    "appId": "com.lizhistudio.clawbench",
+    "productName": "ClawBench",
+    "asarUnpack": [
+      "**/node_modules/node-pty/**"
+    ],
+    "files": [
+      "out/**/*",
+      "node_modules/**/*",
+      "!node_modules/node-pty/prebuilds/**/*.pdb",
+      "!node_modules/node-pty/prebuilds/linux-*",
+      "!node_modules/better-sqlite3/prebuilds/linux-*",
+      "!node_modules/better-sqlite3/prebuilds/win32-*",
+      "!node_modules/**/*.map",
+      "!node_modules/**/*.md",
+      "!node_modules/**/CHANGELOG*",
+      "!node_modules/**/LICENSE*",
+      "!node_modules/**/*.ts",
+      "!node_modules/**/*.d.ts.map",
+      "!node_modules/**/test/**",
+      "!node_modules/**/tests/**",
+      "!node_modules/**/__tests__/**",
+      "!node_modules/**/example/**",
+      "!node_modules/**/examples/**",
+      "!node_modules/**/*.test.js",
+      "!node_modules/**/*.spec.js",
+      "!node_modules/**/docs/**",
+      "!node_modules/**/.eslintrc*",
+      "!node_modules/**/tsconfig.json",
+      "!node_modules/**/.github/**"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "extraResources": [
+      {
+        "from": "python-sdk",
+        "to": "python-sdk"
+      }
+    ],
+    "icon": "resources/icon.png",
+    "mac": {
+      "icon": "resources/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.developer-tools"
+    },
+    "win": {
+      "icon": "resources/icon.png",
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "publish": {
+      "provider": "generic",
+      "url": ""
+    }
+  }
+}

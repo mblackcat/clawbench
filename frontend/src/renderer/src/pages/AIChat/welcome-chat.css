@@ -1,0 +1,31 @@
+.welcome-chat-header {
+  animation: welcomeFadeInUp 0.8s ease-out both;
+}
+
+.welcome-chat-icon {
+  animation: welcomeBreath 3s ease-in-out infinite;
+}
+
+.welcome-chat-input {
+  animation: welcomeFadeInUp 0.8s ease-out 0.2s both;
+}
+
+@keyframes welcomeFadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes welcomeBreath {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}

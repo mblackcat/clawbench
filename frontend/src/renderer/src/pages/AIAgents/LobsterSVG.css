@@ -1,0 +1,207 @@
+/* ── 自定义状态可见性控制 ── */
+.lobster__accessory, .lobster__thinking-bubble { 
+  opacity: 0; 
+  pointer-events: none; 
+  transition: opacity 0.3s ease;
+}
+.lobster--thinking .lobster__thinking-bubble { opacity: 1; }
+.lobster--web_search .lobster__accessory,
+.lobster--doc_processing .lobster__accessory,
+.lobster--tool_call .lobster__accessory,
+.lobster--sending_message .lobster__accessory,
+.lobster--agent_conversation .lobster__accessory { opacity: 1; }
+
+/* ── Lobster Animation Keyframes (您提供的原始 CSS) ── */
+@keyframes lobster-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+@keyframes lobster-blink {
+  0%, 90%, 100% { transform: scaleY(1); }
+  95% { transform: scaleY(0.1); }
+}
+@keyframes lobster-claw-idle {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-5deg); }
+}
+@keyframes lobster-antenna-sway {
+  0%, 100% { transform: rotate(0deg); }
+  33% { transform: rotate(4deg); }
+  66% { transform: rotate(-4deg); }
+}
+@keyframes lobster-antenna-wiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(10deg); }
+  75% { transform: rotate(-10deg); }
+}
+@keyframes lobster-eye-scan {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(3px); }
+  75% { transform: translateX(-3px); }
+}
+@keyframes lobster-claw-wave {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-20deg); }
+  50% { transform: rotate(5deg); }
+  75% { transform: rotate(-15deg); }
+}
+@keyframes lobster-claw-work {
+  0%, 100% { transform: rotate(0deg); }
+  33% { transform: rotate(-15deg); }
+  66% { transform: rotate(10deg); }
+}
+@keyframes lobster-lean-forward {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(3deg); }
+}
+@keyframes lobster-vibrate {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-1px); }
+  75% { transform: translateX(1px); }
+}
+@keyframes lobster-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+@keyframes accessory-fade-in {
+  0% { opacity: 0; transform: scale(0.5); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes accessory-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes bubble-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.08); opacity: 1; }
+}
+@keyframes lobster-page-turn-left {
+  0%, 100% { transform: rotate(0deg); }
+  30% { transform: rotate(-20deg); }
+  60% { transform: rotate(5deg); }
+}
+@keyframes lobster-page-turn-right {
+  0%, 100% { transform: rotate(0deg); }
+  40% { transform: rotate(15deg); }
+  70% { transform: rotate(-5deg); }
+}
+@keyframes lobster-thinking-dots {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+@keyframes lobster-scratch-left {
+  0%   { transform: rotate(0deg); }
+  15%  { transform: rotate(-35deg) translateX(-4px); }
+  30%  { transform: rotate(-20deg) translateX(-2px); }
+  45%  { transform: rotate(-38deg) translateX(-5px); }
+  60%  { transform: rotate(-22deg) translateX(-2px); }
+  75%  { transform: rotate(-40deg) translateX(-5px); }
+  90%  { transform: rotate(-10deg); }
+  100% { transform: rotate(0deg); }
+}
+@keyframes lobster-scratch-right {
+  0%   { transform: rotate(0deg); }
+  20%  { transform: rotate(30deg) translateX(4px); }
+  40%  { transform: rotate(15deg); }
+  60%  { transform: rotate(28deg) translateX(3px); }
+  80%  { transform: rotate(8deg); }
+  100% { transform: rotate(0deg); }
+}
+@keyframes lobster-scratch-head {
+  0%,100% { transform: rotate(0deg); }
+  25%     { transform: rotate(-8deg); }
+  50%     { transform: rotate(5deg); }
+  75%     { transform: rotate(-6deg); }
+}
+@keyframes lobster-scratch-antenna {
+  0%, 100% { transform: rotate(0deg); }
+  20%      { transform: rotate(20deg); }
+  50%      { transform: rotate(-15deg); }
+  80%      { transform: rotate(18deg); }
+}
+
+.lobster__body,
+.lobster__left-claw,
+.lobster__right-claw,
+.lobster__left-eye,
+.lobster__right-eye,
+.lobster__left-antenna,
+.lobster__right-antenna,
+.lobster__accessory,
+.lobster__thinking-bubble {
+  transition: transform 0.4s ease;
+}
+
+/* ── 各状态样式绑定 ── */
+.lobster--scratching .lobster__body { animation: lobster-scratch-head 0.5s ease-in-out 3; }
+.lobster--scratching .lobster__left-claw { animation: lobster-scratch-left 0.55s ease-in-out 3; }
+.lobster--scratching .lobster__right-claw { animation: lobster-scratch-right 0.6s ease-in-out 2 0.15s; }
+.lobster--scratching .lobster__left-antenna { animation: lobster-scratch-antenna 0.45s ease-in-out 4; }
+.lobster--scratching .lobster__right-antenna { animation: lobster-antenna-sway 0.8s ease-in-out 2 0.1s; }
+.lobster--scratching .lobster__left-eye,
+.lobster--scratching .lobster__right-eye { animation: lobster-blink 0.6s ease-in-out 2; }
+
+.lobster--thinking .lobster__body { animation: lobster-bob 2.5s ease-in-out infinite; }
+.lobster--thinking .lobster__left-antenna,
+.lobster--thinking .lobster__right-antenna { animation: lobster-antenna-sway 2s ease-in-out infinite; }
+.lobster--thinking .lobster__left-eye,
+.lobster--thinking .lobster__right-eye { transform: translateY(-2px); }
+.lobster--thinking .lobster__thinking-bubble circle:nth-child(1) { animation: lobster-thinking-dots 1.2s ease-in-out infinite 0s; }
+.lobster--thinking .lobster__thinking-bubble circle:nth-child(2) { animation: lobster-thinking-dots 1.2s ease-in-out infinite 0.2s; }
+.lobster--thinking .lobster__thinking-bubble rect ~ circle:nth-child(3) { animation: lobster-thinking-dots 1.2s ease-in-out infinite 0s; }
+.lobster--thinking .lobster__thinking-bubble rect ~ circle:nth-child(4) { animation: lobster-thinking-dots 1.2s ease-in-out infinite 0.3s; }
+.lobster--thinking .lobster__thinking-bubble rect ~ circle:nth-child(5) { animation: lobster-thinking-dots 1.2s ease-in-out infinite 0.6s; }
+
+.lobster--idle .lobster__body { animation: lobster-bob 3s ease-in-out infinite; }
+.lobster--idle .lobster__left-eye,
+.lobster--idle .lobster__right-eye { animation: lobster-blink 4s ease-in-out infinite; }
+.lobster--idle .lobster__left-claw { animation: lobster-claw-idle 5s ease-in-out infinite; }
+.lobster--idle .lobster__right-claw { animation: lobster-claw-idle 5s ease-in-out infinite 0.5s; }
+.lobster--idle .lobster__left-antenna { animation: lobster-antenna-sway 4s ease-in-out infinite; }
+.lobster--idle .lobster__right-antenna { animation: lobster-antenna-sway 4s ease-in-out infinite 1s; }
+
+.lobster--web_search .lobster__body { animation: none; }
+.lobster--web_search .lobster__left-eye,
+.lobster--web_search .lobster__right-eye { animation: lobster-eye-scan 1.5s ease-in-out infinite; }
+.lobster--web_search .lobster__left-antenna,
+.lobster--web_search .lobster__right-antenna { animation: lobster-antenna-wiggle 0.8s ease-in-out infinite; }
+.lobster--web_search .lobster__left-claw { transform: rotate(-15deg); }
+.lobster--web_search .lobster__accessory { animation: accessory-fade-in 0.3s ease-out forwards; }
+
+.lobster--doc_processing .lobster__body { animation: lobster-lean-forward 3s ease-in-out infinite; }
+.lobster--doc_processing .lobster__left-claw { animation: lobster-page-turn-left 2s ease-in-out infinite; }
+.lobster--doc_processing .lobster__right-claw { animation: lobster-page-turn-right 2s ease-in-out infinite 0.5s; }
+.lobster--doc_processing .lobster__left-eye,
+.lobster--doc_processing .lobster__right-eye { transform: translateY(2px); }
+.lobster--doc_processing .lobster__accessory { animation: accessory-fade-in 0.3s ease-out forwards; }
+
+.lobster--sending_message .lobster__body { animation: lobster-bounce 1.2s ease-in-out infinite; }
+.lobster--sending_message .lobster__right-claw { animation: lobster-claw-wave 1.2s ease-in-out infinite; }
+.lobster--sending_message .lobster__left-eye,
+.lobster--sending_message .lobster__right-eye { animation: lobster-blink 3s ease-in-out infinite; }
+.lobster--sending_message .lobster__right-antenna { transform: rotate(-10deg); }
+.lobster--sending_message .lobster__accessory { animation: bubble-pulse 1.5s ease-in-out infinite; }
+
+.lobster--tool_call .lobster__body { animation: lobster-vibrate 0.3s linear infinite; }
+.lobster--tool_call .lobster__left-claw { animation: lobster-claw-work 1s ease-in-out infinite; }
+.lobster--tool_call .lobster__right-claw { animation: lobster-claw-work 1s ease-in-out infinite 0.3s; }
+.lobster--tool_call .lobster__left-eye,
+.lobster--tool_call .lobster__right-eye { transform: scaleY(1.15) scaleX(1.1); }
+.lobster--tool_call .lobster__left-antenna,
+.lobster--tool_call .lobster__right-antenna { transform: rotate(-5deg); }
+.lobster--tool_call .lobster__accessory { animation: accessory-rotate 2s linear infinite; }
+
+.lobster--agent_conversation .lobster__body { animation: lobster-bob 2s ease-in-out infinite; }
+.lobster--agent_conversation .lobster__left-claw { animation: lobster-claw-wave 1.5s ease-in-out infinite; }
+.lobster--agent_conversation .lobster__right-claw { animation: lobster-claw-wave 1.5s ease-in-out infinite 0.3s; }
+.lobster--agent_conversation .lobster__left-antenna,
+.lobster--agent_conversation .lobster__right-antenna { animation: lobster-antenna-sway 2s ease-in-out infinite; }
+.lobster--agent_conversation .lobster__accessory { animation: bubble-pulse 1.5s ease-in-out infinite; }
+
+/* 控制面板样式 */
+.panel-btn {
+  background: rgba(255,255,255,0.85); border: 2px solid #2D3E4E; border-radius: 8px;
+  padding: 6px 12px; font-weight: bold; cursor: pointer; color: #2D3E4E;
+  transition: all 0.2s;
+}
+.panel-btn:hover { background: #2D3E4E; color: white; }

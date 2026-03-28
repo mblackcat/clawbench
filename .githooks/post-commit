@@ -1,0 +1,99 @@
+#!/bin/bash
+#
+# post-commit hook: 文档更新提醒
+# 当代码文件变更时，检查是否需要同步更新文档。
+# 如果提交只包含文档变更，则跳过（防止循环触发）。
+#
+
+# 防循环：如果环境变量标记了是文档更新提交，直接退出
+if [ "$CLAWBENCH_DOC_UPDATE" = "1" ]; then
+  exit 0
+fi
+
+# 获取本次提交修改的文件列表
+CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD 2>/dev/null)
+
+if [ -z "$CHANGED_FILES" ]; then
+  exit 0
+fi
+
+# 定义文档文件模式
+DOC_PATTERNS="^CLAUDE\.md$|^docs/|^README\.md$|^backend/README\.md$|^backend/SETUP\.md$|^\.git/hooks/"
+
+# 检查是否存在非文档文件的变更
+NON_DOC_FILES=$(echo "$CHANGED_FILES" | grep -vE "$DOC_PATTERNS")
+
+if [ -z "$NON_DOC_FILES" ]; then
+  # 只有文档文件变更，跳过提醒（防循环）
+  exit 0
+fi
+
+# 检查本次变更是否涉及关键区域，需要提醒更新文档
+NEEDS_CLAUDEMD=false
+NEEDS_PROJECT_STATUS=false
+HINTS=""
+
+# 检查是否有新增 IPC channel / service / store / page
+if echo "$NON_DOC_FILES" | grep -qE "src/main/ipc/|src/main/services/|src/main/store/"; then
+  NEEDS_CLAUDEMD=true
+  HINTS="${HINTS}\n  - Main process 文件变更 (IPC/Services/Store) → 更新 CLAUDE.md 的 IPC/Key Files/Directory Structure 章节"
+fi
+
+if echo "$NON_DOC_FILES" | grep -qE "src/renderer/src/pages/|src/renderer/src/stores/"; then
+  NEEDS_CLAUDEMD=true
+  HINTS="${HINTS}\n  - Renderer 页面/Store 变更 → 更新 CLAUDE.md 的 Directory Structure / 对应模块章节"
+fi
+
+if echo "$NON_DOC_FILES" | grep -qE "src/renderer/src/types/"; then
+  NEEDS_CLAUDEMD=true
+  HINTS="${HINTS}\n  - Types 变更 → 检查 CLAUDE.md 的 Data Models 章节是否需要同步"
+fi
+
+if echo "$NON_DOC_FILES" | grep -qE "src/preload/api\.ts"; then
+  NEEDS_CLAUDEMD=true
+  HINTS="${HINTS}\n  - Preload API 变更 → 更新 CLAUDE.md 的 IPC Communication 章节"
+fi
+
+if echo "$NON_DOC_FILES" | grep -qE "backend/src/controllers/|backend/src/routes/"; then
+  NEEDS_CLAUDEMD=true
+  HINTS="${HINTS}\n  - Backend API 变更 → 更新 CLAUDE.md 的 Backend API Endpoints 章节"
+fi
+
+if echo "$NON_DOC_FILES" | grep -qE "backend/src/database/|backend/src/repositories/"; then
+  NEEDS_CLAUDEMD=true
+  HINTS="${HINTS}\n  - 数据库/仓库层变更 → 检查 CLAUDE.md 的 Data Models / Backend Conventions 章节"
+fi
+
+# 新功能一般也需要更新 PROJECT_STATUS
+if echo "$NON_DOC_FILES" | grep -qE "src/main/ipc/|src/renderer/src/pages/"; then
+  NEEDS_PROJECT_STATUS=true
+fi
+
+# 输出提醒
+if [ "$NEEDS_CLAUDEMD" = true ] || [ "$NEEDS_PROJECT_STATUS" = true ]; then
+  echo ""
+  echo "╔══════════════════════════════════════════════════════════╗"
+  echo "║              📝 文档更新提醒 (post-commit)              ║"
+  echo "╠══════════════════════════════════════════════════════════╣"
+  echo "║ 检测到代码变更可能需要同步更新文档：                    ║"
+  echo "╚══════════════════════════════════════════════════════════╝"
+
+  if [ "$NEEDS_CLAUDEMD" = true ]; then
+    echo ""
+    echo "  📋 CLAUDE.md 可能需要更新："
+    echo -e "$HINTS"
+  fi
+
+  if [ "$NEEDS_PROJECT_STATUS" = true ]; then
+    echo ""
+    echo "  📊 docs/PROJECT_STATUS.md 可能需要更新："
+    echo "  - 新增功能/模块变更 → 更新完成度总览和已完成功能列表"
+  fi
+
+  echo ""
+  echo "  💡 提示：文档更新提交时设置环境变量跳过此检查："
+  echo "     CLAWBENCH_DOC_UPDATE=1 git commit -m \"docs: ...\""
+  echo ""
+fi
+
+exit 0
