@@ -43,13 +43,18 @@ import { settingsStore } from '../store/settings.store'
  */
 async function resolveCommandPath(binary: string, env: Record<string, string>): Promise<string> {
   if (process.platform === 'win32') return binary
+  logger.info(`[workbench] Resolving binary "${binary}" with PATH=${env.PATH}`)
   try {
     const { stdout } = await execFileAsync('which', [binary], { timeout: 3000, env })
     const resolved = stdout.trim().split('\n')[0].trim()
-    if (resolved) return resolved
-  } catch {
-    // which failed — fall through to bare name
+    if (resolved) {
+      logger.info(`[workbench] Resolved "${binary}" -> "${resolved}"`)
+      return resolved
+    }
+  } catch (err) {
+    logger.warn(`[workbench] "which ${binary}" failed: ${err}`)
   }
+  logger.warn(`[workbench] Could not resolve "${binary}", using bare name`)
   return binary
 }
 
@@ -376,6 +381,7 @@ export async function launchSession(id: string, opts?: { forcePty?: boolean }): 
       const resumeArgs = session.toolSessionId
         ? getResumeArgs(session.toolType, session.toolSessionId)
         : []
+      logger.info(`[workbench] PTY spawn: cmd="${resolvedCommand}" args=${JSON.stringify([...baseArgs, ...resumeArgs])} cwd="${workspace.workingDir}"`)
       createPtySession(id, resolvedCommand, [...baseArgs, ...resumeArgs], workspace.workingDir, toolEnv, handlePtyExit)
       registerPtyOutputCallback(id, handlePtyOutputStabilized)
     }

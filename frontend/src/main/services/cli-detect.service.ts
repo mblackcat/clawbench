@@ -3,6 +3,7 @@ import { promisify } from 'util'
 import * as os from 'os'
 import * as path from 'path'
 import * as fs from 'fs'
+import * as logger from '../utils/logger'
 
 const execFileAsync = promisify(execFile)
 
@@ -37,6 +38,8 @@ export async function loadShellEnv(): Promise<Record<string, string>> {
     }
 
     const shell = process.env.SHELL || '/bin/zsh'
+    logger.info(`[shell-env] Loading login shell env via: ${shell} -lc env`)
+    logger.info(`[shell-env] process.env.PATH = ${process.env.PATH}`)
     try {
       // Use login shell to source profile files, then print env.
       // NOTE: Do NOT use -i (interactive) flag here — it modifies the parent
@@ -60,8 +63,10 @@ export async function loadShellEnv(): Promise<Record<string, string>> {
       }
       // Merge: process.env as base, then overlay shell env
       shellEnvCache = { ...process.env, ...parsed } as Record<string, string>
-    } catch {
+      logger.info(`[shell-env] Loaded OK. Shell PATH = ${shellEnvCache.PATH}`)
+    } catch (err) {
       // If shell env loading fails, fall back to process.env
+      logger.warn(`[shell-env] Failed to load shell env (${err}), falling back to process.env`)
       shellEnvCache = { ...process.env } as Record<string, string>
     }
     return shellEnvCache
