@@ -1,7 +1,11 @@
 import * as path from 'path'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
 import * as logger from '../utils/logger'
 import { randomUUID } from 'crypto'
 import { BrowserWindow } from 'electron'
+
+const execFileAsync = promisify(execFile)
 import {
   getAIWorkbenchConfig,
   setAIWorkbenchWorkspaces,
@@ -30,6 +34,24 @@ import {
 } from './sdk-session-manager.service'
 import { detectAvailableCLIs, getAugmentedEnv, loadShellEnv } from './cli-detect.service'
 import { settingsStore } from '../store/settings.store'
+
+/**
+ * Resolve a binary name to its absolute path using the provided env's PATH.
+ * This bypasses posix_spawnp's own PATH lookup — critical in packaged apps
+ * where the PATH passed to node-pty may still not match the user's shell PATH.
+ * Falls back to the bare binary name if resolution fails.
+ */
+async function resolveCommandPath(binary: string, env: Record<string, string>): Promise<string> {
+  if (process.platform === 'win32') return binary
+  try {
+    const { stdout } = await execFileAsync('which', [binary], { timeout: 3000, env })
+    const resolved = stdout.trim().split('\n')[0].trim()
+    if (resolved) return resolved
+  } catch {
+    // which failed — fall through to bare name
+  }
+  return binary
+}
 
 /**
  * Build spawn environment for a given tool type.
@@ -347,10 +369,14 @@ export async function launchSession(id: string, opts?: { forcePty?: boolean }): 
     } else {
       // Non-Claude TUI tools (or Claude in CLI/PTY mode): use pty-manager
       const { command, args: baseArgs } = getToolCommand(session.toolType)
+      // Resolve to absolute path so node-pty doesn't need to do a PATH lookup.
+      // This is critical for packaged apps where PATH at spawn time may differ
+      // from the user's shell PATH.
+      const resolvedCommand = await resolveCommandPath(command, toolEnv)
       const resumeArgs = session.toolSessionId
         ? getResumeArgs(session.toolType, session.toolSessionId)
         : []
-      createPtySession(id, command, [...baseArgs, ...resumeArgs], workspace.workingDir, toolEnv, handlePtyExit)
+      createPtySession(id, resolvedCommand, [...baseArgs, ...resumeArgs], workspace.workingDir, toolEnv, handlePtyExit)
       registerPtyOutputCallback(id, handlePtyOutputStabilized)
     }
     updateSession(id, { status: 'idle', startedAt: Date.now() })
