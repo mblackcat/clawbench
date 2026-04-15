@@ -28,7 +28,7 @@ import {
   getSDKSessionOutput, interruptSDKSession, setSDKPermissionMode,
   detectManagedInteractiveState
 } from './sdk-session-manager.service'
-import { detectAvailableCLIs, getAugmentedEnv } from './cli-detect.service'
+import { detectAvailableCLIs, getAugmentedEnv, loadShellEnv } from './cli-detect.service'
 import { settingsStore } from '../store/settings.store'
 
 /**
@@ -329,6 +329,9 @@ export async function launchSession(id: string, opts?: { forcePty?: boolean }): 
   if (!workspace) return { success: false, error: '工作区不存在' }
 
   try {
+    // Ensure the full login-shell env (PATH etc.) is loaded before spawning.
+    // Critical for apps launched from the Dock/Finder where process.env is minimal.
+    await loadShellEnv().catch(() => { /* fallback to process.env */ })
     const toolEnv = buildToolEnv(session.toolType)
     if (session.toolType === 'claude' && !opts?.forcePty) {
       const result = launchSDKSession(
