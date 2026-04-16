@@ -1,4 +1,6 @@
 import * as path from 'path'
+import * as os from 'os'
+import * as fs from 'fs'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import * as logger from '../utils/logger'
@@ -43,6 +45,16 @@ import { settingsStore } from '../store/settings.store'
  */
 async function resolveCommandPath(binary: string, env: Record<string, string>): Promise<string> {
   if (process.platform === 'win32') return binary
+
+  // Check the native installer location first (~/.local/bin) so it wins over
+  // a Homebrew copy of the same binary even if Homebrew appears first in PATH.
+  // Mirrors the priority used by detectClaudeCLI().
+  const nativePath = path.join(os.homedir(), '.local', 'bin', binary)
+  try {
+    await fs.promises.access(nativePath, fs.constants.X_OK)
+    return nativePath
+  } catch { /* not installed there */ }
+
   try {
     const { stdout } = await execFileAsync('which', [binary], { timeout: 3000, env })
     const resolved = stdout.trim().split('\n')[0].trim()
