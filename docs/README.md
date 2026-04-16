@@ -5,6 +5,7 @@
 ### Built-in Applications
 - [AI Chat](./AI_CHAT.md) -- Multi-model AI chat system with streaming, session management, Markdown rendering, image generation, and tool calling
 - [AI Agents / OpenClaw](./OPENCLAW.md) -- AI agent management hub; OpenClaw CLI tool installation, configuration, service lifecycle, and animated lobster visualization
+- [AI Agents / Hermes](./HERMES.md) -- Hermes Agent (Nous Research) integration: one-click install, gateway lifecycle, 6-tab config (Providers/Channels/Skills/Tools/Memory/Cron), brand logo
 - [AI Workbench](./AI_WORKBENCH.md) -- AI coding session management (Claude Code / Codex / Gemini), Feishu IM remote control
 - [AI Terminal](./AI_TERMINAL.md) -- Terminal + DB dual-mode management: local/SSH terminals, multi-database GUI (MySQL/PostgreSQL/MongoDB/SQLite), AI-powered DevOps & DBA assistant
 
