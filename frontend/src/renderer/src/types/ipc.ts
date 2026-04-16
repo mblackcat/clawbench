@@ -300,6 +300,7 @@ export interface ClawBenchAPI {
     getConfig: () => Promise<import('../stores/useHermesStore').HermesConfig>
     saveConfig: (config: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>
     upgrade: () => Promise<{ success: boolean; error?: string }>
+    onInstallProgress: (callback: (line: string) => void) => () => void
   }
   copiper: {
     listDatabases: (workspacePath: string) => Promise<import('./copiper').JDBFileInfo[]>

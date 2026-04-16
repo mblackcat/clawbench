@@ -29,6 +29,7 @@ interface HermesState {
   configLoading: boolean
   dirty: boolean
   installing: boolean
+  installLog: string[]
   uninstalling: boolean
   saving: boolean
 
@@ -51,6 +52,7 @@ export const useHermesStore = create<HermesState>((set, get) => ({
   configLoading: false,
   dirty: false,
   installing: false,
+  installLog: [],
   uninstalling: false,
   saving: false,
 
@@ -64,9 +66,13 @@ export const useHermesStore = create<HermesState>((set, get) => ({
   },
 
   installHermes: async () => {
-    set({ installing: true })
+    set({ installing: true, installLog: [] })
+    const unsubscribe = window.api.hermes.onInstallProgress((line: string) => {
+      set((s) => ({ installLog: [...s.installLog, line] }))
+    })
     try {
       const result = await window.api.hermes.install()
+      unsubscribe()
       if (result.success) {
         const check = await window.api.hermes.checkInstalled()
         set({ installCheck: check, installing: false })
@@ -75,6 +81,7 @@ export const useHermesStore = create<HermesState>((set, get) => ({
       set({ installing: false })
       return { success: false, error: result.error }
     } catch (err: any) {
+      unsubscribe()
       set({ installing: false })
       return { success: false, error: err.message }
     }

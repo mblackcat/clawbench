@@ -322,7 +322,12 @@ export const api = {
     getConfig: () => ipcRenderer.invoke('hermes:get-config'),
     saveConfig: (config: Record<string, unknown>) =>
       ipcRenderer.invoke('hermes:save-config', config),
-    upgrade: () => ipcRenderer.invoke('hermes:upgrade')
+    upgrade: () => ipcRenderer.invoke('hermes:upgrade'),
+    onInstallProgress: (callback: (line: string) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, line: string) => callback(line)
+      ipcRenderer.on('hermes:install-progress', handler)
+      return () => ipcRenderer.removeListener('hermes:install-progress', handler)
+    }
   },
 
   credentials: {

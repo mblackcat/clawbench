@@ -1,5 +1,5 @@
 // frontend/src/renderer/src/pages/AIAgents/HermesCard.tsx
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { Card, Typography, Space, Button, Result, theme, App } from 'antd'
 import { RightOutlined, DownloadOutlined, PoweroffOutlined, ReloadOutlined } from '@ant-design/icons'
 import Icon from '@ant-design/icons'
@@ -38,7 +38,15 @@ const HermesCard: React.FC<HermesCardProps> = ({ isInstalled, installing, servic
   const t = useT()
   const startGateway = useHermesStore((s) => s.startGateway)
   const stopGateway = useHermesStore((s) => s.stopGateway)
+  const installLog = useHermesStore((s) => s.installLog)
   const [actionLoading, setActionLoading] = useState<'start' | 'stop' | null>(null)
+  const logRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight
+    }
+  }, [installLog])
 
   const isRunning = serviceStatus === 'running'
   const isStopped = serviceStatus === 'stopped' || serviceStatus === 'unknown'
@@ -140,6 +148,26 @@ const HermesCard: React.FC<HermesCardProps> = ({ isInstalled, installing, servic
               </Button>
             }
           />
+          {installing && installLog.length > 0 && (
+            <div
+              ref={logRef}
+              style={{
+                marginTop: 16,
+                maxHeight: 160,
+                overflowY: 'auto',
+                background: token.colorFillTertiary,
+                borderRadius: token.borderRadius,
+                padding: '8px 12px',
+                fontFamily: 'monospace',
+                fontSize: 11,
+                color: token.colorTextSecondary
+              }}
+            >
+              {installLog.map((line, i) => (
+                <div key={i}>{line}</div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </Card>
