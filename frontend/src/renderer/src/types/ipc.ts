@@ -290,6 +290,20 @@ export interface ClawBenchAPI {
     stopLogWatcher: () => Promise<void>
     onActivityState: (callback: (state: string) => void) => () => void
   }
+  hermes: {
+    checkInstalled: () => Promise<{ installed: boolean; version?: string }>
+    install: () => Promise<{ success: boolean; error?: string }>
+    uninstall: () => Promise<{ success: boolean; error?: string }>
+    getStatus: () => Promise<'running' | 'stopped' | 'unknown'>
+    start: () => Promise<{ success: boolean; error?: string }>
+    stop: () => Promise<{ success: boolean; error?: string }>
+    getConfig: () => Promise<import('../stores/useHermesStore').HermesConfig>
+    saveConfig: (config: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>
+    upgrade: () => Promise<{ success: boolean; error?: string }>
+    onInstallProgress: (callback: (line: string) => void) => () => void
+    getCronJobs: () => Promise<string[]>
+    getDashboardUrl: () => Promise<string | null>
+  }
   copiper: {
     listDatabases: (workspacePath: string) => Promise<import('./copiper').JDBFileInfo[]>
     loadDatabase: (filePath: string) => Promise<import('./copiper').JDBDatabase>

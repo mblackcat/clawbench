@@ -3,6 +3,8 @@ import { Typography, Spin, App } from 'antd'
 import { useOpenClawStore } from '../../stores/useOpenClawStore'
 import OpenClawCard from './OpenClawCard'
 import { useT } from '../../i18n'
+import HermesCard from './HermesCard'
+import { useHermesStore } from '../../stores/useHermesStore'
 
 const { Title } = Typography
 
@@ -21,6 +23,13 @@ const AIAgentsPage: React.FC = () => {
   const installOpenClaw = useOpenClawStore((s) => s.installOpenClaw)
   const subscribeActivityState = useOpenClawStore((s) => s.subscribeActivityState)
 
+  const hermesInstallCheck = useHermesStore((s) => s.installCheck)
+  const hermesInstalling = useHermesStore((s) => s.installing)
+  const hermesServiceStatus = useHermesStore((s) => s.serviceStatus)
+  const checkHermesInstalled = useHermesStore((s) => s.checkInstalled)
+  const fetchHermesStatus = useHermesStore((s) => s.fetchStatus)
+  const installHermes = useHermesStore((s) => s.installHermes)
+
   useEffect(() => {
     checkInstalled()
   }, [])
@@ -36,6 +45,16 @@ const AIAgentsPage: React.FC = () => {
   useEffect(() => {
     buildNodes()
   }, [installCheck, serviceStatus])
+
+  useEffect(() => {
+    checkHermesInstalled()
+  }, [])
+
+  useEffect(() => {
+    if (hermesInstallCheck?.installed) {
+      fetchHermesStatus()
+    }
+  }, [hermesInstallCheck?.installed])
 
   // Subscribe to activity state when service is running
   useEffect(() => {
@@ -59,6 +78,20 @@ const AIAgentsPage: React.FC = () => {
     }
   }
 
+  const handleInstallHermes = async () => {
+    const result = await installHermes()
+    if (result.success) {
+      message.success(t('hermes.installSuccess'))
+    } else {
+      modal.error({
+        title: t('hermes.installFailed'),
+        content: result.error || t('hermes.installFailedContent'),
+        okText: t('agents.gotIt'),
+        width: 480
+      })
+    }
+  }
+
   // Loading state
   if (installCheck === null) {
     return (
@@ -70,7 +103,7 @@ const AIAgentsPage: React.FC = () => {
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: '32px 24px' }}>
-      <Title level={4} style={{ marginBottom: 24 }}>AI Agents</Title>
+      <Title level={4} style={{ marginBottom: 24 }}>{t('agents.title')}</Title>
 
       <OpenClawCard
         isInstalled={installCheck.installed}
@@ -79,7 +112,14 @@ const AIAgentsPage: React.FC = () => {
         onInstall={handleInstall}
       />
 
-      {/* Future: more agent cards (e.g. Airi) */}
+      {hermesInstallCheck !== null && (
+        <HermesCard
+          isInstalled={hermesInstallCheck.installed}
+          installing={hermesInstalling}
+          serviceStatus={hermesServiceStatus}
+          onInstall={handleInstallHermes}
+        />
+      )}
     </div>
   )
 }

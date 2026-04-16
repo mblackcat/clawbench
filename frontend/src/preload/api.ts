@@ -312,6 +312,26 @@ export const api = {
     }
   },
 
+  hermes: {
+    checkInstalled: () => ipcRenderer.invoke('hermes:check-installed'),
+    install: () => ipcRenderer.invoke('hermes:install'),
+    uninstall: () => ipcRenderer.invoke('hermes:uninstall'),
+    getStatus: () => ipcRenderer.invoke('hermes:get-status'),
+    start: () => ipcRenderer.invoke('hermes:start'),
+    stop: () => ipcRenderer.invoke('hermes:stop'),
+    getConfig: () => ipcRenderer.invoke('hermes:get-config'),
+    saveConfig: (config: Record<string, unknown>) =>
+      ipcRenderer.invoke('hermes:save-config', config),
+    upgrade: () => ipcRenderer.invoke('hermes:upgrade'),
+    onInstallProgress: (callback: (line: string) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, line: string) => callback(line)
+      ipcRenderer.on('hermes:install-progress', handler)
+      return () => ipcRenderer.removeListener('hermes:install-progress', handler)
+    },
+    getCronJobs: () => ipcRenderer.invoke('hermes:get-cron-jobs') as Promise<string[]>,
+    getDashboardUrl: () => ipcRenderer.invoke('hermes:get-dashboard-url') as Promise<string | null>
+  },
+
   credentials: {
     saveApiToken: (token: string) => ipcRenderer.invoke('credentials:save-api-token', token),
     clearApiToken: () => ipcRenderer.invoke('credentials:clear-api-token')

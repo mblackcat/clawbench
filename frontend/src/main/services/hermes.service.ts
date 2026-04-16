@@ -1,5 +1,6 @@
 // frontend/src/main/services/hermes.service.ts
 import { exec, spawn } from 'child_process'
+import { BrowserWindow } from 'electron'
 import { promisify } from 'util'
 import * as path from 'path'
 import * as fs from 'fs'
@@ -109,19 +110,50 @@ export async function checkInstalled(): Promise<HermesInstallCheck> {
 }
 
 export async function installHermes(): Promise<{ success: boolean; error?: string }> {
-  try {
+  return new Promise((resolve) => {
     logger.info('[hermes] Running install script...')
     const scriptUrl = 'https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh'
-    await execAsync(
-      `curl -fsSL ${scriptUrl} | bash`,
-      { timeout: 600000, env: getAugmentedEnv(), shell: '/bin/bash' }
+
+    const sendProgress = (line: string): void => {
+      BrowserWindow.getAllWindows().forEach((win) => {
+        win.webContents.send('hermes:install-progress', line)
+      })
+    }
+
+    const child = spawn(
+      '/bin/bash',
+      ['-c', `curl -fsSL ${scriptUrl} | bash -s -- --skip-setup`],
+      { env: getAugmentedEnv() }
     )
-    logger.info('[hermes] Install complete')
-    return { success: true }
-  } catch (err: any) {
-    logger.error('[hermes] Install failed:', err)
-    return { success: false, error: err.stderr || err.message }
-  }
+
+    const handleData = (data: Buffer): void => {
+      for (const line of data.toString().split('\n')) {
+        if (line.trim()) {
+          logger.info('[hermes install]', line)
+          sendProgress(line)
+        }
+      }
+    }
+
+    child.stdout?.on('data', handleData)
+    child.stderr?.on('data', handleData)
+
+    child.on('close', (code) => {
+      if (code === 0) {
+        logger.info('[hermes] Install complete')
+        resolve({ success: true })
+      } else {
+        const msg = `Install script exited with code ${code}`
+        logger.error('[hermes]', msg)
+        resolve({ success: false, error: msg })
+      }
+    })
+
+    child.on('error', (err) => {
+      logger.error('[hermes] Install process error:', err)
+      resolve({ success: false, error: err.message })
+    })
+  })
 }
 
 export async function uninstallHermes(): Promise<{ success: boolean; error?: string }> {
@@ -369,5 +401,27 @@ export async function upgradeHermes(): Promise<{ success: boolean; error?: strin
     return { success: true }
   } catch (err: any) {
     return { success: false, error: err.stderr || err.message }
+  }
+}
+
+export function getCronJobs(): string[] {
+  const cronDir = path.join(HERMES_DIR, 'cron')
+  if (!fs.existsSync(cronDir)) return []
+  try {
+    return fs.readdirSync(cronDir).filter((f) =>
+      f.endsWith('.yaml') || f.endsWith('.yml') || f.endsWith('.json') || f.endsWith('.sh')
+    )
+  } catch {
+    return []
+  }
+}
+
+export function getDashboardUrl(): string | null {
+  if (gatewayPid === null) return null
+  try {
+    process.kill(gatewayPid, 0)
+    return 'http://localhost:7860'
+  } catch {
+    return null
   }
 }
