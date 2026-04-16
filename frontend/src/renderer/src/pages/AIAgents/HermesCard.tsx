@@ -94,7 +94,7 @@ const HermesCard: React.FC<HermesCardProps> = ({ isInstalled, installing, servic
             <Space size={12} align="center">
               <HermesIcon style={{ fontSize: 32, color: token.colorPrimary }} />
               <div>
-                <Text strong style={{ fontSize: 16 }}>Hermes Agent</Text>
+                <Text strong style={{ fontSize: 16 }}>{t('hermes.title')}</Text>
                 <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
                   {t('hermes.description')}
                 </Text>

@@ -103,7 +103,7 @@ const AIAgentsPage: React.FC = () => {
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: '32px 24px' }}>
-      <Title level={4} style={{ marginBottom: 24 }}>AI Agents</Title>
+      <Title level={4} style={{ marginBottom: 24 }}>{t('agents.title')}</Title>
 
       <OpenClawCard
         isInstalled={installCheck.installed}
