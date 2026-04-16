@@ -174,6 +174,7 @@ function MessageBubble({ msg, isStreaming, streamingContent, streamingThinking, 
   streamingTools?: StreamingToolCall[]
 }) {
   const { token } = theme.useToken()
+  const t = useT()
   const isUser = msg?.role === 'user'
   const content = msg?.content ?? streamingContent ?? ''
   const thinking = msg?.thinking ?? streamingThinking ?? ''
@@ -680,7 +681,7 @@ const AIAssistantPanel: React.FC = () => {
   }, [])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault()
       handleSend()
     }
