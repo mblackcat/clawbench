@@ -46,6 +46,14 @@ const CONFIG_YAML = path.join(HERMES_DIR, 'config.yaml')
 const ENV_FILE = path.join(HERMES_DIR, '.env')
 const HERMES_BIN = path.join(os.homedir(), '.local', 'bin', 'hermes')
 
+const PROVIDER_KEY_MAP: Record<string, string> = {
+  anthropic: 'ANTHROPIC_API_KEY',
+  openai: 'OPENAI_API_KEY',
+  google: 'GOOGLE_API_KEY',
+  nous: 'NOUS_API_KEY',
+  openrouter: 'OPENROUTER_API_KEY'
+}
+
 // ── Process tracking ──────────────────────────────────────────────────────
 
 let gatewayPid: number | null = null
@@ -173,10 +181,26 @@ export async function startGateway(): Promise<{ success: boolean; error?: string
     gatewayPid = child.pid
     logger.info(`[hermes] Gateway started with PID ${gatewayPid}`)
 
-    // Wait briefly to catch immediate crash
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-    const finalStatus = await getServiceStatus()
-    if (finalStatus !== 'running') {
+    // Poll for up to 10s to catch both immediate crashes and slow startups
+    const started = await new Promise<boolean>((resolve) => {
+      let waited = 0
+      const interval = setInterval(() => {
+        waited += 500
+        try {
+          process.kill(gatewayPid!, 0)
+          clearInterval(interval)
+          resolve(true)
+          return
+        } catch {
+          // process died
+        }
+        if (waited >= 10000) {
+          clearInterval(interval)
+          resolve(false)
+        }
+      }, 500)
+    })
+    if (!started) {
       gatewayPid = null
       return { success: false, error: 'hermes gateway exited immediately. Run `hermes doctor` for diagnostics.' }
     }
@@ -189,32 +213,31 @@ export async function startGateway(): Promise<{ success: boolean; error?: string
 
 export async function stopGateway(): Promise<{ success: boolean; error?: string }> {
   if (gatewayPid === null) return { success: true }
+  const pidToKill = gatewayPid
+  gatewayPid = null  // clear immediately — prevent re-entry
   try {
-    process.kill(gatewayPid, 'SIGTERM')
-    // Wait up to 5s then force kill
+    process.kill(pidToKill, 'SIGTERM')
     await new Promise<void>((resolve) => {
       let waited = 0
       const interval = setInterval(() => {
         waited += 500
         try {
-          process.kill(gatewayPid!, 0)
+          process.kill(pidToKill, 0)
         } catch {
           clearInterval(interval)
           resolve()
           return
         }
         if (waited >= 5000) {
-          try { process.kill(gatewayPid!, 'SIGKILL') } catch { /* already dead */ }
+          try { process.kill(pidToKill, 'SIGKILL') } catch { /* already dead */ }
           clearInterval(interval)
           resolve()
         }
       }, 500)
     })
-    gatewayPid = null
     logger.info('[hermes] Gateway stopped')
     return { success: true }
   } catch (err: any) {
-    gatewayPid = null
     return { success: false, error: err.message }
   }
 }
@@ -267,14 +290,7 @@ export function getConfig(): HermesConfig {
   // Read .env for secrets
   try {
     const env = readEnvFile(ENV_FILE)
-    const providerKeyMap: Record<string, string> = {
-      anthropic: 'ANTHROPIC_API_KEY',
-      openai: 'OPENAI_API_KEY',
-      google: 'GOOGLE_API_KEY',
-      nous: 'NOUS_API_KEY',
-      openrouter: 'OPENROUTER_API_KEY'
-    }
-    const envKey = providerKeyMap[config.model.provider] || 'API_KEY'
+    const envKey = PROVIDER_KEY_MAP[config.model.provider] || 'API_KEY'
     config.model.apiKey = env[envKey] || ''
     config.channels.telegram.token = env['TELEGRAM_BOT_TOKEN'] || ''
     config.channels.discord.token = env['DISCORD_BOT_TOKEN'] || ''
@@ -329,21 +345,14 @@ export function saveConfig(config: HermesConfig): { success: boolean; error?: st
     fs.writeFileSync(CONFIG_YAML, yaml.dump(existing, { lineWidth: -1 }), 'utf-8')
 
     // Write .env with secrets
-    const providerKeyMap: Record<string, string> = {
-      anthropic: 'ANTHROPIC_API_KEY',
-      openai: 'OPENAI_API_KEY',
-      google: 'GOOGLE_API_KEY',
-      nous: 'NOUS_API_KEY',
-      openrouter: 'OPENROUTER_API_KEY'
-    }
     const existing_env = readEnvFile(ENV_FILE)
-    const envKey = providerKeyMap[config.model.provider] || 'API_KEY'
-    if (config.model.apiKey) existing_env[envKey] = config.model.apiKey
-    if (config.channels.telegram.token) existing_env['TELEGRAM_BOT_TOKEN'] = config.channels.telegram.token
-    if (config.channels.discord.token) existing_env['DISCORD_BOT_TOKEN'] = config.channels.discord.token
-    if (config.channels.slack.bot_token) existing_env['SLACK_BOT_TOKEN'] = config.channels.slack.bot_token
-    if (config.channels.slack.app_token) existing_env['SLACK_APP_TOKEN'] = config.channels.slack.app_token
-    if (config.channels.signal.phone) existing_env['SIGNAL_PHONE'] = config.channels.signal.phone
+    const envKey = PROVIDER_KEY_MAP[config.model.provider] || 'API_KEY'
+    existing_env[envKey] = config.model.apiKey
+    existing_env['TELEGRAM_BOT_TOKEN'] = config.channels.telegram.token
+    existing_env['DISCORD_BOT_TOKEN'] = config.channels.discord.token
+    existing_env['SLACK_BOT_TOKEN'] = config.channels.slack.bot_token
+    existing_env['SLACK_APP_TOKEN'] = config.channels.slack.app_token
+    existing_env['SIGNAL_PHONE'] = config.channels.signal.phone
     writeEnvFile(ENV_FILE, existing_env)
 
     logger.info('[hermes] Config saved')
