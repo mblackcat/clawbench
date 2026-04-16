@@ -10,6 +10,7 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "build:mac": "electron-vite build && electron-builder --mac --publish never",
+    "build:mac:local": "electron-vite build && electron-builder --mac --arm64 --publish never",
     "build:win": "electron-vite build && electron-builder --win --publish never",
     "build:all": "electron-vite build && electron-builder --mac --win --publish never",
     "upload:mac": "node scripts/upload-release.mjs mac",
