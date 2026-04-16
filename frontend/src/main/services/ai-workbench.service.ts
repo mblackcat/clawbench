@@ -1,7 +1,13 @@
 import * as path from 'path'
+import * as os from 'os'
+import * as fs from 'fs'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
 import * as logger from '../utils/logger'
 import { randomUUID } from 'crypto'
 import { BrowserWindow } from 'electron'
+
+const execFileAsync = promisify(execFile)
 import {
   getAIWorkbenchConfig,
   setAIWorkbenchWorkspaces,
@@ -28,8 +34,36 @@ import {
   getSDKSessionOutput, interruptSDKSession, setSDKPermissionMode,
   detectManagedInteractiveState
 } from './sdk-session-manager.service'
-import { detectAvailableCLIs, getAugmentedEnv } from './cli-detect.service'
+import { detectAvailableCLIs, getAugmentedEnv, loadShellEnv } from './cli-detect.service'
 import { settingsStore } from '../store/settings.store'
+
+/**
+ * Resolve a binary name to its absolute path using the provided env's PATH.
+ * This bypasses posix_spawnp's own PATH lookup — critical in packaged apps
+ * where the PATH passed to node-pty may still not match the user's shell PATH.
+ * Falls back to the bare binary name if resolution fails.
+ */
+async function resolveCommandPath(binary: string, env: Record<string, string>): Promise<string> {
+  if (process.platform === 'win32') return binary
+
+  // Check the native installer location first (~/.local/bin) so it wins over
+  // a Homebrew copy of the same binary even if Homebrew appears first in PATH.
+  // Mirrors the priority used by detectClaudeCLI().
+  const nativePath = path.join(os.homedir(), '.local', 'bin', binary)
+  try {
+    await fs.promises.access(nativePath, fs.constants.X_OK)
+    return nativePath
+  } catch { /* not installed there */ }
+
+  try {
+    const { stdout } = await execFileAsync('which', [binary], { timeout: 3000, env })
+    const resolved = stdout.trim().split('\n')[0].trim()
+    if (resolved) return resolved
+  } catch {
+    // fall through to bare name
+  }
+  return binary
+}
 
 /**
  * Build spawn environment for a given tool type.
@@ -329,6 +363,9 @@ export async function launchSession(id: string, opts?: { forcePty?: boolean }): 
   if (!workspace) return { success: false, error: '工作区不存在' }
 
   try {
+    // Ensure the full login-shell env (PATH etc.) is loaded before spawning.
+    // Critical for apps launched from the Dock/Finder where process.env is minimal.
+    await loadShellEnv().catch(() => { /* fallback to process.env */ })
     const toolEnv = buildToolEnv(session.toolType)
     if (session.toolType === 'claude' && !opts?.forcePty) {
       const result = launchSDKSession(
@@ -344,10 +381,14 @@ export async function launchSession(id: string, opts?: { forcePty?: boolean }): 
     } else {
       // Non-Claude TUI tools (or Claude in CLI/PTY mode): use pty-manager
       const { command, args: baseArgs } = getToolCommand(session.toolType)
+      // Resolve to absolute path so node-pty doesn't need to do a PATH lookup.
+      // This is critical for packaged apps where PATH at spawn time may differ
+      // from the user's shell PATH.
+      const resolvedCommand = await resolveCommandPath(command, toolEnv)
       const resumeArgs = session.toolSessionId
         ? getResumeArgs(session.toolType, session.toolSessionId)
         : []
-      createPtySession(id, command, [...baseArgs, ...resumeArgs], workspace.workingDir, toolEnv, handlePtyExit)
+      createPtySession(id, resolvedCommand, [...baseArgs, ...resumeArgs], workspace.workingDir, toolEnv, handlePtyExit)
       registerPtyOutputCallback(id, handlePtyOutputStabilized)
     }
     updateSession(id, { status: 'idle', startedAt: Date.now() })

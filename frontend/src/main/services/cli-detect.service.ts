@@ -3,6 +3,7 @@ import { promisify } from 'util'
 import * as os from 'os'
 import * as path from 'path'
 import * as fs from 'fs'
+import * as logger from '../utils/logger'
 
 const execFileAsync = promisify(execFile)
 
@@ -60,8 +61,9 @@ export async function loadShellEnv(): Promise<Record<string, string>> {
       }
       // Merge: process.env as base, then overlay shell env
       shellEnvCache = { ...process.env, ...parsed } as Record<string, string>
-    } catch {
+    } catch (err) {
       // If shell env loading fails, fall back to process.env
+      logger.warn(`[shell-env] Failed to load login shell env (${err}), falling back to process.env`)
       shellEnvCache = { ...process.env } as Record<string, string>
     }
     return shellEnvCache
