@@ -6,6 +6,7 @@ import { registerSettingsIpc } from './settings.ipc'
 import { registerGitIpc } from './git.ipc'
 import { registerAiIpc } from './ai.ipc'
 import { registerOpenClawIpc } from './openclaw.ipc'
+import { registerHermesIpc } from './hermes.ipc'
 import { registerCopiperIpc } from './copiper.ipc'
 import { registerUpdaterIpc } from './updater.ipc'
 import { registerLocalEnvIpc } from './local-env.ipc'
@@ -28,6 +29,7 @@ export function registerAllIpcHandlers(): void {
   registerGitIpc()
   registerAiIpc()
   registerOpenClawIpc()
+  registerHermesIpc()
   registerCopiperIpc()
   registerUpdaterIpc()
   registerLocalEnvIpc()
