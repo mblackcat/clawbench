@@ -312,6 +312,19 @@ export const api = {
     }
   },
 
+  hermes: {
+    checkInstalled: () => ipcRenderer.invoke('hermes:check-installed'),
+    install: () => ipcRenderer.invoke('hermes:install'),
+    uninstall: () => ipcRenderer.invoke('hermes:uninstall'),
+    getStatus: () => ipcRenderer.invoke('hermes:get-status'),
+    start: () => ipcRenderer.invoke('hermes:start'),
+    stop: () => ipcRenderer.invoke('hermes:stop'),
+    getConfig: () => ipcRenderer.invoke('hermes:get-config'),
+    saveConfig: (config: Record<string, unknown>) =>
+      ipcRenderer.invoke('hermes:save-config', config),
+    upgrade: () => ipcRenderer.invoke('hermes:upgrade')
+  },
+
   credentials: {
     saveApiToken: (token: string) => ipcRenderer.invoke('credentials:save-api-token', token),
     clearApiToken: () => ipcRenderer.invoke('credentials:clear-api-token')
