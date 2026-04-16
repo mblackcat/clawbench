@@ -9,6 +9,7 @@ import {
   ScheduleOutlined, DatabaseOutlined, FileTextOutlined
 } from '@ant-design/icons'
 import Icon from '@ant-design/icons'
+import hermesLogoUrl from '../../assets/hermes-logo.svg'
 import { useNavigate } from 'react-router-dom'
 import { useHermesStore, type HermesConfig } from '../../stores/useHermesStore'
 import { useT } from '../../i18n'
@@ -27,35 +28,8 @@ const BrainSvg = () => (
 const BrainIcon = (props: any) => <Icon component={BrainSvg} {...props} />
 
 const HermesSvg = () => (
-  <svg viewBox="0 0 100 100" width="1em" height="1em" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-    {/* Border frame */}
-    <rect x="2" y="2" width="96" height="96" rx="4" fill="none" stroke="currentColor" strokeWidth="3" />
-    {/* Headphone arc */}
-    <path d="M22 46 C22 18 78 18 78 46" fill="none" stroke="currentColor" strokeWidth="4.5" strokeLinecap="round" />
-    {/* Left ear cup */}
-    <ellipse cx="18" cy="51" rx="7.5" ry="10" />
-    {/* Right ear cup */}
-    <ellipse cx="82" cy="51" rx="7.5" ry="10" />
-    {/* Hair silhouette — bob cut with flat fringe */}
-    <path d="M29 42 Q50 23 71 42 L73 65 Q66 74 50 75 Q34 74 27 65 Z" />
-    {/* Bangs — straight strip across forehead */}
-    <path d="M32 42 L32 51 Q50 45 68 51 L68 42 Q50 33 32 42 Z" />
-    {/* Face */}
-    <ellipse cx="50" cy="59" rx="17" ry="19" fill="rgba(255,255,255,0.88)" />
-    {/* Eyes */}
-    <ellipse cx="43" cy="56" rx="4" ry="3" />
-    <ellipse cx="57" cy="56" rx="4" ry="3" />
-    <circle cx="44.5" cy="55" r="1.2" fill="rgba(255,255,255,0.95)" />
-    <circle cx="58.5" cy="55" r="1.2" fill="rgba(255,255,255,0.95)" />
-    {/* Nose */}
-    <path d="M49 63 Q50 65.5 51 63" stroke="currentColor" strokeWidth="1" fill="none" strokeLinecap="round" opacity="0.6" />
-    {/* Mouth */}
-    <path d="M46 69 Q50 73 54 69" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" />
-    {/* Shoulders */}
-    <path d="M27 78 C18 87 14 97 13 99 L87 99 C86 97 82 87 73 78 Q63 75 50 75 Q37 75 27 78 Z" />
-    {/* Collar N badge */}
-    <rect x="43" y="81" width="14" height="11" rx="2" fill="rgba(255,255,255,0.9)" />
-    <path d="M46 83.5 L46 89.5 L51 83.5 L51 89.5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+  <svg viewBox="0 0 100 100" width="1em" height="1em" xmlns="http://www.w3.org/2000/svg">
+    <image href={hermesLogoUrl} x="0" y="0" width="100" height="100" preserveAspectRatio="xMidYMid meet" />
   </svg>
 )
 const HermesIcon = (props: any) => <Icon component={HermesSvg} {...props} />
