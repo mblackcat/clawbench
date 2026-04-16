@@ -272,7 +272,7 @@ const HermesPage: React.FC = () => {
   const channelsTab = config ? (
     <div style={{ maxWidth: 520, paddingTop: 16 }}>
       <Form layout="vertical">
-        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>Telegram</Text>
+        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>{t('hermes.channelTelegram')}</Text>
         <Form.Item label={t('hermes.enabled')}>
           <Switch
             checked={config.channels.telegram.enabled}
@@ -289,7 +289,7 @@ const HermesPage: React.FC = () => {
           </Form.Item>
         )}
 
-        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 16, marginBottom: 8 }}>Discord</Text>
+        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 16, marginBottom: 8 }}>{t('hermes.channelDiscord')}</Text>
         <Form.Item label={t('hermes.enabled')}>
           <Switch
             checked={config.channels.discord.enabled}
@@ -306,7 +306,7 @@ const HermesPage: React.FC = () => {
           </Form.Item>
         )}
 
-        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 16, marginBottom: 8 }}>Slack</Text>
+        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 16, marginBottom: 8 }}>{t('hermes.channelSlack')}</Text>
         <Form.Item label={t('hermes.enabled')}>
           <Switch
             checked={config.channels.slack.enabled}
@@ -332,7 +332,7 @@ const HermesPage: React.FC = () => {
           </>
         )}
 
-        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 16, marginBottom: 8 }}>Signal</Text>
+        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 16, marginBottom: 8 }}>{t('hermes.channelSignal')}</Text>
         <Form.Item label={t('hermes.enabled')}>
           <Switch
             checked={config.channels.signal.enabled}
