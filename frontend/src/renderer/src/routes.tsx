@@ -15,6 +15,7 @@ const CodeEditor = React.lazy(() => import('./pages/Developer/CodeEditor'))
 const AppPublisher = React.lazy(() => import('./pages/Developer/AppPublisher'))
 const AIAgentsPage = React.lazy(() => import('./pages/AIAgents/AIAgentsPage'))
 const OpenClawPage = React.lazy(() => import('./pages/OpenClaw/OpenClawPage'))
+const HermesPage = React.lazy(() => import('./pages/Hermes/HermesPage'))
 const LocalEnvPage = React.lazy(() => import('./pages/LocalEnv/LocalEnvPage'))
 const AIWorkbenchPage = React.lazy(() => import('./pages/AIWorkbench/AIWorkbenchPage'))
 const AITerminalPage = React.lazy(() => import('./pages/AITerminal/AITerminalPage'))
@@ -49,6 +50,7 @@ const AppRoutes: React.FC = () => {
           <Route path="/apps/my-contributions" element={<MyContributionsPage />} />
           <Route path="/ai-agents" element={<AIAgentsPage />} />
           <Route path="/ai-agents/openclaw" element={<OpenClawPage />} />
+          <Route path="/ai-agents/hermes" element={<HermesPage />} />
           <Route path="/openclaw" element={<Navigate to="/ai-agents/openclaw" replace />} />
           <Route path="/local-env" element={<LocalEnvPage />} />
           <Route path="/ai-workbench" element={<AIWorkbenchPage />} />
