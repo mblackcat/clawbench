@@ -327,7 +327,9 @@ export const api = {
       const handler = (_event: Electron.IpcRendererEvent, line: string) => callback(line)
       ipcRenderer.on('hermes:install-progress', handler)
       return () => ipcRenderer.removeListener('hermes:install-progress', handler)
-    }
+    },
+    getCronJobs: () => ipcRenderer.invoke('hermes:get-cron-jobs') as Promise<string[]>,
+    getDashboardUrl: () => ipcRenderer.invoke('hermes:get-dashboard-url') as Promise<string | null>
   },
 
   credentials: {

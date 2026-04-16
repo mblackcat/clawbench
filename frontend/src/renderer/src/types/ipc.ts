@@ -301,6 +301,8 @@ export interface ClawBenchAPI {
     saveConfig: (config: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>
     upgrade: () => Promise<{ success: boolean; error?: string }>
     onInstallProgress: (callback: (line: string) => void) => () => void
+    getCronJobs: () => Promise<string[]>
+    getDashboardUrl: () => Promise<string | null>
   }
   copiper: {
     listDatabases: (workspacePath: string) => Promise<import('./copiper').JDBFileInfo[]>

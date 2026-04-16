@@ -8,7 +8,9 @@ import {
   stopGateway,
   getConfig,
   saveConfig,
-  upgradeHermes
+  upgradeHermes,
+  getCronJobs,
+  getDashboardUrl
 } from '../services/hermes.service'
 import type { HermesConfig } from '../services/hermes.service'
 
@@ -22,4 +24,6 @@ export function registerHermesIpc(): void {
   ipcMain.handle('hermes:get-config', async () => getConfig())
   ipcMain.handle('hermes:save-config', async (_event, config: HermesConfig) => saveConfig(config))
   ipcMain.handle('hermes:upgrade', async () => upgradeHermes())
+  ipcMain.handle('hermes:get-cron-jobs', async () => getCronJobs())
+  ipcMain.handle('hermes:get-dashboard-url', async () => getDashboardUrl())
 }

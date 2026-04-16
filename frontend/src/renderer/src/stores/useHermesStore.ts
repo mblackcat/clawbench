@@ -32,6 +32,7 @@ interface HermesState {
   installLog: string[]
   uninstalling: boolean
   saving: boolean
+  cronJobs: string[]
 
   checkInstalled: () => Promise<void>
   installHermes: () => Promise<{ success: boolean; error?: string }>
@@ -43,6 +44,7 @@ interface HermesState {
   startGateway: () => Promise<{ success: boolean; error?: string }>
   stopGateway: () => Promise<{ success: boolean; error?: string }>
   upgradeHermes: () => Promise<{ success: boolean; error?: string }>
+  fetchCronJobs: () => Promise<void>
 }
 
 export const useHermesStore = create<HermesState>((set, get) => ({
@@ -55,6 +57,7 @@ export const useHermesStore = create<HermesState>((set, get) => ({
   installLog: [],
   uninstalling: false,
   saving: false,
+  cronJobs: [],
 
   checkInstalled: async () => {
     try {
@@ -172,6 +175,15 @@ export const useHermesStore = create<HermesState>((set, get) => ({
       return result
     } catch (err: any) {
       return { success: false, error: err.message }
+    }
+  },
+
+  fetchCronJobs: async () => {
+    try {
+      const jobs = await window.api.hermes.getCronJobs()
+      set({ cronJobs: jobs })
+    } catch {
+      set({ cronJobs: [] })
     }
   }
 }))

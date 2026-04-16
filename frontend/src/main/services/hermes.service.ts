@@ -403,3 +403,25 @@ export async function upgradeHermes(): Promise<{ success: boolean; error?: strin
     return { success: false, error: err.stderr || err.message }
   }
 }
+
+export function getCronJobs(): string[] {
+  const cronDir = path.join(HERMES_DIR, 'cron')
+  if (!fs.existsSync(cronDir)) return []
+  try {
+    return fs.readdirSync(cronDir).filter((f) =>
+      f.endsWith('.yaml') || f.endsWith('.yml') || f.endsWith('.json') || f.endsWith('.sh')
+    )
+  } catch {
+    return []
+  }
+}
+
+export function getDashboardUrl(): string | null {
+  if (gatewayPid === null) return null
+  try {
+    process.kill(gatewayPid, 0)
+    return 'http://localhost:7860'
+  } catch {
+    return null
+  }
+}
