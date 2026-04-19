@@ -1,6 +1,7 @@
 node_modules/
 dist/
 out/
+.worktrees/
 *.dmg
 *.nsis
 .DS_Store
