@@ -2101,7 +2101,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'hermes.channel.sms.description': 'Send and receive messages through an SMS gateway',
     'hermes.channel.sms.note': 'Requires a Twilio number and a public webhook URL.',
     'hermes.channel.sms.field.account_sid.label': 'Twilio Account SID',
-    'hermes.channel.sms.field.auth_token.label': 'Access Token',
+    'hermes.channel.sms.field.auth_token.label': 'Auth Token',
     'hermes.channel.sms.field.phone_number.label': 'Phone Number',
     'hermes.channel.sms.field.webhook_url.label': 'Webhook URL',
     'hermes.channel.email.title': 'Email',
