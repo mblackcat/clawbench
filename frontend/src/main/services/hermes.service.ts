@@ -327,7 +327,8 @@ export function readHermesConfigFromSources(rawYaml: any, env: Record<string, st
   config.channels.discord.token = env.DISCORD_BOT_TOKEN || ''
   config.channels.slack.bot_token = env.SLACK_BOT_TOKEN || ''
   config.channels.slack.app_token = env.SLACK_APP_TOKEN || ''
-  config.channels.signal.phone = env.SIGNAL_PHONE || ''
+  config.channels.signal.http_url = env.SIGNAL_HTTP_URL || ''
+  config.channels.signal.account = env.SIGNAL_ACCOUNT || ''
 
   return config
 }
@@ -376,7 +377,8 @@ export function normalizeHermesConfigForSave(config: HermesConfig): { yaml: Reco
     DISCORD_BOT_TOKEN: config.channels.discord.token,
     SLACK_BOT_TOKEN: config.channels.slack.bot_token,
     SLACK_APP_TOKEN: config.channels.slack.app_token,
-    SIGNAL_PHONE: config.channels.signal.phone,
+    SIGNAL_HTTP_URL: config.channels.signal.http_url,
+    SIGNAL_ACCOUNT: config.channels.signal.account,
     AWS_PROFILE: config.model.aws?.profile || '',
     AWS_ACCESS_KEY_ID: config.model.aws?.accessKeyId || '',
     AWS_SECRET_ACCESS_KEY: config.model.aws?.secretAccessKey || '',
