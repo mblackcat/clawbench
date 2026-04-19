@@ -68,7 +68,7 @@ backend/src/
 | 我的 | `/apps/my-contributions` | 本地创建的所有资源管理（草稿/本地/已发布状态） |
 | Developer | `/developer/*` | App editor (4-step), SkillEditor (3-step), PromptEditor, Monaco code editor, publisher |
 | AI Chat | `/ai-chat` | Multi-model chat (OpenAI/Claude/Gemini), streaming, tool calling, MCP, welcome view |
-| AI Agents | `/ai-agents` | AI agent management hub; OpenClaw detail at `/ai-agents/openclaw` |
+| AI Agents | `/ai-agents` | AI agent management hub; OpenClaw at `/ai-agents/openclaw`; Hermes Agent at `/ai-agents/hermes` |
 | AI Workbench | `/ai-workbench` | AI coding sessions (Claude Code/Codex/Gemini), Feishu IM control |
 | AI Terminal | `/ai-terminal` | Terminal + DB dual mode: local/SSH terminals, multi-DB GUI (MySQL/PG/Mongo/SQLite), AI assistant |
 | Local Env | `/local-env` | Dev tool detection & install (Python/Node/Git/Docker + AI tools) |
@@ -78,6 +78,11 @@ backend/src/
 
 | File | Role |
 |---|---|
+| `frontend/src/main/services/hermes.service.ts` | Hermes Agent: install (spawn+stream), gateway start/stop/upgrade, config read/write (`~/.hermes/config.yaml` + `.env`), cron jobs, dashboard URL |
+| `frontend/src/main/ipc/hermes.ipc.ts` | Thin IPC wrappers for all hermes.service operations (11 handlers) |
+| `frontend/src/renderer/src/stores/useHermesStore.ts` | Hermes Zustand store: install state, install log, gateway status polling, config, cron jobs |
+| `frontend/src/renderer/src/pages/AIAgents/HermesCard.tsx` | AI Agents hub preview card: brand logo + 4-stat info panel (version/status/model/channels) |
+| `frontend/src/renderer/src/pages/Hermes/HermesPage.tsx` | Hermes detail page: StatusBar + 6-tab config (Providers/Channels/Skills/Tools/Memory/Cron) + BottomBar |
 | `frontend/src/main/services/python-runner.service.ts` | Spawns Python sub-apps, parses JSON-line stdout, manages task lifecycle |
 | `frontend/src/main/services/skill-activation.service.ts` | AI 技能部署：检测工作区 AI 工具类型，部署 SKILL.md 到 .claude/commands、.codex/agents、.gemini/commands |
 | `frontend/src/preload/api.ts` | Typed bridge defining the entire `window.api` surface (incl. `skill` namespace) |
@@ -228,6 +233,36 @@ if __name__ == "__main__":
 - 粒子透明度 0.1~0.4，可见但不干扰阅读
 - 状态栏图标使用 inline SVG（非 emoji），避免 macOS CoreText 字体警告
 - 状态通过 localStorage 持久化（`cb-weather-visible`、`cb-weather-type`、`cb-weather-manual`、`cb-weather-auto`）
+
+## Hermes Agent Integration
+
+[Hermes Agent](https://github.com/NousResearch/hermes-agent) by Nous Research — a messaging gateway AI agent that connects to Telegram/Discord/Slack/Signal.
+
+**Install path**: `~/.local/bin/hermes` (symlink to `~/.hermes/bin/hermes`)
+**Config**: `~/.hermes/config.yaml` (model, channels, skills, memory) + `~/.hermes/.env` (API keys)
+**Gateway**: `hermes gateway` — default dashboard at `http://localhost:7860`
+
+**IPC namespace**: `window.api.hermes.*`
+- `checkInstalled()` → `{ installed, version? }`
+- `install()` — spawns curl+bash with no timeout; progress streamed via `hermes:install-progress` push event
+- `uninstall()` — removes `~/.hermes/` and symlink
+- `getStatus()` → `'running' | 'stopped' | 'unknown'`
+- `start() / stop() / upgrade()` — gateway lifecycle
+- `getConfig() / saveConfig(config)` — read/write config.yaml + .env
+- `getCronJobs()` → string[] (filenames from `~/.hermes/cron/`)
+- `getDashboardUrl()` → `string | null` (null when gateway not running)
+
+**Detail page tabs**:
+| Tab | Key content |
+|---|---|
+| AI Providers | Radio-style provider cards (Anthropic/OpenAI/Google/Nous/OpenRouter/Custom); active one expands with model + API key |
+| Channels | Telegram/Discord/Slack/Signal — toggle + token fields |
+| Skills | 6 built-in read-only skills (web_search, file_system, shell, memory, learn, reflect) |
+| Tools | 4 read-only tools (browser, computer_use, image_gen, code_exec) |
+| Memory | Memory system toggle, user profile toggle, agent params (max turns, reasoning effort) |
+| Scheduled Tasks | Lists files from `~/.hermes/cron/`; Empty state when none |
+
+**Install implementation note**: uses `spawn` (not `execAsync`) to avoid timeout — `uv pip install` can take 10+ minutes. Pass `--skip-setup` so app manages config itself.
 
 ## General Rules
 

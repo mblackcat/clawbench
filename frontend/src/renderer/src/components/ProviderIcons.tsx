@@ -1,6 +1,8 @@
 import React from 'react'
-
-// ---- SVG icon components for each AI provider ----
+import minimaxColorUrl from '../assets/provider-icons/color/minimax-color.svg'
+import zhipuColorUrl from '../assets/provider-icons/color/zhipu-color.svg'
+import llamaColorUrl from '../assets/provider-icons/color/llama-color.svg'
+import mistralColorUrl from '../assets/provider-icons/color/mistral-color.svg'
 
 const OpenAISvg: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   <svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" fillRule="evenodd" {...props}>
@@ -79,7 +81,13 @@ const DefaultAISvg: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   </svg>
 )
 
-// ---- Provider → Icon mapping ----
+const makeLogoImg = (url: string): React.FC<React.SVGProps<SVGSVGElement>> =>
+  ({ style }) => <img src={url} alt="" style={{ display: 'block', objectFit: 'contain', ...style }} />
+
+const MinimaxSvg = makeLogoImg(minimaxColorUrl)
+const ZhipuSvg = makeLogoImg(zhipuColorUrl)
+const LlamaSvg = makeLogoImg(llamaColorUrl)
+const MistralSvg = makeLogoImg(mistralColorUrl)
 
 type ProviderIconMap = Record<string, React.FC<React.SVGProps<SVGSVGElement>>>
 
@@ -87,47 +95,80 @@ const PROVIDER_ICONS: ProviderIconMap = {
   openai: OpenAISvg,
   'openai-compatible': OpenAISvg,
   'azure-openai': AzureOpenAISvg,
+  anthropic: ClaudeSvg,
   claude: ClaudeSvg,
   'anthropic-compatible': ClaudeSvg,
   google: GeminiSvg,
+  'gemini-api': GeminiSvg,
+  'google-gemini-cli': GeminiSvg,
+  openrouter: OpenAISvg,
+  xai: OpenAISvg,
+  bedrock: ClaudeSvg,
+  copilot: OpenAISvg,
+  'ollama-cloud': DefaultAISvg,
   deepseek: DeepSeekSvg,
   qwen: QwenSvg,
+  'qwen-portal': QwenSvg,
   doubao: DoubaoSvg,
+  ark: DoubaoSvg,
   kimi: KimiSvg,
+  moonshot: KimiSvg,
+  minimax: MinimaxSvg,
+  glm: ZhipuSvg,
+  zhipu: ZhipuSvg,
+  nous: LlamaSvg,
+  llama: LlamaSvg,
+  mistral: MistralSvg,
+  ollama: DefaultAISvg,
+  'other-compatible': DefaultAISvg,
+  'custom-openai-compatible': OpenAISvg,
 }
 
 const PROVIDER_BRAND_COLORS: Record<string, string> = {
   openai: '#10a37f',
   'openai-compatible': '#10a37f',
   'azure-openai': '#0078D4',
+  anthropic: '#D97757',
   claude: '#D97757',
   'anthropic-compatible': '#D97757',
   google: '#1C7DEB',
+  'gemini-api': '#1C7DEB',
+  'google-gemini-cli': '#1C7DEB',
+  openrouter: '#10a37f',
+  xai: '#111111',
+  bedrock: '#D97757',
+  copilot: '#10a37f',
+  'ollama-cloud': '#111111',
   deepseek: '#4D6BFE',
   qwen: '#6F42C1',
+  'qwen-portal': '#6F42C1',
   doubao: '#FA541C',
+  ark: '#FA541C',
   kimi: '#1783FF',
+  moonshot: '#1783FF',
+  minimax: '#1a1a1a',
+  glm: '#3B82F6',
+  zhipu: '#3B82F6',
+  nous: '#6366F1',
+  llama: '#6366F1',
+  mistral: '#FF7000',
+  ollama: '#111111',
+  'other-compatible': '#8c8c8c',
+  'custom-openai-compatible': '#10a37f',
 }
 
-/**
- * Get the SVG icon component for a provider.
- * Returns DefaultAISvg for unknown providers.
- */
 export function getProviderIcon(provider: string): React.FC<React.SVGProps<SVGSVGElement>> {
   return PROVIDER_ICONS[provider] || DefaultAISvg
 }
 
-/**
- * Get the brand color for a provider.
- */
 export function getProviderColor(provider: string): string {
   return PROVIDER_BRAND_COLORS[provider] || '#8c8c8c'
 }
 
-/**
- * Resolve provider from a model ID string (heuristic).
- * e.g. "gpt-4o" → "openai", "claude-3" → "claude", "gemini-pro" → "google"
- */
+export function hasProviderIcon(provider: string): boolean {
+  return provider in PROVIDER_ICONS
+}
+
 export function guessProviderFromModelId(modelId: string): string {
   const id = modelId.toLowerCase()
   if (id.startsWith('gpt-') || id.startsWith('o1') || id.startsWith('o3') || id.startsWith('o4')) return 'openai'
@@ -140,17 +181,11 @@ export function guessProviderFromModelId(modelId: string): string {
   return ''
 }
 
-/**
- * Render a provider icon as a React element with optional size and style.
- */
 export function ProviderIcon({ provider, size = 16, style }: { provider: string; size?: number; style?: React.CSSProperties }) {
   const IconComponent = getProviderIcon(provider)
   return <IconComponent style={{ width: size, height: size, verticalAlign: 'middle', ...style }} />
 }
 
-/**
- * Render an AI model avatar (circular, provider-branded).
- */
 export function ModelAvatar({ provider, size = 32 }: { provider: string; size?: number }) {
   const IconComponent = getProviderIcon(provider)
   const color = getProviderColor(provider)
@@ -166,7 +201,6 @@ export function ModelAvatar({ provider, size = 32 }: { provider: string; size?: 
   )
 }
 
-// Random user emoji avatars
 const USER_EMOJIS = ['😀', '😎', '🤓', '🧑‍💻', '👨‍🚀', '🦊', '🐱', '🐼', '🦄', '🌈', '🎯', '🚀', '⭐', '🎨', '🔥', '💎', '🍀', '🌸']
 
 function getStableEmoji(): string {
@@ -174,16 +208,11 @@ function getStableEmoji(): string {
   let emoji = localStorage.getItem(key)
   if (!emoji) {
     emoji = USER_EMOJIS[Math.floor(Math.random() * USER_EMOJIS.length)]
-    try { localStorage.setItem(key, emoji) } catch { /* ignore */ }
+    try { localStorage.setItem(key, emoji) } catch {}
   }
   return emoji
 }
 
-/**
- * Render a user avatar.
- * If avatarUrl is provided, show the actual user image.
- * Otherwise, show a stable random emoji.
- */
 export function UserAvatar({ size = 32, primaryColor, avatarUrl }: { size?: number; primaryColor: string; avatarUrl?: string }) {
   if (avatarUrl) {
     return (

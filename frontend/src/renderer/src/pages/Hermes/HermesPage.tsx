@@ -6,16 +6,19 @@ import {
 import {
   ArrowLeftOutlined, ExclamationCircleFilled,
   MessageOutlined, ThunderboltOutlined, BuildOutlined,
-  ScheduleOutlined, DatabaseOutlined, FileTextOutlined
+  ScheduleOutlined, DatabaseOutlined
 } from '@ant-design/icons'
 import Icon from '@ant-design/icons'
 import hermesLogoUrl from '../../assets/hermes-logo.svg'
 import { useNavigate } from 'react-router-dom'
-import { useHermesStore, type HermesConfig } from '../../stores/useHermesStore'
+import { useHermesStore } from '../../stores/useHermesStore'
+import type { HermesConfig } from '../../types/hermes'
 import { useT } from '../../i18n'
+import { getProviderIcon } from '../../components/ProviderIcons'
 import HermesStatusBar from './HermesStatusBar'
 import HermesModuleCard, { type HermesModuleField } from './HermesModuleCard'
 import HermesBottomBar from './HermesBottomBar'
+import { buildProviderBadgeKey, getDefaultModelConfig, getProviderGroups } from './hermes-provider-helpers'
 
 const { Text } = Typography
 
@@ -33,17 +36,6 @@ const HermesSvg = () => (
   </svg>
 )
 const HermesIcon = (props: any) => <Icon component={HermesSvg} {...props} />
-
-// ── Static data ────────────────────────────────────────────────────────────
-
-const PROVIDER_DEFS = [
-  { id: 'anthropic', iconEmoji: '🤖', defaultModel: 'claude-opus-4-6' },
-  { id: 'openai',    iconEmoji: '⚡', defaultModel: 'gpt-4o' },
-  { id: 'google',    iconEmoji: '✨', defaultModel: 'gemini-2.0-flash' },
-  { id: 'nous',      iconEmoji: '🧠', defaultModel: 'nous-hermes-3' },
-  { id: 'openrouter',iconEmoji: '🔀', defaultModel: 'meta-llama/llama-3.3-70b-instruct' },
-  { id: 'custom',    iconEmoji: '⚙️', defaultModel: '' }
-]
 
 const SKILL_DEFS = [
   { id: 'web_search', iconEmoji: '🔍', name: 'hermes.skillWebSearch', desc: 'hermes.skillWebSearchDesc' },
@@ -68,8 +60,6 @@ const REASONING_OPTIONS = [
   { value: 'high',   label: 'High' },
   { value: 'xhigh',  label: 'Extra High' }
 ]
-
-// ── Component ──────────────────────────────────────────────────────────────
 
 const HermesPage: React.FC = () => {
   const navigate = useNavigate()
@@ -104,7 +94,6 @@ const HermesPage: React.FC = () => {
   const [applying,   setApplying]   = useState(false)
   const [activeTab,  setActiveTab]  = useState('providers')
 
-  // Uninstall modal
   const [uninstallOpen,  setUninstallOpen]  = useState(false)
   const [uninstallCode,  setUninstallCode]  = useState('')
   const [uninstallInput, setUninstallInput] = useState('')
@@ -117,8 +106,6 @@ const HermesPage: React.FC = () => {
       fetchConfig()
     }
   }, [installCheck?.installed])
-
-  // ── Handlers ──────────────────────────────────────────────────────────
 
   const handleStart = async () => {
     setStarting(true)
@@ -225,8 +212,6 @@ const HermesPage: React.FC = () => {
     else message.error(result.error || t('hermes.upgradeFailed'))
   }
 
-  // ── Config helpers ────────────────────────────────────────────────────
-
   const patchModel = (patch: Partial<HermesConfig['model']>) => {
     if (!config) return
     updateConfig({ model: { ...config.model, ...patch } })
@@ -242,8 +227,6 @@ const HermesPage: React.FC = () => {
     updateConfig({ agent: { ...config.agent, ...patch } })
   }
 
-  // ── Grids ─────────────────────────────────────────────────────────────
-
   const renderGrid = (children: React.ReactNode[]) => (
     <Row gutter={[16, 16]} style={{ padding: '16px 0' }}>
       {children.map((child, i) => (
@@ -254,61 +237,149 @@ const HermesPage: React.FC = () => {
     </Row>
   )
 
-  // Providers tab
-  const providersTab = config ? (
-    <div>
-      {renderGrid(
-        PROVIDER_DEFS.map((p) => {
-          const isActive = config.model.provider === p.id
-          const fields: HermesModuleField[] = isActive ? [
-            {
-              key: 'model',
-              label: t('hermes.modelName'),
-              type: 'text',
-              placeholder: p.defaultModel,
-              value: config.model.model,
-              onChange: (v) => patchModel({ model: v as string })
-            },
-            {
-              key: 'apiKey',
-              label: t('hermes.apiKey'),
-              type: 'password',
-              placeholder: t('hermes.apiKeyPlaceholder'),
-              value: config.model.apiKey,
-              onChange: (v) => patchModel({ apiKey: v as string })
-            },
-            ...(p.id === 'custom' ? [{
-              key: 'base_url',
-              label: t('hermes.baseUrlOptional'),
-              type: 'text' as const,
-              placeholder: 'https://api.example.com/v1',
-              value: config.model.base_url,
-              onChange: (v: string | number) => patchModel({ base_url: v as string })
-            }] : [])
-          ] : []
+  const buildProviderFields = (providerId: string): HermesModuleField[] => {
+    if (!config) return []
+    const provider = getProviderGroups().flatMap((group) => group.providers).find((item) => item.id === providerId)
+    if (!provider) return []
 
-          return (
-            <HermesModuleCard
-              key={p.id}
-              icon={p.iconEmoji}
-              title={t(`hermes.${p.id}Name`)}
-              description={isActive ? t(`hermes.${p.id}Desc`) : undefined}
-              enabled={isActive}
-              badge={isActive ? t('hermes.activeProvider') : undefined}
-              onToggle={(on) => { if (on) patchModel({ provider: p.id, apiKey: '', model: p.defaultModel }) }}
-              fields={fields}
-            />
-          )
-        })
-      )}
+    const fields: HermesModuleField[] = [
+      {
+        key: 'model',
+        label: t('hermes.modelName'),
+        type: 'select',
+        value: config.model.model,
+        options: provider.recommendedModels,
+        onChange: (value) => patchModel({ model: value as string })
+      },
+      {
+        key: 'custom-model',
+        label: t('hermes.modelCustom'),
+        type: 'text',
+        value: config.model.model,
+        placeholder: provider.defaultModel || t('hermes.modelCustomPlaceholder'),
+        onChange: (value) => patchModel({ model: value as string })
+      },
+    ]
+
+    if (provider.authType === 'api_key' || provider.authType === 'compatible') {
+      fields.push({
+        key: 'apiKey',
+        label: t('hermes.apiKey'),
+        type: 'password',
+        placeholder: t('hermes.apiKeyPlaceholder'),
+        value: config.model.apiKey,
+        onChange: (value) => patchModel({ apiKey: value as string })
+      })
+    }
+
+    if (provider.authType === 'aws') {
+      fields.push(
+        {
+          key: 'region',
+          label: t('hermes.field.awsRegion'),
+          type: 'text',
+          value: config.model.aws?.region || '',
+          placeholder: 'us-east-1',
+          onChange: (value) => patchModel({ aws: { ...(config.model.aws || {}), region: value as string } })
+        },
+        {
+          key: 'profile',
+          label: t('hermes.field.awsProfile'),
+          type: 'text',
+          value: config.model.aws?.profile || '',
+          placeholder: 'default',
+          onChange: (value) => patchModel({ aws: { ...(config.model.aws || {}), profile: value as string } })
+        }
+      )
+    }
+
+    if (provider.authType === 'oauth') {
+      fields.push({
+        key: 'accountLabel',
+        label: t('hermes.field.oauthAccount'),
+        type: 'text',
+        value: config.model.oauth?.accountLabel || '',
+        placeholder: 'user@example.com',
+        onChange: (value) => patchModel({ oauth: { ...(config.model.oauth || {}), accountLabel: value as string, configured: !!value } })
+      })
+    }
+
+    if (provider.authType === 'local' || provider.authType === 'compatible') {
+      fields.push({
+        key: 'base_url',
+        label: t('hermes.baseUrlOptional'),
+        type: 'text',
+        value: config.model.base_url,
+        placeholder: 'https://api.example.com/v1',
+        onChange: (value) => patchModel({ base_url: value as string })
+      })
+    }
+
+    return fields
+  }
+
+  const renderProviderSection = (groupId: 'hosted' | 'oauth' | 'self-hosted-compatible', titleKey: string) => {
+    if (!config) return null
+    const group = getProviderGroups().find((item) => item.id === groupId)
+    if (!group) return null
+
+    return (
+      <div key={groupId} style={{ marginBottom: 24 }}>
+        <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 12 }}>
+          {t(titleKey)}
+        </Text>
+        <Row gutter={[16, 16]}>
+          {group.providers.map((provider) => {
+            const isActive = config.model.provider === provider.id
+            const ProviderIconComp = getProviderIcon(provider.id)
+
+            return (
+              <Col key={provider.id} xs={24} sm={12} md={8} lg={6}>
+                <HermesModuleCard
+                  icon={<ProviderIconComp style={{ width: 14, height: 14, display: 'block', objectFit: 'contain' }} />}
+                  iconColor={token.colorFillTertiary}
+                  title={t(provider.titleKey)}
+                  description={isActive ? t(provider.descriptionKey) : undefined}
+                  summary={t(provider.modelSummaryKey)}
+                  badge={t(buildProviderBadgeKey(provider.authType))}
+                  enabled={isActive}
+                  onToggle={(checked) => {
+                    if (!checked) return
+                    patchModel(getDefaultModelConfig(provider.id))
+                  }}
+                  onExpandChange={(expanded) => {
+                    if (!expanded || isActive) return
+                    patchModel(getDefaultModelConfig(provider.id))
+                  }}
+                  fields={isActive ? buildProviderFields(provider.id) : []}
+                  extraActions={provider.docsUrl ? (
+                    <Button type="link" size="small" href={provider.docsUrl} target="_blank" style={{ paddingInline: 0 }}>
+                      {t('hermes.docs')}
+                    </Button>
+                  ) : undefined}
+                />
+              </Col>
+            )
+          })}
+        </Row>
+      </div>
+    )
+  }
+
+  const providersTab = config ? (
+    <div style={{ paddingTop: 12 }}>
+      <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 12 }}>
+        {t('hermes.providersIntro')}
+      </Text>
+      {renderProviderSection('hosted', 'hermes.providerGroup.hosted')}
+      {renderProviderSection('oauth', 'hermes.providerGroup.oauth')}
+      {renderProviderSection('self-hosted-compatible', 'hermes.providerGroup.compatible')}
     </div>
   ) : null
 
-  // Channels tab
   const channelsTab = config ? (
     <div>
       {renderGrid([
-        // Telegram
         <HermesModuleCard
           icon="✈️"
           title={t('hermes.channelTelegram')}
@@ -322,7 +393,6 @@ const HermesPage: React.FC = () => {
             onChange: (v) => patchChannels({ telegram: { ...config.channels.telegram, token: v as string } })
           }] : []}
         />,
-        // Discord
         <HermesModuleCard
           icon="🎮"
           title={t('hermes.channelDiscord')}
@@ -336,7 +406,6 @@ const HermesPage: React.FC = () => {
             onChange: (v) => patchChannels({ discord: { ...config.channels.discord, token: v as string } })
           }] : []}
         />,
-        // Slack
         <HermesModuleCard
           icon="💬"
           title={t('hermes.channelSlack')}
@@ -358,7 +427,6 @@ const HermesPage: React.FC = () => {
             }
           ] : []}
         />,
-        // Signal
         <HermesModuleCard
           icon="🔒"
           title={t('hermes.channelSignal')}
@@ -376,7 +444,6 @@ const HermesPage: React.FC = () => {
     </div>
   ) : null
 
-  // Skills tab (static)
   const skillsTab = (
     <div>
       <Text type="secondary" style={{ fontSize: 12, display: 'block', padding: '12px 0 0' }}>
@@ -397,7 +464,6 @@ const HermesPage: React.FC = () => {
     </div>
   )
 
-  // Tools tab (static)
   const toolsTab = (
     <div>
       <Text type="secondary" style={{ fontSize: 12, display: 'block', padding: '12px 0 0' }}>
@@ -418,7 +484,6 @@ const HermesPage: React.FC = () => {
     </div>
   )
 
-  // Memory tab (configurable)
   const memoryTab = config ? (
     <Row gutter={[16, 16]} style={{ padding: '16px 0' }}>
       <Col xs={24} sm={12} md={8} lg={6}>
@@ -469,7 +534,6 @@ const HermesPage: React.FC = () => {
     </Row>
   ) : null
 
-  // Cron tab
   const cronTab = (
     <div style={{ padding: '16px 0' }}>
       <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 12 }}>
@@ -496,8 +560,6 @@ const HermesPage: React.FC = () => {
       )}
     </div>
   )
-
-  // ── Tab config ────────────────────────────────────────────────────────
 
   const tabItems = [
     {
@@ -532,8 +594,6 @@ const HermesPage: React.FC = () => {
     }
   ]
 
-  // ── Guard states ──────────────────────────────────────────────────────
-
   if (installCheck === null) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
@@ -559,11 +619,8 @@ const HermesPage: React.FC = () => {
     )
   }
 
-  // ── Main render ───────────────────────────────────────────────────────
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Back + StatusBar */}
       <div style={{ padding: '16px 24px 0 24px' }}>
         <Button
           type="text"
@@ -588,7 +645,6 @@ const HermesPage: React.FC = () => {
         />
       </div>
 
-      {/* Tabs */}
       <div style={{ flex: 1, overflow: 'auto', padding: '0 24px' }}>
         <Spin spinning={configLoading}>
           <Tabs
@@ -602,7 +658,6 @@ const HermesPage: React.FC = () => {
         </Spin>
       </div>
 
-      {/* Bottom bar */}
       <HermesBottomBar
         dirty={dirty}
         saving={saving}
@@ -611,7 +666,6 @@ const HermesPage: React.FC = () => {
         onApply={handleApply}
       />
 
-      {/* Uninstall confirmation modal */}
       <Modal
         title={
           <span style={{ color: token.colorError }}>

@@ -92,8 +92,8 @@ const AIAgentsPage: React.FC = () => {
     }
   }
 
-  // Loading state
-  if (installCheck === null) {
+  // Loading state — wait for both checks before rendering
+  if (installCheck === null || hermesInstallCheck === null) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
         <Spin size="large" />
@@ -112,14 +112,12 @@ const AIAgentsPage: React.FC = () => {
         onInstall={handleInstall}
       />
 
-      {hermesInstallCheck !== null && (
-        <HermesCard
-          isInstalled={hermesInstallCheck.installed}
-          installing={hermesInstalling}
-          serviceStatus={hermesServiceStatus}
-          onInstall={handleInstallHermes}
-        />
-      )}
+      <HermesCard
+        isInstalled={hermesInstallCheck.installed}
+        installing={hermesInstalling}
+        serviceStatus={hermesServiceStatus}
+        onInstall={handleInstallHermes}
+      />
     </div>
   )
 }

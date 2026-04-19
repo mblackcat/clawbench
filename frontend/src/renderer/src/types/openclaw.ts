@@ -28,6 +28,11 @@ export interface OpenClawNode {
   agents: OpenClawAgent[]
 }
 
+export interface OpenClawConfigFieldOption {
+  label: string
+  value: string
+}
+
 export interface OpenClawConfigField {
   key: string
   label: string
@@ -35,7 +40,7 @@ export interface OpenClawConfigField {
   placeholder?: string
   required?: boolean
   defaultValue?: string
-  options?: { label: string; value: string }[]
+  options?: OpenClawConfigFieldOption[]
 }
 
 export interface OpenClawItem {

@@ -320,7 +320,7 @@ export const api = {
     start: () => ipcRenderer.invoke('hermes:start'),
     stop: () => ipcRenderer.invoke('hermes:stop'),
     getConfig: () => ipcRenderer.invoke('hermes:get-config'),
-    saveConfig: (config: Record<string, unknown>) =>
+    saveConfig: (config: import('../renderer/src/types/hermes').HermesConfig) =>
       ipcRenderer.invoke('hermes:save-config', config),
     upgrade: () => ipcRenderer.invoke('hermes:upgrade'),
     onInstallProgress: (callback: (line: string) => void) => {

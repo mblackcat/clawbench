@@ -12,7 +12,7 @@ import {
   MonitorOutlined,
   ReloadOutlined
 } from '@ant-design/icons'
-import type { HermesServiceStatus } from '../../stores/useHermesStore'
+import type { HermesServiceStatus } from '../../types/hermes'
 import { useT } from '../../i18n'
 
 interface HermesStatusBarProps {
