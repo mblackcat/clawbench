@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { getT } from '../../../i18n'
+import { useSettingsStore } from '../../../stores/useSettingsStore'
 
 type ExpectedChannelField = {
   key: string
@@ -27,6 +29,14 @@ const EXPECTED_CHANNELS = [
   'email',
   'bluebubbles',
   'qqbot',
+] as const
+
+const EXTRA_NOTE_KEYS = [
+  'hermes.channel.signal.note',
+  'hermes.channel.homeassistant.note',
+  'hermes.channel.weixin.note',
+  'hermes.channel.sms.note',
+  'hermes.channel.bluebubbles.note',
 ] as const
 
 const EXPECTED_CHANNEL_META = {
@@ -167,5 +177,36 @@ describe('hermes channel registry', () => {
         expect(typeof field.placeholder).toBe('string')
       })
     })
+  })
+
+  it('provides localized strings for all registry translation keys in both languages', async () => {
+    const registry = await loadRegistry()
+    const previousLanguage = useSettingsStore.getState().language
+
+    try {
+      ;(['zh-CN', 'en'] as const).forEach((language) => {
+        useSettingsStore.setState({ language })
+        const t = getT()
+
+        registry.forEach((channel: any) => {
+          expect(t(channel.titleKey)).not.toBe(channel.titleKey)
+          expect(t(channel.descriptionKey)).not.toBe(channel.descriptionKey)
+
+          if (channel.noteKey) {
+            expect(t(channel.noteKey)).not.toBe(channel.noteKey)
+          }
+
+          channel.fields.forEach((field: any) => {
+            expect(t(field.labelKey)).not.toBe(field.labelKey)
+          })
+        })
+
+        EXTRA_NOTE_KEYS.forEach((noteKey) => {
+          expect(t(noteKey)).not.toBe(noteKey)
+        })
+      })
+    } finally {
+      useSettingsStore.setState({ language: previousLanguage })
+    }
   })
 })
