@@ -297,8 +297,8 @@ export interface ClawBenchAPI {
     getStatus: () => Promise<'running' | 'stopped' | 'unknown'>
     start: () => Promise<{ success: boolean; error?: string }>
     stop: () => Promise<{ success: boolean; error?: string }>
-    getConfig: () => Promise<import('../stores/useHermesStore').HermesConfig>
-    saveConfig: (config: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>
+    getConfig: () => Promise<import('./hermes').HermesConfig>
+    saveConfig: (config: import('./hermes').HermesConfig) => Promise<{ success: boolean; error?: string }>
     upgrade: () => Promise<{ success: boolean; error?: string }>
     onInstallProgress: (callback: (line: string) => void) => () => void
     getCronJobs: () => Promise<string[]>

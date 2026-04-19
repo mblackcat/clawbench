@@ -1,4 +1,6 @@
 import React from 'react'
+import minimaxColorUrl from '../assets/provider-icons/color/minimax-color.svg'
+import zhipuColorUrl from '../assets/provider-icons/color/zhipu-color.svg'
 
 // ---- SVG icon components for each AI provider ----
 
@@ -79,6 +81,12 @@ const DefaultAISvg: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   </svg>
 )
 
+const makeLogoImg = (url: string): React.FC<React.SVGProps<SVGSVGElement>> =>
+  ({ style }) => <img src={url} alt="" style={{ display: 'block', objectFit: 'contain', ...style }} />
+
+const MinimaxSvg = makeLogoImg(minimaxColorUrl)
+const ZhipuSvg = makeLogoImg(zhipuColorUrl)
+
 // ---- Provider → Icon mapping ----
 
 type ProviderIconMap = Record<string, React.FC<React.SVGProps<SVGSVGElement>>>
@@ -87,27 +95,63 @@ const PROVIDER_ICONS: ProviderIconMap = {
   openai: OpenAISvg,
   'openai-compatible': OpenAISvg,
   'azure-openai': AzureOpenAISvg,
+  anthropic: ClaudeSvg,
   claude: ClaudeSvg,
   'anthropic-compatible': ClaudeSvg,
   google: GeminiSvg,
+  'gemini-api': GeminiSvg,
+  'google-gemini-cli': GeminiSvg,
+  openrouter: OpenAISvg,
+  xai: OpenAISvg,
+  bedrock: ClaudeSvg,
+  copilot: OpenAISvg,
+  'ollama-cloud': DefaultAISvg,
   deepseek: DeepSeekSvg,
   qwen: QwenSvg,
+  'qwen-portal': QwenSvg,
   doubao: DoubaoSvg,
+  ark: DoubaoSvg,
   kimi: KimiSvg,
+  moonshot: KimiSvg,
+  minimax: MinimaxSvg,
+  glm: ZhipuSvg,
+  zhipu: ZhipuSvg,
+  ollama: DefaultAISvg,
+  'other-compatible': DefaultAISvg,
+  'custom-openai-compatible': OpenAISvg,
 }
+
 
 const PROVIDER_BRAND_COLORS: Record<string, string> = {
   openai: '#10a37f',
   'openai-compatible': '#10a37f',
   'azure-openai': '#0078D4',
+  anthropic: '#D97757',
   claude: '#D97757',
   'anthropic-compatible': '#D97757',
   google: '#1C7DEB',
+  'gemini-api': '#1C7DEB',
+  'google-gemini-cli': '#1C7DEB',
+  openrouter: '#10a37f',
+  xai: '#111111',
+  bedrock: '#D97757',
+  copilot: '#10a37f',
+  'ollama-cloud': '#111111',
   deepseek: '#4D6BFE',
   qwen: '#6F42C1',
+  'qwen-portal': '#6F42C1',
   doubao: '#FA541C',
+  ark: '#FA541C',
   kimi: '#1783FF',
+  moonshot: '#1783FF',
+  minimax: '#1a1a1a',
+  glm: '#3B82F6',
+  zhipu: '#3B82F6',
+  ollama: '#111111',
+  'other-compatible': '#8c8c8c',
+  'custom-openai-compatible': '#10a37f',
 }
+
 
 /**
  * Get the SVG icon component for a provider.
@@ -120,8 +164,13 @@ export function getProviderIcon(provider: string): React.FC<React.SVGProps<SVGSV
 /**
  * Get the brand color for a provider.
  */
+
 export function getProviderColor(provider: string): string {
   return PROVIDER_BRAND_COLORS[provider] || '#8c8c8c'
+}
+
+export function hasProviderIcon(provider: string): boolean {
+  return provider in PROVIDER_ICONS
 }
 
 /**
