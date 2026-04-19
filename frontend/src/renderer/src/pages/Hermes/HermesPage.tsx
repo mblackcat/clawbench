@@ -433,12 +433,20 @@ const HermesPage: React.FC = () => {
           description={t('hermes.signalDesc')}
           enabled={config.channels.signal.enabled}
           onToggle={(v) => patchChannels({ signal: { ...config.channels.signal, enabled: v } })}
-          fields={config.channels.signal.enabled ? [{
-            key: 'phone', label: t('hermes.signalPhone'), type: 'text',
-            placeholder: '+1234567890',
-            value: config.channels.signal.phone,
-            onChange: (v) => patchChannels({ signal: { ...config.channels.signal, phone: v as string } })
-          }] : []}
+          fields={config.channels.signal.enabled ? [
+            {
+              key: 'http_url', label: t('hermes.baseUrl'), type: 'text',
+              placeholder: 'http://localhost:8080',
+              value: config.channels.signal.http_url,
+              onChange: (v) => patchChannels({ signal: { ...config.channels.signal, http_url: v as string } })
+            },
+            {
+              key: 'account', label: t('hermes.field.oauthAccount'), type: 'text',
+              placeholder: '+1234567890',
+              value: config.channels.signal.account,
+              onChange: (v) => patchChannels({ signal: { ...config.channels.signal, account: v as string } })
+            }
+          ] : []}
         />
       ])}
     </div>
