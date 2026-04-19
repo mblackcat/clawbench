@@ -215,5 +215,57 @@ describe('hermes.service config mapping', () => {
       AWS_SESSION_TOKEN: 'token',
     })
   })
+
+  it('keeps disabled channels false and clears their persisted env fields', () => {
+    const normalized = normalizeHermesConfigForSave({
+      model: {
+        provider: 'anthropic',
+        model: 'claude-opus-4-6',
+        base_url: '',
+        authType: 'api_key',
+        apiKey: 'secret',
+      },
+      channels: {
+        telegram: { enabled: true, token: 'telegram-token' },
+        discord: { enabled: true, token: 'discord-token' },
+        slack: { enabled: false, bot_token: '', app_token: '' },
+        signal: { enabled: false, http_url: '', account: '' },
+        whatsapp: { enabled: false },
+        matrix: { enabled: true, homeserver: 'https://matrix.local', access_token: 'matrix-access-token' },
+        mattermost: { enabled: true, url: 'https://mattermost.local', token: 'mattermost-token' },
+        homeassistant: { enabled: true, url: 'https://ha.local', token: 'hass-token' },
+        dingtalk: { enabled: true, client_id: 'dingtalk-client-id', client_secret: 'dingtalk-client-secret' },
+        feishu: { enabled: true, app_id: 'feishu-app-id', app_secret: 'feishu-app-secret' },
+        wecom: { enabled: true, bot_id: 'wecom-bot-id', secret: 'wecom-secret' },
+        weixin: { enabled: true, token: 'weixin-token', account_id: 'weixin-account-id' },
+        sms: {
+          enabled: true,
+          account_sid: 'twilio-account-sid',
+          auth_token: 'twilio-auth-token',
+          phone_number: '+15555550123',
+          webhook_url: 'https://sms.local/webhook',
+        },
+        email: {
+          enabled: true,
+          address: 'agent@example.com',
+          password: 'email-password',
+          imap_host: 'imap.example.com',
+          smtp_host: 'smtp.example.com',
+        },
+        bluebubbles: { enabled: true, server_url: 'https://bluebubbles.local', password: 'bluebubbles-password' },
+        qqbot: { enabled: true, app_id: 'qq-app-id', client_secret: 'qq-client-secret' },
+      },
+      agent: { memory_enabled: true, user_profile_enabled: true, max_turns: 50, reasoning_effort: 'medium' },
+    })
+
+    expect(normalized.yaml._ui.channels.whatsapp).toBe(false)
+    expect(normalized.yaml._ui.channels.slack).toBe(false)
+    expect(normalized.yaml._ui.channels.signal).toBe(false)
+    expect(normalized.env.WHATSAPP_ENABLED).toBe('false')
+    expect(normalized.env.SLACK_BOT_TOKEN).toBe('')
+    expect(normalized.env.SLACK_APP_TOKEN).toBe('')
+    expect(normalized.env.SIGNAL_HTTP_URL).toBe('')
+    expect(normalized.env.SIGNAL_ACCOUNT).toBe('')
+  })
 })
 
