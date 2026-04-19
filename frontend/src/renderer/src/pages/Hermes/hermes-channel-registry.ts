@@ -66,6 +66,7 @@ const HERMES_CHANNEL_REGISTRY_MAP = {
     icon: 'signal',
     titleKey: 'hermes.channel.signal.title',
     descriptionKey: 'hermes.channel.signal.description',
+    noteKey: 'hermes.channel.signal.note',
     fields: [
       createField('signal', 'http_url', 'text', 'http://localhost:8080'),
       createField('signal', 'account', 'text', '+1234567890'),
@@ -104,6 +105,7 @@ const HERMES_CHANNEL_REGISTRY_MAP = {
     icon: 'homeassistant',
     titleKey: 'hermes.channel.homeassistant.title',
     descriptionKey: 'hermes.channel.homeassistant.description',
+    noteKey: 'hermes.channel.homeassistant.note',
     fields: [
       createField('homeassistant', 'url', 'text', 'http://homeassistant.local:8123'),
       createField('homeassistant', 'token', 'password', 'Long-lived access token...'),
@@ -144,6 +146,7 @@ const HERMES_CHANNEL_REGISTRY_MAP = {
     icon: 'weixin',
     titleKey: 'hermes.channel.weixin.title',
     descriptionKey: 'hermes.channel.weixin.description',
+    noteKey: 'hermes.channel.weixin.note',
     fields: [
       createField('weixin', 'token', 'password', 'Weixin token...'),
       createField('weixin', 'account_id', 'text', 'gh_xxxxx'),
@@ -154,6 +157,7 @@ const HERMES_CHANNEL_REGISTRY_MAP = {
     icon: 'sms',
     titleKey: 'hermes.channel.sms.title',
     descriptionKey: 'hermes.channel.sms.description',
+    noteKey: 'hermes.channel.sms.note',
     fields: [
       createField('sms', 'account_sid', 'text', 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'),
       createField('sms', 'auth_token', 'password', 'Twilio auth token...'),
@@ -178,6 +182,7 @@ const HERMES_CHANNEL_REGISTRY_MAP = {
     icon: 'bluebubbles',
     titleKey: 'hermes.channel.bluebubbles.title',
     descriptionKey: 'hermes.channel.bluebubbles.description',
+    noteKey: 'hermes.channel.bluebubbles.note',
     fields: [
       createField('bluebubbles', 'server_url', 'text', 'https://bluebubbles.example.com'),
       createField('bluebubbles', 'password', 'password', 'BlueBubbles password...'),
