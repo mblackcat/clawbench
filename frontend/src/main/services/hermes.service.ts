@@ -45,6 +45,29 @@ const PROVIDER_KEY_MAP: Record<string, string> = {
   copilot: 'GITHUB_COPILOT_TOKEN',
 }
 
+const HERMES_CHANNEL_KEYS = [
+  'telegram',
+  'discord',
+  'slack',
+  'signal',
+  'whatsapp',
+  'matrix',
+  'mattermost',
+  'homeassistant',
+  'dingtalk',
+  'feishu',
+  'wecom',
+  'weixin',
+  'sms',
+  'email',
+  'bluebubbles',
+  'qqbot',
+] as const
+
+function readBooleanEnv(value?: string): boolean {
+  return value === '1' || value === 'true'
+}
+
 function resolveProviderEnvKey(provider: string): string {
   return PROVIDER_KEY_MAP[provider] || 'API_KEY'
 }
@@ -323,12 +346,50 @@ export function readHermesConfigFromSources(rawYaml: any, env: Record<string, st
   config.channels.discord.enabled = !!channels.discord
   config.channels.slack.enabled = !!channels.slack
   config.channels.signal.enabled = !!channels.signal
+  config.channels.whatsapp.enabled = !!channels.whatsapp || readBooleanEnv(env.WHATSAPP_ENABLED)
+  config.channels.matrix.enabled = !!channels.matrix
+  config.channels.mattermost.enabled = !!channels.mattermost
+  config.channels.homeassistant.enabled = !!channels.homeassistant
+  config.channels.dingtalk.enabled = !!channels.dingtalk
+  config.channels.feishu.enabled = !!channels.feishu
+  config.channels.wecom.enabled = !!channels.wecom
+  config.channels.weixin.enabled = !!channels.weixin
+  config.channels.sms.enabled = !!channels.sms
+  config.channels.email.enabled = !!channels.email
+  config.channels.bluebubbles.enabled = !!channels.bluebubbles
+  config.channels.qqbot.enabled = !!channels.qqbot
   config.channels.telegram.token = env.TELEGRAM_BOT_TOKEN || ''
   config.channels.discord.token = env.DISCORD_BOT_TOKEN || ''
   config.channels.slack.bot_token = env.SLACK_BOT_TOKEN || ''
   config.channels.slack.app_token = env.SLACK_APP_TOKEN || ''
   config.channels.signal.http_url = env.SIGNAL_HTTP_URL || ''
   config.channels.signal.account = env.SIGNAL_ACCOUNT || ''
+  config.channels.matrix.homeserver = env.MATRIX_HOMESERVER || ''
+  config.channels.matrix.access_token = env.MATRIX_ACCESS_TOKEN || ''
+  config.channels.mattermost.url = env.MATTERMOST_URL || ''
+  config.channels.mattermost.token = env.MATTERMOST_TOKEN || ''
+  config.channels.homeassistant.url = env.HASS_URL || ''
+  config.channels.homeassistant.token = env.HASS_TOKEN || ''
+  config.channels.dingtalk.client_id = env.DINGTALK_CLIENT_ID || ''
+  config.channels.dingtalk.client_secret = env.DINGTALK_CLIENT_SECRET || ''
+  config.channels.feishu.app_id = env.FEISHU_APP_ID || ''
+  config.channels.feishu.app_secret = env.FEISHU_APP_SECRET || ''
+  config.channels.wecom.bot_id = env.WECOM_BOT_ID || ''
+  config.channels.wecom.secret = env.WECOM_SECRET || ''
+  config.channels.weixin.token = env.WEIXIN_TOKEN || ''
+  config.channels.weixin.account_id = env.WEIXIN_ACCOUNT_ID || ''
+  config.channels.sms.account_sid = env.TWILIO_ACCOUNT_SID || ''
+  config.channels.sms.auth_token = env.TWILIO_AUTH_TOKEN || ''
+  config.channels.sms.phone_number = env.TWILIO_PHONE_NUMBER || ''
+  config.channels.sms.webhook_url = env.SMS_WEBHOOK_URL || ''
+  config.channels.email.address = env.EMAIL_ADDRESS || ''
+  config.channels.email.password = env.EMAIL_PASSWORD || ''
+  config.channels.email.imap_host = env.EMAIL_IMAP_HOST || ''
+  config.channels.email.smtp_host = env.EMAIL_SMTP_HOST || ''
+  config.channels.bluebubbles.server_url = env.BLUEBUBBLES_SERVER_URL || ''
+  config.channels.bluebubbles.password = env.BLUEBUBBLES_PASSWORD || ''
+  config.channels.qqbot.app_id = env.QQ_APP_ID || ''
+  config.channels.qqbot.client_secret = env.QQ_CLIENT_SECRET || ''
 
   return config
 }
@@ -350,12 +411,10 @@ export function normalizeHermesConfigForSave(config: HermesConfig): { yaml: Reco
       user_profile_enabled: config.agent.user_profile_enabled,
     },
     _ui: {
-      channels: {
-        telegram: config.channels.telegram.enabled,
-        discord: config.channels.discord.enabled,
-        slack: config.channels.slack.enabled,
-        signal: config.channels.signal.enabled,
-      },
+      channels: HERMES_CHANNEL_KEYS.reduce<Record<string, boolean>>((result, channelKey) => {
+        result[channelKey] = config.channels[channelKey].enabled
+        return result
+      }, {}),
     },
   }
 
@@ -379,6 +438,33 @@ export function normalizeHermesConfigForSave(config: HermesConfig): { yaml: Reco
     SLACK_APP_TOKEN: config.channels.slack.app_token,
     SIGNAL_HTTP_URL: config.channels.signal.http_url,
     SIGNAL_ACCOUNT: config.channels.signal.account,
+    WHATSAPP_ENABLED: String(config.channels.whatsapp.enabled),
+    MATRIX_HOMESERVER: config.channels.matrix.homeserver,
+    MATRIX_ACCESS_TOKEN: config.channels.matrix.access_token,
+    MATTERMOST_URL: config.channels.mattermost.url,
+    MATTERMOST_TOKEN: config.channels.mattermost.token,
+    HASS_URL: config.channels.homeassistant.url,
+    HASS_TOKEN: config.channels.homeassistant.token,
+    DINGTALK_CLIENT_ID: config.channels.dingtalk.client_id,
+    DINGTALK_CLIENT_SECRET: config.channels.dingtalk.client_secret,
+    FEISHU_APP_ID: config.channels.feishu.app_id,
+    FEISHU_APP_SECRET: config.channels.feishu.app_secret,
+    WECOM_BOT_ID: config.channels.wecom.bot_id,
+    WECOM_SECRET: config.channels.wecom.secret,
+    WEIXIN_TOKEN: config.channels.weixin.token,
+    WEIXIN_ACCOUNT_ID: config.channels.weixin.account_id,
+    TWILIO_ACCOUNT_SID: config.channels.sms.account_sid,
+    TWILIO_AUTH_TOKEN: config.channels.sms.auth_token,
+    TWILIO_PHONE_NUMBER: config.channels.sms.phone_number,
+    SMS_WEBHOOK_URL: config.channels.sms.webhook_url,
+    EMAIL_ADDRESS: config.channels.email.address,
+    EMAIL_PASSWORD: config.channels.email.password,
+    EMAIL_IMAP_HOST: config.channels.email.imap_host,
+    EMAIL_SMTP_HOST: config.channels.email.smtp_host,
+    BLUEBUBBLES_SERVER_URL: config.channels.bluebubbles.server_url,
+    BLUEBUBBLES_PASSWORD: config.channels.bluebubbles.password,
+    QQ_APP_ID: config.channels.qqbot.app_id,
+    QQ_CLIENT_SECRET: config.channels.qqbot.client_secret,
     AWS_PROFILE: config.model.aws?.profile || '',
     AWS_ACCESS_KEY_ID: config.model.aws?.accessKeyId || '',
     AWS_SECRET_ACCESS_KEY: config.model.aws?.secretAccessKey || '',
