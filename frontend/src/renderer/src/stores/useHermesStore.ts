@@ -1,26 +1,6 @@
 // frontend/src/renderer/src/stores/useHermesStore.ts
 import { create } from 'zustand'
-
-export interface HermesConfig {
-  model: {
-    provider: string
-    model: string
-    apiKey: string
-    base_url: string
-  }
-  channels: {
-    telegram: { enabled: boolean; token: string }
-    discord: { enabled: boolean; token: string }
-    slack: { enabled: boolean; bot_token: string; app_token: string }
-    signal: { enabled: boolean; phone: string }
-  }
-  agent: {
-    memory_enabled: boolean
-    user_profile_enabled: boolean
-    max_turns: number
-    reasoning_effort: string
-  }
-}
+import type { HermesConfig } from '../types/hermes'
 
 interface HermesState {
   installCheck: { installed: boolean; version?: string } | null
@@ -128,7 +108,16 @@ export const useHermesStore = create<HermesState>((set, get) => ({
   updateConfig: (patch: Partial<HermesConfig>) => {
     const current = get().config
     if (!current) return
-    set({ config: { ...current, ...patch }, dirty: true })
+    set({
+      config: {
+        ...current,
+        ...patch,
+        model: patch.model ? { ...current.model, ...patch.model } : current.model,
+        channels: patch.channels ? { ...current.channels, ...patch.channels } : current.channels,
+        agent: patch.agent ? { ...current.agent, ...patch.agent } : current.agent,
+      },
+      dirty: true,
+    })
   },
 
   saveConfig: async () => {

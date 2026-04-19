@@ -7,6 +7,8 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as logger from '../utils/logger'
 import * as yaml from 'js-yaml'
+import type { HermesConfig } from '../../renderer/src/types/hermes'
+import { createDefaultHermesConfig } from '../../renderer/src/pages/Hermes/hermes-provider-helpers'
 
 const execAsync = promisify(exec)
 
@@ -19,27 +21,6 @@ export interface HermesInstallCheck {
 
 export type HermesServiceStatus = 'running' | 'stopped' | 'unknown'
 
-export interface HermesConfig {
-  model: {
-    provider: string
-    model: string
-    apiKey: string
-    base_url: string
-  }
-  channels: {
-    telegram: { enabled: boolean; token: string }
-    discord: { enabled: boolean; token: string }
-    slack: { enabled: boolean; bot_token: string; app_token: string }
-    signal: { enabled: boolean; phone: string }
-  }
-  agent: {
-    memory_enabled: boolean
-    user_profile_enabled: boolean
-    max_turns: number
-    reasoning_effort: string
-  }
-}
-
 // ── Constants ─────────────────────────────────────────────────────────────
 
 const HERMES_DIR = path.join(os.homedir(), '.hermes')
@@ -50,9 +31,22 @@ const HERMES_BIN = path.join(os.homedir(), '.local', 'bin', 'hermes')
 const PROVIDER_KEY_MAP: Record<string, string> = {
   anthropic: 'ANTHROPIC_API_KEY',
   openai: 'OPENAI_API_KEY',
+  'gemini-api': 'GOOGLE_API_KEY',
   google: 'GOOGLE_API_KEY',
-  nous: 'NOUS_API_KEY',
-  openrouter: 'OPENROUTER_API_KEY'
+  openrouter: 'OPENROUTER_API_KEY',
+  xai: 'XAI_API_KEY',
+  deepseek: 'DEEPSEEK_API_KEY',
+  minimax: 'MINIMAX_API_KEY',
+  kimi: 'KIMI_API_KEY',
+  qwen: 'DASHSCOPE_API_KEY',
+  glm: 'GLM_API_KEY',
+  ark: 'ARK_API_KEY',
+  'ollama-cloud': 'OLLAMA_API_KEY',
+  copilot: 'GITHUB_COPILOT_TOKEN',
+}
+
+function resolveProviderEnvKey(provider: string): string {
+  return PROVIDER_KEY_MAP[provider] || 'API_KEY'
 }
 
 // ── Process tracking ──────────────────────────────────────────────────────
@@ -276,64 +270,143 @@ export async function stopGateway(): Promise<{ success: boolean; error?: string 
 
 // ── Config read/write ──────────────────────────────────────────────────────
 
-export function getConfig(): HermesConfig {
-  // Defaults
-  const config: HermesConfig = {
-    model: { provider: 'anthropic', model: 'claude-opus-4-6', apiKey: '', base_url: '' },
-    channels: {
-      telegram: { enabled: false, token: '' },
-      discord: { enabled: false, token: '' },
-      slack: { enabled: false, bot_token: '', app_token: '' },
-      signal: { enabled: false, phone: '' }
-    },
-    agent: { memory_enabled: true, user_profile_enabled: true, max_turns: 50, reasoning_effort: 'medium' }
+export function readHermesConfigFromSources(rawYaml: any, env: Record<string, string>): HermesConfig {
+  const provider = rawYaml?.model?.provider || 'anthropic'
+  const config = createDefaultHermesConfig(provider)
+
+  config.model.provider = provider
+  config.model.model = rawYaml?.model?.default || rawYaml?.model?.model || config.model.model
+  config.model.base_url = rawYaml?.model?.base_url || ''
+  config.model.authType = (rawYaml?.model?.auth_type || config.model.authType) as HermesConfig['model']['authType']
+  config.model.apiKey = env[resolveProviderEnvKey(provider)] || ''
+
+  if (provider === 'bedrock') {
+    config.model.authType = 'aws'
+    config.model.aws = {
+      region: rawYaml?.aws?.region || env.AWS_REGION || 'us-east-1',
+      profile: env.AWS_PROFILE || '',
+      accessKeyId: env.AWS_ACCESS_KEY_ID || '',
+      secretAccessKey: env.AWS_SECRET_ACCESS_KEY || '',
+      sessionToken: env.AWS_SESSION_TOKEN || '',
+      bedrockBaseUrl: env.BEDROCK_BASE_URL || '',
+    }
   }
 
-  // Read YAML
+  if (config.model.authType === 'oauth') {
+    config.model.oauth = {
+      configured: !!env[`${provider.toUpperCase().replace(/-/g, '_')}_ACCOUNT`],
+      accountLabel: env[`${provider.toUpperCase().replace(/-/g, '_')}_ACCOUNT`] || '',
+      authMode: rawYaml?.model?.auth_mode || 'oauth',
+    }
+  }
+
+  if (config.model.authType === 'compatible') {
+    config.model.headers = {}
+    config.model.extra = {}
+  }
+
+  if (config.model.authType === 'local') {
+    config.model.local = {
+      toolCallParser: rawYaml?.model?.tool_call_parser || '',
+      contextWindow: rawYaml?.model?.context_window || '',
+      endpointHint: rawYaml?.model?.endpoint_hint || '',
+    }
+  }
+
+  config.agent.max_turns = rawYaml?.agent?.max_turns ?? config.agent.max_turns
+  config.agent.reasoning_effort = rawYaml?.agent?.reasoning_effort || config.agent.reasoning_effort
+  config.agent.memory_enabled = rawYaml?.memory?.memory_enabled ?? config.agent.memory_enabled
+  config.agent.user_profile_enabled = rawYaml?.memory?.user_profile_enabled ?? config.agent.user_profile_enabled
+
+  const channels = rawYaml?._ui?.channels || {}
+  config.channels.telegram.enabled = !!channels.telegram
+  config.channels.discord.enabled = !!channels.discord
+  config.channels.slack.enabled = !!channels.slack
+  config.channels.signal.enabled = !!channels.signal
+  config.channels.telegram.token = env.TELEGRAM_BOT_TOKEN || ''
+  config.channels.discord.token = env.DISCORD_BOT_TOKEN || ''
+  config.channels.slack.bot_token = env.SLACK_BOT_TOKEN || ''
+  config.channels.slack.app_token = env.SLACK_APP_TOKEN || ''
+  config.channels.signal.phone = env.SIGNAL_PHONE || ''
+
+  return config
+}
+
+export function normalizeHermesConfigForSave(config: HermesConfig): { yaml: Record<string, any>; env: Record<string, string> } {
+  const yamlConfig: Record<string, any> = {
+    model: {
+      provider: config.model.provider,
+      default: config.model.model,
+      base_url: config.model.base_url || undefined,
+      auth_type: config.model.authType,
+    },
+    agent: {
+      max_turns: config.agent.max_turns,
+      reasoning_effort: config.agent.reasoning_effort,
+    },
+    memory: {
+      memory_enabled: config.agent.memory_enabled,
+      user_profile_enabled: config.agent.user_profile_enabled,
+    },
+    _ui: {
+      channels: {
+        telegram: config.channels.telegram.enabled,
+        discord: config.channels.discord.enabled,
+        slack: config.channels.slack.enabled,
+        signal: config.channels.signal.enabled,
+      },
+    },
+  }
+
+  if (config.model.provider === 'bedrock') {
+    yamlConfig.aws = {
+      region: config.model.aws?.region || 'us-east-1',
+    }
+  }
+
+  if (config.model.authType === 'local') {
+    yamlConfig.model.tool_call_parser = config.model.local?.toolCallParser || undefined
+    yamlConfig.model.context_window = config.model.local?.contextWindow || undefined
+    yamlConfig.model.endpoint_hint = config.model.local?.endpointHint || undefined
+  }
+
+  const env: Record<string, string> = {
+    [resolveProviderEnvKey(config.model.provider)]: config.model.apiKey,
+    TELEGRAM_BOT_TOKEN: config.channels.telegram.token,
+    DISCORD_BOT_TOKEN: config.channels.discord.token,
+    SLACK_BOT_TOKEN: config.channels.slack.bot_token,
+    SLACK_APP_TOKEN: config.channels.slack.app_token,
+    SIGNAL_PHONE: config.channels.signal.phone,
+    AWS_PROFILE: config.model.aws?.profile || '',
+    AWS_ACCESS_KEY_ID: config.model.aws?.accessKeyId || '',
+    AWS_SECRET_ACCESS_KEY: config.model.aws?.secretAccessKey || '',
+    AWS_SESSION_TOKEN: config.model.aws?.sessionToken || '',
+    BEDROCK_BASE_URL: config.model.aws?.bedrockBaseUrl || '',
+  }
+
+  if (config.model.authType === 'oauth') {
+    env[`${config.model.provider.toUpperCase().replace(/-/g, '_')}_ACCOUNT`] = config.model.oauth?.accountLabel || ''
+  }
+
+  return { yaml: yamlConfig, env }
+}
+
+export function getConfig(): HermesConfig {
+  let rawYaml: any = {}
   try {
     if (fs.existsSync(CONFIG_YAML)) {
-      const raw = yaml.load(fs.readFileSync(CONFIG_YAML, 'utf-8')) as any || {}
-      if (raw.model) {
-        config.model.provider = raw.model.provider || config.model.provider
-        config.model.model = raw.model.default || raw.model.model || config.model.model
-        config.model.base_url = raw.model.base_url || ''
-      }
-      if (raw.agent) {
-        config.agent.max_turns = raw.agent.max_turns ?? config.agent.max_turns
-        config.agent.reasoning_effort = raw.agent.reasoning_effort || config.agent.reasoning_effort
-      }
-      if (raw.memory) {
-        config.agent.memory_enabled = raw.memory.memory_enabled ?? config.agent.memory_enabled
-        config.agent.user_profile_enabled = raw.memory.user_profile_enabled ?? config.agent.user_profile_enabled
-      }
-      // Channel enabled flags stored in _ui section
-      if (raw._ui?.channels) {
-        const ch = raw._ui.channels
-        config.channels.telegram.enabled = !!ch.telegram
-        config.channels.discord.enabled = !!ch.discord
-        config.channels.slack.enabled = !!ch.slack
-        config.channels.signal.enabled = !!ch.signal
-      }
+      rawYaml = (yaml.load(fs.readFileSync(CONFIG_YAML, 'utf-8')) as any) || {}
     }
   } catch (err) {
     logger.warn('[hermes] Failed to read config.yaml:', err)
   }
 
-  // Read .env for secrets
   try {
-    const env = readEnvFile(ENV_FILE)
-    const envKey = PROVIDER_KEY_MAP[config.model.provider] || 'API_KEY'
-    config.model.apiKey = env[envKey] || ''
-    config.channels.telegram.token = env['TELEGRAM_BOT_TOKEN'] || ''
-    config.channels.discord.token = env['DISCORD_BOT_TOKEN'] || ''
-    config.channels.slack.bot_token = env['SLACK_BOT_TOKEN'] || ''
-    config.channels.slack.app_token = env['SLACK_APP_TOKEN'] || ''
-    config.channels.signal.phone = env['SIGNAL_PHONE'] || ''
+    return readHermesConfigFromSources(rawYaml, readEnvFile(ENV_FILE))
   } catch (err) {
-    logger.warn('[hermes] Failed to read .env:', err)
+    logger.warn('[hermes] Failed to normalize config:', err)
+    return createDefaultHermesConfig('anthropic')
   }
-
-  return config
 }
 
 export function saveConfig(config: HermesConfig): { success: boolean; error?: string } {
@@ -342,50 +415,27 @@ export function saveConfig(config: HermesConfig): { success: boolean; error?: st
       fs.mkdirSync(HERMES_DIR, { recursive: true })
     }
 
-    // Read existing YAML to preserve unknown fields
     let existing: any = {}
     if (fs.existsSync(CONFIG_YAML)) {
-      try { existing = yaml.load(fs.readFileSync(CONFIG_YAML, 'utf-8')) as any || {} } catch { /* ignore */ }
-    }
-
-    // Merge our managed sections
-    existing.model = {
-      ...(existing.model || {}),
-      provider: config.model.provider,
-      default: config.model.model,
-      base_url: config.model.base_url || undefined
-    }
-    existing.agent = {
-      ...(existing.agent || {}),
-      max_turns: config.agent.max_turns,
-      reasoning_effort: config.agent.reasoning_effort
-    }
-    existing.memory = {
-      ...(existing.memory || {}),
-      memory_enabled: config.agent.memory_enabled,
-      user_profile_enabled: config.agent.user_profile_enabled
-    }
-    existing._ui = {
-      channels: {
-        telegram: config.channels.telegram.enabled,
-        discord: config.channels.discord.enabled,
-        slack: config.channels.slack.enabled,
-        signal: config.channels.signal.enabled
+      try {
+        existing = (yaml.load(fs.readFileSync(CONFIG_YAML, 'utf-8')) as any) || {}
+      } catch {
+        existing = {}
       }
     }
 
-    fs.writeFileSync(CONFIG_YAML, yaml.dump(existing, { lineWidth: -1 }), 'utf-8')
+    const normalized = normalizeHermesConfigForSave(config)
+    existing.model = { ...(existing.model || {}), ...(normalized.yaml.model || {}) }
+    existing.agent = { ...(existing.agent || {}), ...(normalized.yaml.agent || {}) }
+    existing.memory = { ...(existing.memory || {}), ...(normalized.yaml.memory || {}) }
+    existing._ui = normalized.yaml._ui
+    if (normalized.yaml.aws) {
+      existing.aws = { ...(existing.aws || {}), ...normalized.yaml.aws }
+    }
 
-    // Write .env with secrets
-    const existing_env = readEnvFile(ENV_FILE)
-    const envKey = PROVIDER_KEY_MAP[config.model.provider] || 'API_KEY'
-    existing_env[envKey] = config.model.apiKey
-    existing_env['TELEGRAM_BOT_TOKEN'] = config.channels.telegram.token
-    existing_env['DISCORD_BOT_TOKEN'] = config.channels.discord.token
-    existing_env['SLACK_BOT_TOKEN'] = config.channels.slack.bot_token
-    existing_env['SLACK_APP_TOKEN'] = config.channels.slack.app_token
-    existing_env['SIGNAL_PHONE'] = config.channels.signal.phone
-    writeEnvFile(ENV_FILE, existing_env)
+    fs.writeFileSync(CONFIG_YAML, yaml.dump(existing, { lineWidth: -1 }), 'utf-8')
+    const mergedEnv = { ...readEnvFile(ENV_FILE), ...normalized.env }
+    writeEnvFile(ENV_FILE, mergedEnv)
 
     logger.info('[hermes] Config saved')
     return { success: true }

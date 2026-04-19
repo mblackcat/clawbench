@@ -34,6 +34,7 @@ describe('ApiClient', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorageMock.clear();
+    apiClient.clearToken();
   });
 
   describe('Token Management', () => {
@@ -64,7 +65,7 @@ describe('ApiClient', () => {
 
     it('should clear token after logout', async () => {
       // Set a token first
-      localStorageMock.setItem('app_marketplace_token', 'test-token');
+      apiClient.setToken('test-token');
 
       const mockResponse = {
         success: true,
@@ -84,7 +85,7 @@ describe('ApiClient', () => {
     });
 
     it('should include Authorization header when token exists', async () => {
-      localStorageMock.setItem('app_marketplace_token', 'test-token');
+      apiClient.setToken('test-token');
 
       const mockResponse = {
         success: true,
@@ -209,7 +210,7 @@ describe('ApiClient', () => {
 
   describe('Application API', () => {
     it('should create application with auth', async () => {
-      localStorageMock.setItem('app_marketplace_token', 'test-token');
+      apiClient.setToken('test-token');
 
       const mockResponse = {
         success: true,
@@ -316,7 +317,7 @@ describe('ApiClient', () => {
 
   describe('File Upload', () => {
     it('should upload application package with FormData', async () => {
-      localStorageMock.setItem('app_marketplace_token', 'test-token');
+      apiClient.setToken('test-token');
 
       const mockResponse = {
         success: true,
