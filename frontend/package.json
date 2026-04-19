@@ -1,6 +1,6 @@
 {
   "name": "clawbench",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "ClawBench Desktop App - 你的智能助理工作台",
   "author": "Joey Zhao",
   "main": "./out/main/index.js",
