@@ -13,6 +13,7 @@ import hermesLogoUrl from '../../assets/hermes-logo.svg'
 import { useNavigate } from 'react-router-dom'
 import { useHermesStore, type HermesConfig } from '../../stores/useHermesStore'
 import { useT } from '../../i18n'
+import { getProviderIcon } from '../../components/ProviderIcons'
 import HermesStatusBar from './HermesStatusBar'
 import HermesModuleCard, { type HermesModuleField } from './HermesModuleCard'
 import HermesBottomBar from './HermesBottomBar'
@@ -37,13 +38,18 @@ const HermesIcon = (props: any) => <Icon component={HermesSvg} {...props} />
 // ── Static data ────────────────────────────────────────────────────────────
 
 const PROVIDER_DEFS = [
-  { id: 'anthropic', iconEmoji: '🤖', defaultModel: 'claude-opus-4-6' },
-  { id: 'openai',    iconEmoji: '⚡', defaultModel: 'gpt-4o' },
-  { id: 'google',    iconEmoji: '✨', defaultModel: 'gemini-2.0-flash' },
-  { id: 'nous',      iconEmoji: '🧠', defaultModel: 'nous-hermes-3' },
-  { id: 'openrouter',iconEmoji: '🔀', defaultModel: 'meta-llama/llama-3.3-70b-instruct' },
-  { id: 'custom',    iconEmoji: '⚙️', defaultModel: '' }
+  { id: 'anthropic',  defaultModel: 'claude-opus-4-6' },
+  { id: 'openai',     defaultModel: 'gpt-4o' },
+  { id: 'google',     defaultModel: 'gemini-2.0-flash' },
+  { id: 'nous',       defaultModel: 'nous-hermes-3' },
+  { id: 'openrouter', defaultModel: 'meta-llama/llama-3.3-70b-instruct' },
+  { id: 'custom',     defaultModel: '' }
 ]
+
+const PROVIDER_EMOJI_FALLBACK: Record<string, string> = {
+  openrouter: '🔀',
+  custom: '⚙️'
+}
 
 const SKILL_DEFS = [
   { id: 'web_search', iconEmoji: '🔍', name: 'hermes.skillWebSearch', desc: 'hermes.skillWebSearchDesc' },
@@ -287,10 +293,18 @@ const HermesPage: React.FC = () => {
             }] : [])
           ] : []
 
+          const ProviderIconComp = getProviderIcon(p.id)
+          const fallbackEmoji = PROVIDER_EMOJI_FALLBACK[p.id]
+          const hasLogo = !fallbackEmoji
+          const iconNode = hasLogo
+            ? <ProviderIconComp style={{ width: 14, height: 14, display: 'block', objectFit: 'contain' }} />
+            : fallbackEmoji
+
           return (
             <HermesModuleCard
               key={p.id}
-              icon={p.iconEmoji}
+              icon={iconNode}
+              iconColor={hasLogo ? token.colorFillTertiary : undefined}
               title={t(`hermes.${p.id}Name`)}
               description={isActive ? t(`hermes.${p.id}Desc`) : undefined}
               enabled={isActive}

@@ -1,5 +1,11 @@
 import React from 'react'
 
+// ---- Color SVG logo URLs (for providers without inline SVG) ----
+import minimaxColorUrl from '../assets/provider-icons/color/minimax-color.svg'
+import zhipuColorUrl from '../assets/provider-icons/color/zhipu-color.svg'
+import llamaColorUrl from '../assets/provider-icons/color/llama-color.svg'
+import mistralColorUrl from '../assets/provider-icons/color/mistral-color.svg'
+
 // ---- SVG icon components for each AI provider ----
 
 const OpenAISvg: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
@@ -79,42 +85,85 @@ const DefaultAISvg: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   </svg>
 )
 
+// ---- Img-based components for providers with color SVG files ----
+const makeLogoImg = (url: string): React.FC<any> =>
+  ({ style }) => <img src={url} alt="" style={{ display: 'block', objectFit: 'contain', ...style }} />
+
+const MinimaxSvg = makeLogoImg(minimaxColorUrl)
+const ZhipuSvg   = makeLogoImg(zhipuColorUrl)
+const LlamaSvg   = makeLogoImg(llamaColorUrl)
+const MistralSvg = makeLogoImg(mistralColorUrl)
+
 // ---- Provider → Icon mapping ----
 
-type ProviderIconMap = Record<string, React.FC<React.SVGProps<SVGSVGElement>>>
+type ProviderIconMap = Record<string, React.FC<any>>
 
 const PROVIDER_ICONS: ProviderIconMap = {
+  // OpenAI
   openai: OpenAISvg,
   'openai-compatible': OpenAISvg,
-  'azure-openai': AzureOpenAISvg,
+  // Anthropic
+  anthropic: ClaudeSvg,
   claude: ClaudeSvg,
   'anthropic-compatible': ClaudeSvg,
+  // Azure
+  'azure-openai': AzureOpenAISvg,
+  // Google
   google: GeminiSvg,
+  'google-gemini-cli': GeminiSvg,
+  // DeepSeek
   deepseek: DeepSeekSvg,
+  // Qwen
   qwen: QwenSvg,
+  // Doubao / ByteDance Ark
   doubao: DoubaoSvg,
+  ark: DoubaoSvg,
+  // Moonshot / Kimi
   kimi: KimiSvg,
+  moonshot: KimiSvg,
+  // MiniMax
+  minimax: MinimaxSvg,
+  // Zhipu / GLM
+  zhipu: ZhipuSvg,
+  // Nous / Llama
+  nous: LlamaSvg,
+  llama: LlamaSvg,
+  // Mistral
+  mistral: MistralSvg,
 }
 
 const PROVIDER_BRAND_COLORS: Record<string, string> = {
   openai: '#10a37f',
   'openai-compatible': '#10a37f',
   'azure-openai': '#0078D4',
+  anthropic: '#D97757',
   claude: '#D97757',
   'anthropic-compatible': '#D97757',
   google: '#1C7DEB',
+  'google-gemini-cli': '#1C7DEB',
   deepseek: '#4D6BFE',
   qwen: '#6F42C1',
   doubao: '#FA541C',
+  ark: '#FA541C',
   kimi: '#1783FF',
+  moonshot: '#1783FF',
+  minimax: '#1a1a1a',
+  zhipu: '#3B82F6',
+  nous: '#6366F1',
+  llama: '#6366F1',
+  mistral: '#FF7000',
 }
 
 /**
  * Get the SVG icon component for a provider.
  * Returns DefaultAISvg for unknown providers.
  */
-export function getProviderIcon(provider: string): React.FC<React.SVGProps<SVGSVGElement>> {
+export function getProviderIcon(provider: string): React.FC<any> {
   return PROVIDER_ICONS[provider] || DefaultAISvg
+}
+
+export function hasProviderIcon(provider: string): boolean {
+  return provider in PROVIDER_ICONS
 }
 
 /**

@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react'
 import { Card, Typography, Space, Button, Result, Spin, App, theme } from 'antd'
-import { RightOutlined, DownloadOutlined, PoweroffOutlined, ReloadOutlined } from '@ant-design/icons'
+import { RightOutlined, DownloadOutlined, PoweroffOutlined, ReloadOutlined, PlayCircleOutlined } from '@ant-design/icons'
 import Icon from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import type { OpenClawNode } from '../../types/openclaw'
@@ -111,7 +111,7 @@ const OpenClawCard: React.FC<OpenClawCardProps> = ({
             <Space size={8}>
               {mainNode?.isLocal && isStopped && (
                 <Button
-                  icon={<ReloadOutlined />}
+                  icon={<PlayCircleOutlined />}
                   loading={actionLoading === 'start'}
                   onClick={handleStart}
                 >

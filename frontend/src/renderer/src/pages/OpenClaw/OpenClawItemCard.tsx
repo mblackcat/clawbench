@@ -5,6 +5,7 @@ import type { OpenClawItem } from '../../types/openclaw'
 import FeishuGuideModal from '../../components/FeishuGuideModal'
 import { useOpenClawStore } from '../../stores/useOpenClawStore'
 import { useT } from '../../i18n'
+import { getProviderIcon, hasProviderIcon } from '../../components/ProviderIcons'
 
 const { Text } = Typography
 
@@ -90,16 +91,32 @@ const OpenClawItemCard: React.FC<OpenClawItemCardProps> = ({ item, onToggle, onC
       <div style={{ padding: '8px 12px' }}>
         {/* Header row: Icon + Name + Expand + Switch */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Avatar
-            size={24}
-            style={{
-              backgroundColor: item.enabled ? token.colorPrimary : token.colorTextDisabled,
-              flexShrink: 0,
-              fontSize: 11
-            }}
-          >
-            {item.icon || itemName[0]}
-          </Avatar>
+          {hasProviderIcon(item.id) ? (
+            (() => {
+              const ProviderIconComp = getProviderIcon(item.id)
+              return (
+                <div style={{
+                  width: 24, height: 24, borderRadius: 6, flexShrink: 0,
+                  background: item.enabled ? token.colorFillTertiary : token.colorFillQuaternary,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'background 0.2s'
+                }}>
+                  <ProviderIconComp style={{ width: 15, height: 15, display: 'block', objectFit: 'contain' }} />
+                </div>
+              )
+            })()
+          ) : (
+            <Avatar
+              size={24}
+              style={{
+                backgroundColor: item.enabled ? token.colorPrimary : token.colorTextDisabled,
+                flexShrink: 0,
+                fontSize: 11
+              }}
+            >
+              {item.icon || itemName[0]}
+            </Avatar>
+          )}
           <Text
             strong
             style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13 }}

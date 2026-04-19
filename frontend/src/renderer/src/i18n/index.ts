@@ -1714,7 +1714,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'hermes.start': 'Start',
     'hermes.restart': 'Restart',
     'hermes.stop': 'Stop',
-    'hermes.detail': 'Configure',
+    'hermes.detail': 'Details',
     'hermes.backToAgents': 'Back to AI Agents',
     'hermes.statusRunning': 'Running',
     'hermes.statusStopped': 'Stopped',

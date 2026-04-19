@@ -18,7 +18,7 @@ export interface HermesModuleField {
 }
 
 interface HermesModuleCardProps {
-  icon: string
+  icon: React.ReactNode
   iconColor?: string
   title: string
   description?: string
