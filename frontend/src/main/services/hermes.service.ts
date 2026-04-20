@@ -256,47 +256,35 @@ export async function startGateway(): Promise<{ success: boolean; error?: string
     const status = await getServiceStatus()
     if (status === 'running') return { success: true }
 
-    // Stop any stale external hermes gateway process before spawning a new one
-    try {
-      await execAsync('hermes gateway stop', { timeout: 5000, env: getAugmentedEnv() })
-    } catch {
-      // Ignore — no gateway running is fine
-    }
-
     const env = getAugmentedEnv()
-    let startupError = ''
-    const child = spawn('hermes', ['gateway'], {
-      detached: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env
-    })
 
-    // Collect stderr output for the first few seconds to surface real errors
-    const captureOutput = (data: Buffer): void => {
-      startupError += data.toString()
-    }
-    child.stdout?.on('data', captureOutput)
-    child.stderr?.on('data', captureOutput)
-
-    if (child.pid === undefined) {
-      return { success: false, error: 'Failed to spawn hermes gateway (no PID)' }
+    // Use `hermes gateway start` which daemonizes via launchd (macOS) or the
+    // hermes process manager — avoids the foreground-process-exits-immediately issue.
+    try {
+      const { stderr } = await execAsync('hermes gateway start', { timeout: 15000, env })
+      if (stderr?.trim()) logger.warn('[hermes] gateway start stderr:', stderr.trim())
+    } catch (err: any) {
+      const msg = (err.stderr || err.stdout || err.message || '').trim()
+      logger.error('[hermes] gateway start failed:', msg)
+      return { success: false, error: msg || 'hermes gateway start failed' }
     }
 
-    gatewayPid = child.pid
-    logger.info(`[hermes] Gateway started with PID ${gatewayPid}`)
-
-    // Poll for up to 10s to catch both immediate crashes and slow startups
+    // Poll up to 10s for the gateway to write its PID file and come alive
     const started = await new Promise<boolean>((resolve) => {
       let waited = 0
       const interval = setInterval(() => {
         waited += 500
-        try {
-          process.kill(gatewayPid!, 0)
-          clearInterval(interval)
-          resolve(true)
-          return
-        } catch {
-          // process died
+        const pid = readGatewayPidFile()
+        if (pid !== null) {
+          try {
+            process.kill(pid, 0)
+            gatewayPid = pid
+            clearInterval(interval)
+            resolve(true)
+            return
+          } catch {
+            // not alive yet
+          }
         }
         if (waited >= 10000) {
           clearInterval(interval)
@@ -307,20 +295,8 @@ export async function startGateway(): Promise<{ success: boolean; error?: string
 
     if (!started) {
       gatewayPid = null
-      child.stdout?.removeAllListeners()
-      child.stderr?.removeAllListeners()
-      const hint = startupError.trim()
-      const msg = hint
-        ? `hermes gateway failed to start: ${hint.split('\n').find((l) => l.includes('❌') || l.includes('Error') || l.includes('error')) || hint.split('\n')[0]}`
-        : 'hermes gateway exited immediately. Run `hermes doctor` for diagnostics.'
-      return { success: false, error: msg }
+      return { success: false, error: 'hermes gateway exited immediately. Run `hermes doctor` for diagnostics.' }
     }
-
-    // Detach from stdio now that we confirmed it's running
-    child.stdout?.removeAllListeners()
-    child.stderr?.removeAllListeners()
-    child.unref()
-
     return { success: true }
   } catch (err: any) {
     logger.error('[hermes] Failed to start gateway:', err)
@@ -329,33 +305,18 @@ export async function startGateway(): Promise<{ success: boolean; error?: string
 }
 
 export async function stopGateway(): Promise<{ success: boolean; error?: string }> {
-  if (gatewayPid === null) return { success: true }
-  const pidToKill = gatewayPid
-  gatewayPid = null  // clear immediately — prevent re-entry
+  gatewayPid = null
   try {
-    process.kill(pidToKill, 'SIGTERM')
-    await new Promise<void>((resolve) => {
-      let waited = 0
-      const interval = setInterval(() => {
-        waited += 500
-        try {
-          process.kill(pidToKill, 0)
-        } catch {
-          clearInterval(interval)
-          resolve()
-          return
-        }
-        if (waited >= 5000) {
-          try { process.kill(pidToKill, 'SIGKILL') } catch { /* already dead */ }
-          clearInterval(interval)
-          resolve()
-        }
-      }, 500)
-    })
+    await execAsync('hermes gateway stop', { timeout: 10000, env: getAugmentedEnv() })
     logger.info('[hermes] Gateway stopped')
     return { success: true }
   } catch (err: any) {
-    return { success: false, error: err.message }
+    // `hermes gateway stop` exits non-zero if no gateway is running — treat as success
+    const msg = (err.stderr || err.stdout || err.message || '').trim()
+    if (msg.includes('not running') || msg.includes('No gateway') || msg.includes('Stopped')) {
+      return { success: true }
+    }
+    return { success: false, error: msg }
   }
 }
 
