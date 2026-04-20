@@ -28,6 +28,7 @@ const AIAgentsPage: React.FC = () => {
   const hermesServiceStatus = useHermesStore((s) => s.serviceStatus)
   const checkHermesInstalled = useHermesStore((s) => s.checkInstalled)
   const fetchHermesStatus = useHermesStore((s) => s.fetchStatus)
+  const fetchHermesConfig = useHermesStore((s) => s.fetchConfig)
   const installHermes = useHermesStore((s) => s.installHermes)
 
   useEffect(() => {
@@ -53,6 +54,7 @@ const AIAgentsPage: React.FC = () => {
   useEffect(() => {
     if (hermesInstallCheck?.installed) {
       fetchHermesStatus()
+      fetchHermesConfig()
     }
   }, [hermesInstallCheck?.installed])
 

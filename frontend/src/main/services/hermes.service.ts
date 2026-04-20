@@ -213,15 +213,42 @@ export async function uninstallHermes(): Promise<{ success: boolean; error?: str
 
 // ── Gateway process ────────────────────────────────────────────────────────
 
-export async function getServiceStatus(): Promise<HermesServiceStatus> {
-  if (gatewayPid === null) return 'stopped'
+function readGatewayPidFile(): number | null {
+  const pidFile = path.join(HERMES_DIR, 'gateway.pid')
   try {
-    process.kill(gatewayPid, 0)
-    return 'running'
+    if (!fs.existsSync(pidFile)) return null
+    const data = JSON.parse(fs.readFileSync(pidFile, 'utf-8'))
+    const pid = typeof data === 'object' ? data?.pid : Number(data)
+    return pid && Number.isFinite(pid) ? pid : null
   } catch {
-    gatewayPid = null
-    return 'stopped'
+    return null
   }
+}
+
+export async function getServiceStatus(): Promise<HermesServiceStatus> {
+  // Check our in-process tracked PID first
+  if (gatewayPid !== null) {
+    try {
+      process.kill(gatewayPid, 0)
+      return 'running'
+    } catch {
+      gatewayPid = null
+    }
+  }
+
+  // Fall back to the PID file written by `hermes gateway` itself
+  const filePid = readGatewayPidFile()
+  if (filePid !== null) {
+    try {
+      process.kill(filePid, 0)
+      gatewayPid = filePid  // adopt the external PID so future calls are fast
+      return 'running'
+    } catch {
+      // Process is dead even though file exists
+    }
+  }
+
+  return 'stopped'
 }
 
 export async function startGateway(): Promise<{ success: boolean; error?: string }> {
