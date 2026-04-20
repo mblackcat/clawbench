@@ -40,10 +40,24 @@ const PROVIDER_KEY_MAP: Record<string, string> = {
   kimi: 'KIMI_API_KEY',
   qwen: 'DASHSCOPE_API_KEY',
   glm: 'GLM_API_KEY',
-  ark: 'ARK_API_KEY',
+  // ark is not a native Hermes provider — it uses openrouter protocol with a custom base URL
+  ark: 'OPENROUTER_API_KEY',
   'ollama-cloud': 'OLLAMA_API_KEY',
   copilot: 'GITHUB_COPILOT_TOKEN',
 }
+
+// Providers that map to a different Hermes wire provider
+const PROVIDER_WIRE_MAP: Record<string, string> = {
+  ark: 'openrouter',
+}
+
+// Base URLs to inject into .env for remapped providers
+const PROVIDER_BASE_URL_MAP: Record<string, string> = {
+  ark: 'https://ark.cn-beijing.volces.com/api/v3',
+}
+
+// Detect UI provider from wire provider + base URL
+const ARK_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3'
 
 const HERMES_CHANNEL_KEYS = [
   'telegram',
@@ -321,7 +335,13 @@ export async function stopGateway(): Promise<{ success: boolean; error?: string 
 // ── Config read/write ──────────────────────────────────────────────────────
 
 export function readHermesConfigFromSources(rawYaml: any, env: Record<string, string>): HermesConfig {
-  const provider = rawYaml?.model?.provider || 'anthropic'
+  let provider = rawYaml?.model?.provider || 'anthropic'
+
+  // Reverse-map wire providers back to UI providers (e.g. openrouter + ark base URL → ark)
+  if (provider === 'openrouter' && env.OPENROUTER_BASE_URL === ARK_BASE_URL) {
+    provider = 'ark'
+  }
+
   const config = createDefaultHermesConfig(provider)
 
   config.model.provider = provider
@@ -422,9 +442,12 @@ export function readHermesConfigFromSources(rawYaml: any, env: Record<string, st
 }
 
 export function normalizeHermesConfigForSave(config: HermesConfig): { yaml: Record<string, any>; env: Record<string, string> } {
+  // Map UI provider to Hermes wire provider (ark → openrouter)
+  const wireProvider = PROVIDER_WIRE_MAP[config.model.provider] ?? config.model.provider
+
   const yamlConfig: Record<string, any> = {
     model: {
-      provider: config.model.provider,
+      provider: wireProvider,
       default: config.model.model,
       base_url: config.model.base_url || undefined,
       auth_type: config.model.authType,
@@ -459,6 +482,10 @@ export function normalizeHermesConfigForSave(config: HermesConfig): { yaml: Reco
 
   const env: Record<string, string> = {
     [resolveProviderEnvKey(config.model.provider)]: config.model.apiKey,
+    // For providers remapped to a wire protocol, set the required base URL
+    ...(PROVIDER_BASE_URL_MAP[config.model.provider]
+      ? { OPENROUTER_BASE_URL: PROVIDER_BASE_URL_MAP[config.model.provider] }
+      : {}),
     TELEGRAM_BOT_TOKEN: config.channels.telegram.token,
     DISCORD_BOT_TOKEN: config.channels.discord.token,
     SLACK_BOT_TOKEN: config.channels.slack.bot_token,
