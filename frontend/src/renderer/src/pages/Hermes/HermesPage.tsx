@@ -19,6 +19,7 @@ import HermesStatusBar from './HermesStatusBar'
 import HermesModuleCard, { type HermesModuleField } from './HermesModuleCard'
 import HermesBottomBar from './HermesBottomBar'
 import { buildProviderBadgeKey, getDefaultModelConfig, getProviderGroups } from './hermes-provider-helpers'
+import { HERMES_CHANNEL_REGISTRY } from './hermes-channel-registry'
 
 const { Text } = Typography
 
@@ -318,6 +319,23 @@ const HermesPage: React.FC = () => {
     return fields
   }
 
+  const buildChannelFields = (channelId: keyof HermesConfig['channels']): HermesModuleField[] => {
+    if (!config) return []
+    const channelMeta = HERMES_CHANNEL_REGISTRY.find((c) => c.id === channelId)
+    if (!channelMeta) return []
+    const channelConfig = config.channels[channelId] as Record<string, unknown> | undefined
+    if (!channelConfig?.enabled) return []
+    return channelMeta.fields.map((fieldMeta) => ({
+      key: fieldMeta.key,
+      label: t(fieldMeta.labelKey),
+      type: fieldMeta.type,
+      placeholder: fieldMeta.placeholder,
+      value: (channelConfig?.[fieldMeta.key] ?? '') as string,
+      onChange: (value: unknown) =>
+        patchChannels({ [channelId]: { ...channelConfig, [fieldMeta.key]: value } })
+    }))
+  }
+
   const renderProviderSection = (groupId: 'hosted' | 'oauth' | 'self-hosted-compatible', titleKey: string) => {
     if (!config) return null
     const group = getProviderGroups().find((item) => item.id === groupId)
@@ -379,68 +397,27 @@ const HermesPage: React.FC = () => {
 
   const channelsTab = config ? (
     <div>
-      {renderGrid([
-        <HermesModuleCard
-          icon="✈️"
-          title={t('hermes.channelTelegram')}
-          description={t('hermes.telegramDesc')}
-          enabled={config.channels.telegram.enabled}
-          onToggle={(v) => patchChannels({ telegram: { ...config.channels.telegram, enabled: v } })}
-          fields={config.channels.telegram.enabled ? [{
-            key: 'token', label: t('hermes.botToken'), type: 'password',
-            placeholder: '123456:ABC-DEF...',
-            value: config.channels.telegram.token,
-            onChange: (v) => patchChannels({ telegram: { ...config.channels.telegram, token: v as string } })
-          }] : []}
-        />,
-        <HermesModuleCard
-          icon="🎮"
-          title={t('hermes.channelDiscord')}
-          description={t('hermes.discordDesc')}
-          enabled={config.channels.discord.enabled}
-          onToggle={(v) => patchChannels({ discord: { ...config.channels.discord, enabled: v } })}
-          fields={config.channels.discord.enabled ? [{
-            key: 'token', label: t('hermes.botToken'), type: 'password',
-            placeholder: 'Bot token...',
-            value: config.channels.discord.token,
-            onChange: (v) => patchChannels({ discord: { ...config.channels.discord, token: v as string } })
-          }] : []}
-        />,
-        <HermesModuleCard
-          icon="💬"
-          title={t('hermes.channelSlack')}
-          description={t('hermes.slackDesc')}
-          enabled={config.channels.slack.enabled}
-          onToggle={(v) => patchChannels({ slack: { ...config.channels.slack, enabled: v } })}
-          fields={config.channels.slack.enabled ? [
-            {
-              key: 'bot_token', label: t('hermes.slackBotToken'), type: 'password',
-              placeholder: 'xoxb-...',
-              value: config.channels.slack.bot_token,
-              onChange: (v) => patchChannels({ slack: { ...config.channels.slack, bot_token: v as string } })
-            },
-            {
-              key: 'app_token', label: t('hermes.slackAppToken'), type: 'password',
-              placeholder: 'xapp-...',
-              value: config.channels.slack.app_token,
-              onChange: (v) => patchChannels({ slack: { ...config.channels.slack, app_token: v as string } })
-            }
-          ] : []}
-        />,
-        <HermesModuleCard
-          icon="🔒"
-          title={t('hermes.channelSignal')}
-          description={t('hermes.signalDesc')}
-          enabled={config.channels.signal.enabled}
-          onToggle={(v) => patchChannels({ signal: { ...config.channels.signal, enabled: v } })}
-          fields={config.channels.signal.enabled ? [{
-            key: 'phone', label: t('hermes.signalPhone'), type: 'text',
-            placeholder: '+1234567890',
-            value: config.channels.signal.phone,
-            onChange: (v) => patchChannels({ signal: { ...config.channels.signal, phone: v as string } })
-          }] : []}
-        />
-      ])}
+      {renderGrid(
+        HERMES_CHANNEL_REGISTRY.map((channel) => {
+          const enabled = config.channels[channel.id]?.enabled ?? false
+          const title = t(channel.titleKey)
+          const icon = channel.icon.length <= 2 ? channel.icon : title.charAt(0).toUpperCase()
+          return (
+            <HermesModuleCard
+              key={channel.id}
+              icon={icon}
+              title={title}
+              description={t(channel.descriptionKey)}
+              note={channel.noteKey ? t(channel.noteKey) : undefined}
+              enabled={enabled}
+              onToggle={(v) =>
+                patchChannels({ [channel.id]: { ...config.channels[channel.id], enabled: v } })
+              }
+              fields={buildChannelFields(channel.id)}
+            />
+          )
+        })
+      )}
     </div>
   ) : null
 

@@ -68,7 +68,19 @@ export interface HermesConfig {
     telegram: { enabled: boolean; token: string }
     discord: { enabled: boolean; token: string }
     slack: { enabled: boolean; bot_token: string; app_token: string }
-    signal: { enabled: boolean; phone: string }
+    signal: { enabled: boolean; http_url: string; account: string }
+    whatsapp: { enabled: boolean }
+    matrix: { enabled: boolean; homeserver: string; access_token: string }
+    mattermost: { enabled: boolean; url: string; token: string }
+    homeassistant: { enabled: boolean; url: string; token: string }
+    dingtalk: { enabled: boolean; client_id: string; client_secret: string }
+    feishu: { enabled: boolean; app_id: string; app_secret: string }
+    wecom: { enabled: boolean; bot_id: string; secret: string }
+    weixin: { enabled: boolean; token: string; account_id: string }
+    sms: { enabled: boolean; account_sid: string; auth_token: string; phone_number: string; webhook_url: string }
+    email: { enabled: boolean; address: string; password: string; imap_host: string; smtp_host: string }
+    bluebubbles: { enabled: boolean; server_url: string; password: string }
+    qqbot: { enabled: boolean; app_id: string; client_secret: string }
   }
   agent: {
     memory_enabled: boolean

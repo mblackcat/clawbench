@@ -5,7 +5,19 @@ const DEFAULT_CHANNELS: HermesConfig['channels'] = {
   telegram: { enabled: false, token: '' },
   discord: { enabled: false, token: '' },
   slack: { enabled: false, bot_token: '', app_token: '' },
-  signal: { enabled: false, phone: '' },
+  signal: { enabled: false, http_url: '', account: '' },
+  whatsapp: { enabled: false },
+  matrix: { enabled: false, homeserver: '', access_token: '' },
+  mattermost: { enabled: false, url: '', token: '' },
+  homeassistant: { enabled: false, url: '', token: '' },
+  dingtalk: { enabled: false, client_id: '', client_secret: '' },
+  feishu: { enabled: false, app_id: '', app_secret: '' },
+  wecom: { enabled: false, bot_id: '', secret: '' },
+  weixin: { enabled: false, token: '', account_id: '' },
+  sms: { enabled: false, account_sid: '', auth_token: '', phone_number: '', webhook_url: '' },
+  email: { enabled: false, address: '', password: '', imap_host: '', smtp_host: '' },
+  bluebubbles: { enabled: false, server_url: '', password: '' },
+  qqbot: { enabled: false, app_id: '', client_secret: '' },
 }
 
 const DEFAULT_AGENT: HermesConfig['agent'] = {
