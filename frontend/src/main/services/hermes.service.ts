@@ -215,13 +215,27 @@ export async function startGateway(): Promise<{ success: boolean; error?: string
     const status = await getServiceStatus()
     if (status === 'running') return { success: true }
 
+    // Stop any stale external hermes gateway process before spawning a new one
+    try {
+      await execAsync('hermes gateway stop', { timeout: 5000, env: getAugmentedEnv() })
+    } catch {
+      // Ignore — no gateway running is fine
+    }
+
     const env = getAugmentedEnv()
+    let startupError = ''
     const child = spawn('hermes', ['gateway'], {
       detached: true,
-      stdio: 'ignore',
+      stdio: ['ignore', 'pipe', 'pipe'],
       env
     })
-    child.unref()
+
+    // Collect stderr output for the first few seconds to surface real errors
+    const captureOutput = (data: Buffer): void => {
+      startupError += data.toString()
+    }
+    child.stdout?.on('data', captureOutput)
+    child.stderr?.on('data', captureOutput)
 
     if (child.pid === undefined) {
       return { success: false, error: 'Failed to spawn hermes gateway (no PID)' }
@@ -249,10 +263,23 @@ export async function startGateway(): Promise<{ success: boolean; error?: string
         }
       }, 500)
     })
+
     if (!started) {
       gatewayPid = null
-      return { success: false, error: 'hermes gateway exited immediately. Run `hermes doctor` for diagnostics.' }
+      child.stdout?.removeAllListeners()
+      child.stderr?.removeAllListeners()
+      const hint = startupError.trim()
+      const msg = hint
+        ? `hermes gateway failed to start: ${hint.split('\n').find((l) => l.includes('❌') || l.includes('Error') || l.includes('error')) || hint.split('\n')[0]}`
+        : 'hermes gateway exited immediately. Run `hermes doctor` for diagnostics.'
+      return { success: false, error: msg }
     }
+
+    // Detach from stdio now that we confirmed it's running
+    child.stdout?.removeAllListeners()
+    child.stderr?.removeAllListeners()
+    child.unref()
+
     return { success: true }
   } catch (err: any) {
     logger.error('[hermes] Failed to start gateway:', err)
