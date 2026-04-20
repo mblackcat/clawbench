@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { getT } from '../../../i18n'
 import { useSettingsStore } from '../../../stores/useSettingsStore'
+import { HERMES_CHANNEL_REGISTRY } from '../hermes-channel-registry'
+import type { HermesChannelMeta, HermesChannelFieldMeta } from '../hermes-channel-registry'
 
 const EXPECTED_CHANNELS = [
   'telegram',
@@ -54,8 +56,8 @@ describe('hermes channel registry', () => {
 
     const registryNoteKeys = Object.fromEntries(
       registry
-        .filter((channel: any) => channel.noteKey)
-        .map((channel: any) => [channel.id, channel.noteKey]),
+        .filter((channel: HermesChannelMeta) => channel.noteKey)
+        .map((channel: HermesChannelMeta) => [channel.id, channel.noteKey]),
     )
 
     expect(registryNoteKeys).toEqual(CHANNELS_WITH_EXTERNAL_SETUP_NOTES)
@@ -70,7 +72,7 @@ describe('hermes channel registry', () => {
         useSettingsStore.setState({ language })
         const t = getT()
 
-        registry.forEach((channel: any) => {
+        registry.forEach((channel: HermesChannelMeta) => {
           expect(t(channel.titleKey)).not.toBe(channel.titleKey)
           expect(t(channel.descriptionKey)).not.toBe(channel.descriptionKey)
 
@@ -78,7 +80,7 @@ describe('hermes channel registry', () => {
             expect(t(channel.noteKey)).not.toBe(channel.noteKey)
           }
 
-          channel.fields.forEach((field: any) => {
+          channel.fields.forEach((field: HermesChannelFieldMeta) => {
             expect(t(field.labelKey)).not.toBe(field.labelKey)
           })
         })
@@ -90,6 +92,12 @@ describe('hermes channel registry', () => {
     } finally {
       useSettingsStore.setState({ language: previousLanguage })
     }
+  })
+
+  it('all titleKeys start with hermes.channel', () => {
+    HERMES_CHANNEL_REGISTRY.forEach((channel) => {
+      expect(channel.titleKey).toMatch(/^hermes\.channel/)
+    })
   })
 })
 
