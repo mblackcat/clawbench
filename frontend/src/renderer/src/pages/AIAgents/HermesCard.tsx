@@ -177,10 +177,22 @@ const HermesCard: React.FC<HermesCardProps> = ({ isInstalled, installing, servic
 
   // Compute active channels from config
   const activeChannels: string[] = config ? [
-    config.channels.telegram.enabled && t('hermes.channelTelegram'),
-    config.channels.discord.enabled  && t('hermes.channelDiscord'),
-    config.channels.slack.enabled    && t('hermes.channelSlack'),
-    config.channels.signal.enabled   && t('hermes.channelSignal')
+    config.channels.telegram.enabled     && t('hermes.channelTelegram'),
+    config.channels.discord.enabled      && t('hermes.channelDiscord'),
+    config.channels.slack.enabled        && t('hermes.channelSlack'),
+    config.channels.signal.enabled       && t('hermes.channelSignal'),
+    config.channels.whatsapp.enabled     && t('hermes.channelWhatsApp'),
+    config.channels.matrix.enabled       && t('hermes.channelMatrix'),
+    config.channels.mattermost.enabled   && t('hermes.channelMattermost'),
+    config.channels.homeassistant.enabled && t('hermes.channelHomeAssistant'),
+    config.channels.dingtalk.enabled     && t('hermes.channelDingTalk'),
+    config.channels.feishu.enabled       && t('hermes.channelFeishu'),
+    config.channels.wecom.enabled        && t('hermes.channelWeCom'),
+    config.channels.weixin.enabled       && t('hermes.channelWeixin'),
+    config.channels.sms.enabled          && t('hermes.channelSMS'),
+    config.channels.email.enabled        && t('hermes.channelEmail'),
+    config.channels.bluebubbles.enabled  && t('hermes.channelBlueBubbles'),
+    config.channels.qqbot.enabled        && t('hermes.channelQQBot'),
   ].filter(Boolean) as string[] : []
 
   return (
