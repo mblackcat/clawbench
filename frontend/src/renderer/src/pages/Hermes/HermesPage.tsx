@@ -400,11 +400,13 @@ const HermesPage: React.FC = () => {
       {renderGrid(
         HERMES_CHANNEL_REGISTRY.map((channel) => {
           const enabled = config.channels[channel.id]?.enabled ?? false
+          const title = t(channel.titleKey)
+          const icon = channel.icon.length <= 2 ? channel.icon : title.charAt(0).toUpperCase()
           return (
             <HermesModuleCard
               key={channel.id}
-              icon={channel.icon}
-              title={t(channel.titleKey)}
+              icon={icon}
+              title={title}
               description={t(channel.descriptionKey)}
               note={channel.noteKey ? t(channel.noteKey) : undefined}
               enabled={enabled}
