@@ -27,7 +27,8 @@ type ProviderKey = AIModelConfig['provider']
 
 const PROVIDER_OPTIONS: { label: React.ReactNode; value: ProviderKey; rawLabel: string }[] = [
   { label: <><ProviderIcon provider="openai" size={14} style={{ marginRight: 6, position: 'relative', top: -1 }} />OpenAI</>, value: 'openai', rawLabel: 'OpenAI' },
-  { label: <><ProviderIcon provider="openai-compatible" size={14} style={{ marginRight: 6, position: 'relative', top: -1 }} />OpenAI Compatible</>, value: 'openai-compatible', rawLabel: 'OpenAI Compatible' },
+  { label: <><ProviderIcon provider="openai-compatible" size={14} style={{ marginRight: 6, position: 'relative', top: -1 }} />OpenAI Compatible (Chat)</>, value: 'openai-compatible', rawLabel: 'OpenAI Compatible (Chat)' },
+  { label: <><ProviderIcon provider="openai-responses" size={14} style={{ marginRight: 6, position: 'relative', top: -1 }} />OpenAI Compatible (Responses)</>, value: 'openai-responses', rawLabel: 'OpenAI Compatible (Responses)' },
   { label: <><ProviderIcon provider="azure-openai" size={14} style={{ marginRight: 6, position: 'relative', top: -1 }} />Azure OpenAI</>, value: 'azure-openai', rawLabel: 'Azure OpenAI' },
   { label: <><ProviderIcon provider="google" size={14} style={{ marginRight: 6, position: 'relative', top: -1 }} />Google</>, value: 'google', rawLabel: 'Google' },
   { label: <><ProviderIcon provider="claude" size={14} style={{ marginRight: 6, position: 'relative', top: -1 }} />Claude</>, value: 'claude', rawLabel: 'Claude' },
@@ -41,6 +42,7 @@ const PROVIDER_OPTIONS: { label: React.ReactNode; value: ProviderKey; rawLabel: 
 const DEFAULT_ENDPOINTS: Record<ProviderKey, string> = {
   openai: 'https://api.openai.com/v1',
   'openai-compatible': '',
+  'openai-responses': '',
   'azure-openai': '',
   google: 'https://generativelanguage.googleapis.com',
   claude: 'https://api.anthropic.com/v1',

@@ -94,6 +94,7 @@ type ProviderIconMap = Record<string, React.FC<React.SVGProps<SVGSVGElement>>>
 const PROVIDER_ICONS: ProviderIconMap = {
   openai: OpenAISvg,
   'openai-compatible': OpenAISvg,
+  'openai-responses': OpenAISvg,
   'azure-openai': AzureOpenAISvg,
   anthropic: ClaudeSvg,
   claude: ClaudeSvg,
@@ -127,6 +128,7 @@ const PROVIDER_ICONS: ProviderIconMap = {
 const PROVIDER_BRAND_COLORS: Record<string, string> = {
   openai: '#10a37f',
   'openai-compatible': '#10a37f',
+  'openai-responses': '#10a37f',
   'azure-openai': '#0078D4',
   anthropic: '#D97757',
   claude: '#D97757',

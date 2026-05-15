@@ -252,6 +252,8 @@ export async function generateTitle(
     return completeGoogle(config, actualModelId, titlePrompt)
   } else if (provider === 'azure-openai') {
     return completeAzureOpenAI(config, actualModelId, titlePrompt)
+  } else if (provider === 'openai-responses') {
+    return completeOpenAIResponses(config, actualModelId, titlePrompt, 50)
   } else {
     return completeOpenAI(config, actualModelId, titlePrompt)
   }
@@ -341,6 +343,8 @@ export async function completeChat(
     return completeChatClaude(config, actualModelId, messages, maxTokens)
   } else if (provider === 'google') {
     return completeChatGoogle(config, actualModelId, messages, maxTokens)
+  } else if (provider === 'openai-responses') {
+    return completeOpenAIResponses(config, actualModelId, messages, maxTokens)
   } else {
     return completeChatOpenAI(config, actualModelId, messages, maxTokens)
   }
@@ -493,6 +497,8 @@ async function doStream(
     await streamGoogle(window, taskId, config, modelId, messages, signal, tools, webSearchEnabled)
   } else if (provider === 'azure-openai') {
     await streamAzureOpenAI(window, taskId, config, modelId, messages, signal, tools, enableThinking)
+  } else if (provider === 'openai-responses') {
+    await streamOpenAIResponses(window, taskId, config, modelId, messages, signal, tools, enableThinking)
   } else {
     await streamOpenAI(window, taskId, config, modelId, messages, signal, tools, enableThinking)
   }
@@ -650,6 +656,168 @@ async function streamOpenAI(
   await streamOpenAICompatible(
     new StreamEmitter(window, taskId), client, modelId, messages, signal, tools, enableThinking
   )
+}
+
+// ============ OpenAI Responses API (/v1/responses) ============
+
+function buildResponsesInput(messages: ChatMessage[]): any[] {
+  const items: any[] = []
+  for (const m of messages) {
+    if (m.role === 'tool') {
+      items.push({
+        type: 'function_call_output',
+        call_id: m.toolCallId || '',
+        output: m.content
+      })
+      continue
+    }
+    if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0) {
+      if (m.content) {
+        items.push({ role: 'assistant', content: m.content })
+      }
+      for (const tc of m.toolCalls) {
+        items.push({
+          type: 'function_call',
+          call_id: tc.id,
+          name: tc.name,
+          arguments: JSON.stringify(tc.input)
+        })
+      }
+      continue
+    }
+    if (m.contentParts && m.contentParts.length > 0) {
+      const content: any[] = []
+      for (const p of m.contentParts) {
+        if (p.type === 'text' && p.text) {
+          content.push({
+            type: m.role === 'assistant' ? 'output_text' : 'input_text',
+            text: p.text
+          })
+        } else if (p.type === 'image_base64' && p.base64Data) {
+          content.push({
+            type: 'input_image',
+            image_url: `data:${p.mimeType || 'image/png'};base64,${p.base64Data}`
+          })
+        }
+      }
+      items.push({ role: m.role, content })
+      continue
+    }
+    items.push({ role: m.role, content: m.content })
+  }
+  return items
+}
+
+function toResponsesTools(tools: ToolDefinition[]): any[] {
+  return tools.map((t) => ({
+    type: 'function',
+    name: t.name,
+    description: t.description,
+    parameters: t.inputSchema,
+    strict: false
+  }))
+}
+
+async function streamOpenAIResponses(
+  window: BrowserWindow,
+  taskId: string,
+  config: AIModelConfig,
+  modelId: string,
+  messages: ChatMessage[],
+  signal: AbortSignal,
+  tools?: ToolDefinition[],
+  enableThinking?: boolean
+): Promise<void> {
+  const emit = new StreamEmitter(window, taskId)
+  const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.endpoint })
+
+  const params: any = {
+    model: modelId,
+    input: buildResponsesInput(messages),
+    stream: true
+  }
+  if (tools && tools.length > 0) {
+    params.tools = toResponsesTools(tools)
+  }
+  if (enableThinking) {
+    params.reasoning = { effort: 'medium', summary: 'auto' }
+  }
+
+  const stream = (await client.responses.create(params, { signal })) as any
+
+  // function_call items: keyed by item_id (provided on argument-delta events)
+  const pendingCalls = new Map<string, { callId: string; name: string; args: string }>()
+
+  for await (const event of stream) {
+    if (signal.aborted) break
+    switch (event.type) {
+      case 'response.output_text.delta':
+        if (event.delta) emit.delta(event.delta)
+        break
+      case 'response.reasoning_text.delta':
+      case 'response.reasoning_summary_text.delta':
+        if (enableThinking && event.delta) emit.thinkingDelta(event.delta)
+        break
+      case 'response.output_item.added':
+        if (event.item?.type === 'function_call') {
+          pendingCalls.set(event.item.id, {
+            callId: event.item.call_id,
+            name: event.item.name,
+            args: ''
+          })
+        }
+        break
+      case 'response.function_call_arguments.delta': {
+        const fc = pendingCalls.get(event.item_id)
+        if (fc && event.delta) fc.args += event.delta
+        break
+      }
+      case 'response.completed':
+        if (pendingCalls.size > 0) {
+          for (const [, fc] of pendingCalls) {
+            let input: Record<string, any> = {}
+            try {
+              input = fc.args ? JSON.parse(fc.args) : {}
+            } catch {
+              /* arguments may be empty */
+            }
+            emit.toolUse(fc.callId, fc.name, input)
+          }
+          return
+        }
+        emit.done()
+        return
+      case 'response.error':
+      case 'error':
+        emit.error(event.error?.message || event.message || 'Responses API error')
+        return
+    }
+  }
+}
+
+async function completeOpenAIResponses(
+  config: AIModelConfig,
+  modelId: string,
+  messages: ChatMessage[],
+  maxTokens = 4096
+): Promise<string> {
+  const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.endpoint })
+  const resp: any = await client.responses.create({
+    model: modelId,
+    input: buildResponsesInput(messages),
+    max_output_tokens: maxTokens
+  })
+  if (typeof resp.output_text === 'string' && resp.output_text) {
+    return resp.output_text.trim()
+  }
+  for (const item of resp.output || []) {
+    if (item.type === 'message') {
+      for (const c of item.content || []) {
+        if (c.type === 'output_text' && c.text) return c.text.trim()
+      }
+    }
+  }
+  return ''
 }
 
 async function streamAzureOpenAI(

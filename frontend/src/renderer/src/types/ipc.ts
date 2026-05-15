@@ -6,6 +6,7 @@ export interface AIModelConfig {
   provider:
     | 'openai'
     | 'openai-compatible'
+    | 'openai-responses'
     | 'azure-openai'
     | 'google'
     | 'claude'
