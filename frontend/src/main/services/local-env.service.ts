@@ -84,8 +84,44 @@ function getAugmentedEnv(): NodeJS.ProcessEnv {
       } catch { /* ignore */ }
     }
     env.PATH = p
+  } else if (process.platform === 'win32') {
+    // Windows PATH is case-insensitive but JS object keys are not. After
+    // `{ ...process.env }` the key may be `Path` and `env.PATH` undefined,
+    // so read both and write back to whichever key already exists.
+    const pathKey = 'PATH' in env ? 'PATH' : 'Path' in env ? 'Path' : 'PATH'
+    let p = (env[pathKey] as string | undefined) || ''
+    const parts = p.split(';')
+    const extras: string[] = []
+    if (process.env.APPDATA) {
+      extras.push(path.join(process.env.APPDATA, 'npm'))
+    }
+    for (const ep of extras) {
+      if (ep && !parts.some((x) => x.toLowerCase() === ep.toLowerCase())) {
+        p = p ? `${p};${ep}` : ep
+      }
+    }
+    env[pathKey] = p
   }
   return env
+}
+
+/**
+ * Run an executable cross-platform. On Windows, `.cmd`/`.bat` files cannot be
+ * executed directly via `child_process.execFile` since Node 16.18/18.20/20.12
+ * (CVE-2024-27980 fix) — `shell: true` is required.
+ */
+function execBinary(
+  cmd: string,
+  args: string[],
+  options: { timeout?: number; env?: NodeJS.ProcessEnv } = {}
+): Promise<{ stdout: string; stderr: string }> {
+  const isWinBatch = process.platform === 'win32' && /\.(cmd|bat)$/i.test(cmd)
+  if (isWinBatch) {
+    // Quote the path to handle spaces. Args are tool-controlled (e.g. --version)
+    // so no user input is interpolated into the shell.
+    return execFileAsync(`"${cmd}"`, args, { ...options, shell: true })
+  }
+  return execFileAsync(cmd, args, options)
 }
 
 function dedup(paths: string[]): string[] {
@@ -109,7 +145,12 @@ async function whichAll(cmd: string, env: NodeJS.ProcessEnv): Promise<string[]> 
   try {
     if (process.platform === 'win32') {
       const { stdout } = await execFileAsync('where', [cmd], { timeout: 5000, env })
-      return stdout.trim().split(/\r?\n/).filter(Boolean)
+      // `where` returns every shim variant (e.g. `claude`, `claude.cmd`, `claude.ps1`).
+      // The extensionless entry is a POSIX shell script that won't execute on Windows,
+      // so prefer .cmd / .bat / .exe and drop anything else.
+      const lines = stdout.trim().split(/\r?\n/).filter(Boolean)
+      const exec = lines.filter((p) => /\.(cmd|bat|exe)$/i.test(p))
+      return exec.length > 0 ? exec : lines
     } else {
       const { stdout } = await execAsync(`which -a ${cmd} 2>/dev/null || true`, { timeout: 5000, env })
       return stdout.trim().split(/\n/).filter(Boolean)
@@ -121,7 +162,7 @@ async function whichAll(cmd: string, env: NodeJS.ProcessEnv): Promise<string[]> 
 
 async function getVersion(cmd: string, args: string[], env: NodeJS.ProcessEnv): Promise<string | null> {
   try {
-    const { stdout } = await execFileAsync(cmd, args, { timeout: 10000, env })
+    const { stdout } = await execBinary(cmd, args, { timeout: 10000, env })
     return stdout.trim()
   } catch {
     return null
@@ -470,11 +511,13 @@ async function detectClaudeCode(env: NodeJS.ProcessEnv): Promise<ToolDetectionRe
 
   const candidates: string[] = []
 
-  // Preferred location for native installer
-  const nativePath = path.join(os.homedir(), '.local', 'bin', 'claude')
-  candidates.push(nativePath)
+  // Preferred location for native installer (POSIX only — the install.sh is Unix-only)
+  if (process.platform !== 'win32') {
+    const nativePath = path.join(os.homedir(), '.local', 'bin', 'claude')
+    candidates.push(nativePath)
+  }
 
-  // Also check PATH for other locations
+  // Also check PATH for other locations (includes npm-global shims on Windows)
   const whichPaths = await whichAll('claude', env)
   for (const p of whichPaths) {
     if (!candidates.includes(p)) candidates.push(p)

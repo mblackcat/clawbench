@@ -89,10 +89,18 @@ export function getAugmentedEnv(): NodeJS.ProcessEnv {
   const home = os.homedir()
 
   if (process.platform === 'win32') {
+    // Windows PATH is case-insensitive at the OS level but JS object keys are not.
+    // After spreading process.env the key may be `Path`, leaving `env.PATH` undefined —
+    // read and write to whichever key already exists so we don't clobber the system PATH.
+    const pathKey = 'PATH' in env ? 'PATH' : 'Path' in env ? 'Path' : 'PATH'
+    const current = (env[pathKey] as string | undefined) || ''
+    const parts = current.split(';')
     const appData = process.env.APPDATA
     if (appData) {
       const npmGlobal = path.join(appData, 'npm')
-      env.PATH = `${env.PATH || ''};${npmGlobal}`
+      if (!parts.some((x) => x.toLowerCase() === npmGlobal.toLowerCase())) {
+        env[pathKey] = current ? `${current};${npmGlobal}` : npmGlobal
+      }
     }
   } else {
     let p = env.PATH || ''
@@ -136,10 +144,52 @@ export function getAugmentedEnv(): NodeJS.ProcessEnv {
 }
 
 /**
+ * Resolve a binary name to an executable path on the current platform.
+ * On Windows, `where` returns every shim variant (e.g. `claude`, `claude.cmd`,
+ * `claude.ps1`). The extensionless entry is a POSIX shell script that can't
+ * run on Windows, so we prefer `.cmd` / `.bat` / `.exe`.
+ */
+async function resolveBinaryPath(
+  binary: string,
+  env: NodeJS.ProcessEnv
+): Promise<string | null> {
+  try {
+    const whichCmd = process.platform === 'win32' ? 'where' : 'which'
+    const { stdout } = await execFileAsync(whichCmd, [binary], { timeout: 5000, env })
+    const lines = stdout.trim().split(/\r?\n/).filter(Boolean)
+    if (lines.length === 0) return null
+    if (process.platform === 'win32') {
+      const exec = lines.find((p) => /\.(cmd|bat|exe)$/i.test(p))
+      return exec || lines[0]
+    }
+    return lines[0]
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Run a binary cross-platform. On Windows, `.cmd`/`.bat` files cannot be
+ * executed directly via `execFile` since Node 16.18/18.20/20.12
+ * (CVE-2024-27980 fix) — `shell: true` is required.
+ */
+function execBinaryAsync(
+  cmd: string,
+  args: string[],
+  options: { timeout?: number; env?: NodeJS.ProcessEnv } = {}
+): Promise<{ stdout: string; stderr: string }> {
+  const isWinBatch = process.platform === 'win32' && /\.(cmd|bat)$/i.test(cmd)
+  if (isWinBatch) {
+    return execFileAsync(`"${cmd}"`, args, { ...options, shell: true })
+  }
+  return execFileAsync(cmd, args, options)
+}
+
+/**
  * Detect a single CLI tool by binary name.
  *
- * 1. Runs `which` (unix) / `where` (windows) to find the binary.
- * 2. Runs `<binary> --version` to extract a semver version string.
+ * 1. Runs `which` (unix) / `where` (windows) to find the binary path.
+ * 2. Runs `<path> --version` to extract a semver version string.
  */
 async function detectTool(
   binary: string,
@@ -149,17 +199,13 @@ async function detectTool(
 ): Promise<DetectedCLI> {
   const result: DetectedCLI = { toolType, name, installed: false }
 
-  try {
-    const whichCmd = process.platform === 'win32' ? 'where' : 'which'
-    await execFileAsync(whichCmd, [binary], { timeout: 5000, env })
-  } catch {
-    return result
-  }
+  const binPath = await resolveBinaryPath(binary, env)
+  if (!binPath) return result
 
   // Binary found — try to get the version
   result.installed = true
   try {
-    const { stdout } = await execFileAsync(binary, ['--version'], { timeout: 10000, env })
+    const { stdout } = await execBinaryAsync(binPath, ['--version'], { timeout: 10000, env })
     const m = stdout.trim().match(/(\d+\.\d+\.\d+)/)
     if (m) {
       result.version = m[1]
@@ -189,25 +235,28 @@ async function detectTool(
 async function detectClaudeCLI(env: NodeJS.ProcessEnv): Promise<DetectedCLI> {
   const result: DetectedCLI = { toolType: 'claude', name: 'Claude Code', installed: false }
 
-  // 1. Check official native installer path first
-  const nativePath = path.join(os.homedir(), '.local', 'bin', 'claude')
-  const nativeExists =
-    process.platform !== 'win32' &&
-    await fs.promises.access(nativePath, fs.constants.X_OK).then(() => true).catch(() => false)
+  // 1. Check official native installer path first (POSIX only — install.sh is Unix-only)
+  if (process.platform !== 'win32') {
+    const nativePath = path.join(os.homedir(), '.local', 'bin', 'claude')
+    const nativeExists = await fs.promises
+      .access(nativePath, fs.constants.X_OK)
+      .then(() => true)
+      .catch(() => false)
 
-  if (nativeExists) {
-    result.installed = true
-    try {
-      const { stdout } = await execFileAsync(nativePath, ['--version'], { timeout: 10000, env })
-      const m = stdout.trim().match(/(\d+\.\d+\.\d+)/)
-      if (m) result.version = m[1]
-    } catch {
-      // Installed but version retrieval failed
+    if (nativeExists) {
+      result.installed = true
+      try {
+        const { stdout } = await execBinaryAsync(nativePath, ['--version'], { timeout: 10000, env })
+        const m = stdout.trim().match(/(\d+\.\d+\.\d+)/)
+        if (m) result.version = m[1]
+      } catch {
+        // Installed but version retrieval failed
+      }
+      return result
     }
-    return result
   }
 
-  // 2. Fallback: look for any `claude` in PATH (e.g. Claude.app bundled CLI)
+  // 2. Fallback: look for any `claude` in PATH (e.g. npm-global on Windows, Claude.app bundled CLI on macOS)
   return detectTool('claude', 'claude', 'Claude Code', env)
 }
 
