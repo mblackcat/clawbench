@@ -14,6 +14,7 @@ html {
   text-rendering: optimizeLegibility;
   font-weight: 400;
   margin: 0;
+  overflow: hidden;
 }
 
 /* 根据主题同步 body 背景色，防止路由切换白屏闪烁 */
