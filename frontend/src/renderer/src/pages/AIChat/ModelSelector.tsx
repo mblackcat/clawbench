@@ -18,6 +18,7 @@ const providerColors: Record<string, string> = {
   deepseek: 'cyan',
   kimi: 'magenta',
   'openai-compatible': 'default',
+  'openai-responses': 'default',
 }
 
 const ModelSelector: React.FC<{ placement?: SelectProps['placement']; size?: SelectProps['size'] }> = ({ placement, size }) => {

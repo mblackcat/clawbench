@@ -13,7 +13,7 @@ export interface ModuleVisibility {
 export interface AIModelConfig {
   id: string
   name: string
-  provider: 'openai' | 'openai-compatible' | 'azure-openai' | 'google' | 'claude' | 'anthropic-compatible' | 'qwen' | 'doubao' | 'deepseek' | 'kimi'
+  provider: 'openai' | 'openai-compatible' | 'openai-responses' | 'azure-openai' | 'google' | 'claude' | 'anthropic-compatible' | 'qwen' | 'doubao' | 'deepseek' | 'kimi'
   endpoint: string
   apiKey: string
   models: string[]
