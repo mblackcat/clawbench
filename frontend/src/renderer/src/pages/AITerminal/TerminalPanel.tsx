@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import { Dropdown, type MenuProps } from 'antd'
+import { App, Dropdown, type MenuProps } from 'antd'
 import {
   CopyOutlined,
   SnippetsOutlined,
@@ -26,6 +26,7 @@ const TerminalPanel: React.FC<Props> = ({ sessionId }) => {
   sessionIdRef.current = sessionId
   const disconnectedRef = useRef(false)
   const t = useT()
+  const { message } = App.useApp()
 
   // Copied tooltip state
   const [copiedTooltip, setCopiedTooltip] = useState<{ visible: boolean; x: number; y: number }>({
@@ -50,11 +51,29 @@ const TerminalPanel: React.FC<Props> = ({ sessionId }) => {
   const handlePaste = useCallback(async () => {
     const term = termRef.current
     if (!term) return
-    const text = await navigator.clipboard.readText()
-    if (text) {
-      window.api.aiTerminal.writeTerminal(sessionIdRef.current, text)
+    try {
+      const text = await navigator.clipboard.readText()
+      if (text) {
+        window.api.aiTerminal.writeTerminal(sessionIdRef.current, text)
+        return
+      }
+      // readText() returned empty — clipboard may contain non-text (image/file) or be empty.
+      // Probe clipboard items to distinguish and warn only when non-text payload exists.
+      try {
+        const items = await navigator.clipboard.read()
+        const hasNonText = items.some(
+          (item) => !item.types.some((tp) => tp === 'text/plain')
+        )
+        if (hasNonText) {
+          message.warning(t('terminal.pasteNonText'))
+        }
+      } catch {
+        // ignore — clipboard.read() may not be supported or permission denied
+      }
+    } catch {
+      message.warning(t('terminal.pasteFailed'))
     }
-  }, [])
+  }, [message, t])
 
   const handleSelectAll = useCallback(() => {
     const term = termRef.current
@@ -166,9 +185,20 @@ const TerminalPanel: React.FC<Props> = ({ sessionId }) => {
 
     // Suppress keydown events during IME composition to prevent double input
     // when switching between Chinese and English input methods
+    const isMac = window.api.platform === 'darwin'
     term.attachCustomKeyEventHandler((event) => {
       if (event.type === 'keydown' && (event.isComposing || event.keyCode === 229)) {
         return false
+      }
+      // Paste shortcut: Cmd+V on macOS, Ctrl+V on Windows/Linux
+      if (event.type === 'keydown' && (event.key === 'v' || event.key === 'V')) {
+        const matchesPaste = isMac
+          ? event.metaKey && !event.ctrlKey && !event.altKey
+          : event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey
+        if (matchesPaste) {
+          handlePaste()
+          return false
+        }
       }
       return true
     })

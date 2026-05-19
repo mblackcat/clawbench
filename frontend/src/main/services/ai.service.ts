@@ -743,16 +743,36 @@ async function streamOpenAIResponses(
     params.reasoning = { effort: 'medium', summary: 'auto' }
   }
 
+  logger.info(`[responses] stream start: model=${modelId}, msgs=${messages.length}, tools=${tools?.length || 0}, lastRole=${messages[messages.length - 1]?.role}`)
   const stream = (await client.responses.create(params, { signal })) as any
 
-  // function_call items: keyed by item_id (provided on argument-delta events)
+  // function_call items: keyed by item.id when present, else item.call_id
+  // (some third-party Responses servers populate only one of the two fields)
   const pendingCalls = new Map<string, { callId: string; name: string; args: string }>()
+  const fcKey = (item: any): string =>
+    String(item?.id ?? item?.call_id ?? '')
+
+  const seenEventTypes = new Set<string>()
+  let textDeltaCount = 0
 
   for await (const event of stream) {
     if (signal.aborted) break
+    if (event?.type) seenEventTypes.add(event.type)
     switch (event.type) {
       case 'response.output_text.delta':
-        if (event.delta) emit.delta(event.delta)
+        if (event.delta) {
+          textDeltaCount++
+          emit.delta(event.delta)
+        }
+        break
+      case 'response.output_text.done':
+        // Some providers / native-image models never send deltas and only
+        // deliver the final text in this `.done` event. Replay it once so
+        // the renderer doesn't end up with an empty assistant bubble.
+        if (textDeltaCount === 0 && typeof event.text === 'string' && event.text) {
+          textDeltaCount++
+          emit.delta(event.text)
+        }
         break
       case 'response.reasoning_text.delta':
       case 'response.reasoning_summary_text.delta':
@@ -760,38 +780,111 @@ async function streamOpenAIResponses(
         break
       case 'response.output_item.added':
         if (event.item?.type === 'function_call') {
-          pendingCalls.set(event.item.id, {
-            callId: event.item.call_id,
-            name: event.item.name,
-            args: ''
+          pendingCalls.set(fcKey(event.item), {
+            callId: event.item.call_id || event.item.id || '',
+            name: event.item.name || '',
+            args: typeof event.item.arguments === 'string' ? event.item.arguments : ''
           })
         }
         break
       case 'response.function_call_arguments.delta': {
-        const fc = pendingCalls.get(event.item_id)
+        const key = String(event.item_id ?? event.item?.id ?? '')
+        const fc = pendingCalls.get(key)
         if (fc && event.delta) fc.args += event.delta
         break
       }
+      case 'response.function_call_arguments.done': {
+        // Some providers only deliver the full arguments string in this event
+        const key = String(event.item_id ?? event.item?.id ?? '')
+        const fc = pendingCalls.get(key)
+        if (fc && typeof event.arguments === 'string' && !fc.args) {
+          fc.args = event.arguments
+        }
+        break
+      }
+      case 'response.output_item.done':
+        // Fallback: some providers skip `added` and only emit `done` with the full item,
+        // or include the full `arguments` string here instead of streaming via deltas.
+        if (event.item?.type === 'function_call') {
+          const key = fcKey(event.item)
+          const existing = pendingCalls.get(key)
+          const fullArgs = typeof event.item.arguments === 'string' ? event.item.arguments : ''
+          if (existing) {
+            if (!existing.args && fullArgs) existing.args = fullArgs
+            if (!existing.callId && event.item.call_id) existing.callId = event.item.call_id
+            if (!existing.name && event.item.name) existing.name = event.item.name
+          } else if (key) {
+            pendingCalls.set(key, {
+              callId: event.item.call_id || event.item.id || '',
+              name: event.item.name || '',
+              args: fullArgs
+            })
+          }
+        } else if (event.item?.type === 'image_generation_call') {
+          // Native image generation result — the image lives on `item.result`
+          // as a base64 string. Inline it as a markdown data-URL image so it
+          // renders inside the assistant bubble.
+          const b64 = typeof event.item.result === 'string' ? event.item.result : ''
+          if (b64) {
+            const fmt = typeof event.item.output_format === 'string' ? event.item.output_format : 'png'
+            const mime = `image/${fmt.toLowerCase().replace(/^jpg$/, 'jpeg')}`
+            emit.delta(`\n\n![generated image](data:${mime};base64,${b64})\n\n`)
+            logger.info(`[responses] native image_generation_call: format=${fmt}, bytes=${b64.length}`)
+          }
+        }
+        break
       case 'response.completed':
+        logger.info(`[responses] completed: textDeltas=${textDeltaCount}, pendingCalls=${pendingCalls.size}, events=[${[...seenEventTypes].join(',')}]`)
         if (pendingCalls.size > 0) {
           for (const [, fc] of pendingCalls) {
             let input: Record<string, any> = {}
             try {
               input = fc.args ? JSON.parse(fc.args) : {}
             } catch {
-              /* arguments may be empty */
+              logger.warn(`[responses] arg parse failed name=${fc.name} args="${fc.args.slice(0, 200)}"`)
             }
+            logger.info(`[responses] toolUse: name=${fc.name}, callId=${fc.callId}, inputKeys=[${Object.keys(input).join(',')}]`)
             emit.toolUse(fc.callId, fc.name, input)
           }
           return
         }
         emit.done()
         return
+      case 'response.failed':
+      case 'response.incomplete':
+        emit.error(
+          event.response?.error?.message ||
+            event.response?.incomplete_details?.reason ||
+            'Responses API stream ended without output'
+        )
+        return
       case 'response.error':
       case 'error':
         emit.error(event.error?.message || event.message || 'Responses API error')
         return
     }
+  }
+
+  // Stream ended without a terminal event (response.completed / .failed / .error).
+  // Some third-party gateways close the connection early or drop the final frame.
+  // Without this fallback the renderer would spin forever waiting on chat-done.
+  logger.warn(`[responses] stream ended without terminal event: textDeltas=${textDeltaCount}, pendingCalls=${pendingCalls.size}, events=[${[...seenEventTypes].join(',')}]`)
+  if (pendingCalls.size > 0) {
+    for (const [, fc] of pendingCalls) {
+      let input: Record<string, any> = {}
+      try {
+        input = fc.args ? JSON.parse(fc.args) : {}
+      } catch {
+        /* ignore */
+      }
+      emit.toolUse(fc.callId, fc.name, input)
+    }
+    return
+  }
+  if (textDeltaCount > 0) {
+    emit.done()
+  } else {
+    emit.error('Stream closed before any output was received')
   }
 }
 

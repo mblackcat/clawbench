@@ -97,6 +97,33 @@ const SAFE_TOOLS = new Set([
   'generate_image', 'edit_image'
 ])
 
+/**
+ * Strip ~1MB base64 image payloads from a tool result before sending it back
+ * to the model. The image is already rendered in the ToolCallCard, and including
+ * the raw bytes in a follow-up request can blow past HTTP/2 frame / provider
+ * payload limits (observed as "stream INTERNAL_ERROR; received from peer" on
+ * OpenAI Responses API gateways). The model only needs to know the call
+ * succeeded plus the revised prompt, so swap the base64 for a marker.
+ */
+function sanitizeToolOutputForAPI(toolName: string, output: string): string {
+  if (toolName !== 'generate_image' && toolName !== 'edit_image') return output
+  if (!output) return output
+  try {
+    const parsed = JSON.parse(output)
+    if (parsed && typeof parsed === 'object' && parsed.base64) {
+      const { base64: _omit, ...rest } = parsed
+      void _omit
+      return JSON.stringify({
+        ...rest,
+        image_omitted: 'Image bytes were generated successfully and shown to the user; not echoed back to model to keep the request small.'
+      })
+    }
+  } catch {
+    /* not JSON — leave as-is */
+  }
+  return output
+}
+
 function isSafeTool(toolName: string): boolean {
   if (SAFE_TOOLS.has(toolName)) return true
   // MCP tools are considered safe by default (not execute_command)
@@ -852,6 +879,34 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const durationMs = streamStartTime ? Date.now() - streamStartTime : undefined
     const tokenCount = usage?.completionTokens
 
+    // Skip creating an empty trailing assistant bubble when the previous turn already
+    // rendered the answer as a completed image tool call (generate_image / edit_image)
+    // and the model produced no follow-up text. Without this guard, Responses-API
+    // models often leave a blank bubble below the image.
+    const trailingMessage = get().messages[get().messages.length - 1]
+    const trailingImageToolCompleted =
+      !!trailingMessage &&
+      trailingMessage.role === 'assistant' &&
+      (trailingMessage.metadata?.toolCalls?.some(
+        (tc) =>
+          (tc.name === 'generate_image' || tc.name === 'edit_image') &&
+          tc.status === 'completed' &&
+          !!tc.output
+      ) ?? false)
+    const isEmptyOutput = !fullContent.trim() && !(thinkingContent && thinkingContent.trim())
+    if (isEmptyOutput && trailingImageToolCompleted) {
+      set({
+        streaming: false,
+        streamingContent: '',
+        streamingThinkingContent: '',
+        streamingTaskId: null,
+        searchSources: [],
+        agentPhase: 'idle' as AgentPhase,
+        agentStepDescription: ''
+      })
+      return
+    }
+
     const metadata: import('../types/chat').MessageMetadata = {
       ...(searchSources.length > 0 ? { searchSources } : {}),
       ...(tokenCount ? { tokenCount } : {}),
@@ -1059,7 +1114,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           if (m.metadata?.toolCalls && m.metadata.toolCalls.length > 0) {
             const toolTexts = m.metadata.toolCalls
               .filter((tc) => tc.output)
-              .map((tc) => `[工具: ${tc.name}${tc.input?.query ? ` "${tc.input.query}"` : tc.input?.url ? ` ${tc.input.url}` : ''}]\n${tc.output}`)
+              .map((tc) => `[工具: ${tc.name}${tc.input?.query ? ` "${tc.input.query}"` : tc.input?.url ? ` ${tc.input.url}` : ''}]\n${sanitizeToolOutputForAPI(tc.name, tc.output!)}`)
             if (toolTexts.length > 0) {
               content = (content ? content + '\n\n' : '') + toolTexts.join('\n\n')
             }
@@ -1181,7 +1236,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // Add tool result
       historyForAI.push({
         role: 'tool' as any,
-        content: result.output || '',
+        content: sanitizeToolOutputForAPI(tc.toolName, result.output || ''),
         toolCallId: tc.toolCallId
       } as any)
 
