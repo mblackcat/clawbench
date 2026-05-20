@@ -44,7 +44,20 @@ import { settingsStore } from '../store/settings.store'
  * Falls back to the bare binary name if resolution fails.
  */
 async function resolveCommandPath(binary: string, env: Record<string, string>): Promise<string> {
-  if (process.platform === 'win32') return binary
+  if (process.platform === 'win32') {
+    try {
+      const { stdout } = await execFileAsync('where', [binary], { timeout: 3000, env })
+      const lines = stdout.trim().split(/\r?\n/).filter(Boolean)
+      if (lines.length > 0) {
+        // Prefer .cmd, .bat, or .exe shims over extensionless files
+        const exec = lines.find((p) => /\.(cmd|bat|exe)$/i.test(p))
+        return exec || lines[0]
+      }
+    } catch {
+      // Fall back to original binary
+    }
+    return binary
+  }
 
   // Check the native installer location first (~/.local/bin) so it wins over
   // a Homebrew copy of the same binary even if Homebrew appears first in PATH.
