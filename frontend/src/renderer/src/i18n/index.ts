@@ -458,6 +458,8 @@ const translations: Record<Lang, Record<string, string>> = {
     'terminal.clear': '清屏',
     'terminal.search': '搜索',
     'terminal.copied': '已复制',
+    'terminal.pasteNonText': '剪贴板内容非文字，无法粘贴到终端',
+    'terminal.pasteFailed': '粘贴失败，无法读取剪贴板',
     'terminal.disconnectedHint': '连接已断开，按 Enter 重连',
     'terminal.reconnecting': '正在重连…',
 
@@ -1769,6 +1771,8 @@ const translations: Record<Lang, Record<string, string>> = {
     'terminal.clear': 'Clear',
     'terminal.search': 'Search',
     'terminal.copied': 'Copied',
+    'terminal.pasteNonText': 'Clipboard contains non-text content, cannot paste into terminal',
+    'terminal.pasteFailed': 'Paste failed: unable to read clipboard',
     'terminal.disconnectedHint': 'Disconnected. Press Enter to reconnect',
     'terminal.reconnecting': 'Reconnecting...',
 
