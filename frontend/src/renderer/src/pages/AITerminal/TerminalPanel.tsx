@@ -190,12 +190,16 @@ const TerminalPanel: React.FC<Props> = ({ sessionId }) => {
       if (event.type === 'keydown' && (event.isComposing || event.keyCode === 229)) {
         return false
       }
-      // Paste shortcut: Cmd+V on macOS, Ctrl+V on Windows/Linux
+      // Paste shortcut: Cmd+V on macOS, Ctrl+V on Windows/Linux.
+      // We intercept keydown AND call preventDefault so the browser does not
+      // also fire its native `paste` event (which xterm's hidden textarea
+      // listens for) — otherwise the clipboard text gets written twice.
       if (event.type === 'keydown' && (event.key === 'v' || event.key === 'V')) {
         const matchesPaste = isMac
           ? event.metaKey && !event.ctrlKey && !event.altKey
           : event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey
         if (matchesPaste) {
+          event.preventDefault()
           handlePaste()
           return false
         }
@@ -283,7 +287,20 @@ const TerminalPanel: React.FC<Props> = ({ sessionId }) => {
       menu={{ items: menuItems }}
       trigger={['contextMenu']}
       open={menuOpen}
-      onOpenChange={setMenuOpen}
+      onOpenChange={(open) => {
+        setMenuOpen(open)
+        // When the context menu closes (item clicked or dismissed), restore
+        // focus to xterm so the user can type immediately without an extra
+        // click into the terminal area.
+        if (!open) {
+          // Defer: paste handler is async, and focus must be re-applied AFTER
+          // antd finishes tearing down the dropdown — otherwise the dropdown's
+          // own blur/cleanup steals focus right back.
+          requestAnimationFrame(() => {
+            termRef.current?.focus()
+          })
+        }
+      }}
     >
       <div
         style={{

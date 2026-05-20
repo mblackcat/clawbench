@@ -93,6 +93,8 @@ export async function generateTitle(
     return completeGoogle(modelConfig, titlePrompt);
   } else if (provider === 'azure-openai') {
     return completeAzureOpenAI(modelConfig, titlePrompt);
+  } else if (provider === 'openai-responses') {
+    return completeOpenAIResponses(modelConfig, titlePrompt, 50);
   } else {
     return completeOpenAI(modelConfig, titlePrompt);
   }
@@ -168,6 +170,8 @@ export async function* streamChat(
     yield* streamGoogle(modelConfig, messages, tools, webSearchEnabled);
   } else if (provider === 'azure-openai') {
     yield* streamAzureOpenAI(modelConfig, messages, tools, enableThinking);
+  } else if (provider === 'openai-responses') {
+    yield* streamOpenAIResponses(modelConfig, messages, tools, enableThinking);
   } else {
     // OpenAI-compatible: openai, qwen, doubao, deepseek, kimi, openai-compatible
     yield* streamOpenAICompatible(modelConfig, messages, tools, enableThinking);
@@ -408,6 +412,262 @@ async function* streamOpenAICompatible(
     logger.error('OpenAI streaming error:', error);
     yield { type: 'error', message: error.message || 'OpenAI API error' };
   }
+}
+
+/**
+ * Build OpenAI Responses API input items from ChatMessages.
+ */
+function buildResponsesInput(messages: ChatMessage[]): any[] {
+  const items: any[] = [];
+  for (const m of messages) {
+    if (m.role === 'tool') {
+      items.push({
+        type: 'function_call_output',
+        call_id: m.toolCallId || '',
+        output: m.content,
+      });
+      continue;
+    }
+    if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0) {
+      if (m.content) {
+        items.push({ role: 'assistant', content: m.content });
+      }
+      for (const tc of m.toolCalls) {
+        items.push({
+          type: 'function_call',
+          call_id: tc.id,
+          name: tc.name,
+          arguments: JSON.stringify(tc.input),
+        });
+      }
+      continue;
+    }
+    if (m.contentParts && m.contentParts.length > 0) {
+      const content: any[] = [];
+      for (const p of m.contentParts) {
+        if (p.type === 'text' && p.text) {
+          content.push({
+            type: m.role === 'assistant' ? 'output_text' : 'input_text',
+            text: p.text,
+          });
+        } else if (p.type === 'image_base64' && p.base64Data) {
+          content.push({
+            type: 'input_image',
+            image_url: `data:${p.mimeType || 'image/png'};base64,${p.base64Data}`,
+          });
+        }
+      }
+      items.push({ role: m.role, content });
+      continue;
+    }
+    items.push({ role: m.role, content: m.content });
+  }
+  return items;
+}
+
+/**
+ * Convert ToolDefinition[] to OpenAI Responses API tools format.
+ */
+function toResponsesTools(tools: ToolDefinition[]): any[] {
+  return tools.map(t => ({
+    type: 'function',
+    name: t.name,
+    description: t.description,
+    parameters: t.inputSchema,
+    strict: false,
+  }));
+}
+
+/**
+ * OpenAI Responses API (/v1/responses) streaming — for third-party providers
+ * that only expose the Responses API rather than chat/completions.
+ */
+async function* streamOpenAIResponses(
+  modelConfig: ModelConfig,
+  messages: ChatMessage[],
+  tools?: ToolDefinition[],
+  enableThinking?: boolean
+): AsyncGenerator<StreamChunk> {
+  const client = new OpenAI({ apiKey: modelConfig.apiKey, baseURL: modelConfig.endpoint });
+
+  try {
+    const params: any = {
+      model: modelConfig.id,
+      input: buildResponsesInput(messages),
+      stream: true,
+    };
+    if (tools && tools.length > 0) {
+      params.tools = toResponsesTools(tools);
+    }
+    if (enableThinking) {
+      params.reasoning = { effort: 'medium', summary: 'auto' };
+    }
+
+    const stream = (await client.responses.create(params)) as any;
+
+    // function_call items: keyed by item.id when present, else item.call_id
+    // (some third-party Responses servers populate only one of the two fields)
+    const pendingCalls = new Map<string, { callId: string; name: string; args: string }>();
+    const fcKey = (item: any): string => String(item?.id ?? item?.call_id ?? '');
+
+    let textDeltaCount = 0;
+    let totalCompletion = 0;
+
+    for await (const event of stream) {
+      switch (event.type) {
+        case 'response.output_text.delta':
+          if (event.delta) {
+            textDeltaCount++;
+            totalCompletion += event.delta.length;
+            yield { type: 'delta', content: event.delta };
+          }
+          break;
+        case 'response.output_text.done':
+          // Some providers / native-image models never send deltas and only
+          // deliver the final text in this `.done` event. Replay it once so
+          // callers don't end up with empty assistant content.
+          if (textDeltaCount === 0 && typeof event.text === 'string' && event.text) {
+            textDeltaCount++;
+            totalCompletion += event.text.length;
+            yield { type: 'delta', content: event.text };
+          }
+          break;
+        case 'response.reasoning_text.delta':
+        case 'response.reasoning_summary_text.delta':
+          if (enableThinking && event.delta) {
+            yield { type: 'thinking_delta', content: event.delta };
+          }
+          break;
+        case 'response.output_item.added':
+          if (event.item?.type === 'function_call') {
+            pendingCalls.set(fcKey(event.item), {
+              callId: event.item.call_id || event.item.id || '',
+              name: event.item.name || '',
+              args: typeof event.item.arguments === 'string' ? event.item.arguments : '',
+            });
+          }
+          break;
+        case 'response.function_call_arguments.delta': {
+          const key = String(event.item_id ?? event.item?.id ?? '');
+          const fc = pendingCalls.get(key);
+          if (fc && event.delta) fc.args += event.delta;
+          break;
+        }
+        case 'response.function_call_arguments.done': {
+          // Some providers only deliver the full arguments string in this event
+          const key = String(event.item_id ?? event.item?.id ?? '');
+          const fc = pendingCalls.get(key);
+          if (fc && typeof event.arguments === 'string' && !fc.args) {
+            fc.args = event.arguments;
+          }
+          break;
+        }
+        case 'response.output_item.done':
+          // Fallback: some providers skip `added` and only emit `done` with the full item,
+          // or include the full `arguments` string here instead of streaming via deltas.
+          if (event.item?.type === 'function_call') {
+            const key = fcKey(event.item);
+            const existing = pendingCalls.get(key);
+            const fullArgs = typeof event.item.arguments === 'string' ? event.item.arguments : '';
+            if (existing) {
+              if (!existing.args && fullArgs) existing.args = fullArgs;
+              if (!existing.callId && event.item.call_id) existing.callId = event.item.call_id;
+              if (!existing.name && event.item.name) existing.name = event.item.name;
+            } else if (key) {
+              pendingCalls.set(key, {
+                callId: event.item.call_id || event.item.id || '',
+                name: event.item.name || '',
+                args: fullArgs,
+              });
+            }
+          } else if (event.item?.type === 'image_generation_call') {
+            // Native image generation result — inline as markdown data-URL image
+            const b64 = typeof event.item.result === 'string' ? event.item.result : '';
+            if (b64) {
+              const fmt = typeof event.item.output_format === 'string' ? event.item.output_format : 'png';
+              const mime = `image/${fmt.toLowerCase().replace(/^jpg$/, 'jpeg')}`;
+              yield { type: 'delta', content: `\n\n![generated image](data:${mime};base64,${b64})\n\n` };
+            }
+          }
+          break;
+        case 'response.completed':
+          if (pendingCalls.size > 0) {
+            for (const [, fc] of pendingCalls) {
+              let input: Record<string, any> = {};
+              try {
+                input = fc.args ? JSON.parse(fc.args) : {};
+              } catch { /* ignore */ }
+              yield { type: 'tool_use', toolCall: { id: fc.callId, name: fc.name, input } };
+            }
+            return;
+          }
+          yield { type: 'done', usage: { promptTokens: 0, completionTokens: totalCompletion } };
+          return;
+        case 'response.failed':
+        case 'response.incomplete':
+          yield {
+            type: 'error',
+            message:
+              event.response?.error?.message ||
+              event.response?.incomplete_details?.reason ||
+              'Responses API stream ended without output',
+          };
+          return;
+        case 'response.error':
+        case 'error':
+          yield { type: 'error', message: event.error?.message || event.message || 'Responses API error' };
+          return;
+      }
+    }
+
+    // Stream ended without a terminal event — some third-party gateways close
+    // the connection early or drop the final frame. Fall back so callers don't hang.
+    if (pendingCalls.size > 0) {
+      for (const [, fc] of pendingCalls) {
+        let input: Record<string, any> = {};
+        try {
+          input = fc.args ? JSON.parse(fc.args) : {};
+        } catch { /* ignore */ }
+        yield { type: 'tool_use', toolCall: { id: fc.callId, name: fc.name, input } };
+      }
+      return;
+    }
+    if (textDeltaCount > 0) {
+      yield { type: 'done', usage: { promptTokens: 0, completionTokens: totalCompletion } };
+    } else {
+      yield { type: 'error', message: 'Stream closed before any output was received' };
+    }
+  } catch (error: any) {
+    logger.error('OpenAI Responses streaming error:', error);
+    yield { type: 'error', message: error.message || 'OpenAI Responses API error' };
+  }
+}
+
+/**
+ * OpenAI Responses API non-streaming completion (used for title generation).
+ */
+async function completeOpenAIResponses(
+  modelConfig: ModelConfig,
+  messages: ChatMessage[],
+  maxTokens = 4096
+): Promise<string> {
+  const client = new OpenAI({ apiKey: modelConfig.apiKey, baseURL: modelConfig.endpoint });
+  const resp: any = await client.responses.create({
+    model: modelConfig.id,
+    input: buildResponsesInput(messages),
+    max_output_tokens: maxTokens,
+  });
+  if (typeof resp.output_text === 'string' && resp.output_text) {
+    return resp.output_text.trim();
+  }
+  for (const item of resp.output || []) {
+    if (item.type === 'message') {
+      for (const c of item.content || []) {
+        if (c.type === 'output_text' && c.text) return c.text.trim();
+      }
+    }
+  }
+  return '新对话';
 }
 
 /**
