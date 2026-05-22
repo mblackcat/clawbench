@@ -293,27 +293,32 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming }) => {
 
   return (
     <div
+      id={`chat-message-${message.messageId}`}
+      data-chat-message="true"
+      data-message-id={message.messageId}
       style={{
         display: 'flex',
         justifyContent: isUser ? 'flex-end' : 'flex-start',
-        marginBottom: 16,
-        padding: '0 16px',
+        marginBottom: isUser ? 16 : 24,
+        padding: isUser ? '0 16px' : '0 0 0 40px',
+        scrollMarginTop: 16,
       }}
     >
       <div
         style={{
-          maxWidth: '75%',
+          maxWidth: isUser ? '75%' : '100%',
+          width: isUser ? undefined : '100%',
           minWidth: 0,
           display: 'flex',
-          flexDirection: isUser ? 'row-reverse' : 'row',
+          flexDirection: isUser ? 'row-reverse' : 'column',
           gap: 8,
-          alignItems: 'flex-start',
+          alignItems: isUser ? 'flex-start' : 'stretch',
         }}
       >
         {isUser ? (
           <UserAvatar size={32} primaryColor={token.colorPrimary} avatarUrl={avatarUrl || undefined} />
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 32, flexShrink: 0 }}>
             <ModelAvatar provider={guessProviderFromModelId(message.modelId || '')} size={32} />
             {isStreaming && (
               <Button
@@ -334,23 +339,23 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming }) => {
             )}
           </div>
         )}
-        <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ minWidth: 0, flex: isUser ? 1 : undefined, width: isUser ? undefined : '100%' }}>
         <Dropdown
           menu={{ items: userContextMenuItems }}
           trigger={isUser ? ['contextMenu'] : []}
         >
           <div
             style={{
-              background: isUser ? token.colorPrimary : token.colorFillSecondary,
+              background: isUser ? token.colorPrimary : 'transparent',
               color: isUser ? '#fff' : token.colorText,
-              padding: '8px 14px',
-              borderRadius: 12,
-              borderTopLeftRadius: isUser ? 12 : 4,
-              borderTopRightRadius: isUser ? 4 : 12,
+              padding: isUser ? '8px 14px' : 0,
+              borderRadius: isUser ? 12 : 0,
+              borderTopLeftRadius: isUser ? 12 : 0,
+              borderTopRightRadius: isUser ? 4 : 0,
               lineHeight: 1.6,
               wordBreak: 'break-word',
               minWidth: 0,
-              overflow: 'hidden',
+              overflow: isUser ? 'hidden' : 'visible',
             }}
           >
           {/* Image attachments */}

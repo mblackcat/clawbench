@@ -1,3 +1,87 @@
+/* === AI Chat Message List === */
+.chat-message-list-shell {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.chat-message-list-scroll {
+  height: 100%;
+  overflow-y: auto;
+  padding: 16px 40px 16px 0;
+  scrollbar-width: none;
+}
+
+.chat-message-list-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.chat-anchor-rail {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.chat-anchor-dots {
+  max-height: calc(100% - 32px);
+  width: 18px;
+  padding: 5px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  overflow: visible;
+}
+
+.chat-anchor-dot {
+  width: 6px;
+  height: 6px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  pointer-events: auto;
+  opacity: 0.16;
+  filter: blur(0.7px);
+  transform: scale(0.78);
+  transition: transform 0.16s ease, opacity 0.16s ease, filter 0.16s ease;
+  box-sizing: border-box;
+}
+
+.chat-anchor-dot.is-active {
+  opacity: 1;
+  filter: none;
+  transform: scale(1.5);
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent);
+}
+
+.chat-anchor-dot.is-near-1 {
+  opacity: 0.68;
+  filter: blur(0.15px);
+  transform: scale(1.08);
+}
+
+.chat-anchor-dot.is-near-2 {
+  opacity: 0.38;
+  filter: blur(0.35px);
+  transform: scale(0.92);
+}
+
+.chat-anchor-dot:hover {
+  opacity: 0.9;
+  filter: none;
+  transform: scale(1.28);
+}
+
 /* === Code Blocks === */
 .markdown-body {
   overflow-x: auto;
