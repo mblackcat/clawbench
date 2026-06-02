@@ -180,9 +180,20 @@ export function createPtySession(
     COLORTERM: 'truecolor'
   }
 
+  let spawnCommand = command
+  let spawnArgs = args
+
+  if (process.platform === 'win32') {
+    const lowerCmd = command.toLowerCase()
+    if (!lowerCmd.endsWith('cmd.exe') && !lowerCmd.endsWith('powershell.exe') && !lowerCmd.endsWith('pwsh.exe')) {
+      spawnCommand = 'cmd.exe'
+      spawnArgs = ['/c', command, ...args]
+    }
+  }
+
   let ptyProcess: pty.IPty
   try {
-    ptyProcess = pty.spawn(command, args, {
+    ptyProcess = pty.spawn(spawnCommand, spawnArgs, {
       name: 'xterm-256color',
       cols: 80,
       rows: 24,
@@ -194,7 +205,7 @@ export function createPtySession(
     throw err
   }
 
-  logger.info(`[pty] Session created: ${sessionId} cmd=${command}`)
+  logger.info(`[pty] Session created: ${sessionId} cmd=${spawnCommand}`)
   ptySessions.set(sessionId, ptyProcess)
   if (onExit) exitCallbacks.set(sessionId, onExit)
 
