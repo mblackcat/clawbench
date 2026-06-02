@@ -1,7 +1,8 @@
 import log from 'electron-log/main'
 log.initialize()
 
-import { app, BrowserWindow, nativeImage, shell } from 'electron'
+import { app, BrowserWindow, Menu, nativeImage, shell, Tray } from 'electron'
+import { existsSync } from 'fs'
 import { join, resolve } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerAllIpcHandlers } from './ipc'
@@ -17,6 +18,8 @@ import { migrateSettings } from './utils/migrate-settings'
 import { initScheduler } from './services/scheduled-task.service'
 
 const PROTOCOL = 'clawbench'
+let tray: Tray | null = null
+let isQuitting = false
 
 // 注册自定义协议（必须在 app.ready 之前调用）
 if (process.defaultApp) {
@@ -41,28 +44,116 @@ function getMainWindow(): BrowserWindow | null {
   return windows.length > 0 ? windows[0] : null
 }
 
+function getResourcePath(fileName: string): string {
+  const candidates = app.isPackaged
+    ? [
+        join(process.resourcesPath, 'resources', fileName),
+        join(process.resourcesPath, fileName),
+        join(__dirname, '../../resources', fileName)
+      ]
+    : [
+        join(__dirname, '../../resources', fileName),
+        join(app.getAppPath(), 'resources', fileName)
+      ]
+
+  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0]
+}
+
+function createTrayIcon(): Electron.NativeImage {
+  const iconFile = process.platform === 'win32' ? 'icon.ico' : 'icon.png'
+  let trayIcon = nativeImage.createFromPath(getResourcePath(iconFile))
+
+  if (trayIcon.isEmpty() && iconFile !== 'icon.png') {
+    trayIcon = nativeImage.createFromPath(getResourcePath('icon.png'))
+  }
+
+  if (process.platform === 'darwin') {
+    return trayIcon.resize({ width: 18, height: 18 })
+  }
+
+  if (process.platform === 'win32') {
+    return trayIcon
+  }
+
+  return trayIcon.resize({ width: 16, height: 16 })
+}
+
+function showMainWindow(): BrowserWindow {
+  let mainWindow = getMainWindow()
+
+  if (!mainWindow) {
+    mainWindow = createWindow()
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore()
+  }
+
+  if (!mainWindow.isVisible()) {
+    mainWindow.show()
+  }
+
+  mainWindow.focus()
+
+  return mainWindow
+}
+
+function quitApplication(): void {
+  isQuitting = true
+  app.quit()
+}
+
+function createTray(): void {
+  if (tray) {
+    return
+  }
+
+  const trayIcon = createTrayIcon()
+
+  if (trayIcon.isEmpty()) {
+    logger.warn('Tray icon is empty; check packaged resources.')
+  }
+
+  tray = new Tray(trayIcon)
+  tray.setToolTip('ClawBench')
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      {
+        label: '打开界面',
+        click: () => showMainWindow()
+      },
+      { type: 'separator' },
+      {
+        label: '退出',
+        click: () => quitApplication()
+      }
+    ])
+  )
+  tray.on('click', () => showMainWindow())
+  tray.on('double-click', () => showMainWindow())
+}
+
 /**
  * 处理自定义协议 URL
  */
 function handleProtocolUrl(url: string): void {
   logger.info(`Received protocol URL: ${url}`)
 
+  if (!app.isReady()) {
+    app.whenReady().then(() => handleProtocolUrl(url))
+    return
+  }
+
   if (url.startsWith(`${PROTOCOL}://auth/callback`)) {
-    const mainWindow = getMainWindow()
-    handleProtocolCallback(url, mainWindow?.webContents).catch((err) => {
+    const mainWindow = showMainWindow()
+    handleProtocolCallback(url, mainWindow.webContents).catch((err) => {
       logger.error('Failed to handle protocol callback:', err)
     })
-
-    // 聚焦窗口
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.focus()
-    }
   }
 }
 
 function createWindow(): BrowserWindow {
-  const iconPath = join(__dirname, '../../resources/icon.png')
+  const iconPath = getResourcePath('icon.png')
   const isMac = process.platform === 'darwin'
   const isWin = process.platform === 'win32'
 
@@ -94,6 +185,13 @@ function createWindow(): BrowserWindow {
     mainWindow.show()
   })
 
+  mainWindow.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault()
+      mainWindow.hide()
+    }
+  })
+
   // Open external links in the default browser
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
@@ -120,7 +218,7 @@ app.whenReady().then(() => {
 
   // 设置 macOS Dock 图标
   if (process.platform === 'darwin' && app.dock) {
-    const dockIcon = nativeImage.createFromPath(join(__dirname, '../../resources/icon.png'))
+    const dockIcon = nativeImage.createFromPath(getResourcePath('icon.png'))
     app.dock.setIcon(dockIcon)
   }
 
@@ -137,6 +235,7 @@ app.whenReady().then(() => {
   })
 
   createWindow()
+  createTray()
   registerAllIpcHandlers()
   registerGlobalShortcuts()
   initAutoUpdater()
@@ -152,10 +251,7 @@ app.whenReady().then(() => {
   logger.info('Application ready')
 
   app.on('activate', () => {
-    // On macOS re-create a window when dock icon is clicked and no windows are open
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow()
-    }
+    showMainWindow()
   })
 })
 
@@ -173,21 +269,19 @@ app.on('second-instance', (_event, argv) => {
     handleProtocolUrl(protocolUrl)
   }
 
-  // 聚焦主窗口
-  const mainWindow = getMainWindow()
-  if (mainWindow) {
-    if (mainWindow.isMinimized()) mainWindow.restore()
-    mainWindow.focus()
-  }
+  showMainWindow()
 })
 
 app.on('window-all-closed', () => {
-  // On macOS, apps typically stay active until the user quits explicitly with Cmd + Q
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
+  // Keep the app alive in the system tray until the user explicitly exits.
+})
+
+app.on('before-quit', () => {
+  isQuitting = true
 })
 
 app.on('will-quit', () => {
+  tray?.destroy()
+  tray = null
   unregisterGlobalShortcuts()
 })

@@ -117,6 +117,10 @@
     },
     "extraResources": [
       {
+        "from": "resources",
+        "to": "resources"
+      },
+      {
         "from": "python-sdk",
         "to": "python-sdk"
       }
