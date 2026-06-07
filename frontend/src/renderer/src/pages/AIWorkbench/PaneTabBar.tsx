@@ -10,6 +10,7 @@ import type { AIToolType, AIWorkbenchSession, ClaudeViewMode } from '../../types
 const { Text } = Typography
 
 const TOOLS_WITH_NATIVE_SESSIONS: Set<AIToolType> = new Set(['claude', 'codex', 'gemini'])
+const NATIVE_HISTORY_PAGE_SIZE = 5
 
 interface NativeSession {
   sessionId: string
@@ -69,10 +70,12 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
 
   const [nativeSessions, setNativeSessions] = useState<NativeSession[]>([])
   const [loadingNative, setLoadingNative] = useState(false)
+  const [nativeVisibleCount, setNativeVisibleCount] = useState(NATIVE_HISTORY_PAGE_SIZE)
 
   const fetchNativeSessions = useCallback(async (toolType: AIToolType) => {
     if (!workingDir) return
     setLoadingNative(true)
+    setNativeVisibleCount(NATIVE_HISTORY_PAGE_SIZE)
     try {
       const sessions = await window.api.aiWorkbench.listNativeSessions(workingDir, toolType)
       setNativeSessions(sessions || [])
@@ -83,8 +86,9 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
   const historyItems = useMemo(() => {
     if (nativeSessions.length === 0) return []
     const loadedIds = new Set(tabs.filter(s => s.toolSessionId).map(s => s.toolSessionId))
-    return nativeSessions
-      .filter(ns => !loadedIds.has(ns.sessionId))
+    const availableSessions = nativeSessions.filter(ns => !loadedIds.has(ns.sessionId))
+    const items = availableSessions
+      .slice(0, nativeVisibleCount)
       .map(ns => {
         const time = formatRelativeTime(ns.modifiedAt)
         const size = ns.sizeBytes ? ` · ${formatSize(ns.sizeBytes)}` : ''
@@ -97,7 +101,14 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
           ),
         }
       })
-  }, [nativeSessions, tabs])
+    if (availableSessions.length > nativeVisibleCount) {
+      items.push({
+        key: 'load-more',
+        label: <span style={{ color: token.colorPrimary }}>加载更多</span>,
+      })
+    }
+    return items
+  }, [nativeSessions, nativeVisibleCount, tabs, token.colorPrimary])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     if (e.dataTransfer.types.includes('application/x-pane-tab')) {
@@ -199,6 +210,10 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
                           ? historyItems
                           : [{ key: 'empty', label: '无历史会话', disabled: true }],
                       onClick: ({ key }) => {
+                        if (key === 'load-more') {
+                          setNativeVisibleCount(count => count + NATIVE_HISTORY_PAGE_SIZE)
+                          return
+                        }
                         const ns = nativeSessions.find(s => s.sessionId === key)
                         onResumeNativeSession?.(session.toolType, key, ns?.title)
                       },
