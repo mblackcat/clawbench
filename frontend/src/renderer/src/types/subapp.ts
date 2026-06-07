@@ -31,10 +31,13 @@ export interface SubAppOutput {
   taskId: string
   type: 'output' | 'progress' | 'result' | 'error'
   message?: string
+  content?: string
   level?: string
   percent?: number
   success?: boolean
   summary?: string
+  error?: string
+  exitCode?: number | null
   data?: Record<string, unknown>
   details?: string
   timestamp?: number

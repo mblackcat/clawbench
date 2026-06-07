@@ -3,9 +3,8 @@ import fs from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
 import { listSubApps, getManifest, getSubAppPath, uninstallApp, installApp } from '../services/subapp.service'
-import { executeSubApp, cancelTask } from '../services/python-runner.service'
+import { executeSubApp, cancelTask, resolvePythonCommand } from '../services/python-runner.service'
 import { getActiveWorkspace } from '../services/workspace.service'
-import { settingsStore } from '../store/settings.store'
 import { getPythonSdkPath, getTempDir } from '../utils/paths'
 import { unzipArchive } from '../utils/zip'
 import * as logger from '../utils/logger'
@@ -38,13 +37,41 @@ export function registerSubAppIpc(): void {
         throw new Error('No active workspace selected')
       }
 
-      const pythonPath = (settingsStore.get('pythonPath') as string) || 'python3'
       const sdkPath = getPythonSdkPath()
       const webContents = event.sender
       const window = BrowserWindow.fromWebContents(webContents)
 
       if (!window) {
         throw new Error('Cannot find browser window')
+      }
+
+      webContents.send('subapp:task-started', {
+        taskId,
+        appId,
+        appName: manifest.name
+      })
+
+      let pythonPath: string
+      try {
+        const python = await resolvePythonCommand()
+        pythonPath = python.path
+        logger.info(
+          `Using ${python.source} Python for sub-app ${appId}: ${python.path} (${python.version})`
+        )
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        logger.error(`Failed to resolve Python for sub-app ${appId}:`, message)
+        webContents.send('subapp:output', {
+          taskId,
+          type: 'error',
+          message
+        })
+        webContents.send('subapp:task-status', {
+          taskId,
+          status: 'failed',
+          summary: message
+        })
+        return taskId
       }
 
       executeSubApp(
