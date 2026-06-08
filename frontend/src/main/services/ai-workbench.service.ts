@@ -118,6 +118,8 @@ function buildToolEnv(toolType: AIToolType): Record<string, string> {
 
 // ── Push event to renderer ──
 
+const runtimeSessions = new Map<string, AIWorkbenchSession>()
+
 function notifyDataChanged(): void {
   BrowserWindow.getAllWindows().forEach((win) => {
     win.webContents.send('ai-workbench:data-changed')
@@ -167,7 +169,7 @@ function handleSDKEvent(sessionId: string, data: Record<string, unknown>): void 
 
 function handleSDKClose(sessionId: string): void {
   logger.info(`[workbench] SDK session closed: ${sessionId}`)
-  const session = getSessions().find((s) => s.id === sessionId)
+  const session = getSessionById(sessionId)
   if (session && session.status !== 'closed') {
     updateSession(sessionId, { status: 'completed', lastActivity: 'none' })
     notifyDataChanged()
@@ -176,7 +178,7 @@ function handleSDKClose(sessionId: string): void {
 
 function handleSDKError(sessionId: string, _err: Error): void {
   logger.error(`[workbench] SDK session error: ${sessionId}`)
-  const session = getSessions().find((s) => s.id === sessionId)
+  const session = getSessionById(sessionId)
   if (session && session.status !== 'closed') {
     updateSession(sessionId, { status: 'error' as any, lastActivity: 'none' })
     notifyDataChanged()
@@ -193,7 +195,7 @@ function handlePtyExit(sessionId: string, exitCode: number): void {
   } else {
     logger.warn(`[workbench] PTY session exited: ${sessionId} code=${exitCode}`)
   }
-  const session = getSessions().find((s) => s.id === sessionId)
+  const session = getSessionById(sessionId)
   if (session && session.status !== 'closed') {
     const status = exitCode === 0 ? 'completed' : ('error' as any)
     updateSession(sessionId, { status, lastActivity: 'none' })
@@ -206,7 +208,7 @@ function handlePtyExit(sessionId: string, exitCode: number): void {
  * Transitions the session from 'running' back to 'idle' so the card reflects readiness.
  */
 function handlePtyOutputStabilized(sessionId: string): void {
-  const session = getSessions().find((s) => s.id === sessionId)
+  const session = getSessionById(sessionId)
   if (session && session.status === 'running') {
     updateSession(sessionId, { status: 'idle', lastActivity: 'none' })
     notifyDataChanged()
@@ -296,25 +298,32 @@ export function updateWorkspace(
 export async function deleteWorkspace(id: string): Promise<void> {
   const { sessions } = getAIWorkbenchConfig()
   const childSessions = sessions.filter((s) => s.workspaceId === id)
-  for (const session of childSessions) {
+  const runtimeChildSessions = Array.from(runtimeSessions.values()).filter((s) => s.workspaceId === id)
+  for (const session of [...childSessions, ...runtimeChildSessions]) {
     killPtySession(session.id)
     closeSDKSession(session.id)
   }
+  for (const session of runtimeChildSessions) runtimeSessions.delete(session.id)
   setAIWorkbenchSessions(sessions.filter((s) => s.workspaceId !== id))
 
   const { workspaces } = getAIWorkbenchConfig()
   setAIWorkbenchWorkspaces(workspaces.filter((w) => w.id !== id))
-  logger.info(`[workbench] Workspace deleted: ${id}, closed ${childSessions.length} sessions`)
+  logger.info(`[workbench] Workspace deleted: ${id}, closed ${childSessions.length + runtimeChildSessions.length} sessions`)
 }
 
 export function getSessionsForWorkspace(workspaceId: string): AIWorkbenchSession[] {
-  return getAIWorkbenchConfig().sessions.filter((s) => s.workspaceId === workspaceId)
+  return getSessions().filter((s) => s.workspaceId === workspaceId)
 }
 
 // ── Sessions ──
 
 export function getSessions(): AIWorkbenchSession[] {
-  return getAIWorkbenchConfig().sessions
+  const persistedSessions = getAIWorkbenchConfig().sessions.filter((s) => s.source !== 'local')
+  return [...persistedSessions, ...runtimeSessions.values()]
+}
+
+function getSessionById(id: string): AIWorkbenchSession | undefined {
+  return runtimeSessions.get(id) || getAIWorkbenchConfig().sessions.find((s) => s.id === id)
 }
 
 export function createSession(
@@ -340,10 +349,39 @@ export function createSession(
   return session
 }
 
+export function createRuntimeSession(
+  workspaceId: string,
+  toolType: AIToolType,
+  updates: Partial<Pick<AIWorkbenchSession, 'toolSessionId' | 'title'>> = {}
+): AIWorkbenchSession {
+  const now = Date.now()
+  const session: AIWorkbenchSession = {
+    id: randomUUID(),
+    workspaceId,
+    toolType,
+    source: 'local',
+    status: 'closed',
+    lastActivity: 'none',
+    createdAt: now,
+    updatedAt: now,
+    ...updates
+  }
+  runtimeSessions.set(session.id, session)
+  logger.info(`[workbench] Runtime session created: ${session.id} tool=${toolType} workspace=${workspaceId}`)
+  return session
+}
+
 export function updateSession(
   id: string,
   updates: Partial<Omit<AIWorkbenchSession, 'id' | 'createdAt'>>
 ): AIWorkbenchSession | null {
+  const runtimeSession = runtimeSessions.get(id)
+  if (runtimeSession) {
+    const updated = { ...runtimeSession, ...updates, updatedAt: Date.now() }
+    runtimeSessions.set(id, updated)
+    return updated
+  }
+
   const { sessions } = getAIWorkbenchConfig()
   const idx = sessions.findIndex((s) => s.id === id)
   if (idx === -1) return null
@@ -355,6 +393,11 @@ export function updateSession(
 export function deleteSession(id: string): void {
   killPtySession(id)
   closeSDKSession(id)
+  if (runtimeSessions.delete(id)) {
+    logger.info(`[workbench] Runtime session deleted: ${id}`)
+    return
+  }
+
   const { sessions } = getAIWorkbenchConfig()
   setAIWorkbenchSessions(sessions.filter((s) => s.id !== id))
   logger.info(`[workbench] Session deleted: ${id}`)
@@ -369,7 +412,7 @@ export function deleteSession(id: string): void {
  */
 export async function launchSession(id: string, opts?: { forcePty?: boolean }): Promise<{ success: boolean; error?: string }> {
   const config = getAIWorkbenchConfig()
-  const session = config.sessions.find((s) => s.id === id)
+  const session = getSessionById(id)
   if (!session) return { success: false, error: '会话不存在' }
 
   const workspace = config.workspaces.find((w) => w.id === session.workspaceId)
@@ -446,7 +489,7 @@ export async function stopSession(id: string): Promise<AIWorkbenchSession | null
   closeSDKSession(id)
   logger.info(`[workbench] Session stopped: ${id}`)
 
-  const session = getSessions().find((s) => s.id === id)
+  const session = getSessionById(id)
   let durationMs: number | undefined
   if (session?.startedAt) {
     durationMs = Date.now() - session.startedAt
