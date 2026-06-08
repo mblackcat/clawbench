@@ -2,9 +2,10 @@ import { globalShortcut, BrowserWindow, Notification } from 'electron'
 import { randomUUID } from 'crypto'
 import { settingsStore } from '../store/settings.store'
 import { listSubApps } from './subapp.service'
-import { executeSubApp, resolvePythonCommand } from './python-runner.service'
+import { executeSubApp, resolvePythonCommand, getI18nPayload } from './python-runner.service'
 import { getActiveWorkspace } from './workspace.service'
 import { getPythonSdkPath } from '../utils/paths'
+import { mainT } from '../utils/i18n'
 import * as logger from '../utils/logger'
 
 /** Currently registered accelerator strings so we can unregister them later. */
@@ -100,21 +101,25 @@ async function handleShortcutTrigger(index: number): Promise<void> {
     )
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
+    const i18nPayload = getI18nPayload(err)
     logger.error(`Global shortcut: failed to resolve Python for ${manifest.id}:`, message)
     win.webContents.send('subapp:output', {
       taskId,
       type: 'error',
-      message
+      message,
+      ...i18nPayload
     })
     win.webContents.send('subapp:task-status', {
       taskId,
       status: 'failed',
-      summary: message
+      summary: message,
+      summaryI18nKey: i18nPayload.i18nKey,
+      summaryI18nArgs: i18nPayload.i18nArgs
     })
     if (Notification.isSupported()) {
       new Notification({
         title: manifest.name,
-        body: 'Python 环境不可用，请检查设置里的 Python 路径'
+        body: mainT('subapp.pythonUnavailableNotification')
       }).show()
     }
     return

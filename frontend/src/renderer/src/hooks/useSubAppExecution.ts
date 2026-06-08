@@ -30,11 +30,23 @@ export function useSubAppExecution(): UseSubAppExecutionReturn {
     })
 
     const unsubStatus = window.api.subapp.onTaskStatus(
-      (data: { taskId: string; status: string; success?: boolean; summary?: string }) => {
+      (data: {
+        taskId: string
+        status: string
+        success?: boolean
+        summary?: string
+        summaryI18nKey?: string
+        summaryI18nArgs?: string[]
+      }) => {
         const status = data.status as TaskStatus
         const result =
-          data.success !== undefined && data.summary !== undefined
-            ? { success: data.success, summary: data.summary }
+          data.summary !== undefined
+            ? {
+                success: data.success ?? status === 'completed',
+                summary: data.summary,
+                summaryI18nKey: data.summaryI18nKey,
+                summaryI18nArgs: data.summaryI18nArgs
+              }
             : undefined
         updateStatus(data.taskId, status, result)
       }

@@ -36,10 +36,16 @@ export interface SubAppOutput {
   percent?: number
   success?: boolean
   summary?: string
+  summaryI18nKey?: string
+  summaryI18nArgs?: string[]
   error?: string
   exitCode?: number | null
   data?: Record<string, unknown>
   details?: string
+  i18nKey?: string
+  i18nArgs?: string[]
+  detailsI18nKey?: string
+  detailsI18nArgs?: string[]
   timestamp?: number
 }
 
@@ -54,5 +60,5 @@ export interface TaskInfo {
   outputs: SubAppOutput[]
   startedAt: number
   completedAt?: number
-  result?: { success: boolean; summary: string }
+  result?: { success: boolean; summary: string; summaryI18nKey?: string; summaryI18nArgs?: string[] }
 }
