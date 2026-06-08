@@ -286,11 +286,11 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
     if (availableSessions.length > visibleCount) {
       items.push({
         key: `load-more:${wsId}`,
-        label: <span style={{ color: token.colorPrimary }}>加载更多</span>
+        label: <span style={{ color: token.colorPrimary }}>{t('coding.loadMore')}</span>
       })
     }
     return items
-  }, [nativeSessionsMap, nativeSessionVisibleCounts, openNativeSessionKeys, token.colorPrimary])
+  }, [nativeSessionsMap, nativeSessionVisibleCounts, openNativeSessionKeys, t, token.colorPrimary])
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -924,13 +924,13 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
                           }
                         >
                           <HistoryOutlined style={{ fontSize: 12, flexShrink: 0 }} />
-                          <span>加载历史会话</span>
+                          <span>{t('coding.loadHistorySessions')}</span>
                         </div>
                       )}
                       {!isWsCollapsed && nativeState?.loading && visibleNativeSessions.length === 0 && (
                         <div style={{ ...rowBase, padding: '4px 8px 4px 1.8em', gap: 6, fontSize: 12, color: token.colorTextTertiary }}>
                           <Spin size="small" />
-                          <span>加载历史会话...</span>
+                          <span>{t('coding.loadingHistorySessions')}</span>
                         </div>
                       )}
                       {!isWsCollapsed && hasMoreNativeSessions && (
@@ -955,7 +955,7 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
                           }
                         >
                           <HistoryOutlined style={{ fontSize: 12, flexShrink: 0 }} />
-                          <span>加载更多</span>
+                          <span>{t('coding.loadMore')}</span>
                         </div>
                       )}
                     </div>

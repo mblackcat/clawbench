@@ -435,6 +435,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'coding.selectCodingTool': '选择 Coding 工具',
     'coding.notInstalled': '未安装',
     'coding.refreshTools': '刷新安装状态',
+    'coding.loadMore': '加载更多',
+    'coding.loadHistorySessions': '加载历史会话',
+    'coding.loadingHistorySessions': '加载历史会话...',
 
     // AI Terminal
     'terminal.tabTerminal': '终端',
@@ -1748,6 +1751,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'coding.selectCodingTool': 'Select Coding Tool',
     'coding.notInstalled': 'Not installed',
     'coding.refreshTools': 'Refresh install status',
+    'coding.loadMore': 'Load more',
+    'coding.loadHistorySessions': 'Load history sessions',
+    'coding.loadingHistorySessions': 'Loading history sessions...',
 
     // AI Terminal
     'terminal.tabTerminal': 'Terminal',

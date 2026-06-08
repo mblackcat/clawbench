@@ -5,6 +5,7 @@ import {
   DollarOutlined, BranchesOutlined, MessageOutlined
 } from '@ant-design/icons'
 import { getAIToolIcon } from './aiToolMeta'
+import { useT } from '../../i18n'
 import type { AIToolType, AIWorkbenchSession, ClaudeViewMode } from '../../types/ai-workbench'
 
 const { Text } = Typography
@@ -64,6 +65,7 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
   gitPanelOpen, onToggleGitPanel,
   isFocused,
 }) => {
+  const t = useT()
   const { token } = theme.useToken()
   const activeSession = useMemo(() => tabs.find(t => t.id === activeTabId), [tabs, activeTabId])
   const activeToolType = activeSession?.toolType
@@ -104,11 +106,11 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
     if (availableSessions.length > nativeVisibleCount) {
       items.push({
         key: 'load-more',
-        label: <span style={{ color: token.colorPrimary }}>加载更多</span>,
+        label: <span style={{ color: token.colorPrimary }}>{t('coding.loadMore')}</span>,
       })
     }
     return items
-  }, [nativeSessions, nativeVisibleCount, tabs, token.colorPrimary])
+  }, [nativeSessions, nativeVisibleCount, tabs, t, token.colorPrimary])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     if (e.dataTransfer.types.includes('application/x-pane-tab')) {
