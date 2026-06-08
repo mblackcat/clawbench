@@ -212,10 +212,13 @@ const ErrorLogDrawer: React.FC<ErrorLogDrawerProps> = ({ open, onClose }) => {
                     style={{
                       fontSize: 12,
                       flex: 1,
-                      wordBreak: 'break-word'
+                      wordBreak: 'break-word',
+                      whiteSpace: 'pre-wrap'
                     }}
                   >
-                    {output.message ?? output.details ?? output.summary ?? t('logs.noContent')}
+                    {[output.message ?? output.content ?? output.summary ?? output.error, output.details]
+                      .filter(Boolean)
+                      .join('\n') || t('logs.noContent')}
                   </Text>
                 </div>
               ))}

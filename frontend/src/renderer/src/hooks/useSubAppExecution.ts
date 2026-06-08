@@ -14,6 +14,7 @@ export function useSubAppExecution(): UseSubAppExecutionReturn {
   const updateProgress = useTaskStore((state) => state.updateProgress)
   const updateStatus = useTaskStore((state) => state.updateStatus)
   const setActiveTask = useTaskStore((state) => state.setActiveTask)
+  const getTask = useTaskStore((state) => state.getTask)
   const apps = useSubAppStore((state) => state.apps)
 
   // Set up IPC event listeners for subapp output, progress, and task status
@@ -60,11 +61,13 @@ export function useSubAppExecution(): UseSubAppExecutionReturn {
       const taskId = await window.api.subapp.execute(appId, params)
       const app = apps.find((a) => a.id === appId)
       const appName = app?.name ?? appId
-      startTask(taskId, appId, appName)
+      if (!getTask(taskId)) {
+        startTask(taskId, appId, appName)
+      }
       setActiveTask(taskId)
       return taskId
     },
-    [apps, startTask, setActiveTask]
+    [apps, getTask, startTask, setActiveTask]
   )
 
   const cancelTask = useCallback(async (taskId: string): Promise<void> => {

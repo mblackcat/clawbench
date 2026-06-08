@@ -2,7 +2,7 @@ import { globalShortcut, BrowserWindow, Notification } from 'electron'
 import { randomUUID } from 'crypto'
 import { settingsStore } from '../store/settings.store'
 import { listSubApps } from './subapp.service'
-import { executeSubApp } from './python-runner.service'
+import { executeSubApp, resolvePythonCommand } from './python-runner.service'
 import { getActiveWorkspace } from './workspace.service'
 import { getPythonSdkPath } from '../utils/paths'
 import * as logger from '../utils/logger'
@@ -21,7 +21,7 @@ function getMainWindow(): BrowserWindow | null {
 /**
  * Handles a global shortcut trigger for the given 1-based index.
  */
-function handleShortcutTrigger(index: number): void {
+async function handleShortcutTrigger(index: number): Promise<void> {
   let userApps = listSubApps().filter((a) => a.source === 'user')
 
   // Sort by persisted appOrder so shortcut numbers match the UI
@@ -82,8 +82,43 @@ function handleShortcutTrigger(index: number): void {
   }
 
   const taskId = randomUUID()
-  const pythonPath = (settingsStore.get('pythonPath') as string) || 'python3'
   const sdkPath = getPythonSdkPath()
+
+  // Notify renderer about the new task before resolving Python so failures are logged.
+  win.webContents.send('subapp:task-started', {
+    taskId,
+    appId: manifest.id,
+    appName: manifest.name
+  })
+
+  let pythonPath: string
+  try {
+    const python = await resolvePythonCommand()
+    pythonPath = python.path
+    logger.info(
+      `Using ${python.source} Python for shortcut app ${manifest.id}: ${python.path} (${python.version})`
+    )
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    logger.error(`Global shortcut: failed to resolve Python for ${manifest.id}:`, message)
+    win.webContents.send('subapp:output', {
+      taskId,
+      type: 'error',
+      message
+    })
+    win.webContents.send('subapp:task-status', {
+      taskId,
+      status: 'failed',
+      summary: message
+    })
+    if (Notification.isSupported()) {
+      new Notification({
+        title: manifest.name,
+        body: 'Python ????????????? Python ??'
+      }).show()
+    }
+    return
+  }
 
   executeSubApp(
     taskId,
@@ -96,13 +131,6 @@ function handleShortcutTrigger(index: number): void {
     sdkPath,
     win.webContents
   )
-
-  // Notify renderer about the new task
-  win.webContents.send('subapp:task-started', {
-    taskId,
-    appId: manifest.id,
-    appName: manifest.name
-  })
 
   // OS notification
   if (Notification.isSupported()) {
@@ -129,7 +157,7 @@ export function registerGlobalShortcuts(): void {
     try {
       const digit = i
       const ok = globalShortcut.register(accelerator, () => {
-        handleShortcutTrigger(digit)
+        void handleShortcutTrigger(digit)
       })
       if (ok) {
         registeredAccelerators.push(accelerator)

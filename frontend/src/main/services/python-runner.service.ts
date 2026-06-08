@@ -4,6 +4,7 @@ import { join } from 'path'
 import { WebContents, Notification, BrowserWindow } from 'electron'
 import { randomUUID } from 'crypto'
 import { getTempDir } from '../utils/paths'
+import { settingsStore } from '../store/settings.store'
 import * as logger from '../utils/logger'
 
 /** Map of taskId to running child process */
@@ -31,6 +32,75 @@ export interface IMExecCallbacks {
   onOutput?: (message: string, level: string) => void
   onProgress?: (percent: number, message: string) => void
   onComplete?: (success: boolean, summary: string) => void
+}
+
+export interface PythonResolution {
+  path: string
+  version: string
+  source: 'settings' | 'system'
+}
+
+function probePythonCommand(command: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    let resolved = false
+    let stdout = ''
+    let stderr = ''
+    let timer: NodeJS.Timeout
+
+    const finish = (version: string | null): void => {
+      if (resolved) return
+      resolved = true
+      clearTimeout(timer)
+      resolve(version)
+    }
+
+    const proc = spawn(command, ['--version'], { windowsHide: true })
+    timer = setTimeout(() => {
+      proc.kill()
+      finish(null)
+    }, 5000)
+
+    proc.stdout?.on('data', (data: Buffer) => {
+      stdout += data.toString()
+    })
+
+    proc.stderr?.on('data', (data: Buffer) => {
+      stderr += data.toString()
+    })
+
+    proc.on('close', (code) => {
+      const output = (stdout || stderr).trim()
+      const versionMatch = output.match(/Python\s+([\d.]+)/)
+      finish(code === 0 && versionMatch ? versionMatch[0] : null)
+    })
+
+    proc.on('error', () => finish(null))
+  })
+}
+
+export async function resolvePythonCommand(): Promise<PythonResolution> {
+  const configuredPythonPath = ((settingsStore.get('pythonPath') as string) || '').trim()
+
+  if (configuredPythonPath) {
+    const version = await probePythonCommand(configuredPythonPath)
+    if (!version) {
+      throw new Error(
+        `???? Python ??????${configuredPythonPath}\n????????? Python ?????????????? Python?`
+      )
+    }
+    return { path: configuredPythonPath, version, source: 'settings' }
+  }
+
+  for (const command of ['python3', 'python']) {
+    const version = await probePythonCommand(command)
+    if (version) {
+      return { path: command, version, source: 'system' }
+    }
+  }
+
+  throw new Error(
+    '?????? Python ???\n??? Python????????????? Python ???'
+  )
 }
 
 /**
@@ -176,6 +246,7 @@ export function executeSubApp(
 
   // Buffer for incomplete lines from stdout
   let stdoutBuffer = ''
+  let stderrBuffer = ''
 
   proc.stdout?.on('data', (data: Buffer) => {
     stdoutBuffer += data.toString()
@@ -192,12 +263,14 @@ export function executeSubApp(
 
   proc.stderr?.on('data', (data: Buffer) => {
     const errorText = data.toString()
+    stderrBuffer += errorText
     logger.warn(`Task ${taskId} stderr:`, errorText)
 
     if (!webContents.isDestroyed()) {
       webContents.send('subapp:output', {
         taskId,
         type: 'error',
+        message: errorText,
         content: errorText
       })
     }
@@ -215,10 +288,14 @@ export function executeSubApp(
     // Send final status if not already sent
     if (!completedTasks.has(taskId) && !webContents.isDestroyed()) {
       const success = code === 0
+      const errorSummary = stderrBuffer.trim()
       webContents.send('subapp:task-status', {
         taskId,
         status: success ? 'completed' : 'failed',
-        exitCode: code
+        exitCode: code,
+        summary: success
+          ? undefined
+          : errorSummary || `Process exited with code ${code ?? 'unknown'}`
       })
       sendTaskNotification(taskId, success, webContents)
     }
@@ -234,10 +311,18 @@ export function executeSubApp(
     logger.error(`Task ${taskId} process error:`, err.message)
 
     if (!webContents.isDestroyed()) {
+      const message = `Process failed to start: ${err.message}`
+      webContents.send('subapp:output', {
+        taskId,
+        type: 'error',
+        message,
+        details: `Python command: ${pythonPath}`
+      })
       webContents.send('subapp:task-status', {
         taskId,
         status: 'failed',
-        error: err.message
+        error: err.message,
+        summary: message
       })
       sendTaskNotification(taskId, false, webContents)
     }
@@ -275,6 +360,9 @@ function processOutputLine(taskId: string, line: string, webContents: WebContent
         })
         completedTasks.add(taskId)
         sendTaskNotification(taskId, !!data.success, webContents)
+        break
+      case 'error':
+        webContents.send('subapp:output', { taskId, ...data })
         break
       case 'ui_show':
       case 'ui_update':
@@ -362,6 +450,12 @@ export function executeSubAppWithCallbacks(
         switch (json.type) {
           case 'output':
             callbacks.onOutput?.(json.message || line, json.level || 'info')
+            break
+          case 'error':
+            callbacks.onOutput?.(
+              [json.message, json.details].filter(Boolean).join('\n'),
+              'error'
+            )
             break
           case 'progress':
             callbacks.onProgress?.(json.percent ?? 0, json.message || '')
