@@ -85,7 +85,7 @@ export async function resolvePythonCommand(): Promise<PythonResolution> {
     const version = await probePythonCommand(configuredPythonPath)
     if (!version) {
       throw new Error(
-        `???? Python ??????${configuredPythonPath}\n????????? Python ?????????????? Python?`
+        `设置中的 Python 路径不可用：${configuredPythonPath}\n请检查「设置」里的 Python 路径，或清空该设置以使用系统 Python。`
       )
     }
     return { path: configuredPythonPath, version, source: 'settings' }
@@ -99,7 +99,7 @@ export async function resolvePythonCommand(): Promise<PythonResolution> {
   }
 
   throw new Error(
-    '?????? Python ???\n??? Python????????????? Python ???'
+    '未找到可用的 Python 环境。\n请安装 Python，或在「设置」里配置正确的 Python 路径。'
   )
 }
 

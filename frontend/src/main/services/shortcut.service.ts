@@ -114,7 +114,7 @@ async function handleShortcutTrigger(index: number): Promise<void> {
     if (Notification.isSupported()) {
       new Notification({
         title: manifest.name,
-        body: 'Python ????????????? Python ??'
+        body: 'Python 环境不可用，请检查设置里的 Python 路径'
       }).show()
     }
     return

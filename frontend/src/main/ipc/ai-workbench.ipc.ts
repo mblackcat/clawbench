@@ -5,6 +5,7 @@ import * as os from 'os'
 import {
   getSessions,
   createSession,
+  createRuntimeSession,
   updateSession,
   deleteSession,
   stopSession,
@@ -108,7 +109,9 @@ export function registerAIWorkbenchIpc(): void {
   ipcMain.handle(
     'ai-workbench:create-session',
     async (_event, workspaceId: string, toolType: string, source?: string) => {
-      return createSession(workspaceId, toolType as any, (source as any) || 'local')
+      return source === 'im'
+        ? createSession(workspaceId, toolType as any, 'im')
+        : createRuntimeSession(workspaceId, toolType as any)
     }
   )
 

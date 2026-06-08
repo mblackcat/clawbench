@@ -25,6 +25,41 @@ interface AIWorkbenchSidebarProps {
 
 /** Tool types that support native session history listing */
 const TOOLS_WITH_NATIVE_SESSIONS: AIToolType[] = ['claude', 'codex', 'gemini']
+const NATIVE_HISTORY_PAGE_SIZE = 5
+const WORKSPACE_COLLAPSE_STORAGE_KEY = 'cb-workbench-collapsed-workspaces'
+
+interface SidebarNativeSession {
+  sessionId: string
+  title: string
+  modifiedAt: number
+  sizeBytes?: number
+  toolType: AIToolType
+}
+
+interface NativeSessionState {
+  sessions: SidebarNativeSession[]
+  loading: boolean
+  loaded: boolean
+  workingDir: string
+}
+
+function loadCollapsedWorkspaceIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(WORKSPACE_COLLAPSE_STORAGE_KEY)
+    const ids = raw ? JSON.parse(raw) : []
+    return new Set(Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [])
+  } catch {
+    return new Set()
+  }
+}
+
+function persistCollapsedWorkspaceIds(ids: Set<string>): void {
+  try {
+    localStorage.setItem(WORKSPACE_COLLAPSE_STORAGE_KEY, JSON.stringify([...ids]))
+  } catch {
+    // ignore storage failures
+  }
+}
 
 const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
   onNewWorkspace,
@@ -50,7 +85,7 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
   const [collapsed, setCollapsed] = useState(false)
   const [filterText, setFilterText] = useState('')
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
-  const [collapsedWorkspaces, setCollapsedWorkspaces] = useState<Set<string>>(new Set())
+  const [collapsedWorkspaces, setCollapsedWorkspaces] = useState<Set<string>>(() => loadCollapsedWorkspaceIds())
 
   const [renameTarget, setRenameTarget] = useState<{
     type: 'workspace' | 'group'
@@ -59,10 +94,20 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
   const [renameValue, setRenameValue] = useState('')
 
   // Native session history state (keyed by workspace id)
-  const [nativeSessionsMap, setNativeSessionsMap] = useState<Record<string, { sessions: { sessionId: string; title: string; modifiedAt: number; sizeBytes?: number; toolType: AIToolType }[]; loading: boolean }>>({})
+  const [nativeSessionsMap, setNativeSessionsMap] = useState<Record<string, NativeSessionState>>({})
+  const [nativeSessionVisibleCounts, setNativeSessionVisibleCounts] = useState<Record<string, number>>({})
+  const nativeFetchInFlightRef = useRef<Set<string>>(new Set())
 
   const createSession = useAIWorkbenchStore((s) => s.createSession)
   const updateSession = useAIWorkbenchStore((s) => s.updateSession)
+
+  const openNativeSessionKeys = useMemo(() => {
+    return new Set(
+      sessions
+        .filter(s => s.toolSessionId)
+        .map(s => `${s.toolType}:${s.toolSessionId}`)
+    )
+  }, [sessions])
 
   // Diff stats per workspace (keyed by workspace id)
   const [diffStats, setDiffStats] = useState<Record<string, { additions: number; deletions: number }>>({})
@@ -92,9 +137,19 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
   const fetchNativeSessions = useCallback(async (wsId: string) => {
     const ws = workspaces.find(w => w.id === wsId)
     if (!ws) return
-    setNativeSessionsMap(prev => ({ ...prev, [wsId]: { sessions: prev[wsId]?.sessions || [], loading: true } }))
+    if (nativeFetchInFlightRef.current.has(wsId)) return
+
+    nativeFetchInFlightRef.current.add(wsId)
+    setNativeSessionsMap(prev => ({
+      ...prev,
+      [wsId]: {
+        sessions: prev[wsId]?.sessions || [],
+        loading: true,
+        loaded: prev[wsId]?.loaded || false,
+        workingDir: ws.workingDir
+      }
+    }))
     try {
-      const loadedIds = new Set(sessions.filter(s => s.workspaceId === wsId && s.toolSessionId).map(s => s.toolSessionId))
       const results = await Promise.all(
         TOOLS_WITH_NATIVE_SESSIONS.map(async (tt) => {
           try {
@@ -104,13 +159,68 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
         })
       )
       const merged = results.flat()
-        .filter(ns => !loadedIds.has(ns.sessionId))
         .sort((a, b) => b.modifiedAt - a.modifiedAt)
-      setNativeSessionsMap(prev => ({ ...prev, [wsId]: { sessions: merged, loading: false } }))
+      setNativeSessionsMap(prev => ({ ...prev, [wsId]: { sessions: merged, loading: false, loaded: true, workingDir: ws.workingDir } }))
     } catch {
-      setNativeSessionsMap(prev => ({ ...prev, [wsId]: { sessions: [], loading: false } }))
+      setNativeSessionsMap(prev => ({ ...prev, [wsId]: { sessions: [], loading: false, loaded: true, workingDir: ws.workingDir } }))
+    } finally {
+      nativeFetchInFlightRef.current.delete(wsId)
     }
-  }, [workspaces, sessions])
+  }, [workspaces])
+
+  const ensureNativeSessions = useCallback((wsId: string) => {
+    const ws = workspaces.find(w => w.id === wsId)
+    if (!ws) return
+    const state = nativeSessionsMap[wsId]
+    if (state?.loaded && state.workingDir === ws.workingDir) return
+    fetchNativeSessions(wsId)
+  }, [fetchNativeSessions, nativeSessionsMap, workspaces])
+
+  useEffect(() => {
+    if (workspaces.length === 0) {
+      setNativeSessionsMap({})
+      setNativeSessionVisibleCounts({})
+      return
+    }
+
+    const workspaceIds = new Set(workspaces.map((ws) => ws.id))
+    const workspaceDirs = new Map(workspaces.map((ws) => [ws.id, ws.workingDir]))
+    setNativeSessionVisibleCounts((prev) => {
+      const next: Record<string, number> = {}
+      for (const ws of workspaces) {
+        if (prev[ws.id] !== undefined) next[ws.id] = prev[ws.id]
+      }
+      return next
+    })
+    setNativeSessionsMap((prev) => {
+      const next: typeof prev = {}
+      for (const [wsId, state] of Object.entries(prev)) {
+        const workingDir = workspaceDirs.get(wsId)
+        if (!workingDir) continue
+        next[wsId] = state.workingDir === workingDir
+          ? state
+          : { sessions: [], loading: false, loaded: false, workingDir }
+      }
+      return next
+    })
+    setCollapsedWorkspaces((prev) => {
+      const next = new Set([...prev].filter((wsId) => workspaceIds.has(wsId)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [workspaces])
+
+  useEffect(() => {
+    persistCollapsedWorkspaceIds(collapsedWorkspaces)
+  }, [collapsedWorkspaces])
+
+  useEffect(() => {
+    for (const ws of workspaces) {
+      if (collapsedWorkspaces.has(ws.id)) continue
+      const state = nativeSessionsMap[ws.id]
+      if (state?.workingDir === ws.workingDir && (state.loaded || state.loading)) continue
+      fetchNativeSessions(ws.id)
+    }
+  }, [workspaces, collapsedWorkspaces, nativeSessionsMap, fetchNativeSessions])
 
   /** Resume a native session into a workspace */
   const handleResumeNativeSession = useCallback(async (wsId: string, toolType: AIToolType, nativeSessionId: string, title?: string) => {
@@ -138,8 +248,12 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
   const buildHistoryItems = useCallback((wsId: string): MenuProps['items'] => {
     const state = nativeSessionsMap[wsId]
     if (!state || state.loading) return [{ key: 'loading', label: <Spin size="small" />, disabled: true }]
+    const availableSessions = state.sessions.filter(ns => !openNativeSessionKeys.has(`${ns.toolType}:${ns.sessionId}`))
     if (state.sessions.length === 0) return [{ key: 'empty', label: '无历史会话', disabled: true }]
-    return state.sessions.map(ns => {
+    const visibleCount = nativeSessionVisibleCounts[wsId] || NATIVE_HISTORY_PAGE_SIZE
+    const visibleSessions = availableSessions.slice(0, visibleCount)
+    if (visibleSessions.length === 0) return [{ key: 'empty', label: '无历史会话', disabled: true }]
+    const items: NonNullable<MenuProps['items']> = visibleSessions.map(ns => {
       const timePart = formatRelativeTime(ns.modifiedAt)
       return {
         key: ns.sessionId,
@@ -169,7 +283,14 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
         )
       }
     })
-  }, [nativeSessionsMap])
+    if (availableSessions.length > visibleCount) {
+      items.push({
+        key: `load-more:${wsId}`,
+        label: <span style={{ color: token.colorPrimary }}>{t('coding.loadMore')}</span>
+      })
+    }
+    return items
+  }, [nativeSessionsMap, nativeSessionVisibleCounts, openNativeSessionKeys, t, token.colorPrimary])
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -206,13 +327,15 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
   }, [])
 
   const toggleWorkspace = useCallback((wsId: string) => {
+    const willExpand = collapsedWorkspaces.has(wsId)
     setCollapsedWorkspaces((prev) => {
       const next = new Set(prev)
       if (next.has(wsId)) next.delete(wsId)
       else next.add(wsId)
       return next
     })
-  }, [])
+    if (willExpand) fetchNativeSessions(wsId)
+  }, [collapsedWorkspaces, fetchNativeSessions])
 
   const filteredWorkspaces = useMemo(() => {
     if (!filterText.trim()) return workspaces
@@ -495,6 +618,27 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
                   const isRenamingWs =
                     renameTarget?.type === 'workspace' && renameTarget.id === ws.id
                   const isWsCollapsed = collapsedWorkspaces.has(ws.id)
+                  const nativeState = nativeSessionsMap[ws.id]
+                  const nativeVisibleCount = nativeSessionVisibleCounts[ws.id] || NATIVE_HISTORY_PAGE_SIZE
+                  const availableNativeSessions = (nativeState?.sessions || [])
+                    .filter(ns => !openNativeSessionKeys.has(`${ns.toolType}:${ns.sessionId}`))
+                  const visibleNativeSessions = availableNativeSessions.slice(0, nativeVisibleCount)
+                  const hasMoreNativeSessions = availableNativeSessions.length > nativeVisibleCount
+                  const sessionRows = [
+                    ...wsSessions.map((session, idx) => ({
+                      kind: 'local' as const,
+                      key: session.id,
+                      sortAt: session.updatedAt || session.createdAt,
+                      session,
+                      idx
+                    })),
+                    ...visibleNativeSessions.map((nativeSession) => ({
+                      kind: 'native' as const,
+                      key: `native-${nativeSession.toolType}-${nativeSession.sessionId}`,
+                      sortAt: nativeSession.modifiedAt,
+                      nativeSession
+                    }))
+                  ].sort((a, b) => b.sortAt - a.sortAt)
 
                   const wsRowContent = (
                     <div
@@ -573,6 +717,13 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
                             menu={{
                               items: buildHistoryItems(ws.id),
                               onClick: ({ key }) => {
+                                if (String(key).startsWith('load-more:')) {
+                                  setNativeSessionVisibleCounts(prev => ({
+                                    ...prev,
+                                    [ws.id]: (prev[ws.id] || NATIVE_HISTORY_PAGE_SIZE) + NATIVE_HISTORY_PAGE_SIZE
+                                  }))
+                                  return
+                                }
                                 const state = nativeSessionsMap[ws.id]
                                 const ns = state?.sessions.find(s => s.sessionId === key)
                                 if (ns) handleResumeNativeSession(ws.id, ns.toolType, key, ns.title)
@@ -583,7 +734,7 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
                             placement="bottomLeft"
                             autoAdjustOverflow
                             trigger={['click']}
-                            onOpenChange={(open) => open && fetchNativeSessions(ws.id)}
+                            onOpenChange={(open) => open && ensureNativeSessions(ws.id)}
                           >
                             <HistoryOutlined
                               style={{
@@ -639,11 +790,55 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
                       </Dropdown>
 
                       {/* Sessions — hidden when workspace is collapsed */}
-                      {!isWsCollapsed && wsSessions.map((session, idx) => {
+                      {!isWsCollapsed && sessionRows.map((row) => {
+                        if (row.kind === 'native') {
+                          const ns = row.nativeSession
+                          return (
+                            <div
+                              key={row.key}
+                              onClick={() => handleResumeNativeSession(ws.id, ns.toolType, ns.sessionId, ns.title)}
+                              style={{
+                                ...rowBase,
+                                padding: '2px 8px 2px 1.8em',
+                                gap: 5,
+                                fontSize: 12,
+                                color: token.colorTextSecondary,
+                                background: 'transparent'
+                              }}
+                              onMouseEnter={(e) =>
+                                ((e.currentTarget as HTMLElement).style.background = token.colorFillSecondary)
+                              }
+                              onMouseLeave={(e) =>
+                                ((e.currentTarget as HTMLElement).style.background = 'transparent')
+                              }
+                            >
+                              <HistoryOutlined style={{ fontSize: 12, color: token.colorTextTertiary, flexShrink: 0 }} />
+                              <Tag color={AI_TOOL_TAG_COLORS[ns.toolType]} style={{ ...AI_TOOL_TAG_STYLE, margin: 0, flexShrink: 0, fontSize: 10, lineHeight: '16px', paddingInline: 3 }}>
+                                {renderAIToolTagLabel(ns.toolType, AI_TOOL_SHORT_NAMES[ns.toolType], 12)}
+                              </Tag>
+                              <span
+                                title={ns.title}
+                                style={{
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  lineHeight: '20px'
+                                }}
+                              >
+                                {ns.title}
+                              </span>
+                              <span style={{ marginLeft: 'auto', flexShrink: 0, fontSize: 11, color: token.colorTextQuaternary }}>
+                                {formatRelativeTime(ns.modifiedAt)}
+                              </span>
+                            </div>
+                          )
+                        }
+
+                        const session = row.session
                         const isSelected = activeSessionId === session.id
                         const sessionLabel = session.title
                           ? `${AI_TOOL_SHORT_NAMES[session.toolType]}: ${session.title}`
-                          : `${AI_TOOL_SHORT_NAMES[session.toolType]} #${idx + 1}`
+                          : `${AI_TOOL_SHORT_NAMES[session.toolType]} #${row.idx + 1}`
                         return (
                           <Dropdown
                             key={session.id}
@@ -710,6 +905,59 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
                           </Dropdown>
                         )
                       })}
+                      {!isWsCollapsed && !nativeState?.loaded && !nativeState?.loading && (
+                        <div
+                          onClick={() => ensureNativeSessions(ws.id)}
+                          style={{
+                            ...rowBase,
+                            padding: '2px 8px 2px 1.8em',
+                            gap: 5,
+                            fontSize: 12,
+                            color: token.colorTextTertiary,
+                            background: 'transparent'
+                          }}
+                          onMouseEnter={(e) =>
+                            ((e.currentTarget as HTMLElement).style.background = token.colorFillSecondary)
+                          }
+                          onMouseLeave={(e) =>
+                            ((e.currentTarget as HTMLElement).style.background = 'transparent')
+                          }
+                        >
+                          <HistoryOutlined style={{ fontSize: 12, flexShrink: 0 }} />
+                          <span>{t('coding.loadHistorySessions')}</span>
+                        </div>
+                      )}
+                      {!isWsCollapsed && nativeState?.loading && visibleNativeSessions.length === 0 && (
+                        <div style={{ ...rowBase, padding: '4px 8px 4px 1.8em', gap: 6, fontSize: 12, color: token.colorTextTertiary }}>
+                          <Spin size="small" />
+                          <span>{t('coding.loadingHistorySessions')}</span>
+                        </div>
+                      )}
+                      {!isWsCollapsed && hasMoreNativeSessions && (
+                        <div
+                          onClick={() => setNativeSessionVisibleCounts(prev => ({
+                            ...prev,
+                            [ws.id]: (prev[ws.id] || NATIVE_HISTORY_PAGE_SIZE) + NATIVE_HISTORY_PAGE_SIZE
+                          }))}
+                          style={{
+                            ...rowBase,
+                            padding: '2px 8px 2px 1.8em',
+                            gap: 5,
+                            fontSize: 12,
+                            color: token.colorPrimary,
+                            background: 'transparent'
+                          }}
+                          onMouseEnter={(e) =>
+                            ((e.currentTarget as HTMLElement).style.background = token.colorFillSecondary)
+                          }
+                          onMouseLeave={(e) =>
+                            ((e.currentTarget as HTMLElement).style.background = 'transparent')
+                          }
+                        >
+                          <HistoryOutlined style={{ fontSize: 12, flexShrink: 0 }} />
+                          <span>{t('coding.loadMore')}</span>
+                        </div>
+                      )}
                     </div>
                   )
                 })}
