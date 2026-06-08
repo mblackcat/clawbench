@@ -6,7 +6,6 @@ import {
   PlusOutlined,
   RightOutlined,
   SearchOutlined,
-  CodeOutlined,
   HistoryOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined
@@ -727,20 +726,6 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
                             onClick={(e) => {
                               e.stopPropagation()
                               onNewSession(ws.id)
-                            }}
-                          />
-                          {/* Open directory in native terminal */}
-                          <CodeOutlined
-                            style={{
-                              fontSize: 12,
-                              color: token.colorTextTertiary,
-                              flexShrink: 0,
-                              padding: '2px'
-                            }}
-                            title={t('coding.openInTerminal')}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              window.api.aiWorkbench.openTerminal(ws.workingDir).catch(() => {})
                             }}
                           />
                         </>

@@ -398,7 +398,7 @@ export interface ClawBenchAPI {
     ) => Promise<import('./ai-workbench').AIWorkbenchSession | null>
     deleteSession: (id: string) => Promise<void>
     stopSession: (id: string) => Promise<import('./ai-workbench').AIWorkbenchSession | null>
-    launchSession: (id: string, opts?: { forcePty?: boolean }) => Promise<{ success: boolean; error?: string }>
+    launchSession: (id: string, opts?: { forcePty?: boolean; cols?: number; rows?: number }) => Promise<{ success: boolean; error?: string }>
     writeToSession: (sessionId: string, text: string) => Promise<{ success: boolean; error?: string }>
     interruptSession: (sessionId: string) => Promise<{ success: boolean }>
     executeSlashCommand: (sessionId: string, command: string) => Promise<{ success: boolean; error?: string }>
@@ -418,6 +418,7 @@ export interface ClawBenchAPI {
       sizeBytes?: number
     }>>
     getSessionOutput: (sessionId: string) => Promise<string>
+    getRawSessionOutput: (sessionId: string) => Promise<string>
     getGroups: () => Promise<import('./ai-workbench').AIWorkbenchGroup[]>
     createGroup: (name: string) => Promise<import('./ai-workbench').AIWorkbenchGroup>
     renameGroup: (

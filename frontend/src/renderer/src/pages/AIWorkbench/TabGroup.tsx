@@ -1,4 +1,5 @@
 import React, { useMemo, useCallback, useRef, useState } from 'react'
+import { Allotment } from 'allotment'
 import { Typography, theme } from 'antd'
 import { MessageOutlined } from '@ant-design/icons'
 import PaneTabBar from './PaneTabBar'
@@ -159,6 +160,84 @@ const TabGroup: React.FC<TabGroupProps> = ({
     if (activeTabId) setActiveSession(activeTabId)
   }, [paneId, activeTabId, setFocusedPane, setActiveSession])
 
+  const [terminalOpen, setTerminalOpen] = useState(false)
+  const [terminalSessionIds, setTerminalSessionIds] = useState<Record<string, string>>({})
+  const activeTerminalSessionId = activeSession
+    ? terminalSessionIds[activeSession.workspaceId]
+    : undefined
+  const terminalVisible = terminalOpen && !!activeTerminalSessionId
+
+  const handleToggleTerminal = useCallback(async () => {
+    if (!activeSession) return
+    const existingId = terminalSessionIds[activeSession.workspaceId]
+    if (terminalOpen && existingId) {
+      setTerminalOpen(false)
+      return
+    }
+
+    if (existingId) {
+      setTerminalOpen(true)
+      return
+    }
+
+    try {
+      const terminalSession = await createSession(activeSession.workspaceId, 'terminal', 'local')
+      setTerminalSessionIds((prev) => ({
+        ...prev,
+        [activeSession.workspaceId]: terminalSession.id,
+      }))
+      setTerminalOpen(true)
+    } catch {
+      // Keep the toolbar quiet; the normal terminal view will surface launch errors.
+    }
+  }, [activeSession, terminalOpen, terminalSessionIds, createSession])
+
+  const activeContent = activeTabId && activeSession ? (
+    activeSession.toolType === 'claude' && claudeViewMode === 'chat' ? (
+      <WorkbenchChatPanel
+        sessionId={activeTabId}
+        onNewSession={handleNewSession}
+        onCloseSession={handleCloseTab}
+      />
+    ) : (
+      <WorkbenchTerminalView
+        key={activeTabId}
+        sessionId={activeTabId}
+        onNewSession={handleNewSession}
+        onCloseSession={handleCloseTab}
+        claudeViewMode={activeSession.toolType === 'claude' ? claudeViewMode : undefined}
+        onClaudeViewModeChange={activeSession.toolType === 'claude' ? handleClaudeViewModeChange : undefined}
+      />
+    )
+  ) : (
+    <div style={{
+      flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      flexDirection: 'column', gap: 12, color: token.colorTextQuaternary, height: '100%',
+    }}>
+      <MessageOutlined style={{ fontSize: 36 }} />
+      <Text style={{ color: token.colorTextQuaternary, fontSize: 13 }}>
+        {t('coding.emptyPlaceholder')}
+      </Text>
+    </div>
+  )
+
+  const contentWithTerminal = terminalVisible && activeTerminalSessionId && activeSession ? (
+    <Allotment vertical defaultSizes={[70, 30]}>
+      <Allotment.Pane minSize={180}>
+        {activeContent}
+      </Allotment.Pane>
+      <Allotment.Pane minSize={120}>
+        <WorkbenchTerminalView
+          key={activeTerminalSessionId}
+          sessionId={activeTerminalSessionId}
+          onNewSession={handleNewSession}
+          onCloseSession={handleCloseTab}
+          compact
+        />
+      </Allotment.Pane>
+    </Allotment>
+  ) : activeContent
+
   return (
     <div
       style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}
@@ -179,6 +258,8 @@ const TabGroup: React.FC<TabGroupProps> = ({
         onSplitDown={handleSplitDown}
         claudeViewMode={activeSession?.toolType === 'claude' ? claudeViewMode : undefined}
         onClaudeViewModeChange={activeSession?.toolType === 'claude' ? handleClaudeViewModeChange : undefined}
+        terminalPanelOpen={terminalVisible}
+        onToggleTerminalPanel={activeSession ? handleToggleTerminal : undefined}
         gitPanelOpen={gitPanelOpen}
         onToggleGitPanel={onToggleGitPanel}
         isFocused={isFocused}
@@ -204,34 +285,7 @@ const TabGroup: React.FC<TabGroupProps> = ({
           }} />
         )}
 
-        {activeTabId && activeSession ? (
-          activeSession.toolType === 'claude' && claudeViewMode === 'chat' ? (
-            <WorkbenchChatPanel
-              sessionId={activeTabId}
-              onNewSession={handleNewSession}
-              onCloseSession={handleCloseTab}
-            />
-          ) : (
-            <WorkbenchTerminalView
-              key={activeTabId}
-              sessionId={activeTabId}
-              onNewSession={handleNewSession}
-              onCloseSession={handleCloseTab}
-              claudeViewMode={activeSession.toolType === 'claude' ? claudeViewMode : undefined}
-              onClaudeViewModeChange={activeSession.toolType === 'claude' ? handleClaudeViewModeChange : undefined}
-            />
-          )
-        ) : (
-          <div style={{
-            flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            flexDirection: 'column', gap: 12, color: token.colorTextQuaternary, height: '100%',
-          }}>
-            <MessageOutlined style={{ fontSize: 36 }} />
-            <Text style={{ color: token.colorTextQuaternary, fontSize: 13 }}>
-              {t('coding.emptyPlaceholder')}
-            </Text>
-          </div>
-        )}
+        {contentWithTerminal}
       </div>
     </div>
   )

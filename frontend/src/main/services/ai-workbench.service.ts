@@ -27,7 +27,7 @@ import type {
 import {
   killPtySession, hasPtySession, writeToPty,
   createPtySession, getToolCommand, getResumeArgs, getPtySessionOutput,
-  registerPtyOutputCallback
+  getRawPtyOutput, registerPtyOutputCallback
 } from './pty-manager.service'
 import {
   launchSDKSession, writeToSDKSession, closeSDKSession, hasSDKSession,
@@ -133,6 +133,10 @@ export function getSessionOutput(sessionId: string): string {
   const sdkOutput = getSDKSessionOutput(sessionId)
   if (sdkOutput) return sdkOutput
   return getPtySessionOutput(sessionId)
+}
+
+export function getRawSessionOutput(sessionId: string): string {
+  return getRawPtyOutput(sessionId)
 }
 
 // ── SDK session event handler (for IM mode) ──
@@ -410,7 +414,10 @@ export function deleteSession(id: string): void {
  * - Other tools (Gemini, Codex, etc.): PTY mode so TUI-based CLIs get a real
  *   TTY. Output is sent as raw pty:data events and rendered via xterm.js.
  */
-export async function launchSession(id: string, opts?: { forcePty?: boolean }): Promise<{ success: boolean; error?: string }> {
+export async function launchSession(
+  id: string,
+  opts?: { forcePty?: boolean; cols?: number; rows?: number }
+): Promise<{ success: boolean; error?: string }> {
   const config = getAIWorkbenchConfig()
   const session = getSessionById(id)
   if (!session) return { success: false, error: '会话不存在' }
@@ -444,7 +451,15 @@ export async function launchSession(id: string, opts?: { forcePty?: boolean }): 
       const resumeArgs = session.toolSessionId
         ? getResumeArgs(session.toolType, session.toolSessionId)
         : []
-      createPtySession(id, resolvedCommand, [...baseArgs, ...resumeArgs], workspace.workingDir, toolEnv, handlePtyExit)
+      createPtySession(
+        id,
+        resolvedCommand,
+        [...baseArgs, ...resumeArgs],
+        workspace.workingDir,
+        toolEnv,
+        handlePtyExit,
+        opts?.cols && opts?.rows ? { cols: opts.cols, rows: opts.rows } : undefined
+      )
       registerPtyOutputCallback(id, handlePtyOutputStabilized)
     }
     updateSession(id, { status: 'idle', startedAt: Date.now() })

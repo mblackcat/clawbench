@@ -419,7 +419,7 @@ export const api = {
       ipcRenderer.invoke('ai-workbench:update-session', id, updates),
     deleteSession: (id: string) => ipcRenderer.invoke('ai-workbench:delete-session', id),
     stopSession: (id: string) => ipcRenderer.invoke('ai-workbench:stop-session', id),
-    launchSession: (id: string, opts?: { forcePty?: boolean }) => ipcRenderer.invoke('ai-workbench:launch-session', id, opts),
+    launchSession: (id: string, opts?: { forcePty?: boolean; cols?: number; rows?: number }) => ipcRenderer.invoke('ai-workbench:launch-session', id, opts),
     writeToSession: (sessionId: string, text: string) =>
       ipcRenderer.invoke('ai-workbench:write-to-session', sessionId, text),
     interruptSession: (sessionId: string) =>
@@ -463,6 +463,8 @@ export const api = {
     // Session output
     getSessionOutput: (sessionId: string) =>
       ipcRenderer.invoke('ai-workbench:get-session-output', sessionId),
+    getRawSessionOutput: (sessionId: string) =>
+      ipcRenderer.invoke('ai-workbench:get-raw-session-output', sessionId),
 
     getGroups: () => ipcRenderer.invoke('ai-workbench:get-groups'),
     createGroup: (name: string) => ipcRenderer.invoke('ai-workbench:create-group', name),

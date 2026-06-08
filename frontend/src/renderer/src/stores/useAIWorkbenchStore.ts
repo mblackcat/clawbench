@@ -77,7 +77,7 @@ interface AIWorkbenchState {
   createSession: (wid: string, tt: AIToolType, src?: 'local' | 'im') => Promise<AIWorkbenchSession>
   updateSession: (id: string, u: Partial<AIWorkbenchSession>) => Promise<void>
   deleteSession: (id: string) => Promise<void>; stopSession: (id: string) => Promise<void>
-  launchSession: (id: string, opts?: { forcePty?: boolean }) => Promise<{ success: boolean; error?: string }>
+  launchSession: (id: string, opts?: { forcePty?: boolean; cols?: number; rows?: number }) => Promise<{ success: boolean; error?: string }>
   createGroup: (n: string) => Promise<AIWorkbenchGroup>; renameGroup: (id: string, n: string) => Promise<void>
   deleteGroup: (id: string) => Promise<{ success: boolean; error?: string }>
   saveIMConfig: (c: AIWorkbenchIMConfig) => Promise<void>
