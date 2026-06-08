@@ -53,9 +53,9 @@ import {
 import type { AIToolType } from '../../store/ai-workbench.store'
 import { listSubApps, getSubAppPath } from '../subapp.service'
 import { listWorkspaces, setActiveWorkspace } from '../workspace.service'
-import { executeSubAppWithCallbacks } from '../python-runner.service'
+import { executeSubAppWithCallbacks, resolvePythonCommand } from '../python-runner.service'
 import { listRecentMarketApps, searchMarketApps, installMarketApp } from './marketplace.service'
-import { settingsStore, getAiModelConfigs, getLastChatModel } from '../../store/settings.store'
+import { getAiModelConfigs, getLastChatModel } from '../../store/settings.store'
 import { getPythonSdkPath } from '../../utils/paths'
 import { randomUUID } from 'crypto'
 
@@ -628,9 +628,31 @@ class IMBridgeService {
     const runningCard = buildAppRunningCard(app.manifest.name)
     const runCardId = await this.adapter?.sendCard(chatId, runningCard)
 
-    const pythonPath = (settingsStore.get('pythonPath') as string) || 'python3'
     const sdkPath = getPythonSdkPath()
     const taskId = randomUUID()
+    let pythonPath: string
+
+    try {
+      const python = await resolvePythonCommand()
+      pythonPath = python.path
+      logger.info(
+        `Using ${python.source} Python for IM app ${app.manifest.id}: ${python.path} (${python.version})`
+      )
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logger.error(`IM app execution failed to resolve Python for ${app.manifest.id}:`, message)
+      const resultCard = buildAppResultCard(app.manifest.name, false, message, '')
+      if (runCardId && this.adapter) {
+        try {
+          await this.adapter.updateCard(chatId, runCardId, resultCard)
+        } catch {
+          await this.adapter?.sendCard(chatId, resultCard)
+        }
+      } else {
+        await this.adapter?.sendText(chatId, message)
+      }
+      return
+    }
 
     // Use active workspace if available, otherwise use placeholder
     const chatState = this.getChatState(chatId)

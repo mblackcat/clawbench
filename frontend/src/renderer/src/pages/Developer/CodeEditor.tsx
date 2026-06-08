@@ -98,6 +98,8 @@ const CodeEditor: React.FC = () => {
   const [aiModalManifest, setAIModalManifest] = useState<Record<string, unknown>>({})
   const outputEndRef = useRef<HTMLDivElement>(null)
   const initialLoadDone = useRef(false)
+  const currentTaskIdRef = useRef<string | null>(null)
+  const runPendingRef = useRef(false)
 
   // ── Context menu state ──────────────────────────────────────────────────────
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
@@ -128,20 +130,28 @@ const CodeEditor: React.FC = () => {
 
     // Subscribe to subapp output
     const unsubOutput = window.api.subapp.onOutput((data: SubAppOutput) => {
-      if (data.taskId === currentTaskId) {
-        addOutputLine('output', data.message || '', data.level)
+      if (acceptTaskEvent(data.taskId)) {
+        addOutputLine(data.type === 'error' ? 'error' : 'output', formatSubAppOutput(data), data.level)
       }
     })
 
     const unsubProgress = window.api.subapp.onProgress((data: SubAppOutput) => {
-      if (data.taskId === currentTaskId) {
+      if (acceptTaskEvent(data.taskId)) {
         addOutputLine('info', `Progress: ${data.percent}% - ${data.message || ''}`)
       }
     })
 
     const unsubStatus = window.api.subapp.onTaskStatus((data: any) => {
-      if (data.taskId === currentTaskId) {
+      if (acceptTaskEvent(data.taskId)) {
         setIsRunning(data.status === 'running')
+        if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
+          runPendingRef.current = false
+        }
+        if (data.status === 'failed' && !data.summary) {
+          data.summary =
+            data.error ||
+            (data.exitCode !== undefined ? `Process exited with code ${data.exitCode}` : '')
+        }
         if (data.status === 'completed') {
           addOutputLine('info', `✓ ${t('codeEditor.execDone', data.summary || '')}`)
         } else if (data.status === 'failed') {
@@ -155,7 +165,7 @@ const CodeEditor: React.FC = () => {
       unsubProgress()
       unsubStatus()
     }
-  }, [appId, currentTaskId])
+  }, [appId, t])
 
   // Hide context menu on any click outside
   useEffect(() => {
@@ -199,6 +209,25 @@ const CodeEditor: React.FC = () => {
     setTimeout(() => {
       outputEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }, 100)
+  }
+
+  const acceptTaskEvent = (taskId?: string): boolean => {
+    if (!taskId) return false
+    if (taskId === currentTaskIdRef.current) return true
+    if (runPendingRef.current && currentTaskIdRef.current === null) {
+      currentTaskIdRef.current = taskId
+      setCurrentTaskId(taskId)
+      return true
+    }
+    return false
+  }
+
+  const formatSubAppOutput = (data: SubAppOutput & { content?: string; error?: string }): string => {
+    const main = data.message ?? data.content ?? data.summary ?? data.error ?? ''
+    if (data.details) {
+      return main ? `${main}\n${data.details}` : data.details
+    }
+    return main
   }
 
   const openFile = async (filePath: string, fileName: string) => {
@@ -283,17 +312,23 @@ const CodeEditor: React.FC = () => {
     setOutputLines([])
     setOutputVisible(true)
     setIsRunning(true)
+    setCurrentTaskId(null)
+    currentTaskIdRef.current = null
+    runPendingRef.current = true
 
     addOutputLine('info', t('codeEditor.executing', appId))
     addOutputLine('info', '─'.repeat(50))
 
     try {
       const taskId = await window.api.subapp.execute(appId, {})
+      currentTaskIdRef.current = taskId as string
       setCurrentTaskId(taskId as string)
+      runPendingRef.current = false
       addOutputLine('info', t('codeEditor.taskId', taskId as string))
     } catch (err) {
       addOutputLine('error', t('codeEditor.execFailed', String(err)))
       setIsRunning(false)
+      runPendingRef.current = false
     }
   }
 
@@ -748,7 +783,8 @@ const CodeEditor: React.FC = () => {
                       ? token.colorError
                       : line.type === 'info'
                         ? token.colorPrimary
-                        : token.colorText
+                        : token.colorText,
+                  whiteSpace: 'pre-wrap'
                 }}
               >
                 {line.message}

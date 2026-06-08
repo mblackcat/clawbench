@@ -87,7 +87,7 @@ export const settingsStore = new Store<SettingsSchema>({
   schema: {
     pythonPath: {
       type: 'string',
-      default: 'python3'
+      default: ''
     },
     language: {
       type: 'string',
