@@ -41,7 +41,7 @@ const WorkbenchTerminalView: React.FC<WorkbenchTerminalViewProps> = ({ sessionId
       fontFamily: '"Cascadia Code", "Fira Code", "JetBrains Mono", monospace',
       fontSize: 13,
       lineHeight: 1.4,
-      cursorBlink: true,
+      cursorBlink: false,
       cursorStyle: 'bar',
       theme: {
         background: '#1e1e1e',
