@@ -213,6 +213,15 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
     persistCollapsedWorkspaceIds(collapsedWorkspaces)
   }, [collapsedWorkspaces])
 
+  useEffect(() => {
+    for (const ws of workspaces) {
+      if (collapsedWorkspaces.has(ws.id)) continue
+      const state = nativeSessionsMap[ws.id]
+      if (state?.workingDir === ws.workingDir && (state.loaded || state.loading)) continue
+      fetchNativeSessions(ws.id)
+    }
+  }, [workspaces, collapsedWorkspaces, nativeSessionsMap, fetchNativeSessions])
+
   /** Resume a native session into a workspace */
   const handleResumeNativeSession = useCallback(async (wsId: string, toolType: AIToolType, nativeSessionId: string, title?: string) => {
     try {
