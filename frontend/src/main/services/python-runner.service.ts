@@ -5,6 +5,7 @@ import { WebContents, Notification, BrowserWindow } from 'electron'
 import { randomUUID } from 'crypto'
 import { getTempDir } from '../utils/paths'
 import { settingsStore } from '../store/settings.store'
+import { mainT } from '../utils/i18n'
 import * as logger from '../utils/logger'
 
 /** Map of taskId to running child process */
@@ -38,6 +39,33 @@ export interface PythonResolution {
   path: string
   version: string
   source: 'settings' | 'system'
+}
+
+export interface I18nMessagePayload {
+  i18nKey?: string
+  i18nArgs?: string[]
+}
+
+export class PythonResolutionError extends Error {
+  i18nKey: string
+  i18nArgs: string[]
+
+  constructor(i18nKey: string, i18nArgs: string[] = []) {
+    super(mainT(i18nKey, ...i18nArgs))
+    this.name = 'PythonResolutionError'
+    this.i18nKey = i18nKey
+    this.i18nArgs = i18nArgs
+  }
+}
+
+export function getI18nPayload(err: unknown): I18nMessagePayload {
+  if (err instanceof PythonResolutionError) {
+    return {
+      i18nKey: err.i18nKey,
+      i18nArgs: err.i18nArgs
+    }
+  }
+  return {}
 }
 
 function probePythonCommand(command: string): Promise<string | null> {
@@ -84,9 +112,9 @@ export async function resolvePythonCommand(): Promise<PythonResolution> {
   if (configuredPythonPath) {
     const version = await probePythonCommand(configuredPythonPath)
     if (!version) {
-      throw new Error(
-        `设置中的 Python 路径不可用：${configuredPythonPath}\n请检查「设置」里的 Python 路径，或清空该设置以使用系统 Python。`
-      )
+      throw new PythonResolutionError('subapp.pythonConfiguredPathUnavailable', [
+        configuredPythonPath
+      ])
     }
     return { path: configuredPythonPath, version, source: 'settings' }
   }
@@ -98,9 +126,7 @@ export async function resolvePythonCommand(): Promise<PythonResolution> {
     }
   }
 
-  throw new Error(
-    '未找到可用的 Python 环境。\n请安装 Python，或在「设置」里配置正确的 Python 路径。'
-  )
+  throw new PythonResolutionError('subapp.pythonNotFound')
 }
 
 /**
@@ -289,13 +315,16 @@ export function executeSubApp(
     if (!completedTasks.has(taskId) && !webContents.isDestroyed()) {
       const success = code === 0
       const errorSummary = stderrBuffer.trim()
+      const fallbackExitCode = String(code ?? 'unknown')
       webContents.send('subapp:task-status', {
         taskId,
         status: success ? 'completed' : 'failed',
         exitCode: code,
         summary: success
           ? undefined
-          : errorSummary || `Process exited with code ${code ?? 'unknown'}`
+          : errorSummary || mainT('subapp.processExitedWithCode', fallbackExitCode),
+        summaryI18nKey: success || errorSummary ? undefined : 'subapp.processExitedWithCode',
+        summaryI18nArgs: success || errorSummary ? undefined : [fallbackExitCode]
       })
       sendTaskNotification(taskId, success, webContents)
     }
@@ -311,18 +340,24 @@ export function executeSubApp(
     logger.error(`Task ${taskId} process error:`, err.message)
 
     if (!webContents.isDestroyed()) {
-      const message = `Process failed to start: ${err.message}`
+      const message = mainT('subapp.processStartFailed', err.message)
       webContents.send('subapp:output', {
         taskId,
         type: 'error',
         message,
-        details: `Python command: ${pythonPath}`
+        i18nKey: 'subapp.processStartFailed',
+        i18nArgs: [err.message],
+        details: mainT('subapp.pythonCommand', pythonPath),
+        detailsI18nKey: 'subapp.pythonCommand',
+        detailsI18nArgs: [pythonPath]
       })
       webContents.send('subapp:task-status', {
         taskId,
         status: 'failed',
         error: err.message,
-        summary: message
+        summary: message,
+        summaryI18nKey: 'subapp.processStartFailed',
+        summaryI18nArgs: [err.message]
       })
       sendTaskNotification(taskId, false, webContents)
     }
@@ -461,7 +496,7 @@ export function executeSubAppWithCallbacks(
             callbacks.onProgress?.(json.percent ?? 0, json.message || '')
             break
           case 'result':
-            lastSummary = json.summary || (json.success ? '执行成功' : '执行失败')
+            lastSummary = json.summary || mainT(json.success ? 'subapp.executionSucceeded' : 'subapp.executionFailed')
             callbacks.onComplete?.(!!json.success, lastSummary)
             completedTasks.add(taskId)
             break
@@ -484,7 +519,10 @@ export function executeSubAppWithCallbacks(
     }
     if (!completedTasks.has(taskId)) {
       const success = code === 0
-      callbacks.onComplete?.(success, lastSummary || (success ? '执行完成' : '执行失败'))
+      callbacks.onComplete?.(
+        success,
+        lastSummary || mainT(success ? 'subapp.executionCompleted' : 'subapp.executionFailed')
+      )
     }
     runningTasks.delete(taskId)
     completedTasks.delete(taskId)
@@ -493,7 +531,7 @@ export function executeSubAppWithCallbacks(
   })
 
   proc.on('error', (err) => {
-    callbacks.onComplete?.(false, `进程启动失败: ${err.message}`)
+    callbacks.onComplete?.(false, mainT('subapp.processStartFailed', err.message))
     completedTasks.add(taskId)
     runningTasks.delete(taskId)
     taskAppNames.delete(taskId)

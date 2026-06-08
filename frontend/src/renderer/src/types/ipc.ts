@@ -71,6 +71,8 @@ export interface ClawBenchAPI {
         status: string
         success?: boolean
         summary?: string
+        summaryI18nKey?: string
+        summaryI18nArgs?: string[]
       }) => void
     ) => () => void
     onTaskStarted: (

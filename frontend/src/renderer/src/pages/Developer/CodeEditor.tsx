@@ -137,7 +137,7 @@ const CodeEditor: React.FC = () => {
 
     const unsubProgress = window.api.subapp.onProgress((data: SubAppOutput) => {
       if (acceptTaskEvent(data.taskId)) {
-        addOutputLine('info', `Progress: ${data.percent}% - ${data.message || ''}`)
+        addOutputLine('info', `Progress: ${data.percent}% - ${formatSubAppOutput(data)}`)
       }
     })
 
@@ -147,15 +147,11 @@ const CodeEditor: React.FC = () => {
         if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
           runPendingRef.current = false
         }
-        if (data.status === 'failed' && !data.summary) {
-          data.summary =
-            data.error ||
-            (data.exitCode !== undefined ? `Process exited with code ${data.exitCode}` : '')
-        }
+        const summary = formatTaskStatusSummary(data)
         if (data.status === 'completed') {
-          addOutputLine('info', `✓ ${t('codeEditor.execDone', data.summary || '')}`)
+          addOutputLine('info', `✓ ${t('codeEditor.execDone', summary)}`)
         } else if (data.status === 'failed') {
-          addOutputLine('error', `✗ ${t('codeEditor.execError', data.summary || '')}`)
+          addOutputLine('error', `✗ ${t('codeEditor.execError', summary)}`)
         }
       }
     })
@@ -222,10 +218,34 @@ const CodeEditor: React.FC = () => {
     return false
   }
 
+  const localizeMessage = (
+    key?: string,
+    args?: string[],
+    fallback?: string
+  ): string | undefined => {
+    if (key) return t(key, ...(args ?? []))
+    return fallback
+  }
+
+  const formatTaskStatusSummary = (data: any): string => {
+    const localized = localizeMessage(data.summaryI18nKey, data.summaryI18nArgs, data.summary)
+    if (localized) return localized
+    if (data.error) return data.error
+    if (data.exitCode !== undefined) {
+      return t('subapp.processExitedWithCode', String(data.exitCode ?? 'unknown'))
+    }
+    return ''
+  }
+
   const formatSubAppOutput = (data: SubAppOutput & { content?: string; error?: string }): string => {
-    const main = data.message ?? data.content ?? data.summary ?? data.error ?? ''
-    if (data.details) {
-      return main ? `${main}\n${data.details}` : data.details
+    const main = localizeMessage(
+      data.i18nKey ?? data.summaryI18nKey,
+      data.i18nKey ? data.i18nArgs : data.summaryI18nArgs,
+      data.message ?? data.content ?? data.summary ?? data.error
+    ) ?? ''
+    const details = localizeMessage(data.detailsI18nKey, data.detailsI18nArgs, data.details)
+    if (details) {
+      return main ? `${main}\n${details}` : details
     }
     return main
   }

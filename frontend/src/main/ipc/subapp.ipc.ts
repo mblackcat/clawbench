@@ -3,7 +3,12 @@ import fs from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
 import { listSubApps, getManifest, getSubAppPath, uninstallApp, installApp } from '../services/subapp.service'
-import { executeSubApp, cancelTask, resolvePythonCommand } from '../services/python-runner.service'
+import {
+  executeSubApp,
+  cancelTask,
+  resolvePythonCommand,
+  getI18nPayload
+} from '../services/python-runner.service'
 import { getActiveWorkspace } from '../services/workspace.service'
 import { getPythonSdkPath, getTempDir } from '../utils/paths'
 import { unzipArchive } from '../utils/zip'
@@ -60,16 +65,20 @@ export function registerSubAppIpc(): void {
         )
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
+        const i18nPayload = getI18nPayload(err)
         logger.error(`Failed to resolve Python for sub-app ${appId}:`, message)
         webContents.send('subapp:output', {
           taskId,
           type: 'error',
-          message
+          message,
+          ...i18nPayload
         })
         webContents.send('subapp:task-status', {
           taskId,
           status: 'failed',
-          summary: message
+          summary: message,
+          summaryI18nKey: i18nPayload.i18nKey,
+          summaryI18nArgs: i18nPayload.i18nArgs
         })
         return taskId
       }

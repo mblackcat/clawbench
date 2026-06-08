@@ -86,6 +86,34 @@ const ErrorLogDrawer: React.FC<ErrorLogDrawerProps> = ({ open, onClose }) => {
     }
   }
 
+  const localize = (
+    key?: string,
+    args?: string[],
+    fallback?: string
+  ): string | undefined => {
+    if (key) return t(key, ...(args ?? []))
+    return fallback
+  }
+
+  const formatTaskSummary = (task: TaskInfo): string => {
+    if (!task.result) return ''
+    return localize(
+      task.result.summaryI18nKey,
+      task.result.summaryI18nArgs,
+      task.result.summary
+    ) ?? ''
+  }
+
+  const formatOutput = (output: TaskInfo['outputs'][number]): string => {
+    const main = localize(
+      output.i18nKey ?? output.summaryI18nKey,
+      output.i18nKey ? output.i18nArgs : output.summaryI18nArgs,
+      output.message ?? output.content ?? output.summary ?? output.error
+    )
+    const details = localize(output.detailsI18nKey, output.detailsI18nArgs, output.details)
+    return [main, details].filter(Boolean).join('\n') || t('logs.noContent')
+  }
+
   const isEmpty = tab === 'system' ? systemLogs.length === 0 : taskList.length === 0
 
   const renderSystemLogs = () => (
@@ -164,7 +192,7 @@ const ErrorLogDrawer: React.FC<ErrorLogDrawerProps> = ({ open, onClose }) => {
               </Text>
               {task.result && (
                 <Text type={task.result.success ? 'success' : 'danger'} style={{ fontSize: 12 }}>
-                  {task.result.summary}
+                  {formatTaskSummary(task)}
                 </Text>
               )}
             </div>
@@ -216,9 +244,7 @@ const ErrorLogDrawer: React.FC<ErrorLogDrawerProps> = ({ open, onClose }) => {
                       whiteSpace: 'pre-wrap'
                     }}
                   >
-                    {[output.message ?? output.content ?? output.summary ?? output.error, output.details]
-                      .filter(Boolean)
-                      .join('\n') || t('logs.noContent')}
+                    {formatOutput(output)}
                   </Text>
                 </div>
               ))}

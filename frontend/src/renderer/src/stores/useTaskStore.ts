@@ -17,7 +17,7 @@ interface TaskState {
   updateStatus: (
     taskId: string,
     status: TaskStatus,
-    result?: { success: boolean; summary: string }
+    result?: { success: boolean; summary: string; summaryI18nKey?: string; summaryI18nArgs?: string[] }
   ) => void
   setActiveTask: (taskId: string | null) => void
   getTask: (taskId: string) => TaskInfo | undefined
@@ -78,7 +78,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   updateStatus: (
     taskId: string,
     status: TaskStatus,
-    result?: { success: boolean; summary: string }
+    result?: { success: boolean; summary: string; summaryI18nKey?: string; summaryI18nArgs?: string[] }
   ) => {
     set((state) => {
       const task = state.tasks[taskId]
