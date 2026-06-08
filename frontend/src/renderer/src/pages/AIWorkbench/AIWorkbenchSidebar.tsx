@@ -11,7 +11,6 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined
 } from '@ant-design/icons'
-import SessionStatusSVG from './SessionStatusSVG'
 import { AI_TOOL_SHORT_NAMES, AI_TOOL_TAG_COLORS, AI_TOOL_TAG_STYLE, renderAIToolTagLabel } from './aiToolMeta'
 import { useT } from '../../i18n'
 import { useAIWorkbenchStore } from '../../stores/useAIWorkbenchStore'
@@ -76,7 +75,6 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
   const activeSessionId = useAIWorkbenchStore((s) => s.activeSessionId)
   const deleteWorkspace = useAIWorkbenchStore((s) => s.deleteWorkspace)
   const updateWorkspace = useAIWorkbenchStore((s) => s.updateWorkspace)
-  const deleteSession = useAIWorkbenchStore((s) => s.deleteSession)
   const renameGroup = useAIWorkbenchStore((s) => s.renameGroup)
   const deleteGroup = useAIWorkbenchStore((s) => s.deleteGroup)
 
@@ -100,14 +98,6 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
 
   const createSession = useAIWorkbenchStore((s) => s.createSession)
   const updateSession = useAIWorkbenchStore((s) => s.updateSession)
-
-  const openNativeSessionKeys = useMemo(() => {
-    return new Set(
-      sessions
-        .filter(s => s.toolSessionId)
-        .map(s => `${s.toolType}:${s.toolSessionId}`)
-    )
-  }, [sessions])
 
   // Diff stats per workspace (keyed by workspace id)
   const [diffStats, setDiffStats] = useState<Record<string, { additions: number; deletions: number }>>({})
@@ -225,13 +215,23 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
   /** Resume a native session into a workspace */
   const handleResumeNativeSession = useCallback(async (wsId: string, toolType: AIToolType, nativeSessionId: string, title?: string) => {
     try {
+      const existingSession = sessions.find(s =>
+        s.workspaceId === wsId &&
+        s.toolType === toolType &&
+        s.toolSessionId === nativeSessionId
+      )
+      if (existingSession) {
+        onSelectSession(existingSession.id)
+        return
+      }
+
       const newSession = await createSession(wsId, toolType, 'local')
       await updateSession(newSession.id, { toolSessionId: nativeSessionId, ...(title ? { title } : {}) })
-      useAIWorkbenchStore.getState().setActiveSession(newSession.id)
+      onSelectSession(newSession.id)
     } catch {
       message.error(t('coding.createSessionFailed'))
     }
-  }, [createSession, updateSession, message, t])
+  }, [createSession, updateSession, sessions, onSelectSession, message, t])
 
   /** Format relative time */
   const formatRelativeTime = (ms: number): string => {
@@ -248,7 +248,7 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
   const buildHistoryItems = useCallback((wsId: string): MenuProps['items'] => {
     const state = nativeSessionsMap[wsId]
     if (!state || state.loading) return [{ key: 'loading', label: <Spin size="small" />, disabled: true }]
-    const availableSessions = state.sessions.filter(ns => !openNativeSessionKeys.has(`${ns.toolType}:${ns.sessionId}`))
+    const availableSessions = state.sessions
     if (state.sessions.length === 0) return [{ key: 'empty', label: '无历史会话', disabled: true }]
     const visibleCount = nativeSessionVisibleCounts[wsId] || NATIVE_HISTORY_PAGE_SIZE
     const visibleSessions = availableSessions.slice(0, visibleCount)
@@ -290,7 +290,7 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
       })
     }
     return items
-  }, [nativeSessionsMap, nativeSessionVisibleCounts, openNativeSessionKeys, t, token.colorPrimary])
+  }, [nativeSessionsMap, nativeSessionVisibleCounts, t, token.colorPrimary])
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -346,15 +346,6 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
     )
   }, [workspaces, filterText])
 
-  const wsSessionsMap = useMemo(() => {
-    const map: Record<string, typeof sessions> = {}
-    for (const s of sessions) {
-      if (!map[s.workspaceId]) map[s.workspaceId] = []
-      map[s.workspaceId].push(s)
-    }
-    return map
-  }, [sessions])
-
   const sortedGroups = useMemo(
     () => [...groups].sort((a, b) => a.order - b.order),
     [groups]
@@ -391,17 +382,6 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
       okButtonProps: { danger: true },
       cancelText: t('common.cancel'),
       onOk: () => deleteWorkspace(wsId)
-    })
-  }
-
-  const handleDeleteSession = (sessionId: string) => {
-    modal.confirm({
-      title: t('coding.deleteSession'),
-      content: t('coding.deleteSessionConfirm'),
-      okText: t('common.delete'),
-      okButtonProps: { danger: true },
-      cancelText: t('common.cancel'),
-      onOk: () => deleteSession(sessionId)
     })
   }
 
@@ -614,31 +594,19 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
               {/* Workspaces */}
               {!isCollapsed &&
                 groupWorkspaces.map((ws) => {
-                  const wsSessions = wsSessionsMap[ws.id] || []
                   const isRenamingWs =
                     renameTarget?.type === 'workspace' && renameTarget.id === ws.id
                   const isWsCollapsed = collapsedWorkspaces.has(ws.id)
                   const nativeState = nativeSessionsMap[ws.id]
                   const nativeVisibleCount = nativeSessionVisibleCounts[ws.id] || NATIVE_HISTORY_PAGE_SIZE
-                  const availableNativeSessions = (nativeState?.sessions || [])
-                    .filter(ns => !openNativeSessionKeys.has(`${ns.toolType}:${ns.sessionId}`))
+                  const availableNativeSessions = nativeState?.sessions || []
                   const visibleNativeSessions = availableNativeSessions.slice(0, nativeVisibleCount)
                   const hasMoreNativeSessions = availableNativeSessions.length > nativeVisibleCount
-                  const sessionRows = [
-                    ...wsSessions.map((session, idx) => ({
-                      kind: 'local' as const,
-                      key: session.id,
-                      sortAt: session.updatedAt || session.createdAt,
-                      session,
-                      idx
-                    })),
-                    ...visibleNativeSessions.map((nativeSession) => ({
-                      kind: 'native' as const,
+                  const sessionRows = visibleNativeSessions
+                    .map((nativeSession) => ({
                       key: `native-${nativeSession.toolType}-${nativeSession.sessionId}`,
-                      sortAt: nativeSession.modifiedAt,
                       nativeSession
                     }))
-                  ].sort((a, b) => b.sortAt - a.sortAt)
 
                   const wsRowContent = (
                     <div
@@ -791,118 +759,54 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
 
                       {/* Sessions — hidden when workspace is collapsed */}
                       {!isWsCollapsed && sessionRows.map((row) => {
-                        if (row.kind === 'native') {
-                          const ns = row.nativeSession
-                          return (
-                            <div
-                              key={row.key}
-                              onClick={() => handleResumeNativeSession(ws.id, ns.toolType, ns.sessionId, ns.title)}
-                              style={{
-                                ...rowBase,
-                                padding: '2px 8px 2px 1.8em',
-                                gap: 5,
-                                fontSize: 12,
-                                color: token.colorTextSecondary,
-                                background: 'transparent'
-                              }}
-                              onMouseEnter={(e) =>
-                                ((e.currentTarget as HTMLElement).style.background = token.colorFillSecondary)
-                              }
-                              onMouseLeave={(e) =>
-                                ((e.currentTarget as HTMLElement).style.background = 'transparent')
-                              }
-                            >
-                              <HistoryOutlined style={{ fontSize: 12, color: token.colorTextTertiary, flexShrink: 0 }} />
-                              <Tag color={AI_TOOL_TAG_COLORS[ns.toolType]} style={{ ...AI_TOOL_TAG_STYLE, margin: 0, flexShrink: 0, fontSize: 10, lineHeight: '16px', paddingInline: 3 }}>
-                                {renderAIToolTagLabel(ns.toolType, AI_TOOL_SHORT_NAMES[ns.toolType], 12)}
-                              </Tag>
-                              <span
-                                title={ns.title}
-                                style={{
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap',
-                                  lineHeight: '20px'
-                                }}
-                              >
-                                {ns.title}
-                              </span>
-                              <span style={{ marginLeft: 'auto', flexShrink: 0, fontSize: 11, color: token.colorTextQuaternary }}>
-                                {formatRelativeTime(ns.modifiedAt)}
-                              </span>
-                            </div>
-                          )
-                        }
+                        const ns = row.nativeSession
+                        const openedSession = sessions.find(s =>
+                          s.workspaceId === ws.id &&
+                          s.toolType === ns.toolType &&
+                          s.toolSessionId === ns.sessionId
+                        )
+                        const isSelected = activeSessionId === openedSession?.id
 
-                        const session = row.session
-                        const isSelected = activeSessionId === session.id
-                        const sessionLabel = session.title
-                          ? `${AI_TOOL_SHORT_NAMES[session.toolType]}: ${session.title}`
-                          : `${AI_TOOL_SHORT_NAMES[session.toolType]} #${row.idx + 1}`
                         return (
-                          <Dropdown
-                            key={session.id}
-                            menu={{
-                              items: [
-                                {
-                                  key: 'delete',
-                                  label: t('coding.deleteSession'),
-                                  danger: true,
-                                  onClick: () => handleDeleteSession(session.id)
-                                }
-                              ]
+                          <div
+                            key={row.key}
+                            onClick={() => handleResumeNativeSession(ws.id, ns.toolType, ns.sessionId, ns.title)}
+                            style={{
+                              ...rowBase,
+                              padding: '2px 8px 2px 1.8em',
+                              gap: 5,
+                              fontSize: 12,
+                              color: isSelected ? token.colorPrimary : token.colorTextSecondary,
+                              background: isSelected ? token.colorPrimaryBg : 'transparent'
                             }}
-                            trigger={['contextMenu']}
+                            onMouseEnter={(e) => {
+                              if (!isSelected)
+                                (e.currentTarget as HTMLElement).style.background = token.colorFillSecondary
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isSelected)
+                                (e.currentTarget as HTMLElement).style.background = 'transparent'
+                            }}
                           >
-                            <div
-                              onClick={() => {
-                                onSelectSession(session.id)
-                              }}
+                            <HistoryOutlined style={{ fontSize: 12, color: token.colorTextTertiary, flexShrink: 0 }} />
+                            <Tag color={AI_TOOL_TAG_COLORS[ns.toolType]} style={{ ...AI_TOOL_TAG_STYLE, margin: 0, flexShrink: 0, fontSize: 10, lineHeight: '16px', paddingInline: 3 }}>
+                              {renderAIToolTagLabel(ns.toolType, AI_TOOL_SHORT_NAMES[ns.toolType], 12)}
+                            </Tag>
+                            <span
+                              title={ns.title}
                               style={{
-                                ...rowBase,
-                                padding: '2px 8px 2px 1.8em',
-                                gap: 5,
-                                fontSize: 12,
-                                color: isSelected ? token.colorPrimary : token.colorTextSecondary,
-                                background: isSelected ? token.colorPrimaryBg : 'transparent'
-                              }}
-                              onMouseEnter={(e) => {
-                                if (!isSelected)
-                                  (e.currentTarget as HTMLElement).style.background =
-                                    token.colorFillSecondary
-                              }}
-                              onMouseLeave={(e) => {
-                                if (!isSelected)
-                                  (e.currentTarget as HTMLElement).style.background = 'transparent'
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                lineHeight: '20px'
                               }}
                             >
-                              {/* icon aligned with text via inline-flex */}
-                              <span
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  height: 20,
-                                  flexShrink: 0
-                                }}
-                              >
-                                <SessionStatusSVG
-                                  status={session.status}
-                                  activity={session.lastActivity}
-                                  size={14}
-                                />
-                              </span>
-                              <span
-                                style={{
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap',
-                                  lineHeight: '20px'
-                                }}
-                              >
-                                {sessionLabel}
-                              </span>
-                            </div>
-                          </Dropdown>
+                              {ns.title}
+                            </span>
+                            <span style={{ marginLeft: 'auto', flexShrink: 0, fontSize: 11, color: token.colorTextQuaternary }}>
+                              {formatRelativeTime(ns.modifiedAt)}
+                            </span>
+                          </div>
                         )
                       })}
                       {!isWsCollapsed && !nativeState?.loaded && !nativeState?.loading && (

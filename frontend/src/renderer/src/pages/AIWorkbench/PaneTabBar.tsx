@@ -87,8 +87,7 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
 
   const historyItems = useMemo(() => {
     if (nativeSessions.length === 0) return []
-    const loadedIds = new Set(tabs.filter(s => s.toolSessionId).map(s => s.toolSessionId))
-    const availableSessions = nativeSessions.filter(ns => !loadedIds.has(ns.sessionId))
+    const availableSessions = nativeSessions
     const items = availableSessions
       .slice(0, nativeVisibleCount)
       .map(ns => {

@@ -94,13 +94,24 @@ const TabGroup: React.FC<TabGroupProps> = ({
     const refSession = activeSession || tabs[tabs.length - 1]
     if (!refSession) return
     try {
+      const existingSession = sessions.find(s =>
+        s.workspaceId === refSession.workspaceId &&
+        s.toolType === toolType &&
+        s.toolSessionId === nativeSessionId
+      )
+      if (existingSession) {
+        addTabToPane(paneId, existingSession.id)
+        setActiveSession(existingSession.id)
+        return
+      }
+
       const session = await createSession(refSession.workspaceId, toolType, 'local')
       await updateSession(session.id, { toolSessionId: nativeSessionId, ...(title ? { title } : {}) })
       await fetchAll()
       addTabToPane(paneId, session.id)
       setActiveSession(session.id)
     } catch { /* */ }
-  }, [activeSession, tabs, paneId, createSession, updateSession, fetchAll, addTabToPane, setActiveSession])
+  }, [activeSession, tabs, sessions, paneId, createSession, updateSession, fetchAll, addTabToPane, setActiveSession])
 
   // Edge drop detection
   const contentRef = useRef<HTMLDivElement>(null)
