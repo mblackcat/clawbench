@@ -14,6 +14,17 @@ import {
 let msgCounter = 0
 function genMsgId(): string { return `wm-${Date.now()}-${++msgCounter}` }
 
+function upsertSessionList(
+  sessions: AIWorkbenchSession[],
+  session: AIWorkbenchSession
+): AIWorkbenchSession[] {
+  const idx = sessions.findIndex((s) => s.id === session.id)
+  if (idx === -1) return [...sessions, session]
+  const next = [...sessions]
+  next[idx] = session
+  return next
+}
+
 // ── sessionMessages persistence (localStorage) ──
 const MSG_STORAGE_KEY = 'cb-workbench-messages'
 const MSG_PER_SESSION_LIMIT = 100
@@ -77,7 +88,7 @@ interface AIWorkbenchState {
   createSession: (wid: string, tt: AIToolType, src?: 'local' | 'im') => Promise<AIWorkbenchSession>
   updateSession: (id: string, u: Partial<AIWorkbenchSession>) => Promise<void>
   deleteSession: (id: string) => Promise<void>; stopSession: (id: string) => Promise<void>
-  launchSession: (id: string, opts?: { forcePty?: boolean }) => Promise<{ success: boolean; error?: string }>
+  launchSession: (id: string, opts?: { forcePty?: boolean; cols?: number; rows?: number }) => Promise<{ success: boolean; error?: string }>
   createGroup: (n: string) => Promise<AIWorkbenchGroup>; renameGroup: (id: string, n: string) => Promise<void>
   deleteGroup: (id: string) => Promise<{ success: boolean; error?: string }>
   saveIMConfig: (c: AIWorkbenchIMConfig) => Promise<void>
@@ -137,8 +148,24 @@ export const useAIWorkbenchStore = create<AIWorkbenchState>((set, get) => ({
     const [workspaces, ss] = await Promise.all([window.api.aiWorkbench.getWorkspaces(), window.api.aiWorkbench.getSessions()])
     set({ workspaces, sessions: ss, activeSessionId: activeSessionId && wsIds.has(activeSessionId) ? null : activeSessionId })
   },
-  createSession: async (wid, tt, src = 'local') => { const s = await window.api.aiWorkbench.createSession(wid, tt, src); set({ sessions: await window.api.aiWorkbench.getSessions() }); return s },
-  updateSession: async (id, u) => { await window.api.aiWorkbench.updateSession(id, u); set({ sessions: await window.api.aiWorkbench.getSessions() }) },
+  createSession: async (wid, tt, src = 'local') => {
+    const session = await window.api.aiWorkbench.createSession(wid, tt, src)
+    set((state) => ({ sessions: upsertSessionList(state.sessions, session) }))
+    return session
+  },
+  updateSession: async (id, updates) => {
+    set((state) => ({
+      sessions: state.sessions.map((session) =>
+        session.id === id ? { ...session, ...updates, updatedAt: Date.now() } : session
+      )
+    }))
+    const updated = await window.api.aiWorkbench.updateSession(id, updates)
+    if (updated) {
+      set((state) => ({ sessions: upsertSessionList(state.sessions, updated) }))
+    } else {
+      set({ sessions: await window.api.aiWorkbench.getSessions() })
+    }
+  },
   deleteSession: async (id) => {
     const { activeSessionId: aid, sessionMessages: sm, sessionStreaming: ss, sessionStreamingBlocks: sb, sessionModes: smo } = get()
     await window.api.aiWorkbench.deleteSession(id); const sessions = await window.api.aiWorkbench.getSessions()
@@ -244,7 +271,7 @@ export const useAIWorkbenchStore = create<AIWorkbenchState>((set, get) => ({
     const { sessions } = get(); const session = sessions.find(s => s.id === sessionId); if (!session) return
     const userMsg: WorkbenchMessage = { id: genMsgId(), sessionId, role: 'user', blocks: [{ type: 'text', text }], timestamp: Date.now() }
     set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), userMsg] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: true }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } }))
-    if (!session.title) { const t = text.slice(0, 50) + (text.length > 50 ? '…' : ''); try { await window.api.aiWorkbench.updateSession(sessionId, { title: t }); set({ sessions: await window.api.aiWorkbench.getSessions() }) } catch { /* */ } }
+    if (!session.title) { const t = text.slice(0, 50) + (text.length > 50 ? '…' : ''); try { await get().updateSession(sessionId, { title: t }) } catch { /* */ } }
     if (session.status === 'closed' || session.status === 'completed' || session.status === 'error') {
       const r = await get().launchSession(sessionId)
       if (!r.success) { const em: WorkbenchMessage = { id: genMsgId(), sessionId, role: 'system', blocks: [{ type: 'text', text: `启动失败: ${r.error}` }], timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), em] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false } })); return }

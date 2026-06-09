@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useMemo } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 import { useAIWorkbenchStore } from '../../stores/useAIWorkbenchStore'
 import type { ClaudeViewMode } from '../../types/ai-workbench'
@@ -11,6 +12,7 @@ interface WorkbenchTerminalViewProps {
   onCloseSession?: (sessionId: string) => void
   claudeViewMode?: ClaudeViewMode
   onClaudeViewModeChange?: (mode: ClaudeViewMode) => void
+  compact?: boolean
 }
 
 /**
@@ -39,7 +41,7 @@ const WorkbenchTerminalView: React.FC<WorkbenchTerminalViewProps> = ({ sessionId
       fontFamily: '"Cascadia Code", "Fira Code", "JetBrains Mono", monospace',
       fontSize: 13,
       lineHeight: 1.4,
-      cursorBlink: true,
+      cursorBlink: false,
       cursorStyle: 'bar',
       theme: {
         background: '#1e1e1e',
@@ -69,12 +71,8 @@ const WorkbenchTerminalView: React.FC<WorkbenchTerminalViewProps> = ({ sessionId
 
     const fitAddon = new FitAddon()
     term.loadAddon(fitAddon)
+    term.loadAddon(new WebLinksAddon((_event, uri) => window.open(uri, '_blank')))
     term.open(containerRef.current)
-
-    const fitTimer = setTimeout(() => {
-      fitAddon.fit()
-      window.api.aiWorkbench.resizePty(sessionIdRef.current, term.cols, term.rows)
-    }, 100)
 
     termRef.current = term
     fitAddonRef.current = fitAddon
@@ -90,49 +88,65 @@ const WorkbenchTerminalView: React.FC<WorkbenchTerminalViewProps> = ({ sessionId
       window.api.aiWorkbench.writePty(sessionIdRef.current, data)
     })
 
+    let replayed = false
+    const queuedData: string[] = []
     const unsubData = window.api.aiWorkbench.onPtyData(({ sessionId: sid, data }) => {
       if (sid === sessionIdRef.current) {
-        term.write(data)
+        if (replayed) term.write(data)
+        else queuedData.push(data)
       }
     })
 
-    const currentSession = useAIWorkbenchStore.getState().sessions.find(s => s.id === sessionId)
-    const isClaude = currentSession?.toolType === 'claude'
-    const needsLaunch =
-      !currentSession ||
-      currentSession.status === 'closed' ||
-      currentSession.status === 'completed' ||
-      currentSession.status === 'error'
+    const fitAndResize = (): void => {
+      try {
+        fitAddon.fit()
+        window.api.aiWorkbench.resizePty(sessionIdRef.current, term.cols, term.rows)
+      } catch {
+        // xterm-fit can throw while the container is not measurable.
+      }
+    }
 
-    if (isClaude) {
-      const doLaunch = async (): Promise<void> => {
+    const startOrAttach = async (): Promise<void> => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      fitAndResize()
+
+      const currentSession = useAIWorkbenchStore.getState().sessions.find(s => s.id === sessionId)
+      const isClaude = currentSession?.toolType === 'claude'
+      const needsLaunch =
+        !currentSession ||
+        currentSession.status === 'closed' ||
+        currentSession.status === 'completed' ||
+        currentSession.status === 'error'
+
+      if (isClaude) {
         if (!needsLaunch) {
           try { await window.api.aiWorkbench.stopSession(sessionId) } catch { /* */ }
         }
-        const result = await launchSession(sessionId, { forcePty: true })
+        const result = await launchSession(sessionId, { forcePty: true, cols: term.cols, rows: term.rows })
         if (!result.success) {
           term.writeln(`\x1b[31mFailed to start session: ${result.error ?? 'Unknown error'}\x1b[0m`)
         }
+      } else if (needsLaunch) {
+        const result = await launchSession(sessionId, { cols: term.cols, rows: term.rows })
+        if (!result.success) {
+          term.writeln(`\x1b[31mFailed to start session: ${result.error ?? 'Unknown error'}\x1b[0m`)
+        }
+      } else {
+        const buffered = await window.api.aiWorkbench.getRawSessionOutput(sessionId)
+        if (buffered) term.write(buffered)
       }
-      doLaunch()
-    } else if (needsLaunch) {
-      launchSession(sessionId).then(result => {
-        if (!result.success) {
-          term.writeln(`\x1b[31mFailed to start session: ${result.error ?? 'Unknown error'}\x1b[0m`)
-        }
-      })
+
+      replayed = true
+      for (const data of queuedData.splice(0)) term.write(data)
     }
+    startOrAttach()
 
     const resizeObserver = new ResizeObserver(() => {
-      fitAddon.fit()
-      if (termRef.current) {
-        window.api.aiWorkbench.resizePty(sessionIdRef.current, termRef.current.cols, termRef.current.rows)
-      }
+      fitAndResize()
     })
     resizeObserver.observe(containerRef.current)
 
     return () => {
-      clearTimeout(fitTimer)
       unsubData()
       resizeObserver.disconnect()
       term.dispose()

@@ -19,7 +19,7 @@ const RING_BUFFER_MAX = 4000
 
 // ── Raw ANSI output ring-buffer for terminal replay ──
 const rawOutputBuffers = new Map<string, string>()
-const RAW_RING_BUFFER_MAX = 80000
+const RAW_RING_BUFFER_MAX = 1_000_000
 
 // ── Per-session line accumulator for handling \r overwrites ──
 const pendingLines = new Map<string, string>()
@@ -121,7 +121,7 @@ export function getToolCommand(toolType: AIToolType): { command: string; args: s
       return { command: 'gemini', args: [] }
     case 'terminal':
       return {
-        command: process.platform === 'win32' ? 'cmd.exe' : (process.env.SHELL || '/bin/bash'),
+        command: process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash'),
         args: []
       }
   }
@@ -166,10 +166,14 @@ export function createPtySession(
   args: string[],
   cwd: string,
   env?: Record<string, string>,
-  onExit?: (sessionId: string, exitCode: number) => void
+  onExit?: (sessionId: string, exitCode: number) => void,
+  initialSize?: { cols: number; rows: number }
 ): void {
   // Kill any existing session with this ID
   killPtySession(sessionId)
+  rawOutputBuffers.delete(sessionId)
+  outputBuffers.delete(sessionId)
+  pendingLines.delete(sessionId)
 
   // Ensure UTF-8 locale and true-colour support regardless of user shell config
   const baseEnv: Record<string, string> = {
@@ -195,8 +199,8 @@ export function createPtySession(
   try {
     ptyProcess = pty.spawn(spawnCommand, spawnArgs, {
       name: 'xterm-256color',
-      cols: 80,
-      rows: 24,
+      cols: initialSize?.cols || 80,
+      rows: initialSize?.rows || 24,
       cwd,
       env: { ...(env ?? process.env), ...baseEnv } as Record<string, string>
     })
@@ -310,6 +314,7 @@ export function killPtySession(sessionId: string): void {
   pendingBuffers.delete(sessionId)
   pendingTimers.delete(sessionId)
   outputBuffers.delete(sessionId)
+  rawOutputBuffers.delete(sessionId)
   pendingLines.delete(sessionId)
   exitCallbacks.delete(sessionId)
   unregisterPtyOutputCallback(sessionId)

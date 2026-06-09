@@ -99,6 +99,7 @@ export const aiWorkbenchStore = new Store<AIWorkbenchSchema>({
           costUsd: { type: 'number' },
           durationMs: { type: 'number' },
           startedAt: { type: 'number' },
+          title: { type: 'string' },
           createdAt: { type: 'number' },
           updatedAt: { type: 'number' },
           pidFile: { type: 'string' }

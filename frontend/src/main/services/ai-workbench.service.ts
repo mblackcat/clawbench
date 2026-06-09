@@ -27,7 +27,7 @@ import type {
 import {
   killPtySession, hasPtySession, writeToPty,
   createPtySession, getToolCommand, getResumeArgs, getPtySessionOutput,
-  registerPtyOutputCallback
+  getRawPtyOutput, registerPtyOutputCallback
 } from './pty-manager.service'
 import {
   launchSDKSession, writeToSDKSession, closeSDKSession, hasSDKSession,
@@ -133,6 +133,10 @@ export function getSessionOutput(sessionId: string): string {
   const sdkOutput = getSDKSessionOutput(sessionId)
   if (sdkOutput) return sdkOutput
   return getPtySessionOutput(sessionId)
+}
+
+export function getRawSessionOutput(sessionId: string): string {
+  return getRawPtyOutput(sessionId)
 }
 
 // ── SDK session event handler (for IM mode) ──
@@ -346,6 +350,7 @@ export function createSession(
   sessions.push(session)
   setAIWorkbenchSessions(sessions)
   logger.info(`[workbench] Session created: ${session.id} tool=${toolType} workspace=${workspaceId}`)
+  notifyDataChanged()
   return session
 }
 
@@ -368,6 +373,7 @@ export function createRuntimeSession(
   }
   runtimeSessions.set(session.id, session)
   logger.info(`[workbench] Runtime session created: ${session.id} tool=${toolType} workspace=${workspaceId}`)
+  notifyDataChanged()
   return session
 }
 
@@ -379,6 +385,7 @@ export function updateSession(
   if (runtimeSession) {
     const updated = { ...runtimeSession, ...updates, updatedAt: Date.now() }
     runtimeSessions.set(id, updated)
+    notifyDataChanged()
     return updated
   }
 
@@ -387,6 +394,7 @@ export function updateSession(
   if (idx === -1) return null
   sessions[idx] = { ...sessions[idx], ...updates, updatedAt: Date.now() }
   setAIWorkbenchSessions(sessions)
+  notifyDataChanged()
   return sessions[idx]
 }
 
@@ -395,12 +403,14 @@ export function deleteSession(id: string): void {
   closeSDKSession(id)
   if (runtimeSessions.delete(id)) {
     logger.info(`[workbench] Runtime session deleted: ${id}`)
+    notifyDataChanged()
     return
   }
 
   const { sessions } = getAIWorkbenchConfig()
   setAIWorkbenchSessions(sessions.filter((s) => s.id !== id))
   logger.info(`[workbench] Session deleted: ${id}`)
+  notifyDataChanged()
 }
 
 /**
@@ -410,7 +420,10 @@ export function deleteSession(id: string): void {
  * - Other tools (Gemini, Codex, etc.): PTY mode so TUI-based CLIs get a real
  *   TTY. Output is sent as raw pty:data events and rendered via xterm.js.
  */
-export async function launchSession(id: string, opts?: { forcePty?: boolean }): Promise<{ success: boolean; error?: string }> {
+export async function launchSession(
+  id: string,
+  opts?: { forcePty?: boolean; cols?: number; rows?: number }
+): Promise<{ success: boolean; error?: string }> {
   const config = getAIWorkbenchConfig()
   const session = getSessionById(id)
   if (!session) return { success: false, error: '会话不存在' }
@@ -444,7 +457,15 @@ export async function launchSession(id: string, opts?: { forcePty?: boolean }): 
       const resumeArgs = session.toolSessionId
         ? getResumeArgs(session.toolType, session.toolSessionId)
         : []
-      createPtySession(id, resolvedCommand, [...baseArgs, ...resumeArgs], workspace.workingDir, toolEnv, handlePtyExit)
+      createPtySession(
+        id,
+        resolvedCommand,
+        [...baseArgs, ...resumeArgs],
+        workspace.workingDir,
+        toolEnv,
+        handlePtyExit,
+        opts?.cols && opts?.rows ? { cols: opts.cols, rows: opts.rows } : undefined
+      )
       registerPtyOutputCallback(id, handlePtyOutputStabilized)
     }
     updateSession(id, { status: 'idle', startedAt: Date.now() })

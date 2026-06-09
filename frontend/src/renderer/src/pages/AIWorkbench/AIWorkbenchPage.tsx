@@ -3,7 +3,7 @@ import { Spin, App, theme, Typography } from 'antd'
 import { MessageOutlined } from '@ant-design/icons'
 import AIWorkbenchSidebar from './AIWorkbenchSidebar'
 import SplitContainer from './SplitContainer'
-import GitChangesPanel from './GitChangesPanel'
+import VcsChangesPanel from './VcsChangesPanel'
 import AIWorkbenchNewWorkspaceDialog from './AIWorkbenchNewWorkspaceDialog'
 import AIWorkbenchNewSessionDialog from './AIWorkbenchNewSessionDialog'
 import { useT } from '../../i18n'
@@ -27,6 +27,7 @@ const AIWorkbenchPage: React.FC = () => {
     getOrCreateLayout,
     addTabToPane,
     focusedPaneId,
+    createSession,
   } = useAIWorkbenchStore()
 
   const activeSession = useMemo(
@@ -39,15 +40,15 @@ const AIWorkbenchPage: React.FC = () => {
   const [newSessionOpen, setNewSessionOpen] = useState(false)
   const [newSessionWorkspaceId, setNewSessionWorkspaceId] = useState<string | null>(null)
 
-  // Git panel state (persisted in localStorage)
-  const [gitPanelOpen, setGitPanelOpen] = useState(
-    () => localStorage.getItem('cb-workbench-git-panel') === 'true'
+  // VCS panel state (persisted in localStorage)
+  const [vcsPanelOpen, setVcsPanelOpen] = useState(
+    () => localStorage.getItem('cb-workbench-vcs-panel') === 'true' || localStorage.getItem('cb-workbench-git-panel') === 'true'
   )
 
-  const toggleGitPanel = useCallback(() => {
-    setGitPanelOpen((prev) => {
+  const toggleVcsPanel = useCallback(() => {
+    setVcsPanelOpen((prev) => {
       const next = !prev
-      localStorage.setItem('cb-workbench-git-panel', String(next))
+      localStorage.setItem('cb-workbench-vcs-panel', String(next))
       return next
     })
   }, [])
@@ -117,11 +118,8 @@ const AIWorkbenchPage: React.FC = () => {
     async (toolType: AIToolType) => {
       if (!newSessionWorkspaceId) return
       try {
-        const session = await window.api.aiWorkbench.createSession(
-          newSessionWorkspaceId, toolType, 'local'
-        )
+        const session = await createSession(newSessionWorkspaceId, toolType, 'local')
         setNewSessionOpen(false)
-        await fetchAll()
         // Add to focused pane
         const currentLayout = getOrCreateLayout()
         const targetPaneId = focusedPaneId || collectLeaves(currentLayout)[0]?.id
@@ -133,7 +131,7 @@ const AIWorkbenchPage: React.FC = () => {
         message.error(t('coding.createSessionFailed'))
       }
     },
-    [newSessionWorkspaceId, fetchAll, message, setActiveSession, t, getOrCreateLayout, focusedPaneId, addTabToPane]
+    [newSessionWorkspaceId, createSession, message, setActiveSession, t, getOrCreateLayout, focusedPaneId, addTabToPane]
   )
 
   if (loading) {
@@ -155,8 +153,8 @@ const AIWorkbenchPage: React.FC = () => {
         {layout ? (
           <SplitContainer
             layout={layout}
-            gitPanelOpen={gitPanelOpen}
-            onToggleGitPanel={toggleGitPanel}
+            gitPanelOpen={vcsPanelOpen}
+            onToggleGitPanel={toggleVcsPanel}
           />
         ) : (
           <div style={{
@@ -171,11 +169,11 @@ const AIWorkbenchPage: React.FC = () => {
         )}
       </div>
 
-      {/* Git changes right panel */}
+      {/* VCS changes right panel */}
       {activeSessionId && activeWorkingDir && (
-        <GitChangesPanel
+        <VcsChangesPanel
           workingDir={activeWorkingDir}
-          visible={gitPanelOpen}
+          visible={vcsPanelOpen}
         />
       )}
 

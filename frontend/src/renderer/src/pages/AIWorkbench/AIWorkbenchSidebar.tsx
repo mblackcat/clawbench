@@ -6,7 +6,6 @@ import {
   PlusOutlined,
   RightOutlined,
   SearchOutlined,
-  CodeOutlined,
   HistoryOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined
@@ -40,6 +39,15 @@ interface NativeSessionState {
   loading: boolean
   loaded: boolean
   workingDir: string
+}
+
+interface SidebarSessionRow {
+  key: string
+  toolType: AIToolType
+  title: string
+  modifiedAt: number
+  nativeSessionId?: string
+  openedSessionId?: string
 }
 
 function loadCollapsedWorkspaceIds(): Set<string> {
@@ -102,16 +110,33 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
   // Diff stats per workspace (keyed by workspace id)
   const [diffStats, setDiffStats] = useState<Record<string, { additions: number; deletions: number }>>({})
 
+  const syncOpenedSessionTitles = useCallback(async (wsId: string, nativeSessions: SidebarNativeSession[]) => {
+    const nativeByKey = new Map(nativeSessions.map((ns) => [`${ns.toolType}:${ns.sessionId}`, ns]))
+    const currentSessions = useAIWorkbenchStore.getState().sessions
+    const updates = currentSessions
+      .filter((session) => session.workspaceId === wsId && session.toolSessionId)
+      .map((session) => {
+        const nativeSession = nativeByKey.get(`${session.toolType}:${session.toolSessionId}`)
+        if (!nativeSession?.title || nativeSession.title === session.title) return null
+        return updateSession(session.id, { title: nativeSession.title })
+      })
+      .filter(Boolean) as Array<Promise<void>>
+
+    if (updates.length > 0) {
+      await Promise.all(updates)
+    }
+  }, [updateSession])
+
   const fetchDiffStats = useCallback(async () => {
     const stats: Record<string, { additions: number; deletions: number }> = {}
     await Promise.all(
       workspaces.map(async (ws) => {
         try {
-          const result = await window.api.git.diffStat(ws.workingDir)
+          const result = await window.api.vcs.diffStat(ws.workingDir)
           if (result.additions > 0 || result.deletions > 0) {
             stats[ws.id] = result
           }
-        } catch { /* ignore non-git dirs */ }
+        } catch { /* ignore dirs without supported VCS */ }
       })
     )
     setDiffStats(stats)
@@ -151,12 +176,13 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
       const merged = results.flat()
         .sort((a, b) => b.modifiedAt - a.modifiedAt)
       setNativeSessionsMap(prev => ({ ...prev, [wsId]: { sessions: merged, loading: false, loaded: true, workingDir: ws.workingDir } }))
+      await syncOpenedSessionTitles(wsId, merged)
     } catch {
       setNativeSessionsMap(prev => ({ ...prev, [wsId]: { sessions: [], loading: false, loaded: true, workingDir: ws.workingDir } }))
     } finally {
       nativeFetchInFlightRef.current.delete(wsId)
     }
-  }, [workspaces])
+  }, [syncOpenedSessionTitles, workspaces])
 
   const ensureNativeSessions = useCallback((wsId: string) => {
     const ws = workspaces.find(w => w.id === wsId)
@@ -211,6 +237,21 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
       fetchNativeSessions(ws.id)
     }
   }, [workspaces, collapsedWorkspaces, nativeSessionsMap, fetchNativeSessions])
+
+  const sessionRefreshKey = useMemo(
+    () => sessions.map((s) => `${s.id}:${s.workspaceId}:${s.toolSessionId || ''}:${s.title || ''}:${s.updatedAt}`).join('|'),
+    [sessions]
+  )
+
+  useEffect(() => {
+    if (workspaces.length === 0) return
+    const timer = setTimeout(() => {
+      for (const ws of workspaces) {
+        if (!collapsedWorkspaces.has(ws.id)) fetchNativeSessions(ws.id)
+      }
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [sessionRefreshKey, workspaces, collapsedWorkspaces, fetchNativeSessions])
 
   /** Resume a native session into a workspace */
   const handleResumeNativeSession = useCallback(async (wsId: string, toolType: AIToolType, nativeSessionId: string, title?: string) => {
@@ -602,11 +643,39 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
                   const availableNativeSessions = nativeState?.sessions || []
                   const visibleNativeSessions = availableNativeSessions.slice(0, nativeVisibleCount)
                   const hasMoreNativeSessions = availableNativeSessions.length > nativeVisibleCount
-                  const sessionRows = visibleNativeSessions
+                  const nativeByKey = new Map(
+                    availableNativeSessions.map((nativeSession) => [
+                      `${nativeSession.toolType}:${nativeSession.sessionId}`,
+                      nativeSession
+                    ])
+                  )
+                  const openedNativeKeys = new Set<string>()
+                  const openedRows: SidebarSessionRow[] = sessions
+                    .filter((session) => session.workspaceId === ws.id && session.toolType !== 'terminal')
+                    .map((session) => {
+                      const nativeKey = session.toolSessionId ? `${session.toolType}:${session.toolSessionId}` : ''
+                      const nativeSession = nativeKey ? nativeByKey.get(nativeKey) : undefined
+                      if (nativeKey) openedNativeKeys.add(nativeKey)
+                      return {
+                        key: `opened-${session.id}`,
+                        toolType: session.toolType,
+                        title: session.title || nativeSession?.title || `${AI_TOOL_SHORT_NAMES[session.toolType] || session.toolType} session`,
+                        modifiedAt: Math.max(session.updatedAt || 0, nativeSession?.modifiedAt || 0),
+                        nativeSessionId: session.toolSessionId,
+                        openedSessionId: session.id
+                      }
+                    })
+                  const nativeRows: SidebarSessionRow[] = visibleNativeSessions
+                    .filter((nativeSession) => !openedNativeKeys.has(`${nativeSession.toolType}:${nativeSession.sessionId}`))
                     .map((nativeSession) => ({
                       key: `native-${nativeSession.toolType}-${nativeSession.sessionId}`,
-                      nativeSession
+                      toolType: nativeSession.toolType,
+                      title: nativeSession.title,
+                      modifiedAt: nativeSession.modifiedAt,
+                      nativeSessionId: nativeSession.sessionId
                     }))
+                  const sessionRows = [...openedRows, ...nativeRows]
+                    .sort((a, b) => b.modifiedAt - a.modifiedAt)
 
                   const wsRowContent = (
                     <div
@@ -729,20 +798,6 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
                               onNewSession(ws.id)
                             }}
                           />
-                          {/* Open directory in native terminal */}
-                          <CodeOutlined
-                            style={{
-                              fontSize: 12,
-                              color: token.colorTextTertiary,
-                              flexShrink: 0,
-                              padding: '2px'
-                            }}
-                            title={t('coding.openInTerminal')}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              window.api.aiWorkbench.openTerminal(ws.workingDir).catch(() => {})
-                            }}
-                          />
                         </>
                       )}
                     </div>
@@ -759,18 +814,18 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
 
                       {/* Sessions — hidden when workspace is collapsed */}
                       {!isWsCollapsed && sessionRows.map((row) => {
-                        const ns = row.nativeSession
-                        const openedSession = sessions.find(s =>
-                          s.workspaceId === ws.id &&
-                          s.toolType === ns.toolType &&
-                          s.toolSessionId === ns.sessionId
-                        )
-                        const isSelected = activeSessionId === openedSession?.id
+                        const isSelected = activeSessionId === row.openedSessionId
 
                         return (
                           <div
                             key={row.key}
-                            onClick={() => handleResumeNativeSession(ws.id, ns.toolType, ns.sessionId, ns.title)}
+                            onClick={() => {
+                              if (row.openedSessionId) {
+                                onSelectSession(row.openedSessionId)
+                              } else if (row.nativeSessionId) {
+                                handleResumeNativeSession(ws.id, row.toolType, row.nativeSessionId, row.title)
+                              }
+                            }}
                             style={{
                               ...rowBase,
                               padding: '2px 8px 2px 1.8em',
@@ -789,11 +844,11 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
                             }}
                           >
                             <HistoryOutlined style={{ fontSize: 12, color: token.colorTextTertiary, flexShrink: 0 }} />
-                            <Tag color={AI_TOOL_TAG_COLORS[ns.toolType]} style={{ ...AI_TOOL_TAG_STYLE, margin: 0, flexShrink: 0, fontSize: 10, lineHeight: '16px', paddingInline: 3 }}>
-                              {renderAIToolTagLabel(ns.toolType, AI_TOOL_SHORT_NAMES[ns.toolType], 12)}
+                            <Tag color={AI_TOOL_TAG_COLORS[row.toolType]} style={{ ...AI_TOOL_TAG_STYLE, margin: 0, flexShrink: 0, fontSize: 10, lineHeight: '16px', paddingInline: 3 }}>
+                              {renderAIToolTagLabel(row.toolType, AI_TOOL_SHORT_NAMES[row.toolType], 12)}
                             </Tag>
                             <span
-                              title={ns.title}
+                              title={row.title}
                               style={{
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
@@ -801,10 +856,10 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
                                 lineHeight: '20px'
                               }}
                             >
-                              {ns.title}
+                              {row.title}
                             </span>
                             <span style={{ marginLeft: 'auto', flexShrink: 0, fontSize: 11, color: token.colorTextQuaternary }}>
-                              {formatRelativeTime(ns.modifiedAt)}
+                              {formatRelativeTime(row.modifiedAt)}
                             </span>
                           </div>
                         )

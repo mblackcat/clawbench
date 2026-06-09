@@ -51,6 +51,8 @@ interface PaneTabBarProps {
   onSplitDown?: (sessionId: string) => void
   claudeViewMode?: ClaudeViewMode
   onClaudeViewModeChange?: (mode: ClaudeViewMode) => void
+  terminalPanelOpen?: boolean
+  onToggleTerminalPanel?: () => void
   gitPanelOpen?: boolean
   onToggleGitPanel?: () => void
   isFocused?: boolean
@@ -62,6 +64,7 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
   onTabDragStart, onTabDrop,
   onSplitRight, onSplitDown,
   claudeViewMode, onClaudeViewModeChange,
+  terminalPanelOpen, onToggleTerminalPanel,
   gitPanelOpen, onToggleGitPanel,
   isFocused,
 }) => {
@@ -136,16 +139,10 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
-      {/* Fixed buttons: [+] [>_] */}
+      {/* Fixed buttons */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '0 4px 0 8px', flexShrink: 0 }}>
         <Tooltip title="新建会话">
           <Button type="text" size="small" icon={<PlusOutlined />} onClick={onNewSession} />
-        </Tooltip>
-        <Tooltip title="在终端中打开">
-          <Button
-            type="text" size="small" icon={<CodeOutlined />}
-            onClick={() => workingDir && window.api.aiWorkbench.openTerminal(workingDir).catch(() => {})}
-          />
         </Tooltip>
       </div>
 
@@ -248,7 +245,7 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
         })}
       </div>
 
-      {/* Right zone: cost, Claude toggle, git */}
+      {/* Right zone: cost, Claude toggle, embedded terminal, git */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 8px', flexShrink: 0 }}>
         {activeSession?.costUsd !== undefined && activeSession.costUsd > 0 && (
           <Text style={{ fontSize: 11, color: token.colorTextSecondary }}>
@@ -287,7 +284,20 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
           </div>
         )}
 
-        {onToggleGitPanel && (
+        {activeSession && workingDir && onToggleTerminalPanel && (
+          <Tooltip title="Terminal">
+            <Button
+              type="text" size="small" icon={<CodeOutlined />}
+              onClick={onToggleTerminalPanel}
+              style={{
+                color: terminalPanelOpen ? token.colorPrimary : token.colorTextSecondary,
+                background: terminalPanelOpen ? token.colorPrimaryBg : undefined,
+              }}
+            />
+          </Tooltip>
+        )}
+
+        {activeSession && onToggleGitPanel && (
           <Tooltip title="Changes">
             <Button
               type="text" size="small" icon={<BranchesOutlined />}

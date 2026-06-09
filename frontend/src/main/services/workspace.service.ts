@@ -19,9 +19,8 @@ export type VcsType = 'git' | 'svn' | 'perforce' | 'none'
  */
 export function detectVcsType(dirPath: string): VcsType {
   try {
-    // Check SVN first (SVN working copies shouldn't have .git)
-    if (fs.existsSync(join(dirPath, '.svn'))) return 'svn'
     if (fs.existsSync(join(dirPath, '.git'))) return 'git'
+    if (fs.existsSync(join(dirPath, '.svn'))) return 'svn'
     if (fs.existsSync(join(dirPath, '.p4config'))) return 'perforce'
   } catch (err) {
     logger.warn('Error detecting VCS type:', err)

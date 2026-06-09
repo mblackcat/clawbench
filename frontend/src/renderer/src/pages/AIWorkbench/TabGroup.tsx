@@ -1,6 +1,7 @@
 import React, { useMemo, useCallback, useRef, useState } from 'react'
-import { Typography, theme } from 'antd'
-import { MessageOutlined } from '@ant-design/icons'
+import { Allotment } from 'allotment'
+import { Button, Tooltip, Typography, theme } from 'antd'
+import { CloseOutlined, MessageOutlined, PlusOutlined } from '@ant-design/icons'
 import PaneTabBar from './PaneTabBar'
 import WorkbenchChatPanel from './WorkbenchChatPanel'
 import WorkbenchTerminalView from './WorkbenchTerminalView'
@@ -36,7 +37,7 @@ const TabGroup: React.FC<TabGroupProps> = ({
     sessions, workspaces,
     claudeViewModes, setClaudeViewMode,
     setPaneActiveTab, removeTabFromPane, addTabToPane,
-    createSession, updateSession, setFocusedPane, fetchAll, setActiveSession,
+    createSession, updateSession, deleteSession, setFocusedPane, fetchAll, setActiveSession,
   } = useAIWorkbenchStore()
 
   const tabs = useMemo(
@@ -159,6 +160,216 @@ const TabGroup: React.FC<TabGroupProps> = ({
     if (activeTabId) setActiveSession(activeTabId)
   }, [paneId, activeTabId, setFocusedPane, setActiveSession])
 
+  const [terminalOpen, setTerminalOpen] = useState(false)
+  const [terminalSessionIdsByWorkspace, setTerminalSessionIdsByWorkspace] = useState<Record<string, string[]>>({})
+  const [activeTerminalSessionByWorkspace, setActiveTerminalSessionByWorkspace] = useState<Record<string, string>>({})
+  const activeWorkspaceId = activeSession?.workspaceId
+  const terminalSessionIds = activeWorkspaceId ? terminalSessionIdsByWorkspace[activeWorkspaceId] || [] : []
+  const activeTerminalSessionId = activeWorkspaceId
+    ? activeTerminalSessionByWorkspace[activeWorkspaceId] || terminalSessionIds[0]
+    : undefined
+  const terminalVisible = terminalOpen && terminalSessionIds.length > 0 && !!activeTerminalSessionId
+
+  const handleToggleTerminal = useCallback(async () => {
+    if (!activeSession) return
+    const workspaceId = activeSession.workspaceId
+    const existingIds = terminalSessionIdsByWorkspace[workspaceId] || []
+
+    if (terminalOpen) {
+      setTerminalOpen(false)
+      return
+    }
+
+    if (existingIds.length > 0) {
+      setTerminalOpen(true)
+      return
+    }
+
+    try {
+      const terminalSession = await createSession(workspaceId, 'terminal', 'local')
+      setTerminalSessionIdsByWorkspace((prev) => ({
+        ...prev,
+        [workspaceId]: [terminalSession.id],
+      }))
+      setActiveTerminalSessionByWorkspace((prev) => ({
+        ...prev,
+        [workspaceId]: terminalSession.id,
+      }))
+      setTerminalOpen(true)
+    } catch {
+      // Keep the toolbar quiet; the normal terminal view will surface launch errors.
+    }
+  }, [activeSession, terminalOpen, terminalSessionIdsByWorkspace, createSession])
+
+  const handleNewTerminalTab = useCallback(async () => {
+    if (!activeWorkspaceId) return
+    try {
+      const terminalSession = await createSession(activeWorkspaceId, 'terminal', 'local')
+      setTerminalSessionIdsByWorkspace((prev) => ({
+        ...prev,
+        [activeWorkspaceId]: [...(prev[activeWorkspaceId] || []), terminalSession.id],
+      }))
+      setActiveTerminalSessionByWorkspace((prev) => ({
+        ...prev,
+        [activeWorkspaceId]: terminalSession.id,
+      }))
+      setTerminalOpen(true)
+    } catch {
+      // Creation errors are surfaced by the session launch path.
+    }
+  }, [activeWorkspaceId, createSession])
+
+  const handleSelectTerminalTab = useCallback((terminalSessionId: string) => {
+    if (!activeWorkspaceId) return
+    setActiveTerminalSessionByWorkspace((prev) => ({
+      ...prev,
+      [activeWorkspaceId]: terminalSessionId,
+    }))
+  }, [activeWorkspaceId])
+
+  const handleCloseTerminalTab = useCallback(async (terminalSessionId: string) => {
+    if (!activeWorkspaceId) return
+    const currentIds = terminalSessionIdsByWorkspace[activeWorkspaceId] || []
+    const nextIds = currentIds.filter((id) => id !== terminalSessionId)
+    const nextActiveId =
+      activeTerminalSessionByWorkspace[activeWorkspaceId] === terminalSessionId
+        ? nextIds[0]
+        : activeTerminalSessionByWorkspace[activeWorkspaceId]
+
+    setTerminalSessionIdsByWorkspace((prev) => ({
+      ...prev,
+      [activeWorkspaceId]: nextIds,
+    }))
+    setActiveTerminalSessionByWorkspace((prev) => {
+      const next = { ...prev }
+      if (nextActiveId) next[activeWorkspaceId] = nextActiveId
+      else delete next[activeWorkspaceId]
+      return next
+    })
+    if (nextIds.length === 0) setTerminalOpen(false)
+
+    try {
+      await deleteSession(terminalSessionId)
+    } catch {
+      // Optimistically remove the tab even if the backing process has already gone away.
+    }
+  }, [activeTerminalSessionByWorkspace, activeWorkspaceId, deleteSession, terminalSessionIdsByWorkspace])
+
+  const activeContent = activeTabId && activeSession ? (
+    activeSession.toolType === 'claude' && claudeViewMode === 'chat' ? (
+      <WorkbenchChatPanel
+        sessionId={activeTabId}
+        onNewSession={handleNewSession}
+        onCloseSession={handleCloseTab}
+      />
+    ) : (
+      <WorkbenchTerminalView
+        key={activeTabId}
+        sessionId={activeTabId}
+        onNewSession={handleNewSession}
+        onCloseSession={handleCloseTab}
+        claudeViewMode={activeSession.toolType === 'claude' ? claudeViewMode : undefined}
+        onClaudeViewModeChange={activeSession.toolType === 'claude' ? handleClaudeViewModeChange : undefined}
+      />
+    )
+  ) : (
+    <div style={{
+      flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      flexDirection: 'column', gap: 12, color: token.colorTextQuaternary, height: '100%',
+    }}>
+      <MessageOutlined style={{ fontSize: 36 }} />
+      <Text style={{ color: token.colorTextQuaternary, fontSize: 13 }}>
+        {t('coding.emptyPlaceholder')}
+      </Text>
+    </div>
+  )
+
+  const terminalTitle = useCallback((sessionId: string, index: number) => {
+    const terminalSession = sessions.find((session) => session.id === sessionId)
+    return terminalSession?.title || `CMD ${index + 1}`
+  }, [sessions])
+
+  const terminalTabBar = terminalVisible ? (
+    <div
+      style={{
+        height: 32,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 2,
+        padding: '0 6px',
+        borderBottom: `1px solid ${token.colorBorderSecondary}`,
+        background: token.colorBgContainer,
+        flexShrink: 0,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1, minWidth: 0, overflow: 'hidden' }}>
+        {terminalSessionIds.map((terminalSessionId, index) => {
+          const selected = terminalSessionId === activeTerminalSessionId
+          const title = terminalTitle(terminalSessionId, index)
+          return (
+            <div
+              key={terminalSessionId}
+              role="button"
+              onClick={() => handleSelectTerminalTab(terminalSessionId)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                height: 26,
+                maxWidth: 150,
+                minWidth: 72,
+                padding: '0 6px 0 8px',
+                borderRadius: 4,
+                cursor: 'pointer',
+                color: selected ? token.colorText : token.colorTextSecondary,
+                background: selected ? token.colorFillSecondary : 'transparent',
+                fontSize: 12,
+                flexShrink: 0,
+              }}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={title}>
+                {title}
+              </span>
+              <span
+                role="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  handleCloseTerminalTab(terminalSessionId)
+                }}
+                style={{ display: 'inline-flex', alignItems: 'center', padding: 2, marginLeft: 'auto' }}
+              >
+                <CloseOutlined style={{ fontSize: 10, color: token.colorTextTertiary }} />
+              </span>
+            </div>
+          )
+        })}
+      </div>
+      <Tooltip title="New terminal">
+        <Button type="text" size="small" icon={<PlusOutlined />} onClick={handleNewTerminalTab} />
+      </Tooltip>
+    </div>
+  ) : null
+
+  const contentWithTerminal = terminalVisible && activeTerminalSessionId && activeSession ? (
+    <Allotment vertical defaultSizes={[70, 30]}>
+      <Allotment.Pane minSize={180}>
+        {activeContent}
+      </Allotment.Pane>
+      <Allotment.Pane minSize={120}>
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+          {terminalTabBar}
+          <WorkbenchTerminalView
+            key={activeTerminalSessionId}
+            sessionId={activeTerminalSessionId}
+            onNewSession={handleNewSession}
+            onCloseSession={handleCloseTerminalTab}
+            compact
+          />
+        </div>
+      </Allotment.Pane>
+    </Allotment>
+  ) : activeContent
+
   return (
     <div
       style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}
@@ -179,6 +390,8 @@ const TabGroup: React.FC<TabGroupProps> = ({
         onSplitDown={handleSplitDown}
         claudeViewMode={activeSession?.toolType === 'claude' ? claudeViewMode : undefined}
         onClaudeViewModeChange={activeSession?.toolType === 'claude' ? handleClaudeViewModeChange : undefined}
+        terminalPanelOpen={terminalVisible}
+        onToggleTerminalPanel={activeSession ? handleToggleTerminal : undefined}
         gitPanelOpen={gitPanelOpen}
         onToggleGitPanel={onToggleGitPanel}
         isFocused={isFocused}
@@ -204,34 +417,7 @@ const TabGroup: React.FC<TabGroupProps> = ({
           }} />
         )}
 
-        {activeTabId && activeSession ? (
-          activeSession.toolType === 'claude' && claudeViewMode === 'chat' ? (
-            <WorkbenchChatPanel
-              sessionId={activeTabId}
-              onNewSession={handleNewSession}
-              onCloseSession={handleCloseTab}
-            />
-          ) : (
-            <WorkbenchTerminalView
-              key={activeTabId}
-              sessionId={activeTabId}
-              onNewSession={handleNewSession}
-              onCloseSession={handleCloseTab}
-              claudeViewMode={activeSession.toolType === 'claude' ? claudeViewMode : undefined}
-              onClaudeViewModeChange={activeSession.toolType === 'claude' ? handleClaudeViewModeChange : undefined}
-            />
-          )
-        ) : (
-          <div style={{
-            flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            flexDirection: 'column', gap: 12, color: token.colorTextQuaternary, height: '100%',
-          }}>
-            <MessageOutlined style={{ fontSize: 36 }} />
-            <Text style={{ color: token.colorTextQuaternary, fontSize: 13 }}>
-              {t('coding.emptyPlaceholder')}
-            </Text>
-          </div>
-        )}
+        {contentWithTerminal}
       </div>
     </div>
   )

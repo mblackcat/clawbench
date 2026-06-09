@@ -41,6 +41,22 @@ export interface AiToolsConfig {
   toolBehavior: { maxToolSteps: number; maxSearchRounds: number; toolTimeoutMs: number }
 }
 
+type VcsType = 'git' | 'svn' | 'none'
+
+interface VcsChangedFile {
+  path: string
+  status: string
+  staged: boolean
+  additions: number
+  deletions: number
+}
+
+interface VcsExecResult {
+  success: boolean
+  output?: string
+  error?: string
+}
+
 export interface ClawBenchAPI {
   workspace: {
     list: () => Promise<import('./workspace').Workspace[]>
@@ -162,6 +178,22 @@ export interface ClawBenchAPI {
       output?: string
       error?: string
     }>
+  }
+  vcs: {
+    detect: (workspacePath: string) => Promise<VcsType>
+    diffStat: (workspacePath: string) => Promise<{
+      type: VcsType
+      additions: number
+      deletions: number
+    }>
+    changedFiles: (workspacePath: string) => Promise<{
+      type: VcsType
+      files: VcsChangedFile[]
+    }>
+    commit: (workspacePath: string, message: string) => Promise<VcsExecResult>
+    push: (workspacePath: string) => Promise<VcsExecResult>
+    pull: (workspacePath: string) => Promise<VcsExecResult>
+    discardFile: (workspacePath: string, filePath: string, isUntracked: boolean) => Promise<VcsExecResult>
   }
   settings: {
     get: () => Promise<Record<string, unknown>>
@@ -398,7 +430,7 @@ export interface ClawBenchAPI {
     ) => Promise<import('./ai-workbench').AIWorkbenchSession | null>
     deleteSession: (id: string) => Promise<void>
     stopSession: (id: string) => Promise<import('./ai-workbench').AIWorkbenchSession | null>
-    launchSession: (id: string, opts?: { forcePty?: boolean }) => Promise<{ success: boolean; error?: string }>
+    launchSession: (id: string, opts?: { forcePty?: boolean; cols?: number; rows?: number }) => Promise<{ success: boolean; error?: string }>
     writeToSession: (sessionId: string, text: string) => Promise<{ success: boolean; error?: string }>
     interruptSession: (sessionId: string) => Promise<{ success: boolean }>
     executeSlashCommand: (sessionId: string, command: string) => Promise<{ success: boolean; error?: string }>
@@ -418,6 +450,7 @@ export interface ClawBenchAPI {
       sizeBytes?: number
     }>>
     getSessionOutput: (sessionId: string) => Promise<string>
+    getRawSessionOutput: (sessionId: string) => Promise<string>
     getGroups: () => Promise<import('./ai-workbench').AIWorkbenchGroup[]>
     createGroup: (name: string) => Promise<import('./ai-workbench').AIWorkbenchGroup>
     renameGroup: (

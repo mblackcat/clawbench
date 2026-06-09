@@ -18,6 +18,7 @@ import {
   getSessionsForWorkspace,
   writeToSession,
   getSessionOutput,
+  getRawSessionOutput,
   interruptSession,
   executeSessionSlashCommand,
   setSessionPermissionMode,
@@ -130,7 +131,7 @@ export function registerAIWorkbenchIpc(): void {
     return stopSession(id)
   })
 
-  ipcMain.handle('ai-workbench:launch-session', async (_event, id: string, opts?: { forcePty?: boolean }) => {
+  ipcMain.handle('ai-workbench:launch-session', async (_event, id: string, opts?: { forcePty?: boolean; cols?: number; rows?: number }) => {
     return launchSession(id, opts)
   })
 
@@ -185,6 +186,10 @@ export function registerAIWorkbenchIpc(): void {
 
   ipcMain.handle('ai-workbench:get-session-output', async (_event, sessionId: string) => {
     return getSessionOutput(sessionId)
+  })
+
+  ipcMain.handle('ai-workbench:get-raw-session-output', async (_event, sessionId: string) => {
+    return getRawSessionOutput(sessionId)
   })
 
   // ── Groups ──
