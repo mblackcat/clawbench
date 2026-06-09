@@ -41,6 +41,22 @@ export interface AiToolsConfig {
   toolBehavior: { maxToolSteps: number; maxSearchRounds: number; toolTimeoutMs: number }
 }
 
+type VcsType = 'git' | 'svn' | 'none'
+
+interface VcsChangedFile {
+  path: string
+  status: string
+  staged: boolean
+  additions: number
+  deletions: number
+}
+
+interface VcsExecResult {
+  success: boolean
+  output?: string
+  error?: string
+}
+
 export interface ClawBenchAPI {
   workspace: {
     list: () => Promise<import('./workspace').Workspace[]>
@@ -162,6 +178,22 @@ export interface ClawBenchAPI {
       output?: string
       error?: string
     }>
+  }
+  vcs: {
+    detect: (workspacePath: string) => Promise<VcsType>
+    diffStat: (workspacePath: string) => Promise<{
+      type: VcsType
+      additions: number
+      deletions: number
+    }>
+    changedFiles: (workspacePath: string) => Promise<{
+      type: VcsType
+      files: VcsChangedFile[]
+    }>
+    commit: (workspacePath: string, message: string) => Promise<VcsExecResult>
+    push: (workspacePath: string) => Promise<VcsExecResult>
+    pull: (workspacePath: string) => Promise<VcsExecResult>
+    discardFile: (workspacePath: string, filePath: string, isUntracked: boolean) => Promise<VcsExecResult>
   }
   settings: {
     get: () => Promise<Record<string, unknown>>

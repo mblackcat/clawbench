@@ -350,6 +350,7 @@ export function createSession(
   sessions.push(session)
   setAIWorkbenchSessions(sessions)
   logger.info(`[workbench] Session created: ${session.id} tool=${toolType} workspace=${workspaceId}`)
+  notifyDataChanged()
   return session
 }
 
@@ -372,6 +373,7 @@ export function createRuntimeSession(
   }
   runtimeSessions.set(session.id, session)
   logger.info(`[workbench] Runtime session created: ${session.id} tool=${toolType} workspace=${workspaceId}`)
+  notifyDataChanged()
   return session
 }
 
@@ -383,6 +385,7 @@ export function updateSession(
   if (runtimeSession) {
     const updated = { ...runtimeSession, ...updates, updatedAt: Date.now() }
     runtimeSessions.set(id, updated)
+    notifyDataChanged()
     return updated
   }
 
@@ -391,6 +394,7 @@ export function updateSession(
   if (idx === -1) return null
   sessions[idx] = { ...sessions[idx], ...updates, updatedAt: Date.now() }
   setAIWorkbenchSessions(sessions)
+  notifyDataChanged()
   return sessions[idx]
 }
 
@@ -399,12 +403,14 @@ export function deleteSession(id: string): void {
   closeSDKSession(id)
   if (runtimeSessions.delete(id)) {
     logger.info(`[workbench] Runtime session deleted: ${id}`)
+    notifyDataChanged()
     return
   }
 
   const { sessions } = getAIWorkbenchConfig()
   setAIWorkbenchSessions(sessions.filter((s) => s.id !== id))
   logger.info(`[workbench] Session deleted: ${id}`)
+  notifyDataChanged()
 }
 
 /**

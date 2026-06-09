@@ -163,6 +163,23 @@ export const api = {
       ipcRenderer.invoke('git:discard-file', workspacePath, filePath, isUntracked)
   },
 
+  vcs: {
+    detect: (workspacePath: string) =>
+      ipcRenderer.invoke('vcs:detect', workspacePath),
+    diffStat: (workspacePath: string) =>
+      ipcRenderer.invoke('vcs:diff-stat', workspacePath),
+    changedFiles: (workspacePath: string) =>
+      ipcRenderer.invoke('vcs:changed-files', workspacePath),
+    commit: (workspacePath: string, message: string) =>
+      ipcRenderer.invoke('vcs:commit', workspacePath, message),
+    push: (workspacePath: string) =>
+      ipcRenderer.invoke('vcs:push', workspacePath),
+    pull: (workspacePath: string) =>
+      ipcRenderer.invoke('vcs:pull', workspacePath),
+    discardFile: (workspacePath: string, filePath: string, isUntracked: boolean) =>
+      ipcRenderer.invoke('vcs:discard-file', workspacePath, filePath, isUntracked)
+  },
+
   dialog: {
     selectDirectory: () => ipcRenderer.invoke('dialog:select-directory'),
     selectApp: () => ipcRenderer.invoke('dialog:select-app') as Promise<string | null>,

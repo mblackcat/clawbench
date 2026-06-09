@@ -4,6 +4,7 @@ import { registerAuthIpc } from './auth.ipc'
 import { registerDeveloperIpc } from './developer.ipc'
 import { registerSettingsIpc } from './settings.ipc'
 import { registerGitIpc } from './git.ipc'
+import { registerVcsIpc } from './vcs.ipc'
 import { registerAiIpc } from './ai.ipc'
 import { registerOpenClawIpc } from './openclaw.ipc'
 import { registerHermesIpc } from './hermes.ipc'
@@ -27,6 +28,7 @@ export function registerAllIpcHandlers(): void {
   registerDeveloperIpc()
   registerSettingsIpc()
   registerGitIpc()
+  registerVcsIpc()
   registerAiIpc()
   registerOpenClawIpc()
   registerHermesIpc()

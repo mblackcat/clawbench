@@ -15,7 +15,9 @@ interface ChangedFile {
   deletions: number
 }
 
-interface GitChangesPanelProps {
+type VcsType = 'git' | 'svn' | 'none'
+
+interface VcsChangesPanelProps {
   workingDir: string
   visible: boolean
 }
@@ -30,10 +32,17 @@ const STATUS_COLORS: Record<string, string> = {
   U: '#cf1322'
 }
 
-const GitChangesPanel: React.FC<GitChangesPanelProps> = ({ workingDir, visible }) => {
+const VCS_LABELS: Record<VcsType, string> = {
+  git: 'Git',
+  svn: 'SVN',
+  none: 'VCS'
+}
+
+const VcsChangesPanel: React.FC<VcsChangesPanelProps> = ({ workingDir, visible }) => {
   const { token } = theme.useToken()
   const { message } = App.useApp()
 
+  const [vcsType, setVcsType] = useState<VcsType>('none')
   const [files, setFiles] = useState<ChangedFile[]>([])
   const [commitMsg, setCommitMsg] = useState('')
   const [loading, setLoading] = useState(false)
@@ -44,9 +53,11 @@ const GitChangesPanel: React.FC<GitChangesPanelProps> = ({ workingDir, visible }
     if (!workingDir) return
     setLoading(true)
     try {
-      const result = await window.api.git.changedFiles(workingDir)
-      setFiles(result || [])
+      const result = await window.api.vcs.changedFiles(workingDir)
+      setVcsType(result?.type || 'none')
+      setFiles(result?.files || [])
     } catch {
+      setVcsType('none')
       setFiles([])
     } finally {
       setLoading(false)
@@ -70,9 +81,9 @@ const GitChangesPanel: React.FC<GitChangesPanelProps> = ({ workingDir, visible }
     }
     setActionLoading('commit')
     try {
-      const result = await window.api.git.commit(workingDir, commitMsg.trim())
+      const result = await window.api.vcs.commit(workingDir, commitMsg.trim())
       if (result.success) {
-        message.success('Commit successful')
+        message.success(vcsType === 'svn' ? 'SVN commit successful' : 'Commit successful')
         setCommitMsg('')
         fetchFiles()
       } else {
@@ -83,12 +94,12 @@ const GitChangesPanel: React.FC<GitChangesPanelProps> = ({ workingDir, visible }
     } finally {
       setActionLoading(null)
     }
-  }, [workingDir, commitMsg, message, fetchFiles])
+  }, [workingDir, commitMsg, message, fetchFiles, vcsType])
 
   const handlePush = useCallback(async () => {
     setActionLoading('push')
     try {
-      const result = await window.api.git.push(workingDir)
+      const result = await window.api.vcs.push(workingDir)
       if (result.success) {
         message.success('Push successful')
       } else {
@@ -104,24 +115,24 @@ const GitChangesPanel: React.FC<GitChangesPanelProps> = ({ workingDir, visible }
   const handlePull = useCallback(async () => {
     setActionLoading('pull')
     try {
-      const result = await window.api.git.pull(workingDir)
+      const result = await window.api.vcs.pull(workingDir)
       if (result.success) {
-        message.success('Pull successful')
+        message.success(vcsType === 'svn' ? 'Update successful' : 'Pull successful')
         fetchFiles()
       } else {
-        message.error(result.error || 'Pull failed')
+        message.error(result.error || (vcsType === 'svn' ? 'Update failed' : 'Pull failed'))
       }
     } catch {
-      message.error('Pull failed')
+      message.error(vcsType === 'svn' ? 'Update failed' : 'Pull failed')
     } finally {
       setActionLoading(null)
     }
-  }, [workingDir, message, fetchFiles])
+  }, [workingDir, message, fetchFiles, vcsType])
 
   const handleDiscardFile = useCallback(async (file: ChangedFile) => {
     setActionLoading(`discard-${file.path}`)
     try {
-      const result = await window.api.git.discardFile(workingDir, file.path, file.status === '??')
+      const result = await window.api.vcs.discardFile(workingDir, file.path, file.status === '??')
       if (result.success) {
         fetchFiles()
       } else {
@@ -164,6 +175,11 @@ const GitChangesPanel: React.FC<GitChangesPanelProps> = ({ workingDir, visible }
         }}
       >
         <span style={{ flex: 1 }}>Changes</span>
+        {vcsType !== 'none' && (
+          <span style={{ fontSize: 11, color: token.colorTextTertiary, fontWeight: 500 }}>
+            {VCS_LABELS[vcsType]}
+          </span>
+        )}
         <Badge count={files.length} size="small" showZero={false} />
         <Button
           type="text"
@@ -196,24 +212,27 @@ const GitChangesPanel: React.FC<GitChangesPanelProps> = ({ workingDir, visible }
             icon={<SyncOutlined />}
             loading={actionLoading === 'commit'}
             onClick={handleCommit}
-            disabled={!commitMsg.trim() || files.length === 0}
+            disabled={vcsType === 'none' || !commitMsg.trim() || files.length === 0}
             style={{ flex: 1, fontSize: 12 }}
           >
             Commit
           </Button>
-          <Button
-            size="small"
-            icon={<CloudUploadOutlined />}
-            loading={actionLoading === 'push'}
-            onClick={handlePush}
-            title="Push"
-          />
+          {vcsType === 'git' && (
+            <Button
+              size="small"
+              icon={<CloudUploadOutlined />}
+              loading={actionLoading === 'push'}
+              onClick={handlePush}
+              title="Push"
+            />
+          )}
           <Button
             size="small"
             icon={<CloudDownloadOutlined />}
             loading={actionLoading === 'pull'}
             onClick={handlePull}
-            title="Pull"
+            disabled={vcsType === 'none'}
+            title={vcsType === 'svn' ? 'Update' : 'Pull'}
           />
         </div>
       </div>
@@ -222,7 +241,7 @@ const GitChangesPanel: React.FC<GitChangesPanelProps> = ({ workingDir, visible }
       <div style={{ flex: 1, overflow: 'auto', padding: '4px 0' }}>
         {files.length === 0 && !loading && (
           <div style={{ padding: '24px 12px', textAlign: 'center', color: token.colorTextQuaternary, fontSize: 12 }}>
-            No changes
+            {vcsType === 'none' ? 'No Git or SVN repository' : 'No changes'}
           </div>
         )}
         {files.map((file) => (
@@ -304,4 +323,4 @@ const GitChangesPanel: React.FC<GitChangesPanelProps> = ({ workingDir, visible }
   )
 }
 
-export default GitChangesPanel
+export default VcsChangesPanel
