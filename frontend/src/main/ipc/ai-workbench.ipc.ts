@@ -30,7 +30,7 @@ import {
   saveIMConfig,
   detectAvailableCLIs
 } from '../services/ai-workbench.service'
-import { listNativeSessions } from '../services/native-sessions.service'
+import { listNativeSessions, loadNativeSessionTranscript } from '../services/native-sessions.service'
 import { writeToPty, resizePty, killPtySession } from '../services/pty-manager.service'
 import { loadShellEnv } from '../services/cli-detect.service'
 import { getIMBridgeService } from '../services/im/im-bridge.service'
@@ -44,7 +44,7 @@ import { getIMAutoConnect, setIMAutoConnect } from '../store/ai-workbench.store'
  */
 async function autoConnectIM(): Promise<void> {
   try {
-    const moduleVisibility = settingsStore.get('moduleVisibility') as
+    const moduleVisibility = settingsStore.get('moduleVisibility') as unknown as
       | Record<string, boolean>
       | undefined
     if (!moduleVisibility?.aiWorkbench) return
@@ -180,6 +180,10 @@ export function registerAIWorkbenchIpc(): void {
 
   ipcMain.handle('ai-workbench:list-native-sessions', async (_event, workingDir: string, toolType: string) => {
     return listNativeSessions(workingDir, toolType as any)
+  })
+
+  ipcMain.handle('ai-workbench:load-native-session-transcript', async (_event, workingDir: string, toolType: string, sessionId: string) => {
+    return loadNativeSessionTranscript(workingDir, toolType as any, sessionId)
   })
 
   // ── Session output (for IM cards) ──

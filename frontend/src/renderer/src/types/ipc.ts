@@ -449,6 +449,11 @@ export interface ClawBenchAPI {
       modifiedAt: number
       sizeBytes?: number
     }>>
+    loadNativeSessionTranscript: (workingDir: string, toolType: string, sessionId: string) => Promise<Array<{
+      role: 'user' | 'assistant' | 'system'
+      blocks: import('./ai-workbench').WorkbenchContentBlock[]
+      timestamp: number
+    }>>
     getSessionOutput: (sessionId: string) => Promise<string>
     getRawSessionOutput: (sessionId: string) => Promise<string>
     getGroups: () => Promise<import('./ai-workbench').AIWorkbenchGroup[]>

@@ -75,6 +75,7 @@ export type WorkbenchContentBlock =
   | { type: 'raw_output'; text: string }
   | { type: 'ask_user_question'; id: string; questions: AskUserQuestionItem[]; answered?: boolean; answerText?: string }
   | { type: 'todo_update'; todos: TodoItem[] }
+  | { type: 'context_usage'; inputTokens?: number; cachedInputTokens?: number; outputTokens?: number; usedTokens?: number; contextWindow?: number }
 
 export interface WorkbenchMessage {
   id: string
@@ -85,10 +86,11 @@ export interface WorkbenchMessage {
   costUsd?: number
 }
 
-export type WorkbenchMode = 'plan' | 'ask-first' | 'auto-edit'
+export type WorkbenchMode = 'plan' | 'ask-first' | 'auto-edit' | 'full-access'
 
 /** Claude session view mode: chat UI vs raw CLI terminal */
 export type ClaudeViewMode = 'chat' | 'cli'
+export type CodingViewMode = ClaudeViewMode
 
 export interface AIWorkbenchGroup {
   id: string

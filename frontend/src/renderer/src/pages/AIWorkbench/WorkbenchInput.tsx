@@ -3,9 +3,10 @@ import { Input, Button, Dropdown, Tooltip, theme } from 'antd'
 import {
   SendOutlined, StopOutlined, PauseCircleOutlined, PaperClipOutlined,
   CloseCircleFilled, BulbOutlined, QuestionCircleOutlined, EditOutlined,
-  FolderOutlined, BranchesOutlined, DollarOutlined, MessageOutlined
+  FolderOutlined, BranchesOutlined, DollarOutlined, MessageOutlined, DashboardOutlined, UnlockOutlined
 } from '@ant-design/icons'
-import type { AIToolType, WorkbenchMode, WorkbenchPendingFile } from '../../types/ai-workbench'
+import { useT } from '../../i18n'
+import type { AIToolType, WorkbenchContentBlock, WorkbenchMode, WorkbenchPendingFile } from '../../types/ai-workbench'
 
 const { TextArea } = Input
 
@@ -31,6 +32,18 @@ const CLAUDE_SLASH_COMMANDS = [
   { key: '/doctor', label: '/doctor', desc: '诊断环境 (仅 CLI)' },
 ]
 
+const CODEX_SLASH_COMMANDS = [
+  { key: '/clear', label: '/clear', descKey: 'coding.slashClear' },
+  { key: '/cost', label: '/cost', descKey: 'coding.slashCost' },
+  { key: '/context', label: '/context', descKey: 'coding.slashContext' },
+  { key: '/help', label: '/help', descKey: 'coding.slashHelp' },
+  { key: '/ask', label: '/ask', descKey: 'coding.codexModeAsk' },
+  { key: '/auto', label: '/auto', descKey: 'coding.codexModeAuto' },
+  { key: '/full', label: '/full', descKey: 'coding.codexModeFull' },
+  { key: '/compact', label: '/compact', descKey: 'coding.slashCompact' },
+  { key: '/review', label: '/review', descKey: 'coding.slashReview' },
+]
+
 interface WorkbenchInputProps {
   sessionId: string
   toolType: AIToolType
@@ -40,20 +53,27 @@ interface WorkbenchInputProps {
   workingDir?: string
   costUsd?: number
   messageCount?: number
+  contextUsage?: Extract<WorkbenchContentBlock, { type: 'context_usage' }>
   onSend: (text: string) => void
   onModeChange: (mode: WorkbenchMode) => void
   onInterrupt: () => void
   onStop: () => void
 }
 
-const MODES: { key: WorkbenchMode; label: string; icon: React.ReactNode }[] = [
-  { key: 'plan', label: 'Plan', icon: <BulbOutlined /> },
-  { key: 'ask-first', label: 'Ask First', icon: <QuestionCircleOutlined /> },
-  { key: 'auto-edit', label: 'Auto Edit', icon: <EditOutlined /> },
+const CLAUDE_MODES: { key: WorkbenchMode; labelKey: string; icon: React.ReactNode }[] = [
+  { key: 'plan', labelKey: 'coding.modePlan', icon: <BulbOutlined /> },
+  { key: 'ask-first', labelKey: 'coding.modeAskFirst', icon: <QuestionCircleOutlined /> },
+  { key: 'auto-edit', labelKey: 'coding.modeAutoEdit', icon: <EditOutlined /> },
+]
+
+const CODEX_MODES: { key: WorkbenchMode; labelKey: string; icon: React.ReactNode }[] = [
+  { key: 'ask-first', labelKey: 'coding.codexModeAsk', icon: <QuestionCircleOutlined /> },
+  { key: 'auto-edit', labelKey: 'coding.codexModeAuto', icon: <EditOutlined /> },
+  { key: 'full-access', labelKey: 'coding.codexModeFull', icon: <UnlockOutlined /> },
 ]
 
 const WorkbenchInput: React.FC<WorkbenchInputProps> = ({
-  sessionId: _sessionId, toolType, isStreaming, mode, hasPendingQuestion, workingDir, costUsd, messageCount, onSend, onModeChange, onInterrupt, onStop
+  sessionId: _sessionId, toolType, isStreaming, mode, hasPendingQuestion, workingDir, costUsd, messageCount, contextUsage, onSend, onModeChange, onInterrupt, onStop
 }) => {
   const [inputValue, setInputValue] = useState('')
   const [isComposing, setIsComposing] = useState(false)
@@ -61,6 +81,7 @@ const WorkbenchInput: React.FC<WorkbenchInputProps> = ({
   const [slashIndex, setSlashIndex] = useState(-1) // selected index in inline autocomplete
   const textAreaRef = useRef<any>(null)
   const { token } = theme.useToken()
+  const t = useT()
 
   // Git branch
   const [gitBranch, setGitBranch] = useState<string>('')
@@ -92,19 +113,30 @@ const WorkbenchInput: React.FC<WorkbenchInputProps> = ({
     return p
   }, [workingDir])
 
-  // Inline slash autocomplete: show when input starts with / and tool is claude
+  const slashCommands = useMemo(() => {
+    if (toolType === 'claude') return CLAUDE_SLASH_COMMANDS
+    if (toolType === 'codex') return CODEX_SLASH_COMMANDS.map(c => ({ ...c, desc: t(c.descKey) }))
+    return []
+  }, [toolType, t])
+
+  // Inline slash autocomplete: show when input starts with / and the tool supports chat commands
   const slashPrefix = inputValue.startsWith('/') ? inputValue.toLowerCase() : ''
   const inlineSlashItems = useMemo(() => {
-    if (!slashPrefix || toolType !== 'claude') return []
-    return CLAUDE_SLASH_COMMANDS.filter(c => c.key.startsWith(slashPrefix))
-  }, [slashPrefix, toolType])
+    if (!slashPrefix) return []
+    return slashCommands.filter(c => c.key.startsWith(slashPrefix))
+  }, [slashPrefix, slashCommands])
 
   // Mode capsule refs
   const capsuleRef = useRef<HTMLDivElement>(null)
   const btnRefs = useRef<(HTMLButtonElement | null)[]>([])
   const [indicator, setIndicator] = useState({ left: 0, width: 0 })
 
-  const modeIndex = MODES.findIndex(m => m.key === mode)
+  const modeOptions = useMemo(
+    () => (toolType === 'codex' ? CODEX_MODES : CLAUDE_MODES).map(m => ({ ...m, label: t(m.labelKey) })),
+    [toolType, t]
+  )
+  const activeMode = modeOptions.some(m => m.key === mode) ? mode : modeOptions[0].key
+  const modeIndex = modeOptions.findIndex(m => m.key === activeMode)
 
   useLayoutEffect(() => {
     const btn = btnRefs.current[modeIndex]
@@ -116,7 +148,7 @@ const WorkbenchInput: React.FC<WorkbenchInputProps> = ({
         width: btnRect.width,
       })
     }
-  }, [modeIndex])
+  }, [modeIndex, modeOptions])
 
   const handleSend = useCallback(() => {
     const text = inputValue.trim()
@@ -197,7 +229,7 @@ const WorkbenchInput: React.FC<WorkbenchInputProps> = ({
     setPendingFiles(prev => prev.filter(f => f.id !== id))
   }, [])
 
-  const slashMenuItems = (toolType === 'claude' ? CLAUDE_SLASH_COMMANDS : []).map(c => ({
+  const slashMenuItems = slashCommands.map(c => ({
     key: c.key,
     label: (
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -214,8 +246,8 @@ const WorkbenchInput: React.FC<WorkbenchInputProps> = ({
     <div style={{ padding: '8px 16px 12px', borderTop: `1px solid ${token.colorBorderSecondary}` }}>
       {/* Toolbar row (above input) */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-        {/* Mode capsule (claude only) */}
-        {toolType === 'claude' && (
+        {/* Mode capsule */}
+        {(toolType === 'claude' || toolType === 'codex') && (
           <div
             ref={capsuleRef}
             style={{
@@ -239,7 +271,7 @@ const WorkbenchInput: React.FC<WorkbenchInputProps> = ({
               transition: '0.25s cubic-bezier(0.4, 0, 0.2, 1)',
               zIndex: 0,
             }} />
-            {MODES.map((m, i) => (
+            {modeOptions.map((m, i) => (
               <button
                 key={m.key}
                 ref={el => { btnRefs.current[i] = el }}
@@ -256,8 +288,8 @@ const WorkbenchInput: React.FC<WorkbenchInputProps> = ({
                   position: 'relative',
                   zIndex: 1,
                   fontSize: 12,
-                  color: mode === m.key ? '#fff' : token.colorTextSecondary,
-                  fontWeight: mode === m.key ? 500 : 400,
+                  color: activeMode === m.key ? '#fff' : token.colorTextSecondary,
+                  fontWeight: activeMode === m.key ? 500 : 400,
                   userSelect: 'none',
                   whiteSpace: 'nowrap',
                   transition: 'color 0.25s',
@@ -494,6 +526,21 @@ const WorkbenchInput: React.FC<WorkbenchInputProps> = ({
           }}>
             <MessageOutlined style={{ fontSize: 10 }} />
             {messageCount} 轮对话
+          </span>
+        )}
+        {contextUsage && ((contextUsage.usedTokens || 0) > 0 || (contextUsage.inputTokens || 0) > 0) && (
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 3,
+            padding: '1px 8px', borderRadius: 4, fontSize: 11, lineHeight: '18px',
+            background: 'rgba(19,194,194,0.08)', color: '#08979c',
+            whiteSpace: 'nowrap',
+          }}>
+            <DashboardOutlined style={{ fontSize: 10 }} />
+            {(() => {
+              const used = contextUsage.usedTokens ?? ((contextUsage.inputTokens || 0) + (contextUsage.cachedInputTokens || 0))
+              const total = contextUsage.contextWindow || 0
+              return total > 0 ? `${Math.round((used / total) * 100)}% ctx` : `${used.toLocaleString()} ctx`
+            })()}
           </span>
         )}
         {costUsd !== undefined && costUsd > 0 && (

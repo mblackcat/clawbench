@@ -4,7 +4,7 @@ import {
   InfoCircleOutlined,
   ToolOutlined,
   CaretRightOutlined, CaretDownOutlined,
-  CheckCircleFilled, CloseCircleFilled
+  CheckCircleFilled, CloseCircleFilled, DashboardOutlined
 } from '@ant-design/icons'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -159,11 +159,27 @@ function renderToolInput(name: string, input: Record<string, unknown>, token: an
 
 // ── Tool Call Block (merged tool_use + tool_result) ──
 
+type ToolToggleHandler = () => void
+
+const AnimatedToolBody: React.FC<{ expanded: boolean; children: React.ReactNode }> = ({ expanded, children }) => (
+  <div style={{
+    display: 'grid',
+    gridTemplateRows: expanded ? '1fr' : '0fr',
+    opacity: expanded ? 1 : 0,
+    transition: 'grid-template-rows 180ms ease, opacity 140ms ease',
+  }}>
+    <div style={{ minHeight: 0, overflow: 'hidden' }}>
+      {children}
+    </div>
+  </div>
+)
+
 const ToolCallBlock: React.FC<{
   name: string
   input: Record<string, unknown>
   result?: { content: string; isError?: boolean }
-}> = ({ name, input, result }) => {
+  onToggle?: ToolToggleHandler
+}> = ({ name, input, result, onToggle }) => {
   const [expanded, setExpanded] = useState(false)
   const { token } = theme.useToken()
   const summary = getToolSummary(name, input)
@@ -175,7 +191,10 @@ const ToolCallBlock: React.FC<{
       overflow: 'hidden'
     }}>
       <div
-        onClick={() => setExpanded(!expanded)}
+        onClick={() => {
+          onToggle?.()
+          setExpanded(prev => !prev)
+        }}
         style={{
           display: 'flex', alignItems: 'center', gap: 6,
           padding: '4px 10px', cursor: 'pointer',
@@ -201,7 +220,7 @@ const ToolCallBlock: React.FC<{
           </span>
         )}
       </div>
-      {expanded && (
+      <AnimatedToolBody expanded={expanded}>
         <div style={{
           padding: '6px 10px', fontSize: 11, fontFamily: 'monospace',
           background: token.colorBgLayout, whiteSpace: 'pre-wrap',
@@ -218,14 +237,14 @@ const ToolCallBlock: React.FC<{
             </div>
           )}
         </div>
-      )}
+      </AnimatedToolBody>
     </div>
   )
 }
 
 // ── Standalone Tool Result Block (unpaired) ──
 
-const ToolResultBlock: React.FC<{ content: string; isError?: boolean }> = ({ content, isError }) => {
+const ToolResultBlock: React.FC<{ content: string; isError?: boolean; onToggle?: ToolToggleHandler }> = ({ content, isError, onToggle }) => {
   const [expanded, setExpanded] = useState(false)
   const { token } = theme.useToken()
   const t = useT()
@@ -237,7 +256,10 @@ const ToolResultBlock: React.FC<{ content: string; isError?: boolean }> = ({ con
       border: `1px solid ${isError ? token.colorErrorBorder : token.colorBorderSecondary}`, overflow: 'hidden'
     }}>
       <div
-        onClick={() => setExpanded(!expanded)}
+        onClick={() => {
+          onToggle?.()
+          setExpanded(prev => !prev)
+        }}
         style={{
           display: 'flex', alignItems: 'center', gap: 6,
           padding: '4px 10px', cursor: 'pointer',
@@ -254,7 +276,7 @@ const ToolResultBlock: React.FC<{ content: string; isError?: boolean }> = ({ con
         </span>
         {!expanded && <span style={{ color: token.colorTextQuaternary, fontSize: 11, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{preview}</span>}
       </div>
-      {expanded && (
+      <AnimatedToolBody expanded={expanded}>
         <div style={{
           padding: '6px 10px', fontSize: 11, fontFamily: 'monospace',
           background: token.colorBgLayout, whiteSpace: 'pre-wrap',
@@ -262,7 +284,33 @@ const ToolResultBlock: React.FC<{ content: string; isError?: boolean }> = ({ con
         }}>
           {content}
         </div>
-      )}
+      </AnimatedToolBody>
+    </div>
+  )
+}
+
+const ContextUsageBlock: React.FC<Extract<WorkbenchContentBlock, { type: 'context_usage' }>> = (block) => {
+  const { token } = theme.useToken()
+  const used = block.usedTokens ?? ((block.inputTokens || 0) + (block.cachedInputTokens || 0))
+  const total = block.contextWindow || 0
+  const percent = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : null
+  const label = percent !== null
+    ? `${used.toLocaleString()} / ${total.toLocaleString()} tokens (${percent}%)`
+    : `${used.toLocaleString()} context tokens`
+
+  if (!used && !block.outputTokens && !total) return null
+
+  return (
+    <div style={{
+      display: 'inline-flex', alignItems: 'center', gap: 6,
+      padding: '3px 8px', margin: '2px 0 8px',
+      borderRadius: 4, fontSize: 11,
+      color: token.colorTextSecondary,
+      background: token.colorFillQuaternary,
+    }}>
+      <DashboardOutlined style={{ fontSize: 12 }} />
+      <span>{label}</span>
+      {!!block.outputTokens && <span>+{block.outputTokens.toLocaleString()} out</span>}
     </div>
   )
 }
@@ -297,6 +345,8 @@ const ContentBlockRenderer: React.FC<{ block: WorkbenchContentBlock }> = ({ bloc
           {block.text}
         </div>
       )
+    case 'context_usage':
+      return <ContextUsageBlock {...block} />
     default:
       return null
   }
@@ -304,7 +354,7 @@ const ContentBlockRenderer: React.FC<{ block: WorkbenchContentBlock }> = ({ bloc
 
 // ── Render blocks with tool_use + tool_result pairing ──
 
-function renderAssistantBlocks(blocks: WorkbenchContentBlock[], sessionId: string): React.ReactNode[] {
+function renderAssistantBlocks(blocks: WorkbenchContentBlock[], sessionId: string, onToolToggle?: ToolToggleHandler): React.ReactNode[] {
   // Build a map: tool_use.id → tool_result
   const resultMap = new Map<string, { content: string; isError?: boolean }>()
   for (const b of blocks) {
@@ -321,10 +371,10 @@ function renderAssistantBlocks(blocks: WorkbenchContentBlock[], sessionId: strin
     if (b.type === 'tool_use') {
       const tr = resultMap.get(b.id)
       if (tr) pairedIds.add(b.id)
-      nodes.push(<ToolCallBlock key={i} name={b.name} input={b.input} result={tr} />)
+      nodes.push(<ToolCallBlock key={i} name={b.name} input={b.input} result={tr} onToggle={onToolToggle} />)
     } else if (b.type === 'tool_result') {
       if (pairedIds.has(b.toolUseId)) continue // already rendered with tool_use
-      nodes.push(<ToolResultBlock key={i} content={b.content} isError={b.isError} />)
+      nodes.push(<ToolResultBlock key={i} content={b.content} isError={b.isError} onToggle={onToolToggle} />)
     } else if (b.type === 'ask_user_question') {
       nodes.push(
         <AskUserQuestionBlock
@@ -350,9 +400,10 @@ function renderAssistantBlocks(blocks: WorkbenchContentBlock[], sessionId: strin
 
 interface WorkbenchChatMessageProps {
   message: WorkbenchMessage
+  onToolToggle?: ToolToggleHandler
 }
 
-const WorkbenchChatMessage: React.FC<WorkbenchChatMessageProps> = ({ message }) => {
+const WorkbenchChatMessage: React.FC<WorkbenchChatMessageProps> = ({ message, onToolToggle }) => {
   const { token } = theme.useToken()
 
   if (message.role === 'system') {
@@ -396,7 +447,7 @@ const WorkbenchChatMessage: React.FC<WorkbenchChatMessageProps> = ({ message }) 
         ) : (
           // Assistant message: paired tool blocks + content
           <div style={{ maxWidth: '100%' }}>
-            {renderAssistantBlocks(message.blocks, message.sessionId)}
+            {renderAssistantBlocks(message.blocks, message.sessionId, onToolToggle)}
             {message.costUsd !== undefined && message.costUsd > 0 && (
               <Text style={{ fontSize: 11, color: token.colorTextQuaternary }}>
                 Cost: ${message.costUsd.toFixed(4)}

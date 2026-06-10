@@ -34,6 +34,10 @@ import {
   getSDKSessionOutput, interruptSDKSession, setSDKPermissionMode,
   detectManagedInteractiveState
 } from './sdk-session-manager.service'
+import {
+  launchCodexSession, writeToCodexSession, closeCodexSession, hasCodexSession,
+  getCodexSessionOutput, interruptCodexSession, setCodexSessionMode, resolveBundledCodexPath
+} from './codex-session-manager.service'
 import { detectAvailableCLIs, getAugmentedEnv, loadShellEnv } from './cli-detect.service'
 import { settingsStore } from '../store/settings.store'
 
@@ -132,6 +136,8 @@ export function getSessionOutput(sessionId: string): string {
   // Check SDK session first (Claude), then PTY session (other tools)
   const sdkOutput = getSDKSessionOutput(sessionId)
   if (sdkOutput) return sdkOutput
+  const codexOutput = getCodexSessionOutput(sessionId)
+  if (codexOutput) return codexOutput
   return getPtySessionOutput(sessionId)
 }
 
@@ -247,6 +253,17 @@ export function resetActiveSessionsOnStart(): void {
 export async function writeToSession(sessionId: string, text: string): Promise<{ success: boolean; error?: string }> {
   if (hasSDKSession(sessionId)) {
     return writeToSDKSession(sessionId, text)
+  }
+
+  if (hasCodexSession(sessionId)) {
+    updateSession(sessionId, { status: 'running', lastActivity: 'thinking' })
+    notifyDataChanged()
+    const result = await writeToCodexSession(sessionId, text)
+    if (!result.success) {
+      updateSession(sessionId, { status: 'idle', lastActivity: 'none' })
+      notifyDataChanged()
+    }
+    return result
   }
 
   if (hasPtySession(sessionId)) {
@@ -401,6 +418,7 @@ export function updateSession(
 export function deleteSession(id: string): void {
   killPtySession(id)
   closeSDKSession(id)
+  closeCodexSession(id)
   if (runtimeSessions.delete(id)) {
     logger.info(`[workbench] Runtime session deleted: ${id}`)
     notifyDataChanged()
@@ -447,6 +465,20 @@ export async function launchSession(
         toolEnv
       )
       if (!result.success) return result
+    } else if (session.toolType === 'codex' && !opts?.forcePty) {
+      const { command } = getToolCommand(session.toolType)
+      const resolvedCommand = resolveBundledCodexPath() || await resolveCommandPath(command, toolEnv)
+      const result = await launchCodexSession(
+        id,
+        resolvedCommand,
+        workspace.workingDir,
+        session.toolSessionId,
+        handleSDKEvent,
+        handleSDKClose,
+        handleSDKError,
+        toolEnv
+      )
+      if (!result.success) return result
     } else {
       // Non-Claude TUI tools (or Claude in CLI/PTY mode): use pty-manager
       const { command, args: baseArgs } = getToolCommand(session.toolType)
@@ -469,7 +501,9 @@ export async function launchSession(
       registerPtyOutputCallback(id, handlePtyOutputStabilized)
     }
     updateSession(id, { status: 'idle', startedAt: Date.now() })
-    const mode = (session.toolType === 'claude' && !opts?.forcePty) ? 'sdk' : 'pty'
+    const mode = (session.toolType === 'claude' && !opts?.forcePty)
+      ? 'sdk'
+      : (session.toolType === 'codex' && !opts?.forcePty) ? 'codex-app-server' : 'pty'
     logger.info(`[workbench] Session launched: ${id} tool=${session.toolType} mode=${mode}`)
     return { success: true }
   } catch (err: unknown) {
@@ -485,6 +519,8 @@ export async function launchSession(
 export function interruptSession(id: string): void {
   if (hasSDKSession(id)) {
     interruptSDKSession(id)
+  } else if (hasCodexSession(id)) {
+    interruptCodexSession(id)
   } else if (hasPtySession(id)) {
     writeToPty(id, '\x03')
   }
@@ -508,6 +544,7 @@ export async function executeSessionSlashCommand(
 export async function stopSession(id: string): Promise<AIWorkbenchSession | null> {
   killPtySession(id)
   closeSDKSession(id)
+  closeCodexSession(id)
   logger.info(`[workbench] Session stopped: ${id}`)
 
   const session = getSessionById(id)
@@ -586,6 +623,10 @@ export async function setSessionPermissionMode(
   id: string,
   mode: string
 ): Promise<{ success: boolean; error?: string }> {
+  if (hasCodexSession(id)) {
+    setCodexSessionMode(id, mode)
+    return { success: true }
+  }
   if (!hasSDKSession(id)) return { success: false, error: '会话未运行或非 Claude 会话' }
   await setSDKPermissionMode(id, mode as any)
   return { success: true }

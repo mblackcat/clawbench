@@ -27,6 +27,19 @@ export interface NativeSession {
   sizeBytes?: number
 }
 
+export type NativeTranscriptBlock =
+  | { type: 'text'; text: string }
+  | { type: 'thinking'; text: string }
+  | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
+  | { type: 'tool_result'; toolUseId: string; content: string; isError?: boolean }
+  | { type: 'context_usage'; inputTokens?: number; cachedInputTokens?: number; outputTokens?: number; usedTokens?: number; contextWindow?: number }
+
+export interface NativeTranscriptMessage {
+  role: 'user' | 'assistant' | 'system'
+  blocks: NativeTranscriptBlock[]
+  timestamp: number
+}
+
 // ── Provider interface ──
 
 interface NativeSessionProvider {
@@ -48,6 +61,52 @@ function isSameOrChildPath(candidatePath: string, parentPath: string): boolean {
 function truncateTitle(text: string, maxLength = 80): string {
   const trimmed = text.trim()
   return trimmed.length > maxLength ? trimmed.slice(0, maxLength) + '...' : trimmed
+}
+
+function extractTextFromContent(content: any): string {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+  return content
+    .map((block) => {
+      if (!block) return ''
+      if (typeof block === 'string') return block
+      return block.text || block.content || ''
+    })
+    .filter(Boolean)
+    .join('')
+}
+
+function parseTimestamp(value: unknown, fallback = Date.now()): number {
+  if (typeof value !== 'string') return fallback
+  const parsed = new Date(value).getTime()
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
+function pushTranscriptMessage(
+  messages: NativeTranscriptMessage[],
+  role: NativeTranscriptMessage['role'],
+  blocks: NativeTranscriptBlock[],
+  timestamp?: number
+): void {
+  const cleanBlocks = blocks.filter((block) => {
+    if (block.type === 'text' || block.type === 'thinking') return !!block.text.trim()
+    if (block.type === 'tool_result') return !!block.content || !!block.toolUseId
+    if (block.type === 'context_usage') {
+      return !!block.usedTokens || !!block.inputTokens || !!block.cachedInputTokens || !!block.outputTokens || !!block.contextWindow
+    }
+    return true
+  })
+  if (cleanBlocks.length === 0) return
+  messages.push({ role, blocks: cleanBlocks, timestamp: timestamp || Date.now() })
+}
+
+function safeJsonParseObject(text: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(text)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+  } catch {
+    return {}
+  }
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -107,8 +166,8 @@ async function parseClaudeSession(
     let foundTitle = false
     let bytesRead = 0
 
-    stream.on('data', (chunk: string) => {
-      bytesRead += Buffer.byteLength(chunk)
+    stream.on('data', (chunk: string | Buffer) => {
+      bytesRead += Buffer.byteLength(String(chunk))
       if (bytesRead > 1_000_000 && !foundTitle) {
         rl.close()
         stream.destroy()
@@ -213,16 +272,108 @@ const claudeProvider: NativeSessionProvider = {
  *
  * We filter by cwd to match the workspace working directory.
  */
+// Transcript readers used to hydrate chat view when opening an existing native session.
+function findClaudeSessionFile(workingDir: string, sessionId: string): string | null {
+  for (const projectDir of resolveClaudeProjectDirs(workingDir)) {
+    const filePath = path.join(projectDir, `${sessionId}.jsonl`)
+    if (fs.existsSync(filePath)) return filePath
+  }
+  return null
+}
+
+function parseClaudeToolResultBlock(block: any): NativeTranscriptBlock | null {
+  if (!block || block.type !== 'tool_result') return null
+  const content = typeof block.content === 'string'
+    ? block.content
+    : Array.isArray(block.content)
+      ? block.content.map((c: any) => c?.text || c?.content || '').filter(Boolean).join('\n')
+      : block.content ? JSON.stringify(block.content) : ''
+  return {
+    type: 'tool_result',
+    toolUseId: block.tool_use_id || block.toolUseId || '',
+    content,
+    isError: !!block.is_error
+  }
+}
+
+function readClaudeTranscript(workingDir: string, sessionId: string): NativeTranscriptMessage[] {
+  const filePath = findClaudeSessionFile(workingDir, sessionId)
+  if (!filePath) return []
+
+  let raw = ''
+  try { raw = fs.readFileSync(filePath, 'utf-8') } catch { return [] }
+
+  const messages: NativeTranscriptMessage[] = []
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue
+    let data: any
+    try { data = JSON.parse(line) } catch { continue }
+    const ts = parseTimestamp(data.timestamp)
+
+    if (data.type === 'user' && data.message?.role === 'user') {
+      const content = data.message.content
+      if (Array.isArray(content) && content.some((block: any) => block?.type === 'tool_result')) {
+        const blocks = content
+          .map((block: any) => parseClaudeToolResultBlock(block))
+          .filter(Boolean) as NativeTranscriptBlock[]
+        pushTranscriptMessage(messages, 'assistant', blocks, ts)
+        continue
+      }
+      const text = extractTextFromContent(content)
+      if (text.trim().startsWith('<ide_')) continue
+      pushTranscriptMessage(messages, 'user', [{ type: 'text', text }], ts)
+      continue
+    }
+
+    if (data.message?.role === 'assistant' && Array.isArray(data.message.content)) {
+      const blocks: NativeTranscriptBlock[] = []
+      for (const block of data.message.content) {
+        if (block?.type === 'text' && block.text) {
+          blocks.push({ type: 'text', text: String(block.text) })
+        } else if (block?.type === 'thinking' && block.thinking) {
+          blocks.push({ type: 'thinking', text: String(block.thinking) })
+        } else if (block?.type === 'tool_use') {
+          blocks.push({
+            type: 'tool_use',
+            id: String(block.id || `claude-tool-${messages.length}-${blocks.length}`),
+            name: String(block.name || 'Tool'),
+            input: block.input && typeof block.input === 'object' ? block.input : {}
+          })
+        }
+      }
+      pushTranscriptMessage(messages, 'assistant', blocks, ts)
+    }
+  }
+
+  return messages
+}
+
 function extractCodexUserText(data: any): string {
   const payload = data?.payload || data
   if (payload?.type === 'message' && payload.role === 'user') {
     const content = Array.isArray(payload.content) ? payload.content : []
     for (const block of content) {
       const text = block?.text || block?.content
-      if (block?.type === 'input_text' && text) return truncateTitle(String(text))
+      if (block?.type === 'input_text' && text && !isSyntheticCodexText(String(text))) {
+        return truncateTitle(String(text))
+      }
     }
   }
   return ''
+}
+
+function isSyntheticCodexText(text: string): boolean {
+  const trimmed = text.trim()
+  if (!trimmed) return true
+  const lower = trimmed.toLowerCase()
+  if (lower.startsWith('<environment_context') || lower.startsWith('<enviroment_context')) return true
+  if (lower.startsWith('# agents.md instructions')) return true
+  if (lower.startsWith('<instructions>') || lower.startsWith('<developer_context')) return true
+  return false
+}
+
+function titleFromCodexText(text: string): string {
+  return isSyntheticCodexText(text) ? '' : truncateTitle(text)
 }
 
 function parseCodexSessionFile(filePath: string): { meta: any | null; fallbackTitle: string } {
@@ -248,6 +399,137 @@ function parseCodexSessionFile(filePath: string): { meta: any | null; fallbackTi
   }
 }
 
+function collectCodexSessionFiles(): string[] {
+  const codexDir = path.join(os.homedir(), '.codex')
+  const roots = [
+    path.join(codexDir, 'sessions'),
+    path.join(codexDir, 'archived_sessions')
+  ]
+  const files: string[] = []
+  const walkDir = (dir: string): void => {
+    try {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (entry.isDirectory()) walkDir(path.join(dir, entry.name))
+        else if (entry.name.endsWith('.jsonl')) files.push(path.join(dir, entry.name))
+      }
+    } catch { /* skip */ }
+  }
+  for (const root of roots) {
+    if (fs.existsSync(root)) walkDir(root)
+  }
+  return files
+}
+
+function findCodexSessionFile(workingDir: string, sessionId: string): string | null {
+  for (const filePath of collectCodexSessionFiles()) {
+    try {
+      const { meta } = parseCodexSessionFile(filePath)
+      const payload = meta?.payload || {}
+      if (payload.id !== sessionId) continue
+      if (!payload.cwd || isSameOrChildPath(payload.cwd, workingDir)) return filePath
+    } catch { /* skip */ }
+  }
+  return null
+}
+
+function extractCodexMessageText(content: any): string {
+  if (typeof content === 'string') return isSyntheticCodexText(content) ? '' : content
+  if (!Array.isArray(content)) return ''
+  return content
+    .map((block) => {
+      if (!block) return ''
+      if (block.type === 'input_text' || block.type === 'output_text' || block.type === 'text') {
+        return block.text || block.content || ''
+      }
+      return ''
+    })
+    .filter((text) => !isSyntheticCodexText(String(text)))
+    .filter(Boolean)
+    .join('')
+}
+
+function codexUsageBlock(info: any): NativeTranscriptBlock | null {
+  const total = info?.total_token_usage || info?.last_token_usage || info
+  if (!total) return null
+  const inputTokens = total.input_tokens ?? total.inputTokens ?? 0
+  const cachedInputTokens = total.cached_input_tokens ?? total.cachedInputTokens ?? 0
+  const outputTokens = total.output_tokens ?? total.outputTokens ?? 0
+  const contextWindow = info?.model_context_window ?? total.context_window ?? total.contextWindow
+  const usedTokens = Number(inputTokens || 0) + Number(cachedInputTokens || 0)
+  if (!usedTokens && !outputTokens && !contextWindow) return null
+  return { type: 'context_usage', inputTokens, cachedInputTokens, outputTokens, usedTokens, contextWindow }
+}
+
+function readCodexTranscript(workingDir: string, sessionId: string): NativeTranscriptMessage[] {
+  const filePath = findCodexSessionFile(workingDir, sessionId)
+  if (!filePath) return []
+
+  let raw = ''
+  try { raw = fs.readFileSync(filePath, 'utf-8') } catch { return [] }
+
+  const messages: NativeTranscriptMessage[] = []
+  let latestUsage: NativeTranscriptBlock | null = null
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue
+    let data: any
+    try { data = JSON.parse(line) } catch { continue }
+    const ts = parseTimestamp(data.timestamp)
+    const payload = data.payload || {}
+
+    if (data.type === 'response_item' && payload.type === 'message') {
+      const role = payload.role === 'user' ? 'user' : 'assistant'
+      const text = extractCodexMessageText(payload.content)
+      pushTranscriptMessage(messages, role, [{ type: 'text', text }], ts)
+      continue
+    }
+
+    if (data.type === 'response_item' && payload.type === 'reasoning') {
+      const summary = Array.isArray(payload.summary)
+        ? payload.summary.map((s: any) => s?.text || '').filter(Boolean).join('\n')
+        : ''
+      pushTranscriptMessage(messages, 'assistant', [{ type: 'thinking', text: summary }], ts)
+      continue
+    }
+
+    if (data.type === 'response_item' && payload.type === 'function_call') {
+      const toolId = String(payload.call_id || payload.id || `codex-tool-${messages.length}`)
+      const input = typeof payload.arguments === 'string'
+        ? safeJsonParseObject(payload.arguments)
+        : payload.arguments && typeof payload.arguments === 'object' ? payload.arguments : {}
+      pushTranscriptMessage(messages, 'assistant', [{
+        type: 'tool_use',
+        id: toolId,
+        name: String(payload.name || 'Tool'),
+        input
+      }], ts)
+      continue
+    }
+
+    if (data.type === 'response_item' && payload.type === 'function_call_output') {
+      pushTranscriptMessage(messages, 'assistant', [{
+        type: 'tool_result',
+        toolUseId: String(payload.call_id || payload.id || ''),
+        content: typeof payload.output === 'string' ? payload.output : JSON.stringify(payload.output || ''),
+        isError: !!payload.is_error
+      }], ts)
+      continue
+    }
+
+    if (data.type === 'event_msg' && payload.type === 'token_count') {
+      const usage = codexUsageBlock(payload.info)
+      if (usage) latestUsage = usage
+    }
+  }
+
+  if (latestUsage) {
+    const lastAssistant = [...messages].reverse().find((message) => message.role === 'assistant')
+    if (lastAssistant) lastAssistant.blocks.push(latestUsage)
+    else pushTranscriptMessage(messages, 'assistant', [latestUsage])
+  }
+
+  return messages
+}
+
 const codexProvider: NativeSessionProvider = {
   async listSessions(workingDir: string): Promise<NativeSession[]> {
     const codexDir = path.join(os.homedir(), '.codex')
@@ -266,9 +548,11 @@ const codexProvider: NativeSessionProvider = {
           if (!line.trim()) continue
           try {
             const entry = JSON.parse(line) as { session_id: string; ts: number; text: string }
+            const title = titleFromCodexText(entry.text || '')
+            if (!title) continue
             // Keep only the first entry per session (earliest message = title)
             if (!titleMap.has(entry.session_id)) {
-              titleMap.set(entry.session_id, { ts: entry.ts * 1000, text: entry.text })
+              titleMap.set(entry.session_id, { ts: entry.ts * 1000, text: title })
             }
           } catch { /* skip */ }
         }
@@ -330,7 +614,8 @@ const codexProvider: NativeSessionProvider = {
         if (sessionCwd && isSameOrChildPath(sessionCwd, workingDir)) {
           const indexEntry = indexMap.get(sessionId)
           const historyEntry = titleMap.get(sessionId)
-          const title = indexEntry?.threadName
+          const indexTitle = titleFromCodexText(indexEntry?.threadName || '')
+          const title = indexTitle
             || (historyEntry?.text ? (historyEntry.text.length > 80 ? historyEntry.text.slice(0, 80) + '…' : historyEntry.text) : '')
             || fallbackTitle
             || `Session ${sessionId.slice(0, 8)}`
@@ -576,6 +861,21 @@ export async function listNativeSessions(
     return await provider.listSessions(workingDir)
   } catch (err) {
     console.error(`[NativeSessions] Failed to list ${toolType} sessions:`, err)
+    return []
+  }
+}
+
+export async function loadNativeSessionTranscript(
+  workingDir: string,
+  toolType: AIToolType,
+  sessionId: string
+): Promise<NativeTranscriptMessage[]> {
+  try {
+    if (toolType === 'claude') return readClaudeTranscript(workingDir, sessionId)
+    if (toolType === 'codex') return readCodexTranscript(workingDir, sessionId)
+    return []
+  } catch (err) {
+    console.error(`[NativeSessions] Failed to load ${toolType} transcript:`, err)
     return []
   }
 }

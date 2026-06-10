@@ -476,6 +476,8 @@ export const api = {
     // Native session listing (reads CLI tool session history from filesystem/CLI)
     listNativeSessions: (workingDir: string, toolType: string) =>
       ipcRenderer.invoke('ai-workbench:list-native-sessions', workingDir, toolType),
+    loadNativeSessionTranscript: (workingDir: string, toolType: string, sessionId: string) =>
+      ipcRenderer.invoke('ai-workbench:load-native-session-transcript', workingDir, toolType, sessionId),
 
     // Session output
     getSessionOutput: (sessionId: string) =>

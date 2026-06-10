@@ -2,6 +2,7 @@ import React, { useMemo, useCallback } from 'react'
 import { useAIWorkbenchStore } from '../../stores/useAIWorkbenchStore'
 import WorkbenchMessageList from './WorkbenchMessageList'
 import WorkbenchInput from './WorkbenchInput'
+import { useT } from '../../i18n'
 import type { WorkbenchMode, WorkbenchMessage } from '../../types/ai-workbench'
 
 let localMsgCounter = 0
@@ -45,9 +46,10 @@ interface WorkbenchChatPanelProps {
 }
 
 const WorkbenchChatPanel: React.FC<WorkbenchChatPanelProps> = ({ sessionId, onNewSession, onCloseSession }) => {
+  const t = useT()
   const {
     sessions, workspaces,
-    sessionMessages, sessionStreaming, sessionStreamingBlocks, sessionModes,
+    sessionMessages, sessionStreaming, sessionStreamingBlocks, sessionModes, sessionContextUsage,
     sessionPendingQuestions,
     sendUserMessage, setSessionMode, interruptSession, stopSession,
     clearSessionMessages,
@@ -61,6 +63,7 @@ const WorkbenchChatPanel: React.FC<WorkbenchChatPanelProps> = ({ sessionId, onNe
   const streamingBlocks = sessionStreamingBlocks[sessionId] || []
   const mode: WorkbenchMode = sessionModes[sessionId] || 'ask-first'
   const hasPendingQuestion = !!sessionPendingQuestions[sessionId]
+  const contextUsage = sessionContextUsage[sessionId] || undefined
 
   /** Add a local system message bubble */
   const addLocalMessage = useCallback((text: string) => {
@@ -79,16 +82,39 @@ const WorkbenchChatPanel: React.FC<WorkbenchChatPanelProps> = ({ sessionId, onNe
 
   const handleSend = useCallback((text: string) => {
     if (text === '/clear') { clearSessionMessages(sessionId); return }
-    if (text === '/cost') {
-      const totalCost = messages.reduce((sum, m) => sum + (m.costUsd || 0), 0)
-      addLocalMessage(`累计会话费用: $${totalCost.toFixed(4)}`)
+    if (text === '/help' && session?.toolType === 'codex') { addLocalMessage(t('coding.codexHelp')); return }
+    if (session?.toolType === 'codex' && text === '/ask') { setSessionMode(sessionId, 'ask-first'); addLocalMessage(t('coding.codexSwitchedAsk')); return }
+    if (session?.toolType === 'codex' && text === '/auto') { setSessionMode(sessionId, 'auto-edit'); addLocalMessage(t('coding.codexSwitchedAuto')); return }
+    if (session?.toolType === 'codex' && text === '/full') { setSessionMode(sessionId, 'full-access'); addLocalMessage(t('coding.codexSwitchedFull')); return }
+    if (session?.toolType !== 'codex' && text === '/ask') { setSessionMode(sessionId, 'ask-first'); addLocalMessage(t('coding.switchedAskFirst')); return }
+    if (session?.toolType !== 'codex' && text === '/auto') { setSessionMode(sessionId, 'auto-edit'); addLocalMessage(t('coding.switchedAutoEdit')); return }
+    if (text === '/context') {
+      if (!contextUsage) { addLocalMessage(t('coding.codexNoContextUsage')); return }
+      const used = contextUsage.usedTokens ?? ((contextUsage.inputTokens || 0) + (contextUsage.cachedInputTokens || 0))
+      const total = contextUsage.contextWindow || 0
+      const pct = total > 0 ? ` (${Math.round((used / total) * 100)}%)` : ''
+      addLocalMessage(t('coding.codexContextUsage', used.toLocaleString(), total > 0 ? ` / ${total.toLocaleString()}` : '', pct))
       return
     }
-    if (text === '/help') { addLocalMessage(HELP_TEXT); return }
-    if (text === '/plan') { setSessionMode(sessionId, 'plan'); addLocalMessage('已切换到 Plan 模式'); return }
-    if (UNSUPPORTED_COMMANDS.has(text)) { addLocalMessage(`${text} 命令需要终端交互，请切换到 CLI 模式使用。`); return }
+    if (session?.toolType === 'codex' && text === '/compact') {
+      sendUserMessage(sessionId, 'Summarize the current conversation and active work context compactly, preserving decisions, pending tasks, relevant files, and next steps.')
+      return
+    }
+    if (session?.toolType === 'codex' && text === '/review') {
+      sendUserMessage(sessionId, 'Review the current repository changes. Prioritize bugs, regressions, missing tests, and risky behavior. Report findings first with file and line references where possible.')
+      return
+    }
+    if (text === '/cost') {
+      const totalCost = messages.reduce((sum, m) => sum + (m.costUsd || 0), 0)
+      addLocalMessage(t('coding.totalCost', totalCost.toFixed(4)))
+      return
+    }
+    if (text === '/help') { addLocalMessage(t('coding.claudeHelp')); return }
+    if (text === '/plan' && session?.toolType === 'codex') { addLocalMessage(t('coding.codexPlanUnavailable')); return }
+    if (text === '/plan') { setSessionMode(sessionId, 'plan'); addLocalMessage(t('coding.switchedPlan')); return }
+    if (UNSUPPORTED_COMMANDS.has(text)) { addLocalMessage(t('coding.commandNeedsCli', text)); return }
     sendUserMessage(sessionId, text)
-  }, [sessionId, sendUserMessage, clearSessionMessages, setSessionMode, addLocalMessage, messages])
+  }, [sessionId, session?.toolType, sendUserMessage, clearSessionMessages, setSessionMode, addLocalMessage, messages, contextUsage, t])
 
   const handleModeChange = useCallback((m: WorkbenchMode) => {
     setSessionMode(sessionId, m)
@@ -117,6 +143,7 @@ const WorkbenchChatPanel: React.FC<WorkbenchChatPanelProps> = ({ sessionId, onNe
         workingDir={workspace?.workingDir}
         costUsd={session.costUsd}
         messageCount={messages.length}
+        contextUsage={contextUsage}
         onSend={handleSend}
         onModeChange={handleModeChange}
         onInterrupt={handleInterrupt}

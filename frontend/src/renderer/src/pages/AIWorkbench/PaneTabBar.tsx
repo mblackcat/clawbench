@@ -11,6 +11,7 @@ import type { AIToolType, AIWorkbenchSession, ClaudeViewMode } from '../../types
 const { Text } = Typography
 
 const TOOLS_WITH_NATIVE_SESSIONS: Set<AIToolType> = new Set(['claude', 'codex', 'gemini'])
+const TOOLS_WITH_CHAT_VIEW: Set<AIToolType> = new Set(['claude', 'codex'])
 const NATIVE_HISTORY_PAGE_SIZE = 5
 
 interface NativeSession {
@@ -253,7 +254,7 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
           </Text>
         )}
 
-        {activeToolType === 'claude' && claudeViewMode && onClaudeViewModeChange && (
+        {activeToolType && TOOLS_WITH_CHAT_VIEW.has(activeToolType) && claudeViewMode && onClaudeViewModeChange && (
           <div style={{
             display: 'inline-flex', alignItems: 'center', borderRadius: 8,
             background: token.colorFillTertiary, padding: 2, flexShrink: 0,

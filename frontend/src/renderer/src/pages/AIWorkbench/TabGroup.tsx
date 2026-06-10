@@ -24,6 +24,7 @@ interface TabGroupProps {
 }
 
 const EDGE_THRESHOLD = 0.2
+const CHAT_VIEW_TOOLS = new Set<AIToolType>(['claude', 'codex'])
 
 const TabGroup: React.FC<TabGroupProps> = ({
   paneId, tabIds, activeTabId,
@@ -256,7 +257,7 @@ const TabGroup: React.FC<TabGroupProps> = ({
   }, [activeTerminalSessionByWorkspace, activeWorkspaceId, deleteSession, terminalSessionIdsByWorkspace])
 
   const activeContent = activeTabId && activeSession ? (
-    activeSession.toolType === 'claude' && claudeViewMode === 'chat' ? (
+    CHAT_VIEW_TOOLS.has(activeSession.toolType) && claudeViewMode === 'chat' ? (
       <WorkbenchChatPanel
         sessionId={activeTabId}
         onNewSession={handleNewSession}
@@ -268,8 +269,8 @@ const TabGroup: React.FC<TabGroupProps> = ({
         sessionId={activeTabId}
         onNewSession={handleNewSession}
         onCloseSession={handleCloseTab}
-        claudeViewMode={activeSession.toolType === 'claude' ? claudeViewMode : undefined}
-        onClaudeViewModeChange={activeSession.toolType === 'claude' ? handleClaudeViewModeChange : undefined}
+        claudeViewMode={CHAT_VIEW_TOOLS.has(activeSession.toolType) ? claudeViewMode : undefined}
+        onClaudeViewModeChange={CHAT_VIEW_TOOLS.has(activeSession.toolType) ? handleClaudeViewModeChange : undefined}
       />
     )
   ) : (
@@ -388,8 +389,8 @@ const TabGroup: React.FC<TabGroupProps> = ({
         onTabDrop={onTabDrop}
         onSplitRight={handleSplitRight}
         onSplitDown={handleSplitDown}
-        claudeViewMode={activeSession?.toolType === 'claude' ? claudeViewMode : undefined}
-        onClaudeViewModeChange={activeSession?.toolType === 'claude' ? handleClaudeViewModeChange : undefined}
+        claudeViewMode={activeSession && CHAT_VIEW_TOOLS.has(activeSession.toolType) ? claudeViewMode : undefined}
+        onClaudeViewModeChange={activeSession && CHAT_VIEW_TOOLS.has(activeSession.toolType) ? handleClaudeViewModeChange : undefined}
         terminalPanelOpen={terminalVisible}
         onToggleTerminalPanel={activeSession ? handleToggleTerminal : undefined}
         gitPanelOpen={gitPanelOpen}
