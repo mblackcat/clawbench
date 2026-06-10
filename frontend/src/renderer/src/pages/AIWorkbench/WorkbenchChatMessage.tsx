@@ -10,6 +10,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { rehypeHighlightPlugin } from '../../utils/markdown-plugins'
 import { ModelAvatar, UserAvatar } from '../../components/ProviderIcons'
+import { useAuthStore } from '../../stores/useAuthStore'
 import { useT } from '../../i18n'
 import type { WorkbenchMessage, WorkbenchContentBlock } from '../../types/ai-workbench'
 import AskUserQuestionBlock from './AskUserQuestionBlock'
@@ -405,6 +406,7 @@ interface WorkbenchChatMessageProps {
 
 const WorkbenchChatMessage: React.FC<WorkbenchChatMessageProps> = ({ message, onToolToggle }) => {
   const { token } = theme.useToken()
+  const user = useAuthStore((s) => s.user)
 
   if (message.role === 'system') {
     return (
@@ -423,7 +425,15 @@ const WorkbenchChatMessage: React.FC<WorkbenchChatMessageProps> = ({ message, on
     <div style={{ padding: '8px 16px', display: 'flex', gap: 10 }}>
       {/* Avatar */}
       {isUser
-        ? <UserAvatar size={28} primaryColor={token.colorPrimary} />
+        ? (
+          <UserAvatar
+            size={28}
+            primaryColor={token.colorPrimary}
+            avatarUrl={user?.avatarUrl || undefined}
+            userName={user?.name}
+            userId={user?.id}
+          />
+        )
         : <ModelAvatar provider="openai" size={28} />
       }
 

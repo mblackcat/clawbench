@@ -143,9 +143,13 @@ const WorkbenchInput: React.FC<WorkbenchInputProps> = ({
     if (btn && capsuleRef.current) {
       const capsuleRect = capsuleRef.current.getBoundingClientRect()
       const btnRect = btn.getBoundingClientRect()
-      setIndicator({
+      const nextIndicator = {
         left: btnRect.left - capsuleRect.left,
         width: btnRect.width,
+      }
+      setIndicator(prev => {
+        if (prev.left === nextIndicator.left && prev.width === nextIndicator.width) return prev
+        return nextIndicator
       })
     }
   }, [modeIndex, modeOptions])

@@ -203,19 +203,25 @@ export function ModelAvatar({ provider, size = 32 }: { provider: string; size?: 
   )
 }
 
-const USER_EMOJIS = ['😀', '😎', '🤓', '🧑‍💻', '👨‍🚀', '🦊', '🐱', '🐼', '🦄', '🌈', '🎯', '🚀', '⭐', '🎨', '🔥', '💎', '🍀', '🌸']
-
-function getStableEmoji(): string {
-  const key = 'clawbench_user_emoji'
-  let emoji = localStorage.getItem(key)
-  if (!emoji) {
-    emoji = USER_EMOJIS[Math.floor(Math.random() * USER_EMOJIS.length)]
-    try { localStorage.setItem(key, emoji) } catch {}
-  }
-  return emoji
+function getUserInitial(userName?: string, userId?: string): string {
+  const source = (userName || userId || '').trim()
+  const first = Array.from(source)[0]
+  return first ? first.toUpperCase() : 'U'
 }
 
-export function UserAvatar({ size = 32, primaryColor, avatarUrl }: { size?: number; primaryColor: string; avatarUrl?: string }) {
+export function UserAvatar({
+  size = 32,
+  primaryColor,
+  avatarUrl,
+  userName,
+  userId
+}: {
+  size?: number
+  primaryColor: string
+  avatarUrl?: string
+  userName?: string
+  userId?: string
+}) {
   if (avatarUrl) {
     return (
       <div style={{
@@ -227,17 +233,20 @@ export function UserAvatar({ size = 32, primaryColor, avatarUrl }: { size?: numb
       </div>
     )
   }
-  const emoji = getStableEmoji()
+  const initial = getUserInitial(userName, userId)
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%',
       background: primaryColor,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       flexShrink: 0,
-      fontSize: size * 0.5,
+      color: '#fff',
+      fontSize: size * 0.44,
+      fontWeight: 600,
       lineHeight: 1,
+      textTransform: 'uppercase',
     }}>
-      {emoji}
+      {initial}
     </div>
   )
 }

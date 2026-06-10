@@ -14,6 +14,8 @@
  */
 
 import { BrowserWindow } from 'electron'
+import * as path from 'path'
+import * as fs from 'fs'
 import * as logger from '../utils/logger'
 import type { AIToolType } from '../store/ai-workbench.store'
 
@@ -54,6 +56,84 @@ const sdkSessions = new Map<string, SDKSessionState>()
 const outputBuffers = new Map<string, string>()
 
 const RING_BUFFER_MAX = 4000
+
+const CLAUDE_PLATFORM_PACKAGE_BY_TARGET: Record<string, string> = {
+  'darwin-x64': '@anthropic-ai/claude-agent-sdk-darwin-x64',
+  'darwin-arm64': '@anthropic-ai/claude-agent-sdk-darwin-arm64',
+  'linux-x64': '@anthropic-ai/claude-agent-sdk-linux-x64',
+  'linux-arm64': '@anthropic-ai/claude-agent-sdk-linux-arm64',
+  'linux-x64-musl': '@anthropic-ai/claude-agent-sdk-linux-x64-musl',
+  'linux-arm64-musl': '@anthropic-ai/claude-agent-sdk-linux-arm64-musl',
+  'win32-x64': '@anthropic-ai/claude-agent-sdk-win32-x64',
+  'win32-arm64': '@anthropic-ai/claude-agent-sdk-win32-arm64'
+}
+
+function requireResolve(id: string): string | null {
+  try {
+    return require.resolve(id)
+  } catch {
+    return null
+  }
+}
+
+function getClaudePlatformTargets(): string[] {
+  if (process.platform === 'linux') {
+    const report = typeof process.report?.getReport === 'function'
+      ? process.report.getReport() as { header?: { glibcVersionRuntime?: string } }
+      : null
+    const isMusl = report?.header?.glibcVersionRuntime === undefined
+    if (process.arch === 'x64') {
+      return isMusl ? ['linux-x64-musl', 'linux-x64'] : ['linux-x64', 'linux-x64-musl']
+    }
+    if (process.arch === 'arm64') {
+      return isMusl ? ['linux-arm64-musl', 'linux-arm64'] : ['linux-arm64', 'linux-arm64-musl']
+    }
+  }
+  if (process.platform === 'darwin') {
+    if (process.arch === 'x64') return ['darwin-x64']
+    if (process.arch === 'arm64') return ['darwin-arm64']
+  }
+  if (process.platform === 'win32') {
+    if (process.arch === 'x64') return ['win32-x64']
+    if (process.arch === 'arm64') return ['win32-arm64']
+  }
+  return []
+}
+
+export function resolveBundledClaudePath(): string | null {
+  const binaryName = process.platform === 'win32' ? 'claude.exe' : 'claude'
+  const packageNames = getClaudePlatformTargets()
+    .map((target) => CLAUDE_PLATFORM_PACKAGE_BY_TARGET[target])
+    .filter(Boolean)
+
+  const candidates: string[] = []
+  for (const platformPackage of packageNames) {
+    if (process.resourcesPath) {
+      candidates.push(path.join(
+        process.resourcesPath,
+        'app.asar.unpacked',
+        'node_modules',
+        ...platformPackage.split('/'),
+        binaryName
+      ))
+    }
+
+    const packageJsonPath = requireResolve(`${platformPackage}/package.json`)
+    if (packageJsonPath) {
+      const packageDir = path.dirname(packageJsonPath)
+      candidates.push(path.join(
+        packageDir.replace(
+          `${path.sep}app.asar${path.sep}`,
+          `${path.sep}app.asar.unpacked${path.sep}`
+        ),
+        binaryName
+      ))
+      candidates.push(path.join(packageDir, binaryName))
+    }
+  }
+
+  return candidates.find((candidate) => fs.existsSync(candidate)) || null
+}
 
 function appendOutput(sessionId: string, text: string): void {
   const existing = outputBuffers.get(sessionId) ?? ''
@@ -537,12 +617,17 @@ export async function writeToSDKSession(
 
   try {
     const queryFn = await ensureSDK()
+    const claudePath = resolveBundledClaudePath()
 
     const options: Record<string, any> = {
       cwd: state.cwd,
       includePartialMessages: true,
       permissionMode: state.permissionMode,
       allowDangerouslySkipPermissions: state.permissionMode === 'bypassPermissions',
+    }
+
+    if (claudePath) {
+      options.pathToClaudeCodeExecutable = claudePath
     }
 
     if (state.env) {

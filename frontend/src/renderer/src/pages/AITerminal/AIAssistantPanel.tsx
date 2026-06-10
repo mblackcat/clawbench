@@ -17,6 +17,7 @@ import remarkGfm from 'remark-gfm'
 import { rehypeHighlightPlugin } from '../../utils/markdown-plugins'
 import ModelSelector from '../AIChat/ModelSelector'
 import { ModelAvatar, UserAvatar } from '../../components/ProviderIcons'
+import { useAuthStore } from '../../stores/useAuthStore'
 import ThinkingBlock from '../../components/ThinkingBlock'
 import '../AIChat/chat-styles.css'
 
@@ -175,6 +176,7 @@ function MessageBubble({ msg, isStreaming, streamingContent, streamingThinking, 
 }) {
   const { token } = theme.useToken()
   const t = useT()
+  const user = useAuthStore((s) => s.user)
   const isUser = msg?.role === 'user'
   const content = msg?.content ?? streamingContent ?? ''
   const thinking = msg?.thinking ?? streamingThinking ?? ''
@@ -191,7 +193,15 @@ function MessageBubble({ msg, isStreaming, streamingContent, streamingThinking, 
       {/* Avatar */}
       <div style={{ flexShrink: 0, marginTop: 1 }}>
         {isUser
-          ? <UserAvatar size={22} primaryColor={token.colorPrimary} />
+          ? (
+            <UserAvatar
+              size={22}
+              primaryColor={token.colorPrimary}
+              avatarUrl={user?.avatarUrl || undefined}
+              userName={user?.name}
+              userId={user?.id}
+            />
+          )
           : <ModelAvatar provider="openai" size={22} />
         }
       </div>

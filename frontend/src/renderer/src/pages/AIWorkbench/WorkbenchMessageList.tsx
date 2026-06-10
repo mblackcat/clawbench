@@ -12,6 +12,11 @@ import type { WorkbenchMessage, WorkbenchContentBlock } from '../../types/ai-wor
 import '../AIChat/chat-styles.css'
 
 const { Text } = Typography
+const AUTO_SCROLL_THRESHOLD = 80
+
+function isNearBottom(el: HTMLElement): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= AUTO_SCROLL_THRESHOLD
+}
 
 interface WorkbenchMessageListProps {
   messages: WorkbenchMessage[]
@@ -31,6 +36,15 @@ const WorkbenchMessageList: React.FC<WorkbenchMessageListProps> = ({
   const suppressNextAutoScrollRef = useRef(false)
   const restoreScrollTopRef = useRef<number | null>(null)
   const restoreScrollTimeoutRef = useRef<number | null>(null)
+  const stickToBottomRef = useRef(true)
+  const lastMessageIdRef = useRef<string | null>(null)
+  const lastSessionIdRef = useRef<string | undefined>(sessionId)
+
+  const handleScroll = useCallback(() => {
+    const el = containerRef.current
+    if (!el || suppressNextAutoScrollRef.current) return
+    stickToBottomRef.current = isNearBottom(el)
+  }, [])
 
   const handleToolToggle = useCallback(() => {
     const el = containerRef.current
@@ -64,17 +78,38 @@ const WorkbenchMessageList: React.FC<WorkbenchMessageListProps> = ({
     }, 220)
   }, [])
 
-  // Auto-scroll to bottom when messages change or streaming
+  useEffect(() => {
+    if (lastSessionIdRef.current === sessionId) return
+    lastSessionIdRef.current = sessionId
+    lastMessageIdRef.current = null
+    stickToBottomRef.current = true
+
+    requestAnimationFrame(() => {
+      const el = containerRef.current
+      if (el) el.scrollTop = el.scrollHeight
+    })
+  }, [sessionId])
+
+  // Follow streaming only while the user is already near the bottom.
   useEffect(() => {
     const el = containerRef.current
+    const lastMessage = messages[messages.length - 1]
+    const lastMessageId = lastMessage?.id ?? null
+    const isFirstRender = lastMessageIdRef.current === null
+    const isNewMessage = !!lastMessageId && lastMessageId !== lastMessageIdRef.current
+    const isNewUserMessage = isNewMessage && lastMessage?.role === 'user'
+
     if (el) {
       if (suppressNextAutoScrollRef.current) {
         const target = restoreScrollTopRef.current
         if (target !== null) el.scrollTop = target
-      } else {
+      } else if (stickToBottomRef.current || isNewUserMessage || isFirstRender) {
         el.scrollTop = el.scrollHeight
+        stickToBottomRef.current = true
       }
     }
+    lastMessageIdRef.current = lastMessageId
+
     if (thinkingRef.current) {
       thinkingRef.current.scrollTop = thinkingRef.current.scrollHeight
     }
@@ -113,7 +148,11 @@ const WorkbenchMessageList: React.FC<WorkbenchMessageListProps> = ({
   const streamPairedIds = new Set<string>()
 
   return (
-    <div ref={containerRef} style={{ flex: 1, overflow: 'auto', paddingTop: 8, paddingBottom: 8, overflowAnchor: 'none' }}>
+    <div
+      ref={containerRef}
+      onScroll={handleScroll}
+      style={{ flex: 1, overflow: 'auto', paddingTop: 8, paddingBottom: 8, overflowAnchor: 'none' }}
+    >
       {messages.map((msg) => (
         <WorkbenchChatMessage key={msg.id} message={msg} onToolToggle={handleToolToggle} />
       ))}
