@@ -87,7 +87,8 @@
     "afterPack": "./scripts/after-pack.mjs",
     "asarUnpack": [
       "**/node_modules/node-pty/**",
-      "**/node_modules/@openai/codex*/**"
+      "**/node_modules/@openai/codex*/**",
+      "**/node_modules/@anthropic-ai/claude-agent-sdk*/**"
     ],
     "files": [
       "out/**/*",
