@@ -81,6 +81,23 @@ const WorkbenchTerminalView: React.FC<WorkbenchTerminalViewProps> = ({ sessionId
       if (event.type === 'keydown' && (event.isComposing || event.keyCode === 229)) {
         return false
       }
+      // Paste shortcut: Cmd+V on macOS, Ctrl+V on Windows/Linux.
+      // We intercept keydown and preventDefault so the browser does not also
+      // fire its native `paste` event (which xterm's hidden textarea listens
+      // for) — otherwise the clipboard text would be written twice.
+      if (event.type === 'keydown' && (event.key === 'v' || event.key === 'V')) {
+        const isMac = window.api.platform === 'darwin'
+        const matchesPaste = isMac
+          ? event.metaKey && !event.ctrlKey && !event.altKey
+          : event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey
+        if (matchesPaste) {
+          event.preventDefault()
+          navigator.clipboard.readText().then((text) => {
+            if (text) window.api.aiWorkbench.writePty(sessionIdRef.current, text)
+          }).catch(() => { /* clipboard read denied or empty */ })
+          return false
+        }
+      }
       return true
     })
 
@@ -160,15 +177,17 @@ const WorkbenchTerminalView: React.FC<WorkbenchTerminalViewProps> = ({ sessionId
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <div
-        ref={containerRef}
-        style={{
-          flex: 1,
-          overflow: 'hidden',
-          padding: '4px 0 0 4px',
-          background: '#1e1e1e',
-        }}
-      />
+      <div style={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative', background: '#1e1e1e' }}>
+        <div
+          ref={containerRef}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            overflow: 'hidden',
+            padding: '4px 0 0 4px',
+          }}
+        />
+      </div>
     </div>
   )
 }
