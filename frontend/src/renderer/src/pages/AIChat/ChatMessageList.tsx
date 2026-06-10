@@ -6,11 +6,19 @@ import AgentStatusBar from './AgentStatusBar'
 import { useChatStore } from '../../stores/useChatStore'
 import { useT } from '../../i18n'
 
+const AUTO_SCROLL_THRESHOLD = 80
+
+function isNearBottom(el: HTMLElement): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= AUTO_SCROLL_THRESHOLD
+}
+
 const ChatMessageList: React.FC = () => {
   const t = useT()
   const { messages, streaming, streamingContent, streamingThinkingContent, streamingError, pendingToolCalls, agentPhase, agentToolHistory } = useChatStore()
   const { token } = theme.useToken()
   const containerRef = useRef<HTMLDivElement>(null)
+  const stickToBottomRef = useRef(true)
+  const lastMessageIdRef = useRef<string | null>(null)
   const [activeAnchorId, setActiveAnchorId] = useState<string | null>(null)
 
   const anchorItems = useMemo(() => {
@@ -33,6 +41,7 @@ const ChatMessageList: React.FC = () => {
   const handleScroll = useCallback(() => {
     const container = containerRef.current
     if (!container) return
+    stickToBottomRef.current = isNearBottom(container)
 
     const messageEls = Array.from(
       container.querySelectorAll<HTMLElement>('[data-chat-message="true"]')
@@ -53,12 +62,24 @@ const ChatMessageList: React.FC = () => {
   }, [])
 
   useEffect(() => {
-    if (containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight
+    const container = containerRef.current
+    const lastMessage = messages[messages.length - 1]
+    const lastMessageId = lastMessage?.messageId ?? null
+    const isFirstRender = lastMessageIdRef.current === null
+    const isNewMessage = !!lastMessageId && lastMessageId !== lastMessageIdRef.current
+    const isNewUserMessage = isNewMessage && lastMessage?.role === 'user'
+    const shouldScroll = stickToBottomRef.current || isNewUserMessage || isFirstRender
+
+    if (container) {
+      if (shouldScroll) {
+        container.scrollTop = container.scrollHeight
+        stickToBottomRef.current = true
+      }
     }
+    lastMessageIdRef.current = lastMessageId
 
     const lastItem = anchorItems[anchorItems.length - 1]
-    if (lastItem) {
+    if (lastItem && shouldScroll) {
       setActiveAnchorId(lastItem.id)
     }
   }, [messages, streamingContent, streamingThinkingContent, streamingError, pendingToolCalls, agentPhase, agentToolHistory, anchorItems])
