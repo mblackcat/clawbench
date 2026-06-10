@@ -1,6 +1,6 @@
-import React, { useRef, useEffect } from 'react'
+import React, { useRef, useEffect, useCallback } from 'react'
 import { theme, Spin, Typography } from 'antd'
-import { RobotOutlined, MessageOutlined, CheckCircleFilled, CloseCircleFilled, ToolOutlined } from '@ant-design/icons'
+import { RobotOutlined, MessageOutlined, CheckCircleFilled, CloseCircleFilled, ToolOutlined, DashboardOutlined } from '@ant-design/icons'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { rehypeHighlightPlugin } from '../../utils/markdown-plugins'
@@ -28,16 +28,65 @@ const WorkbenchMessageList: React.FC<WorkbenchMessageListProps> = ({
   const t = useT()
   const containerRef = useRef<HTMLDivElement>(null)
   const thinkingRef = useRef<HTMLDivElement>(null)
+  const suppressNextAutoScrollRef = useRef(false)
+  const restoreScrollTopRef = useRef<number | null>(null)
+  const restoreScrollTimeoutRef = useRef<number | null>(null)
+
+  const handleToolToggle = useCallback(() => {
+    const el = containerRef.current
+    if (!el) return
+
+    suppressNextAutoScrollRef.current = true
+    restoreScrollTopRef.current = el.scrollTop
+
+    if (restoreScrollTimeoutRef.current !== null) {
+      window.clearTimeout(restoreScrollTimeoutRef.current)
+    }
+
+    const restoreScrollTop = () => {
+      const target = restoreScrollTopRef.current
+      if (target !== null && containerRef.current) {
+        containerRef.current.scrollTop = target
+      }
+    }
+
+    restoreScrollTop()
+    requestAnimationFrame(() => {
+      restoreScrollTop()
+      requestAnimationFrame(restoreScrollTop)
+    })
+
+    restoreScrollTimeoutRef.current = window.setTimeout(() => {
+      restoreScrollTop()
+      restoreScrollTopRef.current = null
+      suppressNextAutoScrollRef.current = false
+      restoreScrollTimeoutRef.current = null
+    }, 220)
+  }, [])
 
   // Auto-scroll to bottom when messages change or streaming
   useEffect(() => {
-    if (containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight
+    const el = containerRef.current
+    if (el) {
+      if (suppressNextAutoScrollRef.current) {
+        const target = restoreScrollTopRef.current
+        if (target !== null) el.scrollTop = target
+      } else {
+        el.scrollTop = el.scrollHeight
+      }
     }
     if (thinkingRef.current) {
       thinkingRef.current.scrollTop = thinkingRef.current.scrollHeight
     }
   }, [messages, streamingBlocks, isStreaming])
+
+  useEffect(() => {
+    return () => {
+      if (restoreScrollTimeoutRef.current !== null) {
+        window.clearTimeout(restoreScrollTimeoutRef.current)
+      }
+    }
+  }, [])
 
   if (messages.length === 0 && !isStreaming) {
     return (
@@ -64,9 +113,9 @@ const WorkbenchMessageList: React.FC<WorkbenchMessageListProps> = ({
   const streamPairedIds = new Set<string>()
 
   return (
-    <div ref={containerRef} style={{ flex: 1, overflow: 'auto', paddingTop: 8, paddingBottom: 8 }}>
+    <div ref={containerRef} style={{ flex: 1, overflow: 'auto', paddingTop: 8, paddingBottom: 8, overflowAnchor: 'none' }}>
       {messages.map((msg) => (
-        <WorkbenchChatMessage key={msg.id} message={msg} />
+        <WorkbenchChatMessage key={msg.id} message={msg} onToolToggle={handleToolToggle} />
       ))}
 
       {/* Streaming message preview */}
@@ -177,6 +226,27 @@ const WorkbenchMessageList: React.FC<WorkbenchMessageListProps> = ({
                       : <CheckCircleFilled style={{ color: token.colorSuccess, fontSize: 13 }} />
                     }
                     <span>{block.isError ? t('coding.toolError') : t('coding.toolSuccess')}</span>
+                  </div>
+                )
+              }
+              if (block.type === 'context_usage') {
+                const used = block.usedTokens ?? ((block.inputTokens || 0) + (block.cachedInputTokens || 0))
+                const total = block.contextWindow || 0
+                const percent = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : null
+                return (
+                  <div key={i} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '3px 8px', margin: '2px 0 8px',
+                    borderRadius: 4, fontSize: 11,
+                    color: token.colorTextSecondary,
+                    background: token.colorFillQuaternary,
+                  }}>
+                    <DashboardOutlined style={{ fontSize: 12 }} />
+                    <span>
+                      {percent !== null
+                        ? `${used.toLocaleString()} / ${total.toLocaleString()} tokens (${percent}%)`
+                        : `${used.toLocaleString()} context tokens`}
+                    </span>
                   </div>
                 )
               }

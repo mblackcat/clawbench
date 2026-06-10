@@ -111,14 +111,14 @@ const WorkbenchTerminalView: React.FC<WorkbenchTerminalViewProps> = ({ sessionId
       fitAndResize()
 
       const currentSession = useAIWorkbenchStore.getState().sessions.find(s => s.id === sessionId)
-      const isClaude = currentSession?.toolType === 'claude'
+      const needsForcedPty = currentSession?.toolType === 'claude' || currentSession?.toolType === 'codex'
       const needsLaunch =
         !currentSession ||
         currentSession.status === 'closed' ||
         currentSession.status === 'completed' ||
         currentSession.status === 'error'
 
-      if (isClaude) {
+      if (needsForcedPty) {
         if (!needsLaunch) {
           try { await window.api.aiWorkbench.stopSession(sessionId) } catch { /* */ }
         }
