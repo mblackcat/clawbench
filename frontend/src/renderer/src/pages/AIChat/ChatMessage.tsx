@@ -231,7 +231,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming }) => {
   const { token } = theme.useToken()
   const t = useT()
   const { message: messageApi, modal } = App.useApp()
-  const avatarUrl = useAuthStore((s) => s.user?.avatarUrl)
+  const user = useAuthStore((s) => s.user)
   const cancelStreaming = useChatStore((s) => s.cancelStreaming)
   const deleteMessages = useChatStore((s) => s.deleteMessages)
   const editAndResend = useChatStore((s) => s.editAndResend)
@@ -316,7 +316,13 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming }) => {
         }}
       >
         {isUser ? (
-          <UserAvatar size={32} primaryColor={token.colorPrimary} avatarUrl={avatarUrl || undefined} />
+          <UserAvatar
+            size={32}
+            primaryColor={token.colorPrimary}
+            avatarUrl={user?.avatarUrl || undefined}
+            userName={user?.name}
+            userId={user?.id}
+          />
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 32, flexShrink: 0 }}>
             <ModelAvatar provider={guessProviderFromModelId(message.modelId || '')} size={32} />

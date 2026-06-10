@@ -1,7 +1,6 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react'
-import { Space, Avatar, Button, Typography, Dropdown, Tooltip, theme } from 'antd'
+import React, { useEffect, useState, useCallback } from 'react'
+import { Space, Button, Typography, Dropdown, Tooltip, theme } from 'antd'
 import {
-  UserOutlined,
   LoginOutlined,
   LogoutOutlined,
   MinusOutlined,
@@ -15,11 +14,6 @@ import { useT } from '../../i18n'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 
-const ANIMAL_EMOJIS = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯',
-  '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🦆', '🦅',
-  '🦉', '🦇', '🐺', '🐗', '🐴', '🦄', '🐝', '🐛', '🦋', '🐌',
-  '🐞', '🐜', '🦟', '🦗', '🦂', '🐢', '🦎', '🐍', '🦕', '🦖',
-  '🦑', '🦐', '🦞', '🦀', '🐡', '🐠', '🐟', '🐬', '🐳', '🐋']
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { useUpdaterStore } from '../../stores/useUpdaterStore'
 import { useNotificationStore } from '../../stores/useNotificationStore'
@@ -27,6 +21,7 @@ import { useAIWorkbenchStore } from '../../stores/useAIWorkbenchStore'
 import WorkspaceSwitcher from '../WorkspaceSwitcher'
 import GitBranchSelector from '../GitBranchSelector'
 import AIWorkbenchIMConfigModal from '../../pages/AIWorkbench/AIWorkbenchIMConfigModal'
+import { UserAvatar } from '../ProviderIcons'
 
 const { Text } = Typography
 
@@ -67,7 +62,6 @@ const TopBar: React.FC = () => {
   const navigate = useNavigate()
   const loggedIn = useAuthStore((state) => state.loggedIn)
   const user = useAuthStore((state) => state.user)
-  const isLocalMode = useAuthStore((state) => state.isLocalMode)
   const activeWorkspace = useWorkspaceStore((state) => state.activeWorkspace)
   const { token } = theme.useToken()
   const t = useT()
@@ -75,15 +69,6 @@ const TopBar: React.FC = () => {
   const language = useSettingsStore((state) => state.language)
   const updateSetting = useSettingsStore((state) => state.updateSetting)
 
-  // Pick a stable random animal emoji for the session, seeded by user id
-  const animalEmoji = useMemo(() => {
-    const seed = user?.id ?? user?.name ?? 'local'
-    let hash = 0
-    for (let i = 0; i < seed.length; i++) {
-      hash = (hash * 31 + seed.charCodeAt(i)) >>> 0
-    }
-    return ANIMAL_EMOJIS[hash % ANIMAL_EMOJIS.length]
-  }, [user?.id, user?.name])
   const initUpdater = useUpdaterStore((state) => state.init)
   const initNotifications = useNotificationStore((state) => state.init)
 
@@ -279,10 +264,13 @@ const TopBar: React.FC = () => {
         {loggedIn && user ? (
           <Dropdown menu={dropdownItems} trigger={['click']}>
             <Space style={{ cursor: 'pointer' }}>
-              {isLocalMode
-                ? <Avatar size="small" style={{ background: 'transparent', fontSize: 18, lineHeight: '24px' }}>{animalEmoji}</Avatar>
-                : <Avatar src={user.avatarUrl} icon={<UserOutlined />} size="small" />
-              }
+              <UserAvatar
+                size={24}
+                primaryColor={token.colorPrimary}
+                avatarUrl={user.avatarUrl || undefined}
+                userName={user.name}
+                userId={user.id}
+              />
               <Text style={{ fontSize: 12 }}>{user.name}</Text>
             </Space>
           </Dropdown>
