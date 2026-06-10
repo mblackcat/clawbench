@@ -163,9 +163,38 @@ const WorkbenchTerminalView: React.FC<WorkbenchTerminalViewProps> = ({ sessionId
     })
     resizeObserver.observe(containerRef.current)
 
+    // During IME composition (Chinese input with candidate popup), xterm
+    // repositions its hidden helper textarea to the cursor and grows its
+    // width to fit the composition text. Once the textarea overflows the
+    // viewport on the second composition, the browser fires scrollIntoView
+    // on the focused textarea and sets scrollLeft on every scrollable
+    // ancestor — `overflow: hidden` does NOT block that. The entire TUI
+    // gets shifted sideways as a result. We listen on the capture phase and
+    // reset scroll on the xterm root + our wrappers as soon as it happens.
+    const innerEl = containerRef.current
+    const wrapperEl = innerEl.parentElement
+    const outerEl = wrapperEl?.parentElement ?? null
+    const xtermRoot = innerEl.querySelector('.xterm') as HTMLElement | null
+    const scrollTargets: HTMLElement[] = [innerEl]
+    if (wrapperEl) scrollTargets.push(wrapperEl)
+    if (outerEl) scrollTargets.push(outerEl)
+    if (xtermRoot) scrollTargets.push(xtermRoot)
+    const resetScroll = (): void => {
+      for (const el of scrollTargets) {
+        if (el.scrollLeft !== 0) el.scrollLeft = 0
+        if (el.scrollTop !== 0) el.scrollTop = 0
+      }
+    }
+    for (const el of scrollTargets) {
+      el.addEventListener('scroll', resetScroll, { capture: true, passive: true })
+    }
+
     return () => {
       unsubData()
       resizeObserver.disconnect()
+      for (const el of scrollTargets) {
+        el.removeEventListener('scroll', resetScroll, { capture: true })
+      }
       term.dispose()
       termRef.current = null
       fitAddonRef.current = null
@@ -176,14 +205,14 @@ const WorkbenchTerminalView: React.FC<WorkbenchTerminalViewProps> = ({ sessionId
   if (!session) return null
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <div style={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative', background: '#1e1e1e' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'clip' }}>
+      <div style={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative', background: '#1e1e1e', overflow: 'clip' }}>
         <div
           ref={containerRef}
           style={{
             position: 'absolute',
             inset: 0,
-            overflow: 'hidden',
+            overflow: 'clip',
             padding: '4px 0 0 4px',
           }}
         />
