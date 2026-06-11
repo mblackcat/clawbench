@@ -13,7 +13,7 @@ export interface ModuleVisibility {
 export interface AIModelConfig {
   id: string
   name: string
-  provider: 'openai' | 'openai-compatible' | 'openai-responses' | 'azure-openai' | 'google' | 'claude' | 'anthropic-compatible' | 'qwen' | 'doubao' | 'deepseek' | 'kimi'
+  provider: 'openai' | 'openai-compatible' | 'openai-responses' | 'azure-openai' | 'google' | 'anthropic' | 'anthropic-compatible' | 'qwen' | 'doubao' | 'deepseek' | 'kimi'
   endpoint: string
   apiKey: string
   models: string[]
@@ -288,7 +288,10 @@ export function getSettings(): PublicSettings {
 }
 
 export function getAiModelConfigs(): AIModelConfig[] {
-  return settingsStore.get('aiModelConfigs')
+  // Normalize legacy provider value: 'claude' was renamed to 'anthropic'
+  return settingsStore.get('aiModelConfigs').map((c) =>
+    (c.provider as string) === 'claude' ? { ...c, provider: 'anthropic' as const } : c
+  )
 }
 
 export function setAiModelConfigs(configs: AIModelConfig[]): void {

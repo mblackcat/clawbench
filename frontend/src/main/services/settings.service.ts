@@ -213,7 +213,7 @@ export async function testAiModelConfig(config: {
       return { success: false, message: `HTTP ${fallback.status}: ${fallback.statusText}` }
     }
 
-    if (config.provider === 'claude' || config.provider === 'anthropic-compatible') {
+    if (config.provider === 'anthropic' || config.provider === 'anthropic-compatible') {
       // Anthropic API: POST /messages with x-api-key header
       const url = config.endpoint.replace(/\/$/, '') + '/messages'
       const response = await fetch(url, {

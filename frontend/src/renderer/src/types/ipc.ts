@@ -9,7 +9,7 @@ export interface AIModelConfig {
     | 'openai-responses'
     | 'azure-openai'
     | 'google'
-    | 'claude'
+    | 'anthropic'
     | 'anthropic-compatible'
     | 'qwen'
     | 'doubao'
