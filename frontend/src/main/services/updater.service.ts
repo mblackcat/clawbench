@@ -4,8 +4,8 @@ import { is } from '@electron-toolkit/utils'
 import * as logger from '../utils/logger'
 import { getSetting } from '../store/settings.store'
 
-const API_BASE_URL =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined) || 'http://localhost:3001/api/v1'
+const RAW_API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string | undefined
+const API_BASE_URL = RAW_API_BASE_URL || 'http://localhost:3001/api/v1'
 
 const UPDATE_URL = `${API_BASE_URL.replace(/\/$/, '')}/releases`
 
@@ -26,6 +26,12 @@ let initialized = false
 export function initAutoUpdater(): void {
   if (is.dev) {
     logger.info('Auto-updater: disabled in development mode')
+    return
+  }
+  // Without a build-time API base URL the feed would point at localhost and
+  // error on every launch — disable update checks instead.
+  if (!RAW_API_BASE_URL) {
+    logger.warn('Auto-updater: VITE_API_BASE_URL not set at build time — update checks disabled')
     return
   }
   if (initialized) return
@@ -85,6 +91,9 @@ export async function checkForUpdates(): Promise<void> {
   if (is.dev) {
     throw new Error('Auto-updater is not available in development mode')
   }
+  if (!initialized) {
+    throw new Error('Auto-updater is not configured (no update server URL)')
+  }
   const autoUpdate = getSetting('autoUpdate')
   if (!autoUpdate) {
     throw new Error('Auto-update is disabled in settings')
@@ -98,6 +107,9 @@ export async function checkForUpdates(): Promise<void> {
 export async function manualCheckForUpdates(): Promise<void> {
   if (is.dev) {
     throw new Error('Auto-updater is not available in development mode')
+  }
+  if (!initialized) {
+    throw new Error('Auto-updater is not configured (no update server URL)')
   }
   await autoUpdater.checkForUpdates()
 }
