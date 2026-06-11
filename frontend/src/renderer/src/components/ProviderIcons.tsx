@@ -228,8 +228,9 @@ export function UserAvatar({
         width: size, height: size, borderRadius: '50%',
         overflow: 'hidden',
         flexShrink: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
-        <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
       </div>
     )
   }
