@@ -10,7 +10,7 @@ const { OptGroup, Option } = Select
 const providerColors: Record<string, string> = {
   openai: 'green',
   'azure-openai': 'lime',
-  claude: 'orange',
+  anthropic: 'orange',
   'anthropic-compatible': 'orange',
   google: 'blue',
   qwen: 'purple',

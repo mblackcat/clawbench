@@ -749,7 +749,7 @@ class IMBridgeService {
       let reply = ''
       const messages = [{ role: 'user' as const, content: text }]
 
-      if (provider === 'claude') {
+      if (provider === 'anthropic' || provider === 'anthropic-compatible') {
         const { default: Anthropic } = await import('@anthropic-ai/sdk')
         const client = new Anthropic({ apiKey: config.apiKey, baseURL: config.endpoint || undefined })
         const resp = await client.messages.create({

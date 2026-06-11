@@ -174,7 +174,7 @@ export function hasProviderIcon(provider: string): boolean {
 export function guessProviderFromModelId(modelId: string): string {
   const id = modelId.toLowerCase()
   if (id.startsWith('gpt-') || id.startsWith('o1') || id.startsWith('o3') || id.startsWith('o4')) return 'openai'
-  if (id.startsWith('claude')) return 'claude'
+  if (id.startsWith('claude')) return 'anthropic'
   if (id.startsWith('gemini')) return 'google'
   if (id.startsWith('deepseek')) return 'deepseek'
   if (id.startsWith('qwen')) return 'qwen'

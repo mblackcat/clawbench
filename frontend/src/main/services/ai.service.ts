@@ -246,7 +246,7 @@ export async function generateTitle(
     }
   ]
 
-  if (provider === 'claude' || provider === 'anthropic-compatible') {
+  if (provider === 'anthropic' || provider === 'anthropic-compatible') {
     return completeClaude(config, actualModelId, titlePrompt)
   } else if (provider === 'google') {
     return completeGoogle(config, actualModelId, titlePrompt)
@@ -339,7 +339,7 @@ export async function completeChat(
   const actualModelId = modelId || config.models[0] || config.name
   const provider = config.provider.toLowerCase()
 
-  if (provider === 'claude' || provider === 'anthropic-compatible') {
+  if (provider === 'anthropic' || provider === 'anthropic-compatible') {
     return completeChatClaude(config, actualModelId, messages, maxTokens)
   } else if (provider === 'google') {
     return completeChatGoogle(config, actualModelId, messages, maxTokens)
@@ -491,7 +491,7 @@ async function doStream(
     return
   }
 
-  if (provider === 'claude' || provider === 'anthropic-compatible') {
+  if (provider === 'anthropic' || provider === 'anthropic-compatible') {
     await streamClaude(window, taskId, config, modelId, messages, signal, tools, enableThinking)
   } else if (provider === 'google') {
     await streamGoogle(window, taskId, config, modelId, messages, signal, tools, webSearchEnabled)
