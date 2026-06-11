@@ -1,5 +1,6 @@
 import express, { Application } from 'express';
 import cors from 'cors';
+import rateLimit from 'express-rate-limit';
 import { config } from './config/index';
 import { requestLogger } from './middleware/requestLogger';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
@@ -19,12 +20,37 @@ export function createApp(): Application {
   const app = express();
 
   // 基础中间件
-  app.use(cors());
+  // CORS：设置了 CORS_ORIGIN 时启用白名单；未设置时保持开放（桌面客户端
+  // 的 Origin 不固定），但在生产环境打印告警提醒收紧
+  if (config.cors.origins) {
+    app.use(cors({ origin: config.cors.origins, credentials: true }));
+  } else {
+    if (config.nodeEnv === 'production') {
+      logger.warn('CORS_ORIGIN is not set — all origins are allowed. Set CORS_ORIGIN to restrict.');
+    }
+    app.use(cors());
+  }
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
   // 请求日志
   app.use(requestLogger);
+
+  // 登录/注册限流，防暴力破解（测试环境跳过，避免用例间相互限流）
+  if (config.nodeEnv !== 'test') {
+    const authLimiter = rateLimit({
+      windowMs: 15 * 60 * 1000,
+      limit: 20,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: {
+        success: false,
+        error: { code: 'TOO_MANY_REQUESTS', message: 'Too many attempts, please try again later' },
+      },
+    });
+    app.use('/api/v1/users/login', authLimiter);
+    app.use('/api/v1/users/register', authLimiter);
+  }
 
   // 健康检查端点
   app.get('/health', (req, res) => {
