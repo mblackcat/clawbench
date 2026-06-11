@@ -95,6 +95,56 @@ const WorkbenchTerminalView: React.FC<WorkbenchTerminalViewProps> = ({ sessionId
     }
     helperTextarea?.addEventListener('compositionstart', handleCompositionStart, true)
 
+    // Lock the IME textarea position once we've seen a correct anchor.
+    //
+    // TUIs like Claude Code redraw a status line at the bottom of the
+    // viewport on every input — that leaves xterm's tracked cursor
+    // (`buffer.x/y`) at the bottom-right, even though Claude's *visible*
+    // cursor stays in the input box (Claude draws a reverse-video block
+    // and parks the real cursor elsewhere). xterm's
+    // `CompositionHelper.updateCompositionElements` reads `buffer.x/y` to
+    // place the textarea, so the OS IME popup follows the redrawn cursor
+    // instead of the visible one.
+    //
+    // We can't know where Claude visually renders its cursor — so we
+    // remember the textarea position from the first composition (which
+    // is anchored to the user's actual typing spot) and snap subsequent
+    // compositions back to that same position via a MutationObserver on
+    // the textarea's inline style.
+    let lockedLeft: string | null = null
+    let lockedTop: string | null = null
+    let suppressMutation = false
+    const styleObserver = helperTextarea
+      ? new MutationObserver(() => {
+          if (suppressMutation || lockedLeft === null || !helperTextarea) return
+          if (helperTextarea.style.left !== lockedLeft || helperTextarea.style.top !== lockedTop) {
+            suppressMutation = true
+            helperTextarea.style.left = lockedLeft
+            helperTextarea.style.top = lockedTop!
+            suppressMutation = false
+          }
+        })
+      : null
+    styleObserver?.observe(helperTextarea!, { attributes: true, attributeFilter: ['style'] })
+    const handleCompositionUpdate = (): void => {
+      // Capture xterm's chosen position on the first composition only — that
+      // first frame is anchored to the real input cursor. Subsequent updates
+      // get snapped back by the MutationObserver above.
+      if (lockedLeft === null && helperTextarea && helperTextarea.style.left) {
+        lockedLeft = helperTextarea.style.left
+        lockedTop = helperTextarea.style.top
+      }
+    }
+    helperTextarea?.addEventListener('compositionupdate', handleCompositionUpdate)
+    // User click into the terminal means they may want to type at a new
+    // position — release the lock so the next composition re-captures.
+    const handleClickReset = (): void => {
+      lockedLeft = null
+      lockedTop = null
+    }
+    containerRef.current.addEventListener('mousedown', handleClickReset)
+    const containerEl = containerRef.current
+
     termRef.current = term
     fitAddonRef.current = fitAddon
 
@@ -214,6 +264,9 @@ const WorkbenchTerminalView: React.FC<WorkbenchTerminalViewProps> = ({ sessionId
       unsubData()
       resizeObserver.disconnect()
       helperTextarea?.removeEventListener('compositionstart', handleCompositionStart, true)
+      helperTextarea?.removeEventListener('compositionupdate', handleCompositionUpdate)
+      styleObserver?.disconnect()
+      containerEl.removeEventListener('mousedown', handleClickReset)
       for (const el of scrollTargets) {
         el.removeEventListener('scroll', resetScroll, { capture: true })
       }
