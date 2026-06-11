@@ -751,7 +751,8 @@ class IMBridgeService {
 
       if (provider === 'anthropic' || provider === 'anthropic-compatible') {
         const { default: Anthropic } = await import('@anthropic-ai/sdk')
-        const client = new Anthropic({ apiKey: config.apiKey, baseURL: config.endpoint || undefined })
+        const { normalizeAnthropicBaseURL } = await import('../../utils/endpoint')
+        const client = new Anthropic({ apiKey: config.apiKey, baseURL: normalizeAnthropicBaseURL(config.endpoint) })
         const resp = await client.messages.create({
           model: modelId,
           max_tokens: 1024,
@@ -766,9 +767,10 @@ class IMBridgeService {
         reply = result.response.text()
       } else {
         const { default: OpenAI, AzureOpenAI } = await import('openai')
+        const { normalizeOpenAIBaseURL } = await import('../../utils/endpoint')
         const client = provider === 'azure-openai'
           ? new AzureOpenAI({ apiKey: config.apiKey, apiVersion: config.apiVersion || '2025-04-01-preview', endpoint: config.endpoint })
-          : new OpenAI({ apiKey: config.apiKey, baseURL: config.endpoint || undefined })
+          : new OpenAI({ apiKey: config.apiKey, baseURL: normalizeOpenAIBaseURL(config.endpoint) })
         const resp = await client.chat.completions.create({
           model: modelId,
           messages: messages.map((m) => ({ role: m.role, content: m.content })),
