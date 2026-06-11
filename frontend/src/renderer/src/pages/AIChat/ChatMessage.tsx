@@ -27,8 +27,15 @@ import ThinkingBlock from '../../components/ThinkingBlock'
 import { ModelAvatar, UserAvatar, guessProviderFromModelId } from '../../components/ProviderIcons'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useChatStore } from '../../stores/useChatStore'
+import { useSettingsStore } from '../../stores/useSettingsStore'
 
 import { useT } from '../../i18n'
+
+/** Whether the current UI language is Chinese — read the setting directly
+ *  instead of sniffing translated strings, which breaks when copy changes. */
+function useIsZh(): boolean {
+  return useSettingsStore((s) => (s.language || 'zh-CN').startsWith('zh'))
+}
 
 const STATUS_LABELS_ZH = [
   '理解问题中',
@@ -47,8 +54,7 @@ const STATUS_LABELS_EN = [
 
 function StreamingStatus() {
   const { token } = theme.useToken()
-  const t = useT()
-  const isZh = t('coding.thinking').includes('思考')
+  const isZh = useIsZh()
   const labels = isZh ? STATUS_LABELS_ZH : STATUS_LABELS_EN
   const [index, setIndex] = useState(0)
 
@@ -68,9 +74,7 @@ function StreamingStatus() {
 }
 
 function SearchIndicator() {
-  const { token } = theme.useToken()
   const t = useT()
-  const isZh = t('coding.thinking').includes('思考')
   const pendingToolCalls = useChatStore((s) => s.pendingToolCalls)
   const hasActiveSearch = pendingToolCalls.some(
     (tc) => tc.toolName === 'web_search' || tc.toolName === 'plan_search'
@@ -84,7 +88,7 @@ function SearchIndicator() {
       color="processing"
       style={{ marginBottom: 6, fontSize: 12 }}
     >
-      {isZh ? '正在搜索...' : 'Searching...'}
+      {t('chat.searching')}
     </Tag>
   )
 }
@@ -490,4 +494,6 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming }) => {
   )
 }
 
-export default ChatMessage
+// Memoized: ChatMessageList re-renders on every streaming tick, but settled
+// messages' props don't change, so shallow compare skips re-rendering them.
+export default React.memo(ChatMessage)
