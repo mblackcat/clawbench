@@ -1499,14 +1499,22 @@ export async function toggleCronJob(id: string, enabled: boolean): Promise<void>
  * Runs: openclaw pairing approve <channel> <code>
  * The code is the short uppercase token the bot sends in response to the first message.
  */
+const PAIRING_ARG_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
+
 export async function pairingApprove(
   channel: string,
   code: string
 ): Promise<{ success: boolean; error?: string }> {
+  if (!PAIRING_ARG_PATTERN.test(channel) || !PAIRING_ARG_PATTERN.test(code)) {
+    return { success: false, error: 'Invalid channel or pairing code format' }
+  }
   try {
-    await execAsync(`openclaw pairing approve ${channel} ${code}`, {
+    await execFileAsync('openclaw', ['pairing', 'approve', channel, code], {
       timeout: 30000,
-      env: getAugmentedEnv()
+      env: getAugmentedEnv(),
+      // npm global CLIs are .cmd shims on Windows and need a shell; args are
+      // safe to pass through it because of the strict pattern check above.
+      shell: process.platform === 'win32'
     })
     return { success: true }
   } catch (err: any) {

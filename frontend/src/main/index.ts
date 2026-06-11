@@ -175,7 +175,8 @@ function createWindow(): BrowserWindow {
     icon: nativeImage.createFromPath(iconPath),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
+      // Preload only touches contextBridge/ipcRenderer, so the renderer can run sandboxed
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false
     }
@@ -192,9 +193,19 @@ function createWindow(): BrowserWindow {
     }
   })
 
-  // Open external links in the default browser
+  // Open external links in the default browser (http/https only — never
+  // file:// or custom protocols, which could execute local content)
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    try {
+      const protocol = new URL(details.url).protocol
+      if (protocol === 'http:' || protocol === 'https:') {
+        shell.openExternal(details.url)
+      } else {
+        logger.warn(`Blocked window.open to non-http(s) URL: ${details.url}`)
+      }
+    } catch {
+      logger.warn(`Blocked window.open to unparseable URL: ${details.url}`)
+    }
     return { action: 'deny' }
   })
 
