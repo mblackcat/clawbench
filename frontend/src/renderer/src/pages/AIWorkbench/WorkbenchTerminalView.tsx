@@ -75,23 +75,25 @@ const WorkbenchTerminalView: React.FC<WorkbenchTerminalViewProps> = ({ sessionId
     term.open(containerRef.current)
 
     // xterm's hidden helper textarea accumulates committed IME text across
-    // successive compositions. The browser anchors the IME candidate popup
-    // at the textarea's caret (end of text) — so the second Chinese
-    // composition shows its popup at the row end of the textarea instead
-    // of at the xterm cursor where xterm just repositioned it. Clear the
-    // textarea value after every composition ends so subsequent IME popups
-    // anchor to xterm's newly-positioned textarea origin (= cursor cell).
-    // We use setTimeout(0) so xterm's own compositionend handler (which
-    // also runs a setTimeout(0) reading textarea.value to extract committed
-    // text) runs first — FIFO macrotask order.
+    // successive compositions. The OS IME anchors its candidate popup at
+    // the textarea's caret — after a commit, that caret sits at the end of
+    // the accumulated text, so the next Chinese composition's popup floats
+    // to wherever the text ends instead of the cursor cell where xterm just
+    // repositioned the textarea.
+    //
+    // Clear the textarea value at compositionstart in the CAPTURE phase so
+    // it runs BEFORE xterm's bubble-phase listener (which records
+    // `compositionPosition.start = textarea.value.length`). xterm then sees
+    // start=0, pulls the full composition text via value.substring(0, end)
+    // at compositionend, and the caret stays at offset 0 — so the IME popup
+    // anchors at the textarea origin = cursor cell.
     const helperTextarea = containerRef.current.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement | null
-    const handleCompositionEnd = (): void => {
-      if (!helperTextarea) return
-      setTimeout(() => {
+    const handleCompositionStart = (): void => {
+      if (helperTextarea && helperTextarea.value !== '') {
         helperTextarea.value = ''
-      }, 0)
+      }
     }
-    helperTextarea?.addEventListener('compositionend', handleCompositionEnd)
+    helperTextarea?.addEventListener('compositionstart', handleCompositionStart, true)
 
     termRef.current = term
     fitAddonRef.current = fitAddon
@@ -211,7 +213,7 @@ const WorkbenchTerminalView: React.FC<WorkbenchTerminalViewProps> = ({ sessionId
     return () => {
       unsubData()
       resizeObserver.disconnect()
-      helperTextarea?.removeEventListener('compositionend', handleCompositionEnd)
+      helperTextarea?.removeEventListener('compositionstart', handleCompositionStart, true)
       for (const el of scrollTargets) {
         el.removeEventListener('scroll', resetScroll, { capture: true })
       }
