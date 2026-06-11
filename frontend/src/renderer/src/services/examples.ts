@@ -44,7 +44,7 @@ export async function registerExample() {
  */
 export async function loginExample() {
   const loginData: LoginRequest = {
-    email: 'user@example.com',
+    username: 'user@example.com',
     password: 'password123',
   };
 

@@ -77,6 +77,8 @@ export interface Application {
 }
 
 export interface ApplicationDetail extends Application {
+  /** 最新版本号（服务端详情响应附带） */
+  version: string;
   versions: ApplicationVersion[];
 }
 

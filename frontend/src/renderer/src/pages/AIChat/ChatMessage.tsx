@@ -433,7 +433,9 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming }) => {
                                 src={src}
                                 alt={alt}
                                 style={{ maxWidth: '100%', maxHeight: 400, borderRadius: 8 }}
-                                {...props}
+                                // react-markdown img props (HTMLImageElement handlers) are not
+                                // structurally compatible with antd ImageProps; widen for the spread
+                                {...(props as object)}
                               />
                             </span>
                           </Dropdown>

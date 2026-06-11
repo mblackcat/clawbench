@@ -710,7 +710,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     await get().deleteMessages(messageId, 'from-here')
 
     // Re-send with new content using current model selection
-    const { selectedModelId, selectedModelSource, selectedLocalConfigId } = useAIModelStore.getState()
+    const { selectedModelId, selectedModelSource, selectedModelConfigId } = useAIModelStore.getState()
     if (!selectedModelId) return
 
     const { toolsEnabled, webSearchEnabled, feishuKitsEnabled } = get()
@@ -719,7 +719,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       newContent,
       selectedModelSource,
       selectedModelId,
-      selectedLocalConfigId || undefined,
+      selectedModelConfigId || undefined,
       undefined,
       enableThinking,
       webSearchEnabled,
@@ -743,7 +743,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
 
     // Re-send the same user message
-    const { selectedModelId, selectedModelSource, selectedLocalConfigId } = useAIModelStore.getState()
+    const { selectedModelId, selectedModelSource, selectedModelConfigId } = useAIModelStore.getState()
     if (!selectedModelId) return
 
     // Remove the user message too, sendMessage will re-create it
@@ -757,7 +757,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       userContent,
       selectedModelSource,
       selectedModelId,
-      selectedLocalConfigId || undefined,
+      selectedModelConfigId || undefined,
       undefined,
       enableThinking,
       webSearchEnabled,
