@@ -10,6 +10,7 @@ import {
   publishApp,
   discoverSharedApps
 } from '../services/publisher.service'
+import type { AppInfo } from '../services/publisher.service'
 import { listSubApps } from '../services/subapp.service'
 import { settingsStore } from '../store/settings.store'
 import { getUserAppsPath } from '../utils/paths'
@@ -84,7 +85,7 @@ function detectLocalTerminal(): string | null {
 }
 
 export function registerDeveloperIpc(): void {
-  ipcMain.handle('developer:create-app', async (_event, appInfo: Record<string, unknown>) => {
+  ipcMain.handle('developer:create-app', async (_event, appInfo: AppInfo) => {
     const result = createAppScaffold(appInfo)
     if (!result.success) throw new Error(result.error)
     return result.path

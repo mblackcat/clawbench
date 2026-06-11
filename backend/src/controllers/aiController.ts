@@ -121,19 +121,33 @@ export async function streamChatHandler(
       'X-Accel-Buffering': 'no',
     });
 
+    // Abort the upstream provider request as soon as the client disconnects,
+    // so we stop paying for tokens nobody will receive.
+    const upstreamAbort = new AbortController();
+    res.on('close', () => {
+      if (!res.writableEnded) {
+        upstreamAbort.abort();
+      }
+    });
+
     let fullContent = '';
 
     try {
       const validTools: ToolDefinition[] | undefined = tools && Array.isArray(tools) && tools.length > 0 ? tools : undefined;
-      for await (const chunk of streamChat(modelConfig, chatMessages, validTools, enableThinking, webSearchEnabled)) {
+      for await (const chunk of streamChat(modelConfig, chatMessages, validTools, enableThinking, webSearchEnabled, upstreamAbort.signal)) {
+        if (upstreamAbort.signal.aborted) break;
         if (chunk.type === 'delta' && chunk.content) {
           fullContent += chunk.content;
         }
         res.write(`data: ${JSON.stringify(chunk)}\n\n`);
       }
     } catch (streamError: any) {
-      logger.error('Stream error:', streamError);
-      res.write(`data: ${JSON.stringify({ type: 'error', message: streamError.message })}\n\n`);
+      if (upstreamAbort.signal.aborted) {
+        logger.info('Stream aborted: client disconnected');
+      } else {
+        logger.error('Stream error:', streamError);
+        res.write(`data: ${JSON.stringify({ type: 'error', message: streamError.message })}\n\n`);
+      }
     }
 
     // Save assistant message to DB if conversation provided

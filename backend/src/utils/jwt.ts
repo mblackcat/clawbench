@@ -1,12 +1,13 @@
 import jwt from 'jsonwebtoken';
 import { JWTPayload } from '../models/authToken';
+import { config } from '../config/index';
 
 /**
  * JWT 工具函数
  */
 
-// JWT 密钥（在生产环境中应该从环境变量读取）
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+// 统一从 config 读取密钥（config 在生产环境会校验密钥强度）
+const JWT_SECRET = config.jwt.secret;
 
 /**
  * 生成 JWT 令牌

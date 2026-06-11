@@ -278,7 +278,7 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
   const formatRelativeTime = (ms: number): string => {
     const diff = Date.now() - ms
     const minutes = Math.floor(diff / 60_000)
-    if (minutes < 1) return '刚刚'
+    if (minutes < 1) return t('workbench.justNow')
     if (minutes < 60) return `${minutes}m`
     const hours = Math.floor(minutes / 60)
     if (hours < 24) return `${hours}h`
@@ -290,10 +290,10 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
     const state = nativeSessionsMap[wsId]
     if (!state || state.loading) return [{ key: 'loading', label: <Spin size="small" />, disabled: true }]
     const availableSessions = state.sessions
-    if (state.sessions.length === 0) return [{ key: 'empty', label: '无历史会话', disabled: true }]
+    if (state.sessions.length === 0) return [{ key: 'empty', label: t('workbench.noHistorySessions'), disabled: true }]
     const visibleCount = nativeSessionVisibleCounts[wsId] || NATIVE_HISTORY_PAGE_SIZE
     const visibleSessions = availableSessions.slice(0, visibleCount)
-    if (visibleSessions.length === 0) return [{ key: 'empty', label: '无历史会话', disabled: true }]
+    if (visibleSessions.length === 0) return [{ key: 'empty', label: t('workbench.noHistorySessions'), disabled: true }]
     const items: NonNullable<MenuProps['items']> = visibleSessions.map(ns => {
       const timePart = formatRelativeTime(ns.modifiedAt)
       return {
@@ -319,7 +319,7 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
             }}>
               {ns.title}
             </span>
-            <span style={{ flexShrink: 0, fontSize: 11, color: '#999' }}>{timePart}</span>
+            <span style={{ flexShrink: 0, fontSize: 11, color: token.colorTextTertiary }}>{timePart}</span>
           </span>
         )
       }

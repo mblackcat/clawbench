@@ -106,6 +106,18 @@ const ChatInput: React.FC = () => {
     setPendingFiles((prev) => [...prev, ...newPending])
   }, [])
 
+  // Release object URLs of files still pending when the component unmounts —
+  // otherwise selecting images and navigating away leaks blob memory
+  const pendingFilesRef = useRef<PendingAttachment[]>([])
+  pendingFilesRef.current = pendingFiles
+  useEffect(() => {
+    return () => {
+      for (const f of pendingFilesRef.current) {
+        if (f.previewUrl) URL.revokeObjectURL(f.previewUrl)
+      }
+    }
+  }, [])
+
   const removeFile = useCallback((id: string) => {
     setPendingFiles((prev) => {
       const item = prev.find((f) => f.id === id)

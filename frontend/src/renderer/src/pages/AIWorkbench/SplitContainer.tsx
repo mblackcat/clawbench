@@ -53,6 +53,10 @@ const SplitContainer: React.FC<SplitContainerProps> = ({
     setSplitSizes(path, sizes)
   }, [path, setSplitSizes])
 
+  // Key by structural fingerprint so Allotment remounts when children change.
+  // Must run before the leaf early-return so hook order is stable.
+  const structKey = useMemo(() => layoutFingerprint(layout), [layout])
+
   if (layout.type === 'leaf') {
     return (
       <TabGroup
@@ -68,9 +72,6 @@ const SplitContainer: React.FC<SplitContainerProps> = ({
       />
     )
   }
-
-  // Key by structural fingerprint so Allotment remounts when children change
-  const structKey = useMemo(() => layoutFingerprint(layout), [layout])
 
   return (
     <Allotment

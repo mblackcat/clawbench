@@ -271,7 +271,8 @@ describe('Storage Service Tests', () => {
       const fullPath = storageService.getFullPath(relativePath);
 
       expect(fullPath).toContain(testStoragePath);
-      expect(fullPath).toContain(relativePath);
+      // path.join normalizes separators, so compare against the joined form
+      expect(fullPath).toContain(path.join('app-123', '1.0.0_test.zip'));
     });
 
     it('should handle path separators correctly', () => {

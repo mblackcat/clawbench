@@ -164,7 +164,7 @@ const DBQueryEditor: React.FC<Props> = ({ tabId, connectionId }) => {
               type="primary"
               size="small"
               icon={<PlayCircleOutlined />}
-              onClick={handleExecute}
+              onClick={() => handleExecute()}
               loading={loading}
               disabled={!sql.trim()}
             >

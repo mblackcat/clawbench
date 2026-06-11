@@ -11,6 +11,18 @@ import type { ColDef } from '../../types/copiper'
 registerAllModules()
 registerLanguageDictionary(zhCN)
 
+// `afterOnCellDoubleClick` is passed through to Handsontable settings but is not part of
+// the published HotTableProps typings — declare it via module augmentation (type-only).
+declare module '@handsontable/react' {
+  interface HotTableProps {
+    afterOnCellDoubleClick?: (
+      event: MouseEvent,
+      coords: { row: number; col: number },
+      TD?: HTMLTableCellElement
+    ) => void
+  }
+}
+
 const { Text } = Typography
 
 interface CopiperTableProps {

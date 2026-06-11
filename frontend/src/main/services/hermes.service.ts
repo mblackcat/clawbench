@@ -10,6 +10,8 @@ import * as yaml from 'js-yaml'
 import type { HermesConfig } from '../../renderer/src/types/hermes'
 import { createDefaultHermesConfig } from '../../renderer/src/pages/Hermes/hermes-provider-helpers'
 
+export type { HermesConfig }
+
 const execAsync = promisify(exec)
 
 // ── Types ──────────────────────────────────────────────────────────────────

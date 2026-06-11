@@ -17,6 +17,20 @@ export class AppError extends Error {
 }
 
 /**
+ * 日志脱敏：避免把密码 / 密钥 / token 写进错误日志
+ */
+const SENSITIVE_FIELDS = ['password', 'apiKey', 'api_key', 'secret', 'token', 'accessToken', 'refreshToken'];
+
+function redactBody(body: unknown): unknown {
+  if (!body || typeof body !== 'object') return body;
+  const redacted: Record<string, unknown> = { ...(body as Record<string, unknown>) };
+  for (const field of SENSITIVE_FIELDS) {
+    if (field in redacted) redacted[field] = '***';
+  }
+  return redacted;
+}
+
+/**
  * 错误处理中间件
  */
 export const errorHandler = (
@@ -30,7 +44,7 @@ export const errorHandler = (
     error: err,
     path: req.path,
     method: req.method,
-    body: req.body,
+    body: redactBody(req.body),
   });
 
   // 如果是自定义错误

@@ -1,5 +1,4 @@
 import { create } from 'zustand'
-import { flushSync } from 'react-dom'
 import apiClient, { API_BASE_URL } from '../services/apiClient'
 import { useAIModelStore } from './useAIModelStore'
 import { useAuthStore } from './useAuthStore'
@@ -710,7 +709,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     await get().deleteMessages(messageId, 'from-here')
 
     // Re-send with new content using current model selection
-    const { selectedModelId, selectedModelSource, selectedLocalConfigId } = useAIModelStore.getState()
+    const { selectedModelId, selectedModelSource, selectedModelConfigId } = useAIModelStore.getState()
     if (!selectedModelId) return
 
     const { toolsEnabled, webSearchEnabled, feishuKitsEnabled } = get()
@@ -719,7 +718,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       newContent,
       selectedModelSource,
       selectedModelId,
-      selectedLocalConfigId || undefined,
+      selectedModelConfigId || undefined,
       undefined,
       enableThinking,
       webSearchEnabled,
@@ -743,7 +742,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
 
     // Re-send the same user message
-    const { selectedModelId, selectedModelSource, selectedLocalConfigId } = useAIModelStore.getState()
+    const { selectedModelId, selectedModelSource, selectedModelConfigId } = useAIModelStore.getState()
     if (!selectedModelId) return
 
     // Remove the user message too, sendMessage will re-create it
@@ -757,7 +756,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       userContent,
       selectedModelSource,
       selectedModelId,
-      selectedLocalConfigId || undefined,
+      selectedModelConfigId || undefined,
       undefined,
       enableThinking,
       webSearchEnabled,
@@ -1506,14 +1505,10 @@ async function streamBuiltinWithMessages(
               const data = JSON.parse(line.slice(6))
               if (data.type === 'thinking_delta' && data.content) {
                 fullThinkingContent += data.content
-                flushSync(() => {
-                  useChatStore.setState({ streamingThinkingContent: fullThinkingContent })
-                })
+                useChatStore.setState({ streamingThinkingContent: fullThinkingContent })
               } else if (data.type === 'delta' && data.content) {
                 fullContent += data.content
-                flushSync(() => {
-                  useChatStore.setState({ streamingContent: fullContent })
-                })
+                useChatStore.setState({ streamingContent: fullContent })
               } else if (data.type === 'done') {
                 useChatStore.getState().finalizeStreaming(fullContent, modelId, fullThinkingContent || undefined, data.usage)
               } else if (data.type === 'error') {
@@ -1624,17 +1619,13 @@ async function streamLocalWithMessages(
     const cleanupDelta = window.api.ai.onChatDelta((data) => {
       if (data.taskId === taskId) {
         fullContent += data.content
-        flushSync(() => {
-          useChatStore.setState({ streamingContent: fullContent })
-        })
+        useChatStore.setState({ streamingContent: fullContent })
       }
     })
     const cleanupThinking = window.api.ai.onChatThinkingDelta((data) => {
       if (data.taskId === taskId) {
         fullThinkingContent += data.content
-        flushSync(() => {
-          useChatStore.setState({ streamingThinkingContent: fullThinkingContent })
-        })
+        useChatStore.setState({ streamingThinkingContent: fullThinkingContent })
       }
     })
     const cleanupDone = window.api.ai.onChatDone((data) => {

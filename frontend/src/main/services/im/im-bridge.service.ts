@@ -57,6 +57,7 @@ import { executeSubAppWithCallbacks, resolvePythonCommand } from '../python-runn
 import { listRecentMarketApps, searchMarketApps, installMarketApp } from './marketplace.service'
 import { getAiModelConfigs, getLastChatModel } from '../../store/settings.store'
 import { getPythonSdkPath } from '../../utils/paths'
+import * as logger from '../../utils/logger'
 import { randomUUID } from 'crypto'
 
 // ── Singleton ──

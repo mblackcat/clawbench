@@ -4,10 +4,34 @@ import path from 'path';
 // 加载环境变量
 dotenv.config();
 
+// JWT 密钥守卫：生产环境必须显式配置强密钥，否则拒绝启动
+const KNOWN_PLACEHOLDER_SECRETS = [
+  'default-secret-change-in-production',
+  'your-secret-key-change-in-production',
+  'CHANGE_ME_TO_A_STRONG_RANDOM_SECRET',
+];
+const nodeEnv = process.env.NODE_ENV || 'development';
+const jwtSecret = process.env.JWT_SECRET || KNOWN_PLACEHOLDER_SECRETS[0];
+if (
+  nodeEnv === 'production' &&
+  (KNOWN_PLACEHOLDER_SECRETS.includes(jwtSecret) || jwtSecret.length < 16)
+) {
+  throw new Error(
+    'FATAL: JWT_SECRET must be set to a strong random value (>= 16 chars) in production'
+  );
+}
+
 export const config = {
   // 服务器配置
   port: parseInt(process.env.PORT || '3001', 10),
-  nodeEnv: process.env.NODE_ENV || 'development',
+  nodeEnv,
+
+  // CORS 白名单（逗号分隔的 origin 列表；不设置时允许所有来源）
+  cors: {
+    origins: process.env.CORS_ORIGIN
+      ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean)
+      : null,
+  },
 
   // 数据库配置
   database: {
@@ -24,7 +48,7 @@ export const config = {
 
   // JWT 配置
   jwt: {
-    secret: process.env.JWT_SECRET || 'default-secret-change-in-production',
+    secret: jwtSecret,
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   },
 

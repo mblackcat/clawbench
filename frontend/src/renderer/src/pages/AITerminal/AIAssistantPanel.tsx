@@ -379,8 +379,8 @@ const AIAssistantPanel: React.FC = () => {
     toolName: string
     toolInput: Record<string, any>
   }> => {
-    return new Promise(async (resolve, reject) => {
-      try {
+    return new Promise((resolve, reject) => {
+      ;(async () => {
         const taskId = await window.api.ai.streamChat(
           configId, messages, modelId, undefined, tools, enableThinking
         )
@@ -448,9 +448,7 @@ const AIAssistantPanel: React.FC = () => {
           cleanup()
           reject(err)
         }
-      } catch (err) {
-        reject(err)
-      }
+      })().catch(reject)
     })
   }, [forceUpdate])
 

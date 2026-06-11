@@ -55,7 +55,7 @@ describe('ApiClient', () => {
       });
 
       await apiClient.login({
-        email: 'test@example.com',
+        username: 'test@example.com',
         password: 'password123',
       });
 
@@ -136,7 +136,7 @@ describe('ApiClient', () => {
 
       await expect(
         apiClient.login({
-          email: 'wrong@example.com',
+          username: 'wrong@example.com',
           password: 'wrongpassword',
         })
       ).rejects.toThrow(ApiClientError);

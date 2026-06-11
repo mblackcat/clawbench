@@ -38,7 +38,7 @@ export interface AiToolsConfig {
   webSearch: { provider: 'duckduckgo' | 'brave'; braveApiKey: string }
   webBrowse: { engine: 'http' | 'lightpanda'; lightpandaPath: string }
   feishuKits: { enabled: boolean; cliPath: string }
-  toolBehavior: { maxToolSteps: number; maxSearchRounds: number; toolTimeoutMs: number }
+  toolBehavior: { maxToolSteps: number; maxSearchRounds: number; toolTimeoutMs: number; enableThinking?: boolean }
 }
 
 type VcsType = 'git' | 'svn' | 'none'
@@ -60,14 +60,19 @@ interface VcsExecResult {
 export interface ClawBenchAPI {
   workspace: {
     list: () => Promise<import('./workspace').Workspace[]>
-    create: (name: string, path: string) => Promise<import('./workspace').Workspace>
+    create: (name: string, path: string, vcsType?: string) => Promise<import('./workspace').Workspace>
     update: (id: string, updates: Partial<import('./workspace').Workspace>) => Promise<void>
     delete: (id: string) => Promise<void>
     setActive: (id: string) => Promise<void>
     getActive: () => Promise<import('./workspace').Workspace | null>
   }
   subapp: {
-    list: () => Promise<import('./subapp').SubAppManifest[]>
+    list: () => Promise<Array<{
+      id: string
+      manifest: import('./subapp').SubAppManifest
+      path: string
+      source: 'user'
+    }>>
     getManifest: (appId: string) => Promise<import('./subapp').SubAppManifest>
     execute: (
       appId: string,
@@ -222,6 +227,8 @@ export interface ClawBenchAPI {
     setChatPreferences: (prefs: { chatMode?: string; toolsEnabled?: boolean; webSearchEnabled?: boolean; feishuKitsEnabled?: boolean }) => Promise<void>
     detectFeishuCli: () => Promise<{ found: boolean; path: string }>
     installFeishuCli: () => Promise<{ success: boolean; error: string; path: string }>
+    writeFeishuCliConfig: () => Promise<{ success: boolean; error: string; path?: string }>
+    checkFeishuCliConfig: () => Promise<{ exists: boolean; hasCredentials: boolean }>
     onFeishuCliInstallProgress: (callback: (data: { percent: number; downloadedMB: string; totalMB: string; stage: string }) => void) => () => void
     getAiToolsConfig: () => Promise<AiToolsConfig>
     setAiToolsConfig: (config: AiToolsConfig) => Promise<void>
@@ -276,6 +283,7 @@ export interface ClawBenchAPI {
     selectDirectory: () => Promise<string | null>
     selectApp: () => Promise<string | null>
     selectFiles: () => Promise<string[]>
+    saveImage: (base64Data: string) => Promise<boolean>
   }
   updater: {
     check: () => Promise<{ success: boolean; error?: string }>
@@ -324,6 +332,7 @@ export interface ClawBenchAPI {
     startLogWatcher: () => Promise<void>
     stopLogWatcher: () => Promise<void>
     onActivityState: (callback: (state: string) => void) => () => void
+    onActiveSubagents: (callback: (subagents: Array<{ id: string; label: string; model?: string }>) => void) => () => void
   }
   hermes: {
     checkInstalled: () => Promise<{ installed: boolean; version?: string }>
@@ -571,6 +580,51 @@ export interface ClawBenchAPI {
     addDBColumn: (id: string, tableName: string, columnName: string, columnType: string, nullable: boolean, defaultValue?: string) => Promise<void>
     dropDBColumn: (id: string, tableName: string, columnName: string) => Promise<void>
     renameDBColumn: (id: string, tableName: string, oldName: string, newName: string) => Promise<void>
+  }
+  credentials: {
+    saveApiToken: (token: string) => Promise<void>
+    clearApiToken: () => Promise<void>
+  }
+  internalTools: {
+    list: () => Promise<Array<{ name: string; description: string; inputSchema: Record<string, any> }>>
+    execute: (toolName: string, input: Record<string, any>) => Promise<{ content: string; isError: boolean }>
+  }
+  agent: {
+    readMemory: (filename: string) => Promise<string>
+    writeMemory: (filename: string, content: string) => Promise<void>
+    readAllMemories: () => Promise<Record<string, string>>
+    readStats: () => Promise<{
+      totalFeedback: { up: number; down: number }
+      byTopic: Record<string, { up: number; down: number }>
+      recentTrend: { date: string; up: number; down: number }[]
+      soulSuggestions: { suggestion: string; reason: string; feedbackCount: number }[]
+    }>
+    statsSnippet: () => Promise<string>
+    processFeedback: (data: { messageId: string; type: 'up' | 'down'; reason?: string; snippet: string }) => Promise<{ ok: boolean }>
+    restoreSoulDefault: () => Promise<void>
+    getMemoryDir: () => Promise<string>
+  }
+  scheduledTask: {
+    list: () => Promise<import('./scheduled-task').ScheduledTask[]>
+    get: (id: string) => Promise<import('./scheduled-task').ScheduledTask | undefined>
+    create: (data: Record<string, unknown>) => Promise<import('./scheduled-task').ScheduledTask>
+    update: (id: string, updates: Record<string, unknown>) => Promise<import('./scheduled-task').ScheduledTask | undefined>
+    delete: (id: string) => Promise<boolean>
+    setEnabled: (id: string, enabled: boolean) => Promise<import('./scheduled-task').ScheduledTask | undefined>
+    runNow: (id: string) => Promise<{ success: boolean; error?: string }>
+    getImStatus: () => Promise<{ connected: boolean }>
+    onExecuted: (
+      callback: (data: {
+        taskId: string
+        taskName: string
+        status: string
+        result: string
+        prompt: string
+        keepInOneChat: boolean
+        conversationId?: string
+        timestamp: number
+      }) => void
+    ) => () => void
   }
   windowControl: {
     minimize: () => Promise<void>

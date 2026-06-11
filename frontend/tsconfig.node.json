@@ -9,9 +9,8 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "outDir": "./out/main",
-    "rootDir": "./src",
-    "types": ["node"],
+    "noEmit": true,
+    "types": ["node", "electron-vite/node"],
     "paths": {
       "@main/*": ["./src/main/*"]
     }

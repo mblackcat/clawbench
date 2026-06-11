@@ -38,7 +38,9 @@ const DBConnectionList: React.FC<Props> = ({ onNew, onEdit }) => {
   const {
     dbConnections, dbConnectionStatus, dbTables, dbDatabases, dbSelectedDatabase,
     connectDB, disconnectDB, deleteDBConnection,
-    openDBTable, openDBQuery, fetchDBTables, fetchDBDatabases, useDBDatabase
+    openDBTable, openDBQuery, fetchDBTables, fetchDBDatabases,
+    // store action, not a React hook — rename so lint can tell the difference
+    useDBDatabase: switchDBDatabase
   } = useAITerminalStore()
 
   // Expanded state: connections and databases
@@ -67,13 +69,13 @@ const DBConnectionList: React.FC<Props> = ({ onNew, onEdit }) => {
       } else {
         next.add(key)
         // Switch to this database and fetch tables
-        useDBDatabase(connId, dbName).catch(err => {
+        switchDBDatabase(connId, dbName).catch(err => {
           message.error(t('terminal.switchDBFailed', err.message || String(err)))
         })
       }
       return next
     })
-  }, [useDBDatabase, message])
+  }, [switchDBDatabase, message])
 
   const handleConnect = useCallback(async (conn: DBConnection) => {
     const result = await connectDB(conn.id)

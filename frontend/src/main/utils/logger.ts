@@ -1,9 +1,8 @@
 import log from 'electron-log/main'
 import { BrowserWindow } from 'electron'
 
-// 日志文件大小上限 5MB，保留 3 个旧文件
+// 日志文件大小上限 5MB（electron-log 超限后归档为 .old 文件）
 log.transports.file.maxSize = 5 * 1024 * 1024
-log.transports.file.rotationFormat = '{yyyy}-{mm}-{dd}_{index}'
 
 // Forward [module] tagged logs to renderer for the Logs panel
 function forwardToRenderer(level: string, args: unknown[]): void {

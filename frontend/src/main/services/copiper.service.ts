@@ -1,8 +1,10 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
+import { spawn } from 'child_process'
 import * as logger from '../utils/logger'
 import * as jdbService from './jdb.service'
+import { resolvePythonCommand } from './python-runner.service'
 import { getExportSettings, setExportSettings, addRecentFile } from '../store/copiper.store'
 import type { JDBDatabase, JDBTableData, ColDef, RowData, JDBFileInfo } from './jdb.service'
 
@@ -488,57 +490,132 @@ function ensureXlogStub(): string {
 
 // ── Custom check / post-process scripts ──
 
+// Script name components come from file paths / table names — keep them to a
+// safe charset so they cannot escape the copiper scripts directory.
+const SAFE_SCRIPT_COMPONENT = /^[\w.-]*$/
+
+interface ScriptResult {
+  result: boolean
+  info: string
+  r_c_e: unknown[]
+}
+
+/**
+ * Run a Python script asynchronously (the old execSync version froze the UI
+ * for up to 30-120s). Returns collected stdout; rejects on spawn error,
+ * non-zero exit or timeout.
+ */
+function runPythonScriptAsync(
+  pythonPath: string,
+  args: string[],
+  options: { env: NodeJS.ProcessEnv; cwd: string; timeoutMs: number; input?: string }
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(pythonPath, args, { env: options.env, cwd: options.cwd })
+    let stdout = ''
+    let stderr = ''
+    let settled = false
+
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true
+        proc.kill()
+        reject(new Error(`Script timed out after ${options.timeoutMs}ms`))
+      }
+    }, options.timeoutMs)
+
+    proc.stdout.on('data', (d: Buffer) => { stdout += d.toString('utf-8') })
+    proc.stderr.on('data', (d: Buffer) => { stderr += d.toString('utf-8') })
+    proc.on('error', (err) => {
+      if (!settled) {
+        settled = true
+        clearTimeout(timer)
+        reject(err)
+      }
+    })
+    proc.on('close', (code) => {
+      if (!settled) {
+        settled = true
+        clearTimeout(timer)
+        if (code === 0) {
+          resolve(stdout)
+        } else {
+          reject(new Error(`Script exited with code ${code}: ${stderr.slice(0, 500)}`))
+        }
+      }
+    })
+
+    if (options.input) {
+      proc.stdin.write(options.input)
+    }
+    proc.stdin.end()
+  })
+}
+
+/** Parse the first valid JSON object line from script stdout. */
+function parseScriptResult(stdout: string, fallbackInfo: string): ScriptResult {
+  for (const line of stdout.split('\n')) {
+    try {
+      const parsed = JSON.parse(line.trim())
+      if (typeof parsed === 'object' && parsed !== null) {
+        return parsed
+      }
+    } catch {
+      // not JSON, skip
+    }
+  }
+  return { result: true, info: fallbackInfo, r_c_e: [] }
+}
+
+function buildScriptEnv(workspacePath: string, xlogDir: string): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    PYTHONPATH: [
+      xlogDir,
+      path.join(workspacePath, 'data'),
+      path.join(workspacePath, 'data', 'xconvertor'),
+      path.join(workspacePath, 'data', 'xconvertor', 'scripts'),
+      path.join(workspacePath, 'data', 'copiper')
+    ].join(path.delimiter),
+    PYTHONIOENCODING: 'utf-8'
+  }
+}
+
 /**
  * Run a custom check or post-process Python script for a table.
  * Scripts live at: {workspacePath}/data/copiper/{scriptType}/{relDir}_{tbName}.py
  */
-function runCustomScript(
+async function runCustomScript(
   workspacePath: string,
   scriptType: 'check' | 'post_process',
   relDir: string,
   tbName: string,
   dbKey?: string
-): { result: boolean; info: string; r_c_e: unknown[] } {
+): Promise<ScriptResult> {
+  if (!SAFE_SCRIPT_COMPONENT.test(relDir) || !SAFE_SCRIPT_COMPONENT.test(tbName)) {
+    logger.warn(`Refusing custom ${scriptType} script with unsafe name: ${relDir}_${tbName}`)
+    return { result: true, info: `No custom ${scriptType} script`, r_c_e: [] }
+  }
   const scriptPath = path.join(workspacePath, 'data', 'copiper', scriptType, `${relDir}_${tbName}.py`)
   if (!fs.existsSync(scriptPath)) {
     return { result: true, info: `No custom ${scriptType} script`, r_c_e: [] }
   }
 
   try {
-    const { execSync } = require('child_process')
     const input = dbKey ? JSON.stringify({ db_key: dbKey }) : ''
     const xlogDir = ensureXlogStub()
-    const env = {
-      ...process.env,
-      PYTHONPATH: [
-        xlogDir,
-        path.join(workspacePath, 'data'),
-        path.join(workspacePath, 'data', 'xconvertor'),
-        path.join(workspacePath, 'data', 'xconvertor', 'scripts'),
-        path.join(workspacePath, 'data', 'copiper')
-      ].join(path.delimiter),
-      PYTHONIOENCODING: 'utf-8'
-    }
-    const result = execSync(`python3 "${path.join(xlogDir, '_compat_runner.py')}" "${scriptPath}"`, {
-      input,
-      env,
-      cwd: workspacePath,
-      encoding: 'utf-8',
-      timeout: 30000
-    })
-
-    // Parse JSON result from stdout (first valid JSON line)
-    for (const line of result.split('\n')) {
-      try {
-        const parsed = JSON.parse(line.trim())
-        if (typeof parsed === 'object' && parsed !== null) {
-          return parsed
-        }
-      } catch {
-        // not JSON, skip
+    const python = await resolvePythonCommand()
+    const stdout = await runPythonScriptAsync(
+      python.path,
+      [path.join(xlogDir, '_compat_runner.py'), scriptPath],
+      {
+        env: buildScriptEnv(workspacePath, xlogDir),
+        cwd: workspacePath,
+        timeoutMs: 30000,
+        input
       }
-    }
-    return { result: true, info: `Custom ${scriptType} completed`, r_c_e: [] }
+    )
+    return parseScriptResult(stdout, `Custom ${scriptType} completed`)
   } catch (err: any) {
     logger.error(`Custom ${scriptType} script failed:`, err)
     return { result: true, info: `Custom ${scriptType} script error: ${err.message}`, r_c_e: [] }
@@ -548,63 +625,41 @@ function runCustomScript(
 /**
  * Run the all.py post-process script that handles all tables at once.
  */
-function runAllPostProcess(
-  workspacePath: string
-): { result: boolean; info: string; r_c_e: unknown[] } {
+async function runAllPostProcess(workspacePath: string): Promise<ScriptResult> {
   const scriptPath = path.join(workspacePath, 'data', 'copiper', 'post_process', 'all.py')
   if (!fs.existsSync(scriptPath)) {
     return { result: true, info: '', r_c_e: [] }
   }
 
   try {
-    const { execSync } = require('child_process')
     const xlogDir = ensureXlogStub()
-    const env = {
-      ...process.env,
-      PYTHONPATH: [
-        xlogDir,
-        path.join(workspacePath, 'data'),
-        path.join(workspacePath, 'data', 'xconvertor'),
-        path.join(workspacePath, 'data', 'xconvertor', 'scripts'),
-        path.join(workspacePath, 'data', 'copiper')
-      ].join(path.delimiter),
-      PYTHONIOENCODING: 'utf-8'
-    }
-    const result = execSync(`python3 "${path.join(xlogDir, '_compat_runner.py')}" "${scriptPath}"`, {
-      env,
-      cwd: workspacePath,
-      encoding: 'utf-8',
-      timeout: 120000
-    })
-
-    for (const line of result.split('\n')) {
-      try {
-        const parsed = JSON.parse(line.trim())
-        if (typeof parsed === 'object' && parsed !== null) {
-          return parsed
-        }
-      } catch {
-        // not JSON, skip
+    const python = await resolvePythonCommand()
+    const stdout = await runPythonScriptAsync(
+      python.path,
+      [path.join(xlogDir, '_compat_runner.py'), scriptPath],
+      {
+        env: buildScriptEnv(workspacePath, xlogDir),
+        cwd: workspacePath,
+        timeoutMs: 120000
       }
-    }
-    return { result: true, info: 'all.py completed', r_c_e: [] }
+    )
+    return parseScriptResult(stdout, 'all.py completed')
   } catch (err: any) {
     logger.error('all.py post-process failed:', err)
-    const stderr = err.stderr ? String(err.stderr).slice(0, 500) : err.message
-    return { result: false, info: `all.py error: ${stderr}`, r_c_e: [] }
+    return { result: false, info: `all.py error: ${String(err.message).slice(0, 500)}`, r_c_e: [] }
   }
 }
 
 // ── Export ──
 
-export function exportTable(
+export async function exportTable(
   filePath: string,
   tableName: string,
   config: ExportConfig,
   workspacePath: string,
   allTables?: JDBDatabase,
   _skipPostProcess?: boolean
-): ExportResult[] {
+): Promise<ExportResult[]> {
   const db = allTables || jdbService.loadDatabase(filePath)
   const table = db[tableName]
   if (!table) {
@@ -647,7 +702,7 @@ export function exportTable(
   }
 
   // Run custom check (only for non-empty tables)
-  const checkResult = runCustomScript(workspacePath, 'check', relDir, tableName, dbKey)
+  const checkResult = await runCustomScript(workspacePath, 'check', relDir, tableName, dbKey)
   const checkInfo = checkResult.info || ''
   if (!checkResult.result) {
     return [{
@@ -731,13 +786,13 @@ export function exportTable(
     const postInfoParts: string[] = []
 
     // Run all.py first (default post-process for all tables)
-    const allResult = runAllPostProcess(workspacePath)
+    const allResult = await runAllPostProcess(workspacePath)
     if (allResult.info) {
       postInfoParts.push(`[all] ${allResult.info}`)
     }
 
     // Then run table-specific post-process
-    const postResult = runCustomScript(workspacePath, 'post_process', relDir, tableName, dbKey)
+    const postResult = await runCustomScript(workspacePath, 'post_process', relDir, tableName, dbKey)
     if (postResult.info && !postResult.info.startsWith('No custom')) {
       postInfoParts.push(postResult.info)
     }
@@ -751,11 +806,11 @@ export function exportTable(
   return results
 }
 
-export function exportAll(
+export async function exportAll(
   filePath: string,
   config: ExportConfig,
   workspacePath: string
-): ExportResult[] {
+): Promise<ExportResult[]> {
   const db = jdbService.loadDatabase(filePath)
   const tableNames = config.tableNames && config.tableNames.length > 0
     ? config.tableNames
@@ -768,12 +823,12 @@ export function exportAll(
   // Pass preloaded allWorkspaceTables instead of just db
   const results: ExportResult[] = []
   for (const tableName of tableNames) {
-    const tableResults = exportTable(filePath, tableName, config, workspacePath, allWorkspaceTables, true)
+    const tableResults = await exportTable(filePath, tableName, config, workspacePath, allWorkspaceTables, true)
     results.push(...tableResults)
   }
 
   // Phase 2: Run all.py post-process once for all tables
-  const allPostResult = runAllPostProcess(workspacePath)
+  const allPostResult = await runAllPostProcess(workspacePath)
 
   // Phase 3: Run per-table post-process and attach info (skip for empty/skipped tables)
   const relToWorkspace = path.relative(workspacePath, filePath)
@@ -795,7 +850,7 @@ export function exportAll(
     }
 
     const dbKey = relDir ? `${relDir}_${dbFileName}_${tableName}` : tableName
-    const postResult = runCustomScript(workspacePath, 'post_process', relDir, tableName, dbKey)
+    const postResult = await runCustomScript(workspacePath, 'post_process', relDir, tableName, dbKey)
 
     const postInfoParts: string[] = []
     if (allPostResult.info) {

@@ -25,7 +25,7 @@ interface WorkspaceInfo {
   id: string
   name: string
   path: string
-  [key: string]: unknown
+  vcsType?: string
 }
 
 /** Callbacks for IM-triggered sub-app execution (no WebContents needed) */
@@ -409,8 +409,14 @@ function processOutputLine(taskId: string, line: string, webContents: WebContent
         webContents.send('subapp:output', { taskId, type: 'output', content: line })
         break
     }
-  } catch {
-    // Not valid JSON, treat as plain text output
+  } catch (err) {
+    // Not valid JSON, treat as plain text output — log so malformed protocol
+    // messages from sub-apps are diagnosable instead of silently downgraded
+    logger.warn(
+      `Sub-app ${taskId} output line is not valid JSON, forwarding as plain text:`,
+      line,
+      err instanceof Error ? err.message : String(err)
+    )
     webContents.send('subapp:output', {
       taskId,
       type: 'output',

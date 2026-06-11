@@ -124,6 +124,12 @@ export function getToolCommand(toolType: AIToolType): { command: string; args: s
         command: process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash'),
         args: []
       }
+    default:
+      // AIToolType may grow (e.g. opencode); fall back to a plain shell
+      return {
+        command: process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash'),
+        args: []
+      }
   }
 }
 

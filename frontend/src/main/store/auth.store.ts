@@ -1,4 +1,5 @@
 import Store from 'electron-store'
+import { safeStorage } from 'electron'
 import * as logger from '../utils/logger'
 
 export interface User {
@@ -50,6 +51,34 @@ export const authStore = new Store<AuthSchema>({
   }
 })
 
+// Tokens are encrypted with the OS keystore (safeStorage) before being written
+// to disk. Values written by older versions are plaintext — they stay readable
+// and get encrypted the next time they are saved.
+const ENC_PREFIX = 'enc:v1:'
+
+function encryptValue(value: string): string {
+  if (!value) return ''
+  try {
+    if (safeStorage.isEncryptionAvailable()) {
+      return ENC_PREFIX + safeStorage.encryptString(value).toString('base64')
+    }
+  } catch (err) {
+    logger.warn('safeStorage unavailable, storing token without OS encryption:', err)
+  }
+  return value
+}
+
+function decryptValue(stored: string): string {
+  if (!stored) return ''
+  if (!stored.startsWith(ENC_PREFIX)) return stored
+  try {
+    return safeStorage.decryptString(Buffer.from(stored.slice(ENC_PREFIX.length), 'base64'))
+  } catch (err) {
+    logger.error('Failed to decrypt stored token, treating as logged out:', err)
+    return ''
+  }
+}
+
 export function clearAuth(): void {
   authStore.set('user', null)
   authStore.set('jwtToken', '')
@@ -67,25 +96,25 @@ export function getUser(): User | null {
 }
 
 export function saveJwtToken(token: string): void {
-  authStore.set('jwtToken', token)
+  authStore.set('jwtToken', encryptValue(token))
 }
 
 export function getJwtToken(): string {
-  return authStore.get('jwtToken')
+  return decryptValue(authStore.get('jwtToken'))
 }
 
 export function saveFeishuTokens(accessToken: string, refreshToken: string, expiresIn: number): void {
-  authStore.set('feishuAccessToken', accessToken)
-  authStore.set('feishuRefreshToken', refreshToken)
+  authStore.set('feishuAccessToken', encryptValue(accessToken))
+  authStore.set('feishuRefreshToken', encryptValue(refreshToken))
   authStore.set('feishuTokenExpiresAt', Date.now() + expiresIn * 1000)
 }
 
 export function getFeishuAccessToken(): string {
-  return authStore.get('feishuAccessToken')
+  return decryptValue(authStore.get('feishuAccessToken'))
 }
 
 export function getFeishuRefreshToken(): string {
-  return authStore.get('feishuRefreshToken')
+  return decryptValue(authStore.get('feishuRefreshToken'))
 }
 
 export function getFeishuTokenExpiresAt(): number {

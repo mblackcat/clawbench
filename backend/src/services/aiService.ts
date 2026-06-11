@@ -160,21 +160,22 @@ export async function* streamChat(
   messages: ChatMessage[],
   tools?: ToolDefinition[],
   enableThinking?: boolean,
-  webSearchEnabled?: boolean
+  webSearchEnabled?: boolean,
+  signal?: AbortSignal
 ): AsyncGenerator<StreamChunk> {
   const provider = modelConfig.provider.toLowerCase();
 
   if (provider === 'claude' || provider === 'anthropic' || provider === 'anthropic-compatible') {
-    yield* streamClaude(modelConfig, messages, tools, enableThinking);
+    yield* streamClaude(modelConfig, messages, tools, enableThinking, signal);
   } else if (provider === 'google' || provider === 'gemini') {
-    yield* streamGoogle(modelConfig, messages, tools, webSearchEnabled);
+    yield* streamGoogle(modelConfig, messages, tools, webSearchEnabled, signal);
   } else if (provider === 'azure-openai') {
-    yield* streamAzureOpenAI(modelConfig, messages, tools, enableThinking);
+    yield* streamAzureOpenAI(modelConfig, messages, tools, enableThinking, signal);
   } else if (provider === 'openai-responses') {
-    yield* streamOpenAIResponses(modelConfig, messages, tools, enableThinking);
+    yield* streamOpenAIResponses(modelConfig, messages, tools, enableThinking, signal);
   } else {
     // OpenAI-compatible: openai, qwen, doubao, deepseek, kimi, openai-compatible
-    yield* streamOpenAICompatible(modelConfig, messages, tools, enableThinking);
+    yield* streamOpenAICompatible(modelConfig, messages, tools, enableThinking, signal);
   }
 }
 
@@ -338,7 +339,8 @@ async function* streamOpenAICompatible(
   modelConfig: ModelConfig,
   messages: ChatMessage[],
   tools?: ToolDefinition[],
-  enableThinking?: boolean
+  enableThinking?: boolean,
+  signal?: AbortSignal
 ): AsyncGenerator<StreamChunk> {
   const client = new OpenAI({
     apiKey: modelConfig.apiKey,
@@ -356,7 +358,7 @@ async function* streamOpenAICompatible(
       requestParams.tools = toOpenAITools(tools);
     }
 
-    const stream = await client.chat.completions.create(requestParams);
+    const stream = await client.chat.completions.create(requestParams, { signal });
 
     let totalCompletion = 0;
     // Accumulate tool calls from deltas
@@ -486,7 +488,8 @@ async function* streamOpenAIResponses(
   modelConfig: ModelConfig,
   messages: ChatMessage[],
   tools?: ToolDefinition[],
-  enableThinking?: boolean
+  enableThinking?: boolean,
+  signal?: AbortSignal
 ): AsyncGenerator<StreamChunk> {
   const client = new OpenAI({ apiKey: modelConfig.apiKey, baseURL: modelConfig.endpoint });
 
@@ -503,7 +506,7 @@ async function* streamOpenAIResponses(
       params.reasoning = { effort: 'medium', summary: 'auto' };
     }
 
-    const stream = (await client.responses.create(params)) as any;
+    const stream = (await client.responses.create(params, { signal })) as any;
 
     // function_call items: keyed by item.id when present, else item.call_id
     // (some third-party Responses servers populate only one of the two fields)
@@ -677,7 +680,8 @@ async function* streamAzureOpenAI(
   modelConfig: ModelConfig,
   messages: ChatMessage[],
   tools?: ToolDefinition[],
-  enableThinking?: boolean
+  enableThinking?: boolean,
+  signal?: AbortSignal
 ): AsyncGenerator<StreamChunk> {
   const client = new AzureOpenAI({
     apiKey: modelConfig.apiKey,
@@ -696,7 +700,7 @@ async function* streamAzureOpenAI(
       requestParams.tools = toOpenAITools(tools);
     }
 
-    const stream = await client.chat.completions.create(requestParams);
+    const stream = await client.chat.completions.create(requestParams, { signal });
 
     let totalCompletion = 0;
     const pendingToolCalls: Map<number, { id: string; name: string; arguments: string }> = new Map();
@@ -755,7 +759,8 @@ async function* streamClaude(
   modelConfig: ModelConfig,
   messages: ChatMessage[],
   tools?: ToolDefinition[],
-  enableThinking?: boolean
+  enableThinking?: boolean,
+  signal?: AbortSignal
 ): AsyncGenerator<StreamChunk> {
   const client = new Anthropic({
     apiKey: modelConfig.apiKey,
@@ -819,7 +824,7 @@ async function* streamClaude(
       requestParams.tools = toClaudeTools(tools);
     }
 
-    const stream = client.messages.stream(requestParams);
+    const stream = client.messages.stream(requestParams, { signal });
 
     for await (const event of stream) {
       if (event.type === 'content_block_delta') {
@@ -876,7 +881,8 @@ async function* streamGoogle(
   modelConfig: ModelConfig,
   messages: ChatMessage[],
   tools?: ToolDefinition[],
-  webSearchEnabled?: boolean
+  webSearchEnabled?: boolean,
+  signal?: AbortSignal
 ): AsyncGenerator<StreamChunk> {
   const genAI = new GoogleGenerativeAI(modelConfig.apiKey);
   const requestOptions = modelConfig.endpoint ? { baseUrl: modelConfig.endpoint } : undefined;
@@ -943,6 +949,9 @@ async function* streamGoogle(
     let totalTokens = 0;
 
     for await (const chunk of result.stream) {
+      // The Google SDK has no per-request abort option here, so bail out of the
+      // iteration as soon as the client disconnects to stop yielding/billing work.
+      if (signal?.aborted) return;
       const text = chunk.text();
       if (text) {
         totalTokens += text.length;

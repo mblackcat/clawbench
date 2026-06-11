@@ -15,6 +15,8 @@ const translations: Record<Lang, Record<string, string>> = {
 
     // Workbench 页面
     'workbench.title': '工作台',
+    'workbench.justNow': '刚刚',
+    'workbench.noHistorySessions': '无历史会话',
     'workbench.discover': '发现更多',
     'workbench.create': '创建',
     'workbench.refresh': '刷新',
@@ -327,6 +329,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'chat.createFailed': '创建对话失败，请检查后端服务是否正常运行',
     'chat.sendFailed': '消息发送失败，请检查后端服务是否正常运行',
     'chat.attachment': '(附件)',
+    'chat.searching': '正在搜索...',
     'chat.inputPlaceholder': '输入消息... (Enter 发送, Shift+Enter 换行, 可粘贴图片)',
     'chat.selectModelFirst': '请先选择模型',
     'chat.noModelTitle': '未配置 AI 模型',
@@ -1372,6 +1375,8 @@ const translations: Record<Lang, Record<string, string>> = {
 
     // Workbench page
     'workbench.title': 'Workbench',
+    'workbench.justNow': 'just now',
+    'workbench.noHistorySessions': 'No history sessions',
     'workbench.discover': 'Discover',
     'workbench.create': 'Create',
     'workbench.refresh': 'Refresh',
@@ -1684,6 +1689,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'chat.createFailed': 'Failed to create conversation. Please check if the backend service is running.',
     'chat.sendFailed': 'Failed to send message. Please check if the backend service is running.',
     'chat.attachment': '(attachment)',
+    'chat.searching': 'Searching...',
     'chat.inputPlaceholder': 'Type a message... (Enter to send, Shift+Enter for new line, paste images)',
     'chat.selectModelFirst': 'Please select a model first',
     'chat.noModelTitle': 'No AI Model Configured',
