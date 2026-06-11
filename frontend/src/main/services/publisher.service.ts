@@ -4,7 +4,7 @@ import { getUserAppsPath } from '../utils/paths'
 import { zipDirectory, unzipArchive } from '../utils/zip'
 import * as logger from '../utils/logger'
 
-interface AppInfo {
+export interface AppInfo {
   id: string
   name: string
   version: string
@@ -40,7 +40,14 @@ export function updateApp(
 
     // Read existing manifest
     const manifestContent = fs.readFileSync(manifestPath, 'utf-8')
-    const manifest = JSON.parse(manifestContent)
+    let manifest: Record<string, unknown>
+    try {
+      manifest = JSON.parse(manifestContent)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      logger.error(`Malformed manifest.json for app ${appId}:`, msg)
+      return { success: false, error: `Invalid manifest.json: ${msg}` }
+    }
 
     logger.info(`Existing manifest:`, JSON.stringify(manifest, null, 2))
 
@@ -195,7 +202,14 @@ export async function publishApp(
     }
 
     const manifestContent = fs.readFileSync(manifestPath, 'utf-8')
-    const manifest = JSON.parse(manifestContent)
+    let manifest: { id?: string; version?: string }
+    try {
+      manifest = JSON.parse(manifestContent)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      logger.error('Malformed manifest.json, cannot publish:', msg)
+      return { success: false, error: `Invalid manifest.json: ${msg}` }
+    }
 
     if (!fs.existsSync(targetDir)) {
       fs.mkdirSync(targetDir, { recursive: true })

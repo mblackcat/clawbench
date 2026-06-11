@@ -92,7 +92,8 @@ export async function handleProtocolCallback(url: string, webContents?: WebConte
     const urt = urlObj.searchParams.get('urt')
     const uexp = urlObj.searchParams.get('uexp')
     if (uat) {
-      saveFeishuTokens(uat, urt || '', parseInt(uexp || '7200', 10))
+      const expiresInSec = parseInt(uexp || '7200', 10)
+      saveFeishuTokens(uat, urt || '', Number.isFinite(expiresInSec) ? expiresInSec : 7200)
       logger.info('Protocol callback: saved Feishu UAT')
     }
 
@@ -149,7 +150,11 @@ async function fetchUserInfo(token: string): Promise<User | null> {
     }
 
     const data = await response.json()
-    const userData = data.data
+    const userData = data?.data
+    if (!userData || typeof userData !== 'object') {
+      logger.error('Malformed user info response: missing data field')
+      return null
+    }
 
     return {
       id: userData.userId || '',
@@ -221,9 +226,15 @@ export async function getValidFeishuAccessToken(): Promise<string> {
 
     const data = await response.json()
     if (data.success && data.data) {
-      saveFeishuTokens(data.data.accessToken, data.data.refreshToken, data.data.expiresIn)
+      // 校验飞书刷新响应字段，缺失/类型错误时保留旧 token（与既有失败路径一致）
+      const { accessToken, refreshToken, expiresIn } = data.data
+      if (typeof accessToken !== 'string' || !accessToken || typeof expiresIn !== 'number') {
+        logger.error('Malformed Feishu refresh response: missing accessToken/expiresIn')
+        return token
+      }
+      saveFeishuTokens(accessToken, typeof refreshToken === 'string' ? refreshToken : '', expiresIn)
       logger.info('Feishu UAT refreshed successfully')
-      return data.data.accessToken
+      return accessToken
     }
   } catch (err) {
     logger.error('Feishu token refresh error:', err)
