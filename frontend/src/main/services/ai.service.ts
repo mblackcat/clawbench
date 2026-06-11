@@ -267,7 +267,7 @@ async function completeOpenAI(
   const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.endpoint })
   const response = await client.chat.completions.create({
     model: modelId,
-    messages: messages.map((m) => ({ role: m.role, content: m.content })),
+    messages: messages.map((m) => ({ role: m.role, content: m.content })) as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
     max_tokens: 50
   })
   return response.choices[0]?.message?.content?.trim() || '新对话'
@@ -285,7 +285,7 @@ async function completeAzureOpenAI(
   })
   const response = await client.chat.completions.create({
     model: modelId,
-    messages: messages.map((m) => ({ role: m.role, content: m.content })),
+    messages: messages.map((m) => ({ role: m.role, content: m.content })) as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
     max_tokens: 50
   })
   return response.choices[0]?.message?.content?.trim() || '新对话'
@@ -367,7 +367,7 @@ async function completeChatOpenAI(
   const client = new ClientClass(clientOpts)
   const response = await client.chat.completions.create({
     model: modelId,
-    messages: messages.map((m) => ({ role: m.role, content: m.content })),
+    messages: messages.map((m) => ({ role: m.role, content: m.content })) as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
     max_tokens: maxTokens
   })
   return response.choices[0]?.message?.content?.trim() || ''
@@ -586,7 +586,7 @@ async function streamOpenAICompatible(
   tools?: ToolDefinition[],
   enableThinking?: boolean
 ): Promise<void> {
-  const requestParams: any = {
+  const requestParams: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming = {
     model: modelId,
     messages: buildOpenAIMessages(messages),
     stream: true
@@ -1135,16 +1135,23 @@ class StreamEmitter {
     private taskId: string
   ) {}
 
+  // The stream keeps producing after the window closes — sending to a
+  // destroyed webContents throws, so every emit checks first.
+  private send(channel: string, payload: Record<string, unknown>): void {
+    if (this.window.isDestroyed() || this.window.webContents.isDestroyed()) return
+    this.window.webContents.send(channel, payload)
+  }
+
   delta(content: string): void {
-    this.window.webContents.send('ai:chat-delta', { taskId: this.taskId, content })
+    this.send('ai:chat-delta', { taskId: this.taskId, content })
   }
 
   thinkingDelta(content: string): void {
-    this.window.webContents.send('ai:chat-thinking-delta', { taskId: this.taskId, content })
+    this.send('ai:chat-thinking-delta', { taskId: this.taskId, content })
   }
 
   toolUse(toolCallId: string, toolName: string, input: Record<string, any>): void {
-    this.window.webContents.send('ai:chat-tool-use', {
+    this.send('ai:chat-tool-use', {
       taskId: this.taskId,
       toolCallId,
       toolName,
@@ -1153,15 +1160,15 @@ class StreamEmitter {
   }
 
   done(usage?: { promptTokens?: number; completionTokens?: number }): void {
-    this.window.webContents.send('ai:chat-done', { taskId: this.taskId, usage: usage || {} })
+    this.send('ai:chat-done', { taskId: this.taskId, usage: usage || {} })
   }
 
   error(message: string): void {
-    this.window.webContents.send('ai:chat-error', { taskId: this.taskId, error: message })
+    this.send('ai:chat-error', { taskId: this.taskId, error: message })
   }
 
   searchGrounding(data: { queries: string[]; sources: Array<{ title: string; url: string }> }): void {
-    this.window.webContents.send('ai:chat-search-grounding', { taskId: this.taskId, ...data })
+    this.send('ai:chat-search-grounding', { taskId: this.taskId, ...data })
   }
 
   emitPendingToolCalls(

@@ -14,6 +14,7 @@ export interface SubAppManifest {
   author?: string | { name: string; email?: string; feishu_id?: string }
   category?: string
   published?: boolean
+  params?: Array<{ name: string; type: string; [key: string]: unknown }>
   [key: string]: unknown
 }
 

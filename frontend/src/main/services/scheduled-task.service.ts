@@ -153,7 +153,7 @@ export async function executeTask(task: ScheduledTask): Promise<void> {
   }
 
   // Update task tracking
-  const nextRun = task.repeatRule === 'none' ? undefined : computeNextRun(task, Date.now() + 60_000)
+  const nextRun = task.repeatRule === 'none' ? undefined : computeNextRun(task, Date.now() + 60_000) ?? undefined
   updateScheduledTask(task.id, {
     lastRunAt: Date.now(),
     lastRunStatus: status,

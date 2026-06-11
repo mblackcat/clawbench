@@ -876,14 +876,14 @@ export async function queryMongoCollection(
 
   const start = Date.now()
   const db = entry.client.db(entry.database)
-  const docs = await db.collection(collection)
-    .find(filter)
-    .project(Object.keys(projection).length > 0 ? projection : undefined)
-    .limit(limit)
-    .toArray()
+  let cursor = db.collection(collection).find(filter)
+  if (Object.keys(projection).length > 0) {
+    cursor = cursor.project(projection)
+  }
+  const docs = await cursor.limit(limit).toArray()
 
   // Convert ObjectId to string for display
-  const rows = docs.map((doc: any) => {
+  const rows: Record<string, any>[] = docs.map((doc: any) => {
     const row: Record<string, any> = {}
     for (const [k, v] of Object.entries(doc)) {
       row[k] = v && typeof v === 'object' && v.constructor?.name === 'ObjectId' ? v.toString() : v
@@ -892,7 +892,7 @@ export async function queryMongoCollection(
   })
 
   const columns = rows.length > 0
-    ? [...new Set(rows.flatMap(r => Object.keys(r)))]
+    ? [...new Set(rows.flatMap((r) => Object.keys(r)))]
     : []
 
   return { columns, rows, executionTimeMs: Date.now() - start }
