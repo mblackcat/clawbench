@@ -15,6 +15,8 @@ const translations: Record<Lang, Record<string, string>> = {
 
     // Workbench 页面
     'workbench.title': '工作台',
+    'workbench.justNow': '刚刚',
+    'workbench.noHistorySessions': '无历史会话',
     'workbench.discover': '发现更多',
     'workbench.create': '创建',
     'workbench.refresh': '刷新',
@@ -1373,6 +1375,8 @@ const translations: Record<Lang, Record<string, string>> = {
 
     // Workbench page
     'workbench.title': 'Workbench',
+    'workbench.justNow': 'just now',
+    'workbench.noHistorySessions': 'No history sessions',
     'workbench.discover': 'Discover',
     'workbench.create': 'Create',
     'workbench.refresh': 'Refresh',

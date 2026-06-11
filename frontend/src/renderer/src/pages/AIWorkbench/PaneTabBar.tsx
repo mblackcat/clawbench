@@ -5,7 +5,7 @@ import {
   DollarOutlined, BranchesOutlined, MessageOutlined
 } from '@ant-design/icons'
 import { getAIToolIcon } from './aiToolMeta'
-import { useT } from '../../i18n'
+import { useT, getT } from '../../i18n'
 import type { AIToolType, AIWorkbenchSession, ClaudeViewMode } from '../../types/ai-workbench'
 
 const { Text } = Typography
@@ -24,7 +24,7 @@ interface NativeSession {
 function formatRelativeTime(ms: number): string {
   const diff = Date.now() - ms
   const minutes = Math.floor(diff / 60_000)
-  if (minutes < 1) return '刚刚'
+  if (minutes < 1) return getT()('workbench.justNow')
   if (minutes < 60) return `${minutes}m`
   const hours = Math.floor(minutes / 60)
   if (hours < 24) return `${hours}h`
@@ -207,7 +207,7 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
                         ? [{ key: 'loading', label: <Spin size="small" />, disabled: true }]
                         : historyItems.length > 0
                           ? historyItems
-                          : [{ key: 'empty', label: '无历史会话', disabled: true }],
+                          : [{ key: 'empty', label: t('workbench.noHistorySessions'), disabled: true }],
                       onClick: ({ key }) => {
                         if (key === 'load-more') {
                           setNativeVisibleCount(count => count + NATIVE_HISTORY_PAGE_SIZE)
@@ -271,7 +271,7 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
                     padding: '2px 8px', fontSize: 11, cursor: 'pointer',
                     borderRadius: 6, border: 'none',
                     background: active ? token.colorPrimary : 'transparent',
-                    color: active ? '#fff' : token.colorTextSecondary,
+                    color: active ? token.colorWhite : token.colorTextSecondary,
                     fontWeight: active ? 500 : 400,
                     userSelect: 'none', whiteSpace: 'nowrap',
                     transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
