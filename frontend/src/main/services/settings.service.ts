@@ -9,6 +9,7 @@ import {
   setImageGenConfigs as setImageGenConfigsInStore
 } from '../store/settings.store'
 import type { AIModelConfig, ImageGenConfig } from '../store/settings.store'
+import { normalizeOpenAIBaseURL, normalizeAnthropicBaseURL } from '../utils/endpoint'
 import * as logger from '../utils/logger'
 
 export interface Settings {
@@ -157,6 +158,15 @@ export function deleteAiModelConfig(id: string): boolean {
 }
 
 /**
+ * new-api style gateways serve their dashboard SPA (HTTP 200 + HTML) for any
+ * unknown path, so a 200 status alone doesn't prove the API path is right.
+ */
+function isJsonResponse(response: Response): boolean {
+  const contentType = response.headers.get('content-type') || ''
+  return contentType.includes('json')
+}
+
+/**
  * Tests an AI model config by hitting the /models endpoint.
  * If apiKey is masked and configId is provided, uses the real key from store.
  */
@@ -214,8 +224,10 @@ export async function testAiModelConfig(config: {
     }
 
     if (config.provider === 'anthropic' || config.provider === 'anthropic-compatible') {
-      // Anthropic API: POST /messages with x-api-key header
-      const url = config.endpoint.replace(/\/$/, '') + '/messages'
+      // Anthropic API: POST /v1/messages with x-api-key header.
+      // Use the same base-URL normalization as the chat path (the SDK appends
+      // /v1/messages itself), so the test exercises the URL chat will hit.
+      const url = (normalizeAnthropicBaseURL(config.endpoint) || 'https://api.anthropic.com') + '/v1/messages'
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -240,26 +252,40 @@ export async function testAiModelConfig(config: {
     }
 
     if (config.provider === 'google') {
-      // Google Gemini: uses ?key= query param, not Bearer token
-      const url = config.endpoint.replace(/\/$/, '') + '/models?key=' + apiKey
+      // Google Gemini: uses ?key= query param, not Bearer token.
+      // The SDK requests {baseUrl}/v1beta/..., so probe the same prefix.
+      const base = config.endpoint.replace(/\/+$/, '').replace(/\/v1beta$/, '') || 'https://generativelanguage.googleapis.com'
+      const url = base + '/v1beta/models?key=' + apiKey
       const response = await fetch(url, { signal: AbortSignal.timeout(10000) })
-      if (response.ok) {
+      if (response.ok && isJsonResponse(response)) {
         logger.info(`[settings] AI model test passed: provider=${config.provider}`)
         return { success: true, message: '连接成功' }
+      }
+      if (response.ok) {
+        logger.warn(`[settings] AI model test failed: provider=${config.provider} — non-JSON response from ${url}`)
+        return { success: false, message: '端点返回了非 API 响应（HTML 页面），请检查 API 地址路径是否正确' }
       }
       logger.warn(`[settings] AI model test failed: provider=${config.provider} — HTTP ${response.status}: ${response.statusText}`)
       return { success: false, message: `HTTP ${response.status}: ${response.statusText}` }
     }
 
-    // Default: OpenAI-compatible with Bearer token
-    const url = config.endpoint.replace(/\/$/, '') + '/models'
+    // Default: OpenAI-compatible with Bearer token. Use the same base-URL
+    // normalization as the chat path (bare origin → "/v1"), so a passing test
+    // means the chat request URL is reachable too. new-api style gateways
+    // answer unknown paths with the dashboard SPA (HTTP 200 + HTML), so a 200
+    // alone is not proof of a working API — the body must be JSON.
+    const url = (normalizeOpenAIBaseURL(config.endpoint) || 'https://api.openai.com/v1') + '/models'
     const response = await fetch(url, {
       headers: { Authorization: `Bearer ${apiKey}` },
       signal: AbortSignal.timeout(10000)
     })
-    if (response.ok) {
+    if (response.ok && isJsonResponse(response)) {
       logger.info(`[settings] AI model test passed: provider=${config.provider}`)
       return { success: true, message: '连接成功' }
+    }
+    if (response.ok) {
+      logger.warn(`[settings] AI model test failed: provider=${config.provider} — non-JSON response from ${url}`)
+      return { success: false, message: '端点返回了非 API 响应（HTML 页面），请检查 API 地址路径是否正确' }
     }
     logger.warn(`[settings] AI model test failed: provider=${config.provider} — HTTP ${response.status}: ${response.statusText}`)
     return { success: false, message: `HTTP ${response.status}: ${response.statusText}` }

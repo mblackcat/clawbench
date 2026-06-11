@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto'
 import fs from 'fs'
 import { BrowserWindow } from 'electron'
 import { settingsStore, AIModelConfig } from '../store/settings.store'
+import { normalizeOpenAIBaseURL, normalizeAnthropicBaseURL } from '../utils/endpoint'
 import * as logger from '../utils/logger'
 
 export interface ContentPart {
@@ -264,7 +265,7 @@ async function completeOpenAI(
   modelId: string,
   messages: ChatMessage[]
 ): Promise<string> {
-  const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.endpoint })
+  const client = new OpenAI({ apiKey: config.apiKey, baseURL: normalizeOpenAIBaseURL(config.endpoint) })
   const response = await client.chat.completions.create({
     model: modelId,
     messages: messages.map((m) => ({ role: m.role, content: m.content })) as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
@@ -296,7 +297,7 @@ async function completeClaude(
   modelId: string,
   messages: ChatMessage[]
 ): Promise<string> {
-  const client = new Anthropic({ apiKey: config.apiKey, baseURL: config.endpoint || undefined })
+  const client = new Anthropic({ apiKey: config.apiKey, baseURL: normalizeAnthropicBaseURL(config.endpoint) })
   const response = await client.messages.create({
     model: modelId,
     max_tokens: 50,
@@ -362,7 +363,7 @@ async function completeChatOpenAI(
     clientOpts.apiVersion = config.apiVersion || '2025-04-01-preview'
     clientOpts.endpoint = config.endpoint
   } else {
-    clientOpts.baseURL = config.endpoint
+    clientOpts.baseURL = normalizeOpenAIBaseURL(config.endpoint)
   }
   const client = new ClientClass(clientOpts)
   const response = await client.chat.completions.create({
@@ -379,7 +380,7 @@ async function completeChatClaude(
   messages: ChatMessage[],
   maxTokens: number
 ): Promise<string> {
-  const client = new Anthropic({ apiKey: config.apiKey, baseURL: config.endpoint || undefined })
+  const client = new Anthropic({ apiKey: config.apiKey, baseURL: normalizeAnthropicBaseURL(config.endpoint) })
   const systemMsg = messages.find((m) => m.role === 'system')
   const response = await client.messages.create({
     model: modelId,
@@ -519,7 +520,7 @@ async function streamOpenAIImage(
 ): Promise<void> {
   const client = new OpenAI({
     apiKey: config.apiKey,
-    baseURL: config.endpoint,
+    baseURL: normalizeOpenAIBaseURL(config.endpoint),
     timeout: 300000 // 5 minutes, image generation can be slow
   })
 
@@ -651,7 +652,7 @@ async function streamOpenAI(
 ): Promise<void> {
   const client = new OpenAI({
     apiKey: config.apiKey,
-    baseURL: config.endpoint
+    baseURL: normalizeOpenAIBaseURL(config.endpoint)
   })
   await streamOpenAICompatible(
     new StreamEmitter(window, taskId), client, modelId, messages, signal, tools, enableThinking
@@ -729,7 +730,7 @@ async function streamOpenAIResponses(
   enableThinking?: boolean
 ): Promise<void> {
   const emit = new StreamEmitter(window, taskId)
-  const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.endpoint })
+  const client = new OpenAI({ apiKey: config.apiKey, baseURL: normalizeOpenAIBaseURL(config.endpoint) })
 
   const params: any = {
     model: modelId,
@@ -894,7 +895,7 @@ async function completeOpenAIResponses(
   messages: ChatMessage[],
   maxTokens = 4096
 ): Promise<string> {
-  const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.endpoint })
+  const client = new OpenAI({ apiKey: config.apiKey, baseURL: normalizeOpenAIBaseURL(config.endpoint) })
   const resp: any = await client.responses.create({
     model: modelId,
     input: buildResponsesInput(messages),
@@ -946,7 +947,7 @@ async function streamClaude(
   const emit = new StreamEmitter(window, taskId)
   const client = new Anthropic({
     apiKey: config.apiKey,
-    baseURL: config.endpoint || undefined
+    baseURL: normalizeAnthropicBaseURL(config.endpoint)
   })
 
   const systemMsg = messages.find((m) => m.role === 'system')
