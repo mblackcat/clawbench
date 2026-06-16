@@ -28,6 +28,7 @@ import { ModelAvatar, UserAvatar, guessProviderFromModelId } from '../../compone
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useChatStore } from '../../stores/useChatStore'
 import { useSettingsStore } from '../../stores/useSettingsStore'
+import { ExternalMarkdownLink } from '../../utils/markdown-links'
 
 import { useT } from '../../i18n'
 
@@ -417,6 +418,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming }) => {
                       return defaultUrlTransform(url)
                     }}
                     components={{
+                      a: ExternalMarkdownLink,
                       img: ({ src, alt, ...props }) => {
                         const b64Match = src?.match(/^data:image\/[^;]+;base64,(.+)$/)
                         const menuItems = b64Match

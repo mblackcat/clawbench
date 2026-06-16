@@ -16,6 +16,7 @@ import type { WorkbenchMessage, WorkbenchContentBlock } from '../../types/ai-wor
 import AskUserQuestionBlock from './AskUserQuestionBlock'
 import TodoUpdateBlock from './TodoUpdateBlock'
 import ThinkingBlock from '../../components/ThinkingBlock'
+import { externalLinkMarkdownComponents } from '../../utils/markdown-links'
 import '../AIChat/chat-styles.css'
 
 const { Text } = Typography
@@ -329,6 +330,7 @@ const ContentBlockRenderer: React.FC<{ block: WorkbenchContentBlock }> = ({ bloc
             rehypePlugins={[rehypeHighlightPlugin]}
             remarkPlugins={[remarkGfm]}
             urlTransform={(url) => url}
+            components={externalLinkMarkdownComponents}
           >
             {block.text}
           </ReactMarkdown>

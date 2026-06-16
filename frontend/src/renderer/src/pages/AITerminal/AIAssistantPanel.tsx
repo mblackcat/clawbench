@@ -19,6 +19,7 @@ import ModelSelector from '../AIChat/ModelSelector'
 import { ModelAvatar, UserAvatar } from '../../components/ProviderIcons'
 import { useAuthStore } from '../../stores/useAuthStore'
 import ThinkingBlock from '../../components/ThinkingBlock'
+import { externalLinkMarkdownComponents } from '../../utils/markdown-links'
 import '../AIChat/chat-styles.css'
 
 const { TextArea } = Input
@@ -246,7 +247,11 @@ function MessageBubble({ msg, isStreaming, streamingContent, streamingThinking, 
               </span>
             ) : content ? (
               <>
-                <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlightPlugin]}>
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  rehypePlugins={[rehypeHighlightPlugin]}
+                  components={externalLinkMarkdownComponents}
+                >
                   {content}
                 </ReactMarkdown>
                 {isStreaming && <span className="cursor-blink">|</span>}
