@@ -7,6 +7,7 @@ import { getActiveWorkspace } from './workspace.service'
 import { getPythonSdkPath } from '../utils/paths'
 import { mainT } from '../utils/i18n'
 import * as logger from '../utils/logger'
+import { getShortcutApps } from './shortcut-selection'
 
 /** Currently registered accelerator strings so we can unregister them later. */
 let registeredAccelerators: string[] = []
@@ -23,18 +24,8 @@ function getMainWindow(): BrowserWindow | null {
  * Handles a global shortcut trigger for the given 1-based index.
  */
 async function handleShortcutTrigger(index: number): Promise<void> {
-  let userApps = listSubApps().filter((a) => a.source === 'user')
-
-  // Sort by persisted appOrder so shortcut numbers match the UI
   const appOrder = (settingsStore.get('appOrder') ?? []) as string[]
-  if (appOrder.length > 0) {
-    const orderMap = new Map(appOrder.map((id, i) => [id, i]))
-    userApps.sort((a, b) => {
-      const ia = orderMap.get(a.id) ?? Infinity
-      const ib = orderMap.get(b.id) ?? Infinity
-      return ia - ib
-    })
-  }
+  const userApps = getShortcutApps(listSubApps(), appOrder)
 
   if (index > userApps.length) return
 
