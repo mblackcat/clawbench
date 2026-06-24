@@ -22,6 +22,7 @@ const AITerminalPage = React.lazy(() => import('./pages/AITerminal/AITerminalPag
 const SettingsPage = React.lazy(() => import('./pages/Settings/SettingsPage'))
 const SkillEditor = React.lazy(() => import('./pages/Developer/SkillEditor'))
 const PromptEditor = React.lazy(() => import('./pages/Developer/PromptEditor'))
+const LinkEditor = React.lazy(() => import('./pages/Developer/LinkEditor'))
 const MyContributionsPage = React.lazy(() => import('./pages/Apps/MyContributionsPage'))
 
 const LazyFallback: React.FC = () => (
@@ -47,6 +48,7 @@ const AppRoutes: React.FC = () => {
           <Route path="/developer/publish" element={<AppPublisher />} />
           <Route path="/developer/new-skill" element={<SkillEditor />} />
           <Route path="/developer/new-prompt" element={<PromptEditor />} />
+          <Route path="/developer/new-link" element={<LinkEditor />} />
           <Route path="/apps/my-contributions" element={<MyContributionsPage />} />
           <Route path="/ai-agents" element={<AIAgentsPage />} />
           <Route path="/ai-agents/openclaw" element={<OpenClawPage />} />

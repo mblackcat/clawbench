@@ -10,7 +10,9 @@ export interface SubAppManifest {
   description: string
   entry: string
   icon?: string
-  type?: 'app' | 'ai-skill' | 'prompt'
+  type?: 'app' | 'ai-skill' | 'prompt' | 'link'
+  url?: string
+  mini?: boolean
   author?: string | { name: string; email?: string; feishu_id?: string }
   category?: string
   published?: boolean

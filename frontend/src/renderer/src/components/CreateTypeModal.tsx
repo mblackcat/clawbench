@@ -8,7 +8,8 @@ import { Modal, theme } from 'antd';
 import {
   AppstoreOutlined,
   ThunderboltOutlined,
-  FileTextOutlined
+  FileTextOutlined,
+  LinkOutlined
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useT } from '../i18n';
@@ -45,6 +46,13 @@ const CreateTypeModal: React.FC<CreateTypeModalProps> = ({ open, onClose }) => {
       title: t('createType.prompt'),
       description: t('createType.promptDesc'),
       route: '/developer/new-prompt'
+    },
+    {
+      key: 'link',
+      icon: <LinkOutlined style={{ fontSize: 32 }} />,
+      title: t('createType.link'),
+      description: t('createType.linkDesc'),
+      route: '/developer/new-link'
     }
   ];
 
@@ -61,7 +69,7 @@ const CreateTypeModal: React.FC<CreateTypeModalProps> = ({ open, onClose }) => {
       open={open}
       onCancel={onClose}
       footer={null}
-      width={560}
+      width={720}
     >
       <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
         {types.map((item) => (

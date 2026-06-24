@@ -522,6 +522,11 @@ export const api = {
       ipcRenderer.invoke('skill:deactivate', skillId, workspacePath)
   },
 
+  link: {
+    fetchFavicon: (url: string) =>
+      ipcRenderer.invoke('link:fetch-favicon', url) as Promise<string | null>
+  },
+
   aiTerminal: {
     // Connections
     getConnections: () => ipcRenderer.invoke('ai-terminal:get-connections'),

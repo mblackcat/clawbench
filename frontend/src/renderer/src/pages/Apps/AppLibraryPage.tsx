@@ -244,6 +244,7 @@ const AppLibraryPage: React.FC = () => {
       case 'app': return t('discover.tabApp');
       case 'ai-skill': return t('discover.tabSkill');
       case 'prompt': return t('discover.tabPrompt');
+      default: return t('discover.tabApp');
     }
   };
 

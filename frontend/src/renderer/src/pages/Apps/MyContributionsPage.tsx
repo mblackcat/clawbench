@@ -9,7 +9,8 @@ import {
   EditOutlined,
   CloudUploadOutlined,
   PlayCircleOutlined,
-  ArrowLeftOutlined
+  ArrowLeftOutlined,
+  ExportOutlined
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { applicationManager } from '../../services/applicationManager';
@@ -18,6 +19,7 @@ import { useSubAppStore } from '../../stores/useSubAppStore';
 import { useAuthStore } from '../../stores/useAuthStore';
 import type { SubAppManifest } from '../../types/subapp';
 import { useTaskStore } from '../../stores/useTaskStore';
+import { openExternalLink } from '../../utils/markdown-links';
 import { useT } from '../../i18n';
 
 const { Title, Text } = Typography;
@@ -100,7 +102,8 @@ const MyContributionsPage: React.FC = () => {
     const groups: { key: string; label: string; items: LocalAppWithType[] }[] = [
       { key: 'app', label: t('mine.groupApp'), items: [] },
       { key: 'ai-skill', label: t('mine.groupSkill'), items: [] },
-      { key: 'prompt', label: t('mine.groupPrompt'), items: [] }
+      { key: 'prompt', label: t('mine.groupPrompt'), items: [] },
+      { key: 'link', label: t('mine.groupLink'), items: [] }
     ];
     const groupMap = new Map(groups.map(g => [g.key, g]));
     for (const app of localApps) {
@@ -137,6 +140,8 @@ const MyContributionsPage: React.FC = () => {
       navigate('/developer/new-skill', { state: { appId } });
     } else if (type === 'prompt') {
       navigate('/developer/new-prompt', { state: { appId } });
+    } else if (type === 'link') {
+      navigate('/developer/new-link', { state: { appId } });
     } else {
       navigate('/developer/new', { state: { appId } });
     }
@@ -158,10 +163,20 @@ const MyContributionsPage: React.FC = () => {
     }
   };
 
+  const handleOpenLink = (manifest: SubAppManifest) => {
+    const url = manifest.url;
+    if (!url) {
+      message.error(t('linkEditor.urlRequired'));
+      return;
+    }
+    openExternalLink(url);
+  };
+
   const renderLocalAppCard = (appWithType: LocalAppWithType) => {
     const { id, manifest, appType } = appWithType;
     const app = manifest;
     const isApp = !app.type || app.type === 'app';
+    const isLink = app.type === 'link';
 
     return (
       <div key={id} className="cb-glass-card">
@@ -220,30 +235,11 @@ const MyContributionsPage: React.FC = () => {
             <EditOutlined /> {t('mine.edit')}
           </div>
 
-          <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorderSecondary }} />
-          <div
-            onClick={() => handlePublish(id)}
-            style={{
-              flex: 1,
-              padding: '8px 0',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 6,
-              cursor: 'pointer',
-              color: token.colorPrimary,
-              fontWeight: 500,
-              fontSize: 13
-            }}
-          >
-            <CloudUploadOutlined /> {appType === 'published' ? t('mine.republish') : t('mine.publish')}
-          </div>
-
-          {isApp && (
+          {isLink ? (
             <>
               <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorderSecondary }} />
               <div
-                onClick={() => handleRun(id, app.name)}
+                onClick={() => handleOpenLink(app)}
                 style={{
                   flex: 1,
                   padding: '8px 0',
@@ -252,13 +248,57 @@ const MyContributionsPage: React.FC = () => {
                   justifyContent: 'center',
                   gap: 6,
                   cursor: 'pointer',
-                  color: token.colorSuccess,
+                  color: token.colorPrimary,
                   fontWeight: 500,
                   fontSize: 13
                 }}
               >
-                <PlayCircleOutlined /> {t('mine.run')}
+                <ExportOutlined /> {t('workbench.open')}
               </div>
+            </>
+          ) : (
+            <>
+              <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorderSecondary }} />
+              <div
+                onClick={() => handlePublish(id)}
+                style={{
+                  flex: 1,
+                  padding: '8px 0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  cursor: 'pointer',
+                  color: token.colorPrimary,
+                  fontWeight: 500,
+                  fontSize: 13
+                }}
+              >
+                <CloudUploadOutlined /> {appType === 'published' ? t('mine.republish') : t('mine.publish')}
+              </div>
+
+              {isApp && (
+                <>
+                  <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorderSecondary }} />
+                  <div
+                    onClick={() => handleRun(id, app.name)}
+                    style={{
+                      flex: 1,
+                      padding: '8px 0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      cursor: 'pointer',
+                      color: token.colorSuccess,
+                      fontWeight: 500,
+                      fontSize: 13
+                    }}
+                  >
+                    <PlayCircleOutlined /> {t('mine.run')}
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>

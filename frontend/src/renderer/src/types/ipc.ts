@@ -503,6 +503,9 @@ export interface ClawBenchAPI {
       error?: string
     }>
   }
+  link: {
+    fetchFavicon: (url: string) => Promise<string | null>
+  }
   aiTerminal: {
     getConnections: () => Promise<import('./ai-terminal').TerminalConnection[]>
     createConnection: (

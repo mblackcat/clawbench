@@ -59,7 +59,7 @@ export interface LogoutResponse {
 
 // ============ 应用相关类型 ============
 
-export type ApplicationType = 'app' | 'ai-skill' | 'prompt';
+export type ApplicationType = 'app' | 'ai-skill' | 'prompt' | 'link';
 
 export interface Application {
   applicationId: string;
