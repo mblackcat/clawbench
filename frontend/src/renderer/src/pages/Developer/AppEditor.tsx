@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import {
   Steps,
   Form,
@@ -55,6 +55,11 @@ const AppEditor: React.FC = () => {
   const [aiModalAppId, setAIModalAppId] = useState('')
   const [aiModalManifest, setAIModalManifest] = useState<Record<string, unknown>>({})
   const user = useAuthStore((state) => state.user)
+  // Stable generated app id for create mode (prevents duplicate apps from
+  // regenerating a new UUID on every preview/submit call).
+  const generatedIdRef = useRef<string | null>(null)
+  // Re-entrancy lock guarding create/update against double-clicks.
+  const submittingRef = useRef(false)
 
   // Load existing app data if in edit mode
   useEffect(() => {
@@ -117,8 +122,17 @@ const AppEditor: React.FC = () => {
   const getManifestPreview = (): Record<string, unknown> => {
     const values = form.getFieldsValue()
 
-    // In edit mode, use existing appId; in create mode, generate new one
-    const manifestId = editMode && appId ? appId : generateAppId(values.name ?? '')
+    // In edit mode, use existing appId; in create mode, generate a stable one
+    // (cached in a ref) so the same id is reused across preview and submit.
+    let manifestId: string
+    if (editMode && appId) {
+      manifestId = appId
+    } else {
+      if (!generatedIdRef.current) {
+        generatedIdRef.current = generateAppId(values.name ?? '')
+      }
+      manifestId = generatedIdRef.current
+    }
 
     const author = user ? {
       name: user.name || user.username || 'Unknown',
@@ -144,6 +158,8 @@ const AppEditor: React.FC = () => {
   }
 
   const handleGenerate = async (): Promise<void> => {
+    if (submittingRef.current) return
+    submittingRef.current = true
     setGenerating(true)
     try {
       const manifest = getManifestPreview()
@@ -162,6 +178,7 @@ const AppEditor: React.FC = () => {
       message.error(editMode ? t('appEditor.updateFailed') : t('appEditor.createFailed'))
     } finally {
       setGenerating(false)
+      submittingRef.current = false
     }
   }
 
@@ -193,6 +210,8 @@ const AppEditor: React.FC = () => {
   }
 
   const handleAIGenerate = async (): Promise<void> => {
+    if (submittingRef.current) return
+    submittingRef.current = true
     setGenerating(true)
     try {
       const manifest = getManifestPreview()
@@ -205,6 +224,9 @@ const AppEditor: React.FC = () => {
         await window.api.developer.createApp(manifest)
         effectiveAppId = manifest.id as string
         setAppId(effectiveAppId)
+        // Switch to edit semantics so a subsequent submit updates instead of
+        // creating a second copy.
+        setEditMode(true)
       }
 
       setAIModalAppId(effectiveAppId)
@@ -214,11 +236,13 @@ const AppEditor: React.FC = () => {
       message.error(t('appEditor.createDirFailed'))
     } finally {
       setGenerating(false)
+      submittingRef.current = false
     }
   }
 
   const handleClose = () => {
-    navigate('/apps/my-contributions')
+    const state = location.state as { from?: string } | null
+    navigate(state?.from || '/apps/my-contributions')
   }
 
   return (
@@ -455,11 +479,12 @@ const AppEditor: React.FC = () => {
               <Button
                 icon={<RobotOutlined />}
                 loading={generating}
+                disabled={generating}
                 onClick={handleAIGenerate}
               >
                 {t('appEditor.aiGenerate')}
               </Button>
-              <Button type="primary" loading={generating} onClick={handleGenerate}>
+              <Button type="primary" loading={generating} disabled={generating} onClick={handleGenerate}>
                 {editMode ? t('appEditor.saveAndOpen') : t('appEditor.generateAndOpen')}
               </Button>
             </Space>

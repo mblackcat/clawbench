@@ -12,7 +12,7 @@ import {
   Descriptions,
   Timeline,
   Spin,
-  message,
+  App,
   Tag,
   Space,
   Divider,
@@ -35,6 +35,7 @@ const { Title, Paragraph, Text } = Typography;
 const AppDetailPage: React.FC = () => {
   const { appId } = useParams<{ appId: string }>();
   const navigate = useNavigate();
+  const { message } = App.useApp();
   const t = useT();
   const [loading, setLoading] = useState(true);
   const [app, setApp] = useState<ApplicationDetail | null>(null);
@@ -78,7 +79,7 @@ const AppDetailPage: React.FC = () => {
       }
     } catch (error) {
       console.error('Failed to load app detail:', error);
-      message.error('加载应用详情失败');
+      message.error(t('appDetail.loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -90,11 +91,11 @@ const AppDetailPage: React.FC = () => {
     setOperating(true);
     try {
       await applicationManager.installApplication(appId);
-      message.success('安装成功');
+      message.success(t('appDetail.installSuccess'));
       setIsInstalled(true);
     } catch (error) {
       console.error('Failed to install app:', error);
-      message.error('安装失败');
+      message.error(t('appDetail.installFailed'));
     } finally {
       setOperating(false);
     }
@@ -106,12 +107,12 @@ const AppDetailPage: React.FC = () => {
     setOperating(true);
     try {
       await applicationManager.updateApplication2(appId);
-      message.success('更新成功');
+      message.success(t('appDetail.updateSuccess'));
       setHasUpdate(false);
       await loadAppDetail();
     } catch (error) {
       console.error('Failed to update app:', error);
-      message.error('更新失败');
+      message.error(t('appDetail.updateFailed'));
     } finally {
       setOperating(false);
     }
@@ -123,12 +124,12 @@ const AppDetailPage: React.FC = () => {
     setOperating(true);
     try {
       await applicationManager.uninstallApplication(appId);
-      message.success('卸载成功');
+      message.success(t('appDetail.uninstallSuccess'));
       setIsInstalled(false);
       setHasUpdate(false);
     } catch (error) {
       console.error('Failed to uninstall app:', error);
-      message.error('卸载失败');
+      message.error(t('appDetail.uninstallFailed'));
     } finally {
       setOperating(false);
     }
@@ -150,10 +151,10 @@ const AppDetailPage: React.FC = () => {
     return (
       <div style={{ padding: 24 }}>
         <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)}>
-          返回
+          {t('common.back')}
         </Button>
         <div style={{ textAlign: 'center', padding: 48 }}>
-          <Text type="secondary">应用不存在</Text>
+          <Text type="secondary">{t('appDetail.notFound')}</Text>
         </div>
       </div>
     );
@@ -179,16 +180,16 @@ const AppDetailPage: React.FC = () => {
               <Space>
                 <Tag color="blue">{app.category}</Tag>
                 <Tag color={app.published ? 'success' : 'warning'}>
-                  {app.published ? '已发布' : '未发布'}
+                  {app.published ? t('appDetail.published') : t('appDetail.unpublished')}
                 </Tag>
-                {isInstalled && <Tag color="success">已安装</Tag>}
-                {hasUpdate && <Tag color="orange">有更新</Tag>}
+                {isInstalled && <Tag color="success">{t('appDetail.installed')}</Tag>}
+                {hasUpdate && <Tag color="orange">{t('appDetail.hasUpdate')}</Tag>}
               </Space>
             </div>
             <Space>
               {isOwner && (
                 <Button icon={<EditOutlined />} onClick={handleEdit}>
-                  编辑
+                  {t('appDetail.edit')}
                 </Button>
               )}
               {!isInstalled && (
@@ -198,7 +199,7 @@ const AppDetailPage: React.FC = () => {
                   loading={operating}
                   onClick={handleInstall}
                 >
-                  安装
+                  {t('appDetail.install')}
                 </Button>
               )}
               {isInstalled && hasUpdate && (
@@ -208,7 +209,7 @@ const AppDetailPage: React.FC = () => {
                   loading={operating}
                   onClick={handleUpdate}
                 >
-                  更新
+                  {t('appDetail.update')}
                 </Button>
               )}
               {isInstalled && (
@@ -218,7 +219,7 @@ const AppDetailPage: React.FC = () => {
                   loading={operating}
                   onClick={handleUninstall}
                 >
-                  卸载
+                  {t('appDetail.uninstall')}
                 </Button>
               )}
             </Space>
@@ -227,15 +228,15 @@ const AppDetailPage: React.FC = () => {
 
         <Divider />
 
-        <Descriptions title="应用信息" column={2} bordered>
-          <Descriptions.Item label="当前版本">{app.version}</Descriptions.Item>
-          <Descriptions.Item label="下载次数">{app.downloadCount}</Descriptions.Item>
-          <Descriptions.Item label="开发者">{app.ownerName}</Descriptions.Item>
-          <Descriptions.Item label="分类">{app.category}</Descriptions.Item>
-          <Descriptions.Item label="创建时间">
+        <Descriptions title={t('appDetail.infoTitle')} column={2} bordered>
+          <Descriptions.Item label={t('appDetail.currentVersion')}>{app.version}</Descriptions.Item>
+          <Descriptions.Item label={t('appDetail.downloadCount')}>{app.downloadCount}</Descriptions.Item>
+          <Descriptions.Item label={t('appDetail.developer')}>{app.ownerName}</Descriptions.Item>
+          <Descriptions.Item label={t('appDetail.category')}>{app.category}</Descriptions.Item>
+          <Descriptions.Item label={t('appDetail.createdAt')}>
             {new Date(app.createdAt).toLocaleString()}
           </Descriptions.Item>
-          <Descriptions.Item label="更新时间">
+          <Descriptions.Item label={t('appDetail.updatedAt')}>
             {new Date(app.updatedAt).toLocaleString()}
           </Descriptions.Item>
         </Descriptions>
@@ -243,7 +244,7 @@ const AppDetailPage: React.FC = () => {
         <Divider />
 
         <div style={{ marginBottom: 24 }}>
-          <Title level={5}>应用描述</Title>
+          <Title level={5}>{t('appDetail.descriptionTitle')}</Title>
           <Paragraph>{app.description}</Paragraph>
         </div>
 
@@ -251,7 +252,7 @@ const AppDetailPage: React.FC = () => {
           <>
             <Divider />
             <div style={{ marginBottom: 24 }}>
-              <Title level={5}>其他信息</Title>
+              <Title level={5}>{t('appDetail.otherInfo')}</Title>
               <Descriptions column={1} bordered>
                 {Object.entries(app.metadata).map(([key, value]) => (
                   <Descriptions.Item key={key} label={key}>
@@ -267,13 +268,13 @@ const AppDetailPage: React.FC = () => {
           <>
             <Divider />
             <div>
-              <Title level={5}>版本历史</Title>
+              <Title level={5}>{t('appDetail.versionHistory')}</Title>
               <Timeline
                 items={app.versions.map((version) => ({
                   children: (
                     <div>
                       <div style={{ marginBottom: 4 }}>
-                        <Text strong>版本 {version.version}</Text>
+                        <Text strong>{t('appDetail.versionLabel', version.version)}</Text>
                         <Text type="secondary" style={{ marginLeft: 16, fontSize: 12 }}>
                           {new Date(version.publishedAt).toLocaleString()}
                         </Text>
@@ -282,7 +283,7 @@ const AppDetailPage: React.FC = () => {
                         <Paragraph style={{ marginBottom: 4 }}>{version.changelog}</Paragraph>
                       )}
                       <Text type="secondary" style={{ fontSize: 12 }}>
-                        大小: {(version.fileSize / 1024 / 1024).toFixed(2)} MB
+                        {t('appDetail.size', (version.fileSize / 1024 / 1024).toFixed(2))}
                       </Text>
                     </div>
                   ),

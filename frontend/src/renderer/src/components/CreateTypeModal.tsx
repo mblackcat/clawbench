@@ -10,7 +10,7 @@ import {
   ThunderboltOutlined,
   FileTextOutlined
 } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useT } from '../i18n';
 
 interface CreateTypeModalProps {
@@ -20,6 +20,7 @@ interface CreateTypeModalProps {
 
 const CreateTypeModal: React.FC<CreateTypeModalProps> = ({ open, onClose }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { token } = theme.useToken();
   const t = useT();
 
@@ -49,7 +50,9 @@ const CreateTypeModal: React.FC<CreateTypeModalProps> = ({ open, onClose }) => {
 
   const handleSelect = (route: string) => {
     onClose();
-    navigate(route);
+    // Remember where Create was launched from so the editor's Back button
+    // can return to the originating page (Installed / Discover / Mine).
+    navigate(route, { state: { from: location.pathname } });
   };
 
   return (

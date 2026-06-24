@@ -15,7 +15,7 @@ import { getUserById } from '../repositories/userRepository';
 import { CreateApplicationInput, applicationToResponse, UpdateApplicationInput } from '../models/application';
 import { logger } from '../utils/logger';
 import { storageService } from '../services/storage';
-import { createApplicationVersion, versionExists } from '../repositories/applicationVersionRepository';
+import { createApplicationVersion, versionExists, getLatestVersion, getVersionByNumber } from '../repositories/applicationVersionRepository';
 
 /**
  * 应用控制器
@@ -706,6 +706,97 @@ export async function uploadApplicationPackageHandler(
     );
   } catch (error) {
     logger.error('Error uploading application package:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Internal server error',
+      },
+    });
+  }
+}
+
+/**
+ * 下载应用包（最新已发布版本）
+ * GET /api/v1/applications/:applicationId/download
+ *
+ * 公开访问：任何用户都可以下载已发布应用的安装包。
+ */
+export async function downloadApplicationPackageHandler(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const { applicationId } = req.params;
+    const requestedVersion = typeof req.query.version === 'string' ? req.query.version.trim() : undefined;
+
+    // 检查应用是否存在
+    const application = await getApplicationById(applicationId);
+    if (!application) {
+      res.status(404).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Application not found',
+        },
+      });
+      return;
+    }
+
+    // 只允许下载已发布的应用
+    if (!application.published) {
+      res.status(403).json({
+        success: false,
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Application has not been published',
+        },
+      });
+      return;
+    }
+
+    // 解析目标版本：指定版本优先，否则取最新版本
+    const targetVersion = requestedVersion
+      ? await getVersionByNumber(applicationId, requestedVersion)
+      : await getLatestVersion(applicationId);
+
+    if (!targetVersion) {
+      res.status(404).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'No published package found for this application',
+        },
+      });
+      return;
+    }
+
+    // 读取文件内容
+    let fileBuffer: Buffer;
+    try {
+      fileBuffer = await storageService.readFile(targetVersion.filePath);
+    } catch (error) {
+      logger.error(`Package file missing for ${applicationId} v${targetVersion.version}:`, error);
+      res.status(404).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Application package file is missing on the server',
+        },
+      });
+      return;
+    }
+
+    // 设置下载响应头
+    const safeName = `${applicationId}-${targetVersion.version}.clawbench-app`.replace(/[^a-zA-Z0-9._-]/g, '_');
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+    res.setHeader('Content-Length', fileBuffer.length);
+    res.status(200).send(fileBuffer);
+
+    logger.info(`Application package downloaded: ${applicationId} version ${targetVersion.version}`);
+  } catch (error) {
+    logger.error('Error downloading application package:', error);
     res.status(500).json({
       success: false,
       error: {

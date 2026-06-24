@@ -5,7 +5,7 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { Typography, Row, Col, Empty, Spin, Tag, Input, Tooltip, theme, Button, App, Alert, Tabs, Drawer, Descriptions, Space } from 'antd';
+import { Typography, Empty, Spin, Tag, Input, Tooltip, theme, Button, App, Alert, Tabs, Drawer, Descriptions, Space } from 'antd';
 import {
   SearchOutlined,
   PlusOutlined,
@@ -466,13 +466,15 @@ const AppLibraryPage: React.FC = () => {
           ) : filteredApps.length === 0 ? (
             <Empty description={searchText ? t('discover.noMatch') : t('discover.noPublished', getTypeLabel(activeTab))} />
           ) : (
-            <Row gutter={[16, 16]}>
-              {filteredApps.map((app) => (
-                <Col key={app.applicationId} xs={24} sm={12} md={8} lg={6}>
-                  {renderAppCard(app)}
-                </Col>
-              ))}
-            </Row>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                gap: 16
+              }}
+            >
+              {filteredApps.map((app) => renderAppCard(app))}
+            </div>
           )}
         </>
       )}

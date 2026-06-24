@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { Typography, Row, Col, Empty, Tag, Tooltip, theme, Button, App } from 'antd';
+import { Typography, Empty, Tag, Tooltip, theme, Button, App } from 'antd';
 import {
   EditOutlined,
   CloudUploadOutlined,
@@ -269,7 +269,7 @@ const MyContributionsPage: React.FC = () => {
   return (
     <div style={{ padding: 24 }}>
       <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center', gap: 12 }}>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/apps/installed')}>
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)}>
           {t('common.back')}
         </Button>
         <Title level={4} style={{ margin: 0 }}>{t('mine.title')}</Title>
@@ -291,13 +291,15 @@ const MyContributionsPage: React.FC = () => {
             >
               {group.label}
             </Text>
-            <Row gutter={[16, 16]}>
-              {group.items.map((app) => (
-                <Col key={app.id} xs={24} sm={12} md={8} lg={6}>
-                  {renderLocalAppCard(app)}
-                </Col>
-              ))}
-            </Row>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                gap: 16
+              }}
+            >
+              {group.items.map((app) => renderLocalAppCard(app))}
+            </div>
           </div>
         ))
       )}
