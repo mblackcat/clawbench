@@ -95,6 +95,7 @@ const PROVIDER_ICONS: ProviderIconMap = {
   openai: OpenAISvg,
   'openai-compatible': OpenAISvg,
   'openai-responses': OpenAISvg,
+  codex: OpenAISvg,
   'azure-openai': AzureOpenAISvg,
   anthropic: ClaudeSvg,
   claude: ClaudeSvg,
@@ -129,6 +130,7 @@ const PROVIDER_BRAND_COLORS: Record<string, string> = {
   openai: '#10a37f',
   'openai-compatible': '#10a37f',
   'openai-responses': '#10a37f',
+  codex: '#10a37f',
   'azure-openai': '#0078D4',
   anthropic: '#D97757',
   claude: '#D97757',
@@ -200,6 +202,46 @@ export function ModelAvatar({ provider, size = 32 }: { provider: string; size?: 
     }}>
       <IconComponent style={{ width: size * 0.55, height: size * 0.55 }} />
     </div>
+  )
+}
+
+// ── AI-skill tool tags (Claude / Codex / Gemini) ─────────────────────────────
+
+export type SkillToolKey = 'claude' | 'codex' | 'gemini'
+
+const SKILL_TOOL_META: Record<SkillToolKey, { label: string; provider: string }> = {
+  claude: { label: 'Claude', provider: 'claude' },
+  codex: { label: 'Codex', provider: 'codex' },
+  gemini: { label: 'Gemini', provider: 'gemini' }
+}
+
+export function getSkillToolLabel(tool: SkillToolKey): string {
+  return SKILL_TOOL_META[tool]?.label || tool
+}
+
+/** Unified Claude/Codex/Gemini tag: brand icon + label, tinted with brand color. */
+export function SkillToolTag({ tool, size = 14 }: { tool: SkillToolKey; size?: number }) {
+  const meta = SKILL_TOOL_META[tool] || { label: tool, provider: 'other-compatible' }
+  const color = getProviderColor(meta.provider)
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        padding: '0 7px',
+        height: 22,
+        borderRadius: 4,
+        fontSize: 12,
+        lineHeight: '22px',
+        color,
+        background: `${color}14`,
+        border: `1px solid ${color}33`
+      }}
+    >
+      <ProviderIcon provider={meta.provider} size={size} />
+      {meta.label}
+    </span>
   )
 }
 

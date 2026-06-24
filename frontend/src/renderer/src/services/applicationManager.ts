@@ -135,6 +135,22 @@ class ApplicationManager {
   }
 
   /**
+   * 安装 AI 技能到指定位置（四种方式之一）
+   */
+  async installSkillFromMarket(
+    applicationId: string,
+    opts: {
+      mode: import('../types/skill').SkillInstallMode
+      tools: import('../types/skill').SkillTool[]
+      workspacePath?: string
+    }
+  ): Promise<{ success: boolean; installedTo: string[]; error?: string }> {
+    const downloadUrl = `${API_BASE_URL}/applications/${encodeURIComponent(applicationId)}/download`;
+    const token = apiClient.getToken() || undefined;
+    return window.api.subapp.installSkillFromMarket(applicationId, downloadUrl, opts, token);
+  }
+
+  /**
    * 卸载应用（通过 IPC 在 main process 中删除）
    */
   async uninstallApplication(applicationId: string): Promise<boolean> {

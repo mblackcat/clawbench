@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { Typography, Empty, Tag, Tooltip, theme, Button, App } from 'antd';
+import { Typography, Tag, Tooltip, theme, Button, App } from 'antd';
 import {
   EditOutlined,
   CloudUploadOutlined,
@@ -20,6 +20,7 @@ import { useAuthStore } from '../../stores/useAuthStore';
 import type { SubAppManifest } from '../../types/subapp';
 import { useTaskStore } from '../../stores/useTaskStore';
 import { openExternalLink } from '../../utils/markdown-links';
+import SkillsManager, { type SelfSkill } from '../../components/SkillsManager';
 import { useT } from '../../i18n';
 
 const { Title, Text } = Typography;
@@ -117,6 +118,21 @@ const MyContributionsPage: React.FC = () => {
     }
     return groups.filter(g => g.items.length > 0);
   }, [localApps, t]);
+
+  /** AI-skill self/managed entries handed to SkillsManager. */
+  const selfSkills = useMemo<SelfSkill[]>(
+    () =>
+      localApps
+        .filter((a) => a.manifest.type === 'ai-skill')
+        .map((a) => ({ id: a.id, manifest: a.manifest, appType: a.appType })),
+    [localApps]
+  );
+
+  /** Non-skill groups rendered with the classic card layout. */
+  const nonSkillGroups = useMemo(
+    () => groupedApps.filter((g) => g.key !== 'ai-skill'),
+    [groupedApps]
+  );
 
   const getAuthorId = (author: string | { name: string; email?: string; feishu_id?: string } | undefined): string | undefined => {
     if (!author) return undefined;
@@ -315,10 +331,23 @@ const MyContributionsPage: React.FC = () => {
         <Title level={4} style={{ margin: 0 }}>{t('mine.title')}</Title>
       </div>
 
-      {localApps.length === 0 ? (
-        <Empty description={t('mine.noContent')} />
-      ) : (
-        groupedApps.map((group) => (
+      {/* AI 技能：导入 / 全局生效 / 项目生效 + 自建 */}
+      <div style={{ marginBottom: 24 }}>
+        <Text
+          type="secondary"
+          style={{ display: 'block', marginBottom: 12, fontSize: 13, fontWeight: 500 }}
+        >
+          {t('mine.groupSkill')}
+        </Text>
+        <SkillsManager
+          selfSkills={selfSkills}
+          onEditSelf={(id) => handleEdit(id, 'ai-skill')}
+          onPublishSelf={(id) => handlePublish(id)}
+        />
+      </div>
+
+      {nonSkillGroups.length === 0 ? null : (
+        nonSkillGroups.map((group) => (
           <div key={group.key} style={{ marginBottom: 24 }}>
             <Text
               type="secondary"

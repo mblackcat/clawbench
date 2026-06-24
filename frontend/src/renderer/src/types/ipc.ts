@@ -85,6 +85,16 @@ export interface ClawBenchAPI {
       success: boolean
       manifest?: Record<string, any>
     }>
+    installSkillFromMarket: (
+      appId: string,
+      downloadUrl: string,
+      opts: {
+        mode: import('./skill').SkillInstallMode
+        tools: import('./skill').SkillTool[]
+        workspacePath?: string
+      },
+      token?: string
+    ) => Promise<{ success: boolean; installedTo: string[]; error?: string }>
     onOutput: (callback: (data: import('./subapp').SubAppOutput) => void) => () => void
     onProgress: (callback: (data: import('./subapp').SubAppOutput) => void) => () => void
     onTaskStatus: (
@@ -125,6 +135,12 @@ export interface ClawBenchAPI {
       buffer: ArrayBuffer
       fileName: string
       fileSize: number
+    }>
+    packageDir: (sourceDir: string) => Promise<{
+      buffer: ArrayBuffer
+      fileName: string
+      fileSize: number
+      manifest: Record<string, any>
     }>
     listMyApps: () => Promise<import('./subapp').SubAppManifest[]>
     getAppPath: (appId: string) => Promise<string>
@@ -502,6 +518,38 @@ export interface ClawBenchAPI {
       removedFrom: string[]
       error?: string
     }>
+    install: (opts: {
+      sourceDir: string
+      mode: import('./skill').SkillInstallMode
+      tools: import('./skill').SkillTool[]
+      workspacePath?: string
+      skillId?: string
+    }) => Promise<{ success: boolean; installedTo: string[]; error?: string }>
+    uninstall: (
+      skillName: string,
+      tools: import('./skill').SkillTool[],
+      scope: 'project' | 'global',
+      workspacePath?: string
+    ) => Promise<{ success: boolean; removedFrom: string[]; error?: string }>
+    scanGlobal: (
+      tools?: import('./skill').SkillTool[]
+    ) => Promise<{ success: boolean; skills: import('./skill').ScannedSkill[]; error?: string }>
+    scanProject: (
+      workspacePath: string,
+      tools?: import('./skill').SkillTool[]
+    ) => Promise<{ success: boolean; skills: import('./skill').ScannedSkill[]; error?: string }>
+    loadLocal: (inputPath: string) => Promise<{
+      success: boolean
+      source?: import('./skill').SkillSource
+      meta?: import('./skill').SkillMeta
+      error?: string
+    }>
+    listLocalSources: () => Promise<{
+      success: boolean
+      sources: import('./skill').SkillSource[]
+      error?: string
+    }>
+    removeLocalSource: (id: string) => Promise<{ success: boolean; error?: string }>
   }
   link: {
     fetchFavicon: (url: string) => Promise<string | null>

@@ -25,6 +25,12 @@ export const api = {
     uninstall: (appId: string) => ipcRenderer.invoke('subapp:uninstall', appId),
     installFromMarket: (appId: string, downloadUrl: string, token?: string) =>
       ipcRenderer.invoke('subapp:install-from-market', appId, downloadUrl, token),
+    installSkillFromMarket: (
+      appId: string,
+      downloadUrl: string,
+      opts: { mode: string; tools: string[]; workspacePath?: string },
+      token?: string
+    ) => ipcRenderer.invoke('subapp:install-skill-from-market', appId, downloadUrl, opts, token),
     onOutput: (callback: (data: unknown) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data)
       ipcRenderer.on('subapp:output', handler)
@@ -71,6 +77,7 @@ export const api = {
     deleteApp: (appId: string) => ipcRenderer.invoke('developer:delete-app', appId),
     publishApp: (appPath: string) => ipcRenderer.invoke('developer:publish-app', appPath),
     packageApp: (appId: string) => ipcRenderer.invoke('developer:package-app', appId),
+    packageDir: (sourceDir: string) => ipcRenderer.invoke('developer:package-dir', sourceDir),
     listMyApps: () => ipcRenderer.invoke('developer:list-my-apps'),
     getAppPath: (appId: string) => ipcRenderer.invoke('developer:get-app-path', appId),
     listAppFiles: (appId: string) => ipcRenderer.invoke('developer:list-app-files', appId),
@@ -519,7 +526,26 @@ export const api = {
     activate: (skillId: string, workspacePath: string, targetType?: string) =>
       ipcRenderer.invoke('skill:activate', skillId, workspacePath, targetType),
     deactivate: (skillId: string, workspacePath: string) =>
-      ipcRenderer.invoke('skill:deactivate', skillId, workspacePath)
+      ipcRenderer.invoke('skill:deactivate', skillId, workspacePath),
+    install: (opts: {
+      sourceDir: string
+      mode: string
+      tools: string[]
+      workspacePath?: string
+      skillId?: string
+    }) => ipcRenderer.invoke('skill:install', opts),
+    uninstall: (
+      skillName: string,
+      tools: string[],
+      scope: 'project' | 'global',
+      workspacePath?: string
+    ) => ipcRenderer.invoke('skill:uninstall', skillName, tools, scope, workspacePath),
+    scanGlobal: (tools?: string[]) => ipcRenderer.invoke('skill:scan-global', tools),
+    scanProject: (workspacePath: string, tools?: string[]) =>
+      ipcRenderer.invoke('skill:scan-project', workspacePath, tools),
+    loadLocal: (inputPath: string) => ipcRenderer.invoke('skill:load-local', inputPath),
+    listLocalSources: () => ipcRenderer.invoke('skill:list-local-sources'),
+    removeLocalSource: (id: string) => ipcRenderer.invoke('skill:remove-local-source', id)
   },
 
   link: {

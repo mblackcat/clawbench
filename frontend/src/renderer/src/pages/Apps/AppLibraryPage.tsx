@@ -23,7 +23,10 @@ import { localStorageManager } from '../../services/localStorageManager';
 import type { Application, ApplicationType, ApplicationDetail } from '../../types/api';
 import { useSubAppStore } from '../../stores/useSubAppStore';
 import { useAuthStore } from '../../stores/useAuthStore';
+import { useWorkspaceStore } from '../../stores/useWorkspaceStore';
 import CreateTypeModal from '../../components/CreateTypeModal';
+import SkillInstallModal from '../../components/SkillInstallModal';
+import type { SkillInstallMode, SkillTool } from '../../types/skill';
 import { useT } from '../../i18n';
 
 const { Title, Text } = Typography;
@@ -50,6 +53,12 @@ const AppLibraryPage: React.FC = () => {
   const [drawerApp, setDrawerApp] = useState<Application | null>(null);
   const [drawerDetail, setDrawerDetail] = useState<ApplicationDetail | null>(null);
   const [drawerLoading, setDrawerLoading] = useState(false);
+
+  // AI-skill install: choose placement (4 modes) before download
+  const [skillInstallOpen, setSkillInstallOpen] = useState(false);
+  const [skillInstalling, setSkillInstalling] = useState(false);
+  const [skillInstallApp, setSkillInstallApp] = useState<Application | null>(null);
+  const activeWorkspace = useWorkspaceStore((s) => s.activeWorkspace);
 
   const fetchApps = useSubAppStore((state) => state.fetchApps);
   const appInfos = useSubAppStore((state) => state.appInfos);
@@ -204,6 +213,13 @@ const AppLibraryPage: React.FC = () => {
   };
 
   const handleInstall = async (appId: string) => {
+    // AI skills require the user to choose a placement (4 modes).
+    const target = drawerApp?.applicationId === appId ? drawerApp : allApps.find((a) => a.applicationId === appId);
+    if (target?.type === 'ai-skill') {
+      setSkillInstallApp(target);
+      setSkillInstallOpen(true);
+      return;
+    }
     setInstalling(prev => new Set(prev).add(appId));
     try {
       await applicationManager.installApplication(appId);
@@ -218,6 +234,31 @@ const AppLibraryPage: React.FC = () => {
         next.delete(appId);
         return next;
       });
+    }
+  };
+
+  const handleConfirmSkillInstall = async (mode: SkillInstallMode, tools: SkillTool[]) => {
+    if (!skillInstallApp) return;
+    setSkillInstalling(true);
+    try {
+      const res = await applicationManager.installSkillFromMarket(skillInstallApp.applicationId, {
+        mode,
+        tools,
+        workspacePath: activeWorkspace?.path
+      });
+      if (res.success) {
+        message.success(t('discover.installSuccess'));
+        setSkillInstallOpen(false);
+        setSkillInstallApp(null);
+        await loadApps();
+      } else {
+        message.error(res.error || t('discover.installFailed'));
+      }
+    } catch (error) {
+      console.error('Failed to install skill:', error);
+      message.error(t('discover.installFailed'));
+    } finally {
+      setSkillInstalling(false);
     }
   };
 
@@ -493,6 +534,19 @@ const AppLibraryPage: React.FC = () => {
       <CreateTypeModal
         open={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
+      />
+
+      <SkillInstallModal
+        open={skillInstallOpen}
+        title={skillInstallApp ? t('skill.install.titleFor', skillInstallApp.name) : undefined}
+        hasWorkspace={!!activeWorkspace?.path}
+        workspaceName={activeWorkspace?.name}
+        confirmLoading={skillInstalling}
+        onCancel={() => {
+          setSkillInstallOpen(false);
+          setSkillInstallApp(null);
+        }}
+        onConfirm={handleConfirmSkillInstall}
       />
     </div>
   );
