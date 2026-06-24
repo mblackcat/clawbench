@@ -79,6 +79,7 @@ export interface ClawBenchAPI {
       params?: Record<string, unknown>
     ) => Promise<string> // returns taskId
     cancel: (taskId: string) => Promise<void>
+    sendUiEvent: (taskId: string, uiEvent: Record<string, unknown>) => Promise<boolean>
     uninstall: (appId: string) => Promise<{ success: boolean; error?: string }>
     installFromMarket: (appId: string, downloadUrl: string, token?: string) => Promise<{
       success: boolean

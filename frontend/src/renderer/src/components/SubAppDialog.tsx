@@ -10,7 +10,7 @@ interface DialogComponent {
   style?: string
   label?: string
   variant?: string
-  items?: Array<{ id?: string; label: string; description?: string }>
+  items?: Array<{ id?: string; label: string; description?: string; disabled?: boolean }>
   selected_ids?: string[]
   selected_id?: string | null
   max_height?: number
@@ -84,8 +84,12 @@ function renderDisplayList(comp: DialogComponent): React.ReactNode {
   )
 }
 
-function renderCheckboxList(comp: DialogComponent): React.ReactNode {
+function renderCheckboxList(
+  comp: DialogComponent,
+  onSelectionChange: (componentId: string, selectedIds: string[]) => void
+): React.ReactNode {
   const items = comp.items || []
+  const selectedIds = new Set(comp.selected_ids || [])
   return (
     <div
       key={comp.id}
@@ -99,11 +103,57 @@ function renderCheckboxList(comp: DialogComponent): React.ReactNode {
         size="small"
         bordered
         dataSource={items}
-        renderItem={(item) => (
-          <List.Item>
-            <List.Item.Meta title={item.label} description={item.description} />
-          </List.Item>
-        )}
+        renderItem={(item) => {
+          const itemId = item.id || item.label
+          const checked = selectedIds.has(itemId)
+          const disabled = comp.enabled === false || item.disabled === true
+          const updateSelection = (nextChecked: boolean): void => {
+            const next = new Set(selectedIds)
+            if (nextChecked) {
+              next.add(itemId)
+            } else {
+              next.delete(itemId)
+            }
+            onSelectionChange(comp.id, Array.from(next))
+          }
+          return (
+            <List.Item
+              style={{
+                alignItems: 'flex-start',
+                gap: 10,
+                cursor: disabled ? 'default' : 'pointer'
+              }}
+              onClick={() => {
+                if (!disabled) updateSelection(!checked)
+              }}
+            >
+              <Checkbox
+                checked={checked}
+                disabled={disabled}
+                onClick={(event) => event.stopPropagation()}
+                onChange={(event) => updateSelection(event.target.checked)}
+                style={{ marginTop: 2, flex: '0 0 auto' }}
+              />
+              <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+                <Text strong>{item.label}</Text>
+                {item.description && (
+                  <Text
+                    type="secondary"
+                    style={{
+                      fontSize: 12,
+                      lineHeight: 1.5,
+                      whiteSpace: 'pre-wrap',
+                      overflowWrap: 'anywhere',
+                      display: 'block'
+                    }}
+                  >
+                    {item.description}
+                  </Text>
+                )}
+              </div>
+            </List.Item>
+          )
+        }}
       />
     </div>
   )
@@ -131,7 +181,11 @@ function renderRadioList(comp: DialogComponent): React.ReactNode {
   )
 }
 
-function renderComponent(comp: DialogComponent): React.ReactNode {
+function renderComponent(
+  comp: DialogComponent,
+  onSelectionChange: (componentId: string, selectedIds: string[]) => void,
+  onButtonClick: (componentId: string) => void
+): React.ReactNode {
   if (comp.visible === false) return null
   switch (comp.type) {
     case 'label':
@@ -139,7 +193,7 @@ function renderComponent(comp: DialogComponent): React.ReactNode {
     case 'display_list':
       return renderDisplayList(comp)
     case 'checkbox_list':
-      return renderCheckboxList(comp)
+      return renderCheckboxList(comp, onSelectionChange)
     case 'radio_list':
       return renderRadioList(comp)
     case 'button':
@@ -149,6 +203,7 @@ function renderComponent(comp: DialogComponent): React.ReactNode {
           size="small"
           disabled={comp.enabled === false}
           style={{ marginRight: 8, marginBottom: 8 }}
+          onClick={() => onButtonClick(comp.id)}
         >
           {comp.label}
         </Button>
@@ -161,11 +216,73 @@ function renderComponent(comp: DialogComponent): React.ReactNode {
 const SubAppDialog: React.FC = () => {
   const [dialog, setDialog] = useState<DialogData | null>(null)
   const [open, setOpen] = useState(false)
+  const [taskId, setTaskId] = useState<string | null>(null)
 
-  const handleClose = useCallback(() => {
+  const closeDialog = useCallback(() => {
     setOpen(false)
     setDialog(null)
+    setTaskId(null)
   }, [])
+
+  const sendUiEvent = useCallback(
+    (event: Record<string, unknown>) => {
+      if (!taskId) return
+      void window.api.subapp.sendUiEvent(taskId, event)
+    },
+    [taskId]
+  )
+
+  const handleSelectionChange = useCallback(
+    (componentId: string, selectedIds: string[]) => {
+      if (!dialog) return
+      setDialog((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          components: prev.components.map((component) =>
+            component.id === componentId ? { ...component, selected_ids: selectedIds } : component
+          )
+        }
+      })
+      sendUiEvent({
+        type: 'selection_change',
+        dialog_id: dialog.id,
+        component_id: componentId,
+        selected_ids: selectedIds
+      })
+    },
+    [dialog, sendUiEvent]
+  )
+
+  const handleButtonClick = useCallback(
+    (componentId: string) => {
+      if (dialog) {
+        sendUiEvent({
+          type: 'button_click',
+          dialog_id: dialog.id,
+          component_id: componentId,
+          values: Object.fromEntries(
+            dialog.components.map((component) => [component.id, {
+              selected_ids: component.selected_ids,
+              selected_id: component.selected_id
+            }])
+          )
+        })
+      }
+      closeDialog()
+    },
+    [closeDialog, dialog, sendUiEvent]
+  )
+
+  const handleCancel = useCallback(() => {
+    if (dialog) {
+      sendUiEvent({
+        type: 'dialog_close',
+        dialog_id: dialog.id
+      })
+    }
+    closeDialog()
+  }, [closeDialog, dialog, sendUiEvent])
 
   useEffect(() => {
     const unsub = window.api.subapp.onUi((event: UiEvent) => {
@@ -173,15 +290,16 @@ const SubAppDialog: React.FC = () => {
         case 'ui_show':
           if (event.dialog) {
             setDialog(event.dialog)
+            setTaskId(event.taskId)
             setOpen(true)
           }
           break
         case 'ui_close':
-          handleClose()
+          closeDialog()
           break
         case 'ui_update':
           // Update components in the current dialog
-          if (event.updates && dialog) {
+          if (event.updates) {
             setDialog((prev) => {
               if (!prev) return prev
               const updated = { ...prev }
@@ -196,7 +314,7 @@ const SubAppDialog: React.FC = () => {
       }
     })
     return unsub
-  }, [handleClose, dialog])
+  }, [closeDialog])
 
   if (!dialog) return null
 
@@ -209,7 +327,7 @@ const SubAppDialog: React.FC = () => {
         type={btnType}
         danger={danger}
         disabled={btn.enabled === false}
-        onClick={handleClose}
+        onClick={() => handleButtonClick(btn.id)}
       >
         {btn.label}
       </Button>
@@ -221,12 +339,14 @@ const SubAppDialog: React.FC = () => {
       open={open}
       title={dialog.title}
       closable={dialog.closable !== false}
-      onCancel={handleClose}
+      onCancel={handleCancel}
       width={dialog.width || 520}
       footer={footerButtons.length > 0 ? <Space>{footerButtons}</Space> : null}
       destroyOnHidden
     >
-      {dialog.components.map(renderComponent)}
+      {dialog.components.map((component) =>
+        renderComponent(component, handleSelectionChange, handleButtonClick)
+      )}
     </Modal>
   )
 }

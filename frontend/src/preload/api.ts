@@ -20,6 +20,8 @@ export const api = {
     execute: (appId: string, params?: Record<string, unknown>) =>
       ipcRenderer.invoke('subapp:execute', appId, params),
     cancel: (taskId: string) => ipcRenderer.invoke('subapp:cancel', taskId),
+    sendUiEvent: (taskId: string, uiEvent: Record<string, unknown>) =>
+      ipcRenderer.invoke('subapp:ui-event', taskId, uiEvent),
     uninstall: (appId: string) => ipcRenderer.invoke('subapp:uninstall', appId),
     installFromMarket: (appId: string, downloadUrl: string, token?: string) =>
       ipcRenderer.invoke('subapp:install-from-market', appId, downloadUrl, token),

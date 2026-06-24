@@ -7,7 +7,8 @@ import {
   executeSubApp,
   cancelTask,
   resolvePythonCommand,
-  getI18nPayload
+  getI18nPayload,
+  sendUiEventToSubApp
 } from '../services/python-runner.service'
 import { getActiveWorkspace } from '../services/workspace.service'
 import { getPythonSdkPath, getTempDir } from '../utils/paths'
@@ -101,6 +102,10 @@ export function registerSubAppIpc(): void {
 
   ipcMain.handle('subapp:cancel', async (_event, taskId: string) => {
     cancelTask(taskId)
+  })
+
+  ipcMain.handle('subapp:ui-event', async (_event, taskId: string, uiEvent: Record<string, unknown>) => {
+    return sendUiEventToSubApp(taskId, uiEvent)
   })
 
   ipcMain.handle('subapp:uninstall', async (_event, appId: string) => {
