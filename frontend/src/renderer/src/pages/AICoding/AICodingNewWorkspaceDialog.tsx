@@ -2,11 +2,11 @@ import React, { useState } from 'react'
 import { Modal, Form, Input, Select, Button, App } from 'antd'
 import { FolderOpenOutlined, PlusOutlined } from '@ant-design/icons'
 import { useT } from '../../i18n'
-import type { AIWorkbenchGroup } from '../../types/ai-workbench'
+import type { AICodingGroup } from '../../types/ai-coding'
 
-interface AIWorkbenchNewWorkspaceDialogProps {
+interface AICodingNewWorkspaceDialogProps {
   open: boolean
-  groups: AIWorkbenchGroup[]
+  groups: AICodingGroup[]
   defaultGroupId: string
   onOk: (workingDir: string, groupId: string) => Promise<void>
   onCancel: () => void
@@ -14,7 +14,7 @@ interface AIWorkbenchNewWorkspaceDialogProps {
 
 const NEW_GROUP_VALUE = '__new_group__'
 
-const AIWorkbenchNewWorkspaceDialog: React.FC<AIWorkbenchNewWorkspaceDialogProps> = ({
+const AICodingNewWorkspaceDialog: React.FC<AICodingNewWorkspaceDialogProps> = ({
   open,
   groups,
   defaultGroupId,
@@ -47,7 +47,7 @@ const AIWorkbenchNewWorkspaceDialog: React.FC<AIWorkbenchNewWorkspaceDialogProps
           return
         }
         // Create the group first
-        const group = await window.api.aiWorkbench.createGroup(name)
+        const group = await window.api.aiCoding.createGroup(name)
         groupId = group.id
       }
 
@@ -154,4 +154,4 @@ const AIWorkbenchNewWorkspaceDialog: React.FC<AIWorkbenchNewWorkspaceDialogProps
   )
 }
 
-export default AIWorkbenchNewWorkspaceDialog
+export default AICodingNewWorkspaceDialog

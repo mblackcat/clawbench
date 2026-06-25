@@ -12,7 +12,7 @@ import { rehypeHighlightPlugin } from '../../utils/markdown-plugins'
 import { ModelAvatar, UserAvatar } from '../../components/ProviderIcons'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useT } from '../../i18n'
-import type { WorkbenchMessage, WorkbenchContentBlock } from '../../types/ai-workbench'
+import type { WorkbenchMessage, WorkbenchContentBlock } from '../../types/ai-coding'
 import AskUserQuestionBlock from './AskUserQuestionBlock'
 import TodoUpdateBlock from './TodoUpdateBlock'
 import ThinkingBlock from '../../components/ThinkingBlock'
@@ -401,12 +401,12 @@ function renderAssistantBlocks(blocks: WorkbenchContentBlock[], sessionId: strin
 
 // ── Main Component ──
 
-interface WorkbenchChatMessageProps {
+interface CodingChatMessageProps {
   message: WorkbenchMessage
   onToolToggle?: ToolToggleHandler
 }
 
-const WorkbenchChatMessage: React.FC<WorkbenchChatMessageProps> = ({ message, onToolToggle }) => {
+const CodingChatMessage: React.FC<CodingChatMessageProps> = ({ message, onToolToggle }) => {
   const { token } = theme.useToken()
   const user = useAuthStore((s) => s.user)
 
@@ -473,4 +473,4 @@ const WorkbenchChatMessage: React.FC<WorkbenchChatMessageProps> = ({ message, on
 }
 
 export { getToolSummary }
-export default WorkbenchChatMessage
+export default CodingChatMessage

@@ -6,7 +6,7 @@ import {
 } from '@ant-design/icons'
 import { getAIToolIcon } from './aiToolMeta'
 import { useT, getT } from '../../i18n'
-import type { AIToolType, AIWorkbenchSession, ClaudeViewMode } from '../../types/ai-workbench'
+import type { AIToolType, AICodingSession, ClaudeViewMode } from '../../types/ai-coding'
 
 const { Text } = Typography
 
@@ -39,7 +39,7 @@ function formatSize(bytes: number): string {
 
 interface PaneTabBarProps {
   paneId: string
-  tabs: AIWorkbenchSession[]
+  tabs: AICodingSession[]
   activeTabId: string | null
   workingDir: string
   onSelectTab: (sessionId: string) => void
@@ -83,7 +83,7 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
     setLoadingNative(true)
     setNativeVisibleCount(NATIVE_HISTORY_PAGE_SIZE)
     try {
-      const sessions = await window.api.aiWorkbench.listNativeSessions(workingDir, toolType)
+      const sessions = await window.api.aiCoding.listNativeSessions(workingDir, toolType)
       setNativeSessions(sessions || [])
     } catch { setNativeSessions([]) }
     finally { setLoadingNative(false) }

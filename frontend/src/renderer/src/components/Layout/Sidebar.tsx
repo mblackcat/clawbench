@@ -46,10 +46,10 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
       moduleKey: 'aiChat'
     },
     {
-      key: '/ai-workbench',
+      key: '/ai-coding',
       icon: <CodepenOutlined />,
       label: t('menu.aiCoding'),
-      moduleKey: 'aiWorkbench'
+      moduleKey: 'aiCoding'
     },
     {
       key: '/ai-terminal',

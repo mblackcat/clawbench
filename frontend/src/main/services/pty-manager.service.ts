@@ -1,7 +1,7 @@
 import * as pty from 'node-pty'
 import { BrowserWindow } from 'electron'
 import * as logger from '../utils/logger'
-import type { AIToolType } from '../store/ai-workbench.store'
+import type { AIToolType } from '../store/ai-coding.store'
 
 // ── Active PTY sessions ──
 const ptySessions = new Map<string, pty.IPty>()

@@ -1,6 +1,6 @@
 import React from 'react'
 import { ProviderIcon } from '../../components/ProviderIcons'
-import type { AIToolType } from '../../types/ai-workbench'
+import type { AIToolType } from '../../types/ai-coding'
 
 export const AI_TOOL_TAG_COLORS: Partial<Record<AIToolType, string>> = {
   claude: 'purple',

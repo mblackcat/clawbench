@@ -1,7 +1,7 @@
 import * as logger from '../utils/logger'
 import { detectAll } from './local-env.service'
 import { listSubApps, getManifest } from './subapp.service'
-import { getSessions } from './ai-workbench.service'
+import { getSessions } from './ai-coding.service'
 import { getDBConnections, queryDB, getDBTables } from './ai-terminal.service'
 
 // ============ Tool Provider Interface ============

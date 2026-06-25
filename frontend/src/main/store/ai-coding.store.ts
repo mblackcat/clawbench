@@ -1,10 +1,15 @@
 import Store from 'electron-store'
 import { randomUUID } from 'crypto'
 import * as path from 'path'
+import { migrateStoreFile } from '../utils/store-migration'
+
+// Module renamed AI Workbench → AI Coding: carry over the old on-disk store file
+// before instantiating, so existing workspaces/sessions/IM config are preserved.
+migrateStoreFile('ai-workbench', 'ai-coding')
 
 export type AIToolType = 'claude' | 'codex' | 'gemini' | 'opencode' | 'qwen' | 'terminal'
 
-export interface AIWorkbenchWorkspace {
+export interface AICodingWorkspace {
   id: string
   title: string
   workingDir: string
@@ -13,7 +18,7 @@ export interface AIWorkbenchWorkspace {
   updatedAt: number
 }
 
-export interface AIWorkbenchSession {
+export interface AICodingSession {
   id: string
   workspaceId: string
   toolSessionId?: string
@@ -31,42 +36,42 @@ export interface AIWorkbenchSession {
   pidFile?: string
 }
 
-export interface AIWorkbenchGroup {
+export interface AICodingGroup {
   id: string
   name: string
   isDefault: boolean
   order: number
 }
 
-export interface AIWorkbenchIMConfig {
+export interface AICodingIMConfig {
   feishu: {
     appId: string
     appSecret: string
   }
 }
 
-interface AIWorkbenchSchema {
-  workspaces: AIWorkbenchWorkspace[]
-  sessions: AIWorkbenchSession[]
-  groups: AIWorkbenchGroup[]
-  imConfig: AIWorkbenchIMConfig
+interface AICodingSchema {
+  workspaces: AICodingWorkspace[]
+  sessions: AICodingSession[]
+  groups: AICodingGroup[]
+  imConfig: AICodingIMConfig
   /** Whether the user wants IM to auto-connect on startup. Set true on explicit connect, false on explicit disconnect. */
   imAutoConnect: boolean
 }
 
-const DEFAULT_GROUP: AIWorkbenchGroup = {
+const DEFAULT_GROUP: AICodingGroup = {
   id: 'default',
   name: 'Default',
   isDefault: true,
   order: 0
 }
 
-const DEFAULT_IM_CONFIG: AIWorkbenchIMConfig = {
+const DEFAULT_IM_CONFIG: AICodingIMConfig = {
   feishu: { appId: '', appSecret: '' }
 }
 
-export const aiWorkbenchStore = new Store<AIWorkbenchSchema>({
-  name: 'ai-workbench',
+export const aiCodingStore = new Store<AICodingSchema>({
+  name: 'ai-coding',
   schema: {
     workspaces: {
       type: 'array',
@@ -146,8 +151,8 @@ export const aiWorkbenchStore = new Store<AIWorkbenchSchema>({
  * @deprecated Safe to remove after v0.4.0 — all users should have migrated by then.
  */
 export function migrateV1ToV2(): void {
-  const sessions = aiWorkbenchStore.get('sessions') ?? []
-  const workspaces = aiWorkbenchStore.get('workspaces') ?? []
+  const sessions = aiCodingStore.get('sessions') ?? []
+  const workspaces = aiCodingStore.get('workspaces') ?? []
 
   // If workspaces already exist or sessions don't have V1 fields, skip
   if (workspaces.length > 0) return
@@ -157,8 +162,8 @@ export function migrateV1ToV2(): void {
   if (v1Sessions.length === 0) return
 
   const now = Date.now()
-  const newWorkspaces: AIWorkbenchWorkspace[] = []
-  const newSessions: AIWorkbenchSession[] = []
+  const newWorkspaces: AICodingWorkspace[] = []
+  const newSessions: AICodingSession[] = []
 
   for (const old of v1Sessions as any[]) {
     const workspaceId = randomUUID()
@@ -187,8 +192,8 @@ export function migrateV1ToV2(): void {
     })
   }
 
-  aiWorkbenchStore.set('workspaces', newWorkspaces)
-  aiWorkbenchStore.set('sessions', newSessions)
+  aiCodingStore.set('workspaces', newWorkspaces)
+  aiCodingStore.set('sessions', newSessions)
 }
 
 /**
@@ -199,8 +204,8 @@ export function migrateV1ToV2(): void {
  * @deprecated Safe to remove after v0.4.0 — all users should have migrated by then.
  */
 export function migrateV2ToV3(): void {
-  const workspaces = aiWorkbenchStore.get('workspaces') ?? []
-  const sessions = aiWorkbenchStore.get('sessions') ?? []
+  const workspaces = aiCodingStore.get('workspaces') ?? []
+  const sessions = aiCodingStore.get('sessions') ?? []
 
   // Check if migration is needed: workspaces still have toolType field
   const needsMigration = workspaces.some((w: any) => w.toolType !== undefined)
@@ -217,7 +222,7 @@ export function migrateV2ToV3(): void {
   }
 
   // Update sessions: add toolType from parent workspace, set source
-  const updatedSessions = sessions.map((s: any): AIWorkbenchSession => {
+  const updatedSessions = sessions.map((s: any): AICodingSession => {
     if (s.toolType && s.source) return s // already migrated
     return {
       ...s,
@@ -228,50 +233,50 @@ export function migrateV2ToV3(): void {
   })
 
   // Remove toolType from workspaces
-  const updatedWorkspaces = workspaces.map((w: any): AIWorkbenchWorkspace => {
+  const updatedWorkspaces = workspaces.map((w: any): AICodingWorkspace => {
     const { toolType, ...rest } = w
     return { ...rest, updatedAt: now }
   })
 
-  aiWorkbenchStore.set('workspaces', updatedWorkspaces)
-  aiWorkbenchStore.set('sessions', updatedSessions)
+  aiCodingStore.set('workspaces', updatedWorkspaces)
+  aiCodingStore.set('sessions', updatedSessions)
 }
 
-export function getAIWorkbenchConfig(): AIWorkbenchSchema {
-  let groups = aiWorkbenchStore.get('groups')
+export function getAICodingConfig(): AICodingSchema {
+  let groups = aiCodingStore.get('groups')
   if (!groups || groups.length === 0 || !groups.some((g) => g.isDefault)) {
     groups = [DEFAULT_GROUP]
-    aiWorkbenchStore.set('groups', groups)
+    aiCodingStore.set('groups', groups)
   }
   return {
-    workspaces: aiWorkbenchStore.get('workspaces') ?? [],
-    sessions: aiWorkbenchStore.get('sessions') ?? [],
+    workspaces: aiCodingStore.get('workspaces') ?? [],
+    sessions: aiCodingStore.get('sessions') ?? [],
     groups,
-    imConfig: aiWorkbenchStore.get('imConfig') ?? DEFAULT_IM_CONFIG,
-    imAutoConnect: aiWorkbenchStore.get('imAutoConnect') ?? false
+    imConfig: aiCodingStore.get('imConfig') ?? DEFAULT_IM_CONFIG,
+    imAutoConnect: aiCodingStore.get('imAutoConnect') ?? false
   }
 }
 
-export function setAIWorkbenchWorkspaces(workspaces: AIWorkbenchWorkspace[]): void {
-  aiWorkbenchStore.set('workspaces', workspaces)
+export function setAICodingWorkspaces(workspaces: AICodingWorkspace[]): void {
+  aiCodingStore.set('workspaces', workspaces)
 }
 
-export function setAIWorkbenchSessions(sessions: AIWorkbenchSession[]): void {
-  aiWorkbenchStore.set('sessions', sessions)
+export function setAICodingSessions(sessions: AICodingSession[]): void {
+  aiCodingStore.set('sessions', sessions)
 }
 
-export function setAIWorkbenchGroups(groups: AIWorkbenchGroup[]): void {
-  aiWorkbenchStore.set('groups', groups)
+export function setAICodingGroups(groups: AICodingGroup[]): void {
+  aiCodingStore.set('groups', groups)
 }
 
-export function setAIWorkbenchIMConfig(imConfig: AIWorkbenchIMConfig): void {
-  aiWorkbenchStore.set('imConfig', imConfig)
+export function setAICodingIMConfig(imConfig: AICodingIMConfig): void {
+  aiCodingStore.set('imConfig', imConfig)
 }
 
 export function getIMAutoConnect(): boolean {
-  return aiWorkbenchStore.get('imAutoConnect') ?? false
+  return aiCodingStore.get('imAutoConnect') ?? false
 }
 
 export function setIMAutoConnect(value: boolean): void {
-  aiWorkbenchStore.set('imAutoConnect', value)
+  aiCodingStore.set('imAutoConnect', value)
 }

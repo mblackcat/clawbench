@@ -11,7 +11,7 @@ import SubAppDialog from '../SubAppDialog'
 import WeatherEffect, { useWeatherEffect } from '../WeatherEffect'
 import { useTaskStore } from '../../stores/useTaskStore'
 import { useSubAppExecution } from '../../hooks/useSubAppExecution'
-import { useAIWorkbenchStore } from '../../stores/useAIWorkbenchStore'
+import { useAICodingStore } from '../../stores/useAICodingStore'
 import { localStorageManager } from '../../services/localStorageManager'
 
 const { Header, Sider, Content, Footer } = Layout
@@ -37,7 +37,7 @@ const AppLayout: React.FC = () => {
 
   // 全局初始化 IM 监听（与页面无关，保证顶栏状态随时同步）
   useEffect(() => {
-    const store = useAIWorkbenchStore.getState()
+    const store = useAICodingStore.getState()
     store.fetchIMConfig()
     store.fetchIMStatus()
     const cleanup = store.initListeners()

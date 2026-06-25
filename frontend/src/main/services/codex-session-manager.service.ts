@@ -5,7 +5,7 @@ import * as path from 'path'
 import * as fs from 'fs'
 import * as logger from '../utils/logger'
 
-type WorkbenchMode = 'plan' | 'ask-first' | 'auto-edit' | 'full-access'
+type CodingMode = 'plan' | 'ask-first' | 'auto-edit' | 'full-access'
 type CodexSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
 type CodexApprovalPolicy = 'untrusted' | 'on-failure' | 'on-request' | 'never'
 type CodexApprovalsReviewer = 'user' | 'auto_review'
@@ -34,7 +34,7 @@ interface CodexSessionState {
   threadId: string | null
   resumeThreadId: string | null
   isProcessing: boolean
-  mode: WorkbenchMode
+  mode: CodingMode
   env?: Record<string, string | undefined>
   onEvent?: (sessionId: string, data: Record<string, unknown>) => void
   onClose?: (sessionId: string) => void
@@ -121,7 +121,7 @@ export function resolveBundledCodexPath(): string | null {
 
 function forwardToRenderer(sessionId: string, event: Record<string, unknown>): void {
   BrowserWindow.getAllWindows().forEach((win) => {
-    win.webContents.send('ai-workbench:pipe-event', { sessionId, event })
+    win.webContents.send('ai-coding:pipe-event', { sessionId, event })
   })
 }
 
@@ -142,7 +142,7 @@ function appendOutput(state: CodexSessionState, text: string): void {
     : combined
 }
 
-function modeToCodexOptions(mode: WorkbenchMode): {
+function modeToCodexOptions(mode: CodingMode): {
   sandbox: CodexSandboxMode
   approvalPolicy: CodexApprovalPolicy
   approvalsReviewer?: CodexApprovalsReviewer

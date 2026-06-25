@@ -8,9 +8,9 @@
  */
 
 import type {
-  AIWorkbenchWorkspace,
-  AIWorkbenchSession
-} from '../../store/ai-workbench.store'
+  AICodingWorkspace,
+  AICodingSession
+} from '../../store/ai-coding.store'
 import type { IMCardPayload, IMCardSection, IMChatState, InputHistoryEntry } from './types'
 import type { SubAppInfo } from '../subapp.service'
 import type { MarketApp } from './marketplace.service'
@@ -49,8 +49,8 @@ const ACTIVITY_LABELS: Record<string, string> = {
  * Uses schema 2.0 with colored column_set sections and table components.
  */
 export function buildHelpCard(
-  aiWorkspaces: AIWorkbenchWorkspace[],
-  sessions: AIWorkbenchSession[],
+  aiWorkspaces: AICodingWorkspace[],
+  sessions: AICodingSession[],
   mainWorkspaces: Workspace[]
 ): IMCardPayload {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -231,8 +231,8 @@ const COL_W = [1, 3, 2, 4, 2]
  * Columns: 序号 | 状态+标识符 | 类型 | 路径 | 操作
  */
 export function buildWorkspaceListCard(
-  workspaces: AIWorkbenchWorkspace[],
-  sessions: AIWorkbenchSession[]
+  workspaces: AICodingWorkspace[],
+  sessions: AICodingSession[]
 ): IMCardPayload {
   if (workspaces.length === 0) {
     return {
@@ -330,8 +330,8 @@ export function buildWorkspaceListCard(
  * /work <n> — workspace detail with session list.
  */
 export function buildWorkspaceDetailCard(
-  workspace: AIWorkbenchWorkspace,
-  sessions: AIWorkbenchSession[]
+  workspace: AICodingWorkspace,
+  sessions: AICodingSession[]
 ): IMCardPayload {
   const toolTypes = [...new Set(sessions.map(s => TOOL_LABELS[s.toolType] || s.toolType))]
   const toolLabel = toolTypes.length > 0 ? toolTypes.join(', ') : '无会话'
@@ -435,8 +435,8 @@ function parseOutputForDisplay(rawOutput: string): string {
  * Session detail card (for auto-refresh of active session).
  */
 export function buildSessionDetailCard(
-  workspace: AIWorkbenchWorkspace,
-  session: AIWorkbenchSession,
+  workspace: AICodingWorkspace,
+  session: AICodingSession,
   processOutput: string
 ): IMCardPayload {
   const toolLabel = TOOL_LABELS[session.toolType] || session.toolType
@@ -528,8 +528,8 @@ export function buildSessionDetailCard(
  * Proactive completion card sent when a session transitions to completed/error.
  */
 export function buildCompletionCard(
-  workspace: AIWorkbenchWorkspace,
-  session: AIWorkbenchSession,
+  workspace: AICodingWorkspace,
+  session: AICodingSession,
   processOutput: string
 ): IMCardPayload {
   const toolLabel = TOOL_LABELS[session.toolType] || session.toolType
@@ -561,8 +561,8 @@ export function buildCompletionCard(
  * /status — aggregate status overview with per-chat context.
  */
 export function buildStatusCard(
-  workspaces: AIWorkbenchWorkspace[],
-  sessions: AIWorkbenchSession[],
+  workspaces: AICodingWorkspace[],
+  sessions: AICodingSession[],
   chatState: IMChatState | undefined
 ): IMCardPayload {
   const counts = {
@@ -834,8 +834,8 @@ function extractResponse(label: string): string {
  * input form (normal mode), auth buttons (interactive mode), or restart button (done).
  */
 export function buildSessionCardV2(
-  workspace: AIWorkbenchWorkspace,
-  session: AIWorkbenchSession,
+  workspace: AICodingWorkspace,
+  session: AICodingSession,
   processOutput: string,
   authOptions?: string[] | null,
   sessionNumber?: number,

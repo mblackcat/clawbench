@@ -16,7 +16,7 @@ import * as os from 'os'
 import * as crypto from 'crypto'
 import * as readline from 'readline'
 import { execFile } from 'child_process'
-import type { AIToolType } from '../store/ai-workbench.store'
+import type { AIToolType } from '../store/ai-coding.store'
 
 // ── Public types ──
 

@@ -9,21 +9,21 @@ import { BrowserWindow } from 'electron'
 
 const execFileAsync = promisify(execFile)
 import {
-  getAIWorkbenchConfig,
-  setAIWorkbenchWorkspaces,
-  setAIWorkbenchSessions,
-  setAIWorkbenchGroups,
-  setAIWorkbenchIMConfig,
+  getAICodingConfig,
+  setAICodingWorkspaces,
+  setAICodingSessions,
+  setAICodingGroups,
+  setAICodingIMConfig,
   migrateV1ToV2,
   migrateV2ToV3
-} from '../store/ai-workbench.store'
+} from '../store/ai-coding.store'
 import type {
   AIToolType,
-  AIWorkbenchWorkspace,
-  AIWorkbenchSession,
-  AIWorkbenchGroup,
-  AIWorkbenchIMConfig
-} from '../store/ai-workbench.store'
+  AICodingWorkspace,
+  AICodingSession,
+  AICodingGroup,
+  AICodingIMConfig
+} from '../store/ai-coding.store'
 import {
   killPtySession, hasPtySession, writeToPty,
   createPtySession, getToolCommand, getResumeArgs, getPtySessionOutput,
@@ -122,11 +122,11 @@ function buildToolEnv(toolType: AIToolType): Record<string, string> {
 
 // ── Push event to renderer ──
 
-const runtimeSessions = new Map<string, AIWorkbenchSession>()
+const runtimeSessions = new Map<string, AICodingSession>()
 
 function notifyDataChanged(): void {
   BrowserWindow.getAllWindows().forEach((win) => {
-    win.webContents.send('ai-workbench:data-changed')
+    win.webContents.send('ai-coding:data-changed')
   })
 }
 
@@ -166,7 +166,7 @@ function handleSDKEvent(sessionId: string, data: Record<string, unknown>): void 
     // After Claude finishes a turn, check if it's waiting for interactive input
     const currentOutput = getSDKSessionOutput(sessionId)
     const interactiveState = detectManagedInteractiveState(currentOutput)
-    const updates: Partial<AIWorkbenchSession> = { status: 'idle', lastActivity: interactiveState || 'none' }
+    const updates: Partial<AICodingSession> = { status: 'idle', lastActivity: interactiveState || 'none' }
     if (sid) updates.toolSessionId = sid
     if (costUsd !== undefined) updates.costUsd = costUsd
     updateSession(sessionId, updates)
@@ -234,15 +234,15 @@ export function resetActiveSessionsOnStart(): void {
   migrateV1ToV2()
   migrateV2ToV3()
 
-  const { sessions } = getAIWorkbenchConfig()
-  const updated = sessions.map((s): AIWorkbenchSession => {
+  const { sessions } = getAICodingConfig()
+  const updated = sessions.map((s): AICodingSession => {
     if (s.status !== 'idle' && s.status !== 'running') return s
     // PTY / pipe sessions cannot be re-attached after restart — close them
     return { ...s, status: 'closed', lastActivity: 'none', updatedAt: Date.now() }
   })
   const count = updated.filter((s, i) => s !== sessions[i]).length
   logger.info(`[workbench] Reset ${count} stale sessions on start`)
-  setAIWorkbenchSessions(updated)
+  setAICodingSessions(updated)
 }
 
 /**
@@ -279,17 +279,17 @@ export async function writeToSession(sessionId: string, text: string): Promise<{
 
 // ── Workspaces ──
 
-export function getWorkspaces(): AIWorkbenchWorkspace[] {
-  return getAIWorkbenchConfig().workspaces
+export function getWorkspaces(): AICodingWorkspace[] {
+  return getAICodingConfig().workspaces
 }
 
 export function createWorkspace(
   workingDir: string,
   groupId: string
-): AIWorkbenchWorkspace {
+): AICodingWorkspace {
   const lastDir = path.basename(workingDir) || workingDir
   const now = Date.now()
-  const workspace: AIWorkbenchWorkspace = {
+  const workspace: AICodingWorkspace = {
     id: randomUUID(),
     title: lastDir,
     workingDir,
@@ -297,27 +297,27 @@ export function createWorkspace(
     createdAt: now,
     updatedAt: now
   }
-  const { workspaces } = getAIWorkbenchConfig()
+  const { workspaces } = getAICodingConfig()
   workspaces.push(workspace)
-  setAIWorkbenchWorkspaces(workspaces)
+  setAICodingWorkspaces(workspaces)
   logger.info(`[workbench] Workspace created: ${workspace.id} dir=${workingDir}`)
   return workspace
 }
 
 export function updateWorkspace(
   id: string,
-  updates: Partial<Omit<AIWorkbenchWorkspace, 'id' | 'createdAt'>>
-): AIWorkbenchWorkspace | null {
-  const { workspaces } = getAIWorkbenchConfig()
+  updates: Partial<Omit<AICodingWorkspace, 'id' | 'createdAt'>>
+): AICodingWorkspace | null {
+  const { workspaces } = getAICodingConfig()
   const idx = workspaces.findIndex((w) => w.id === id)
   if (idx === -1) return null
   workspaces[idx] = { ...workspaces[idx], ...updates, updatedAt: Date.now() }
-  setAIWorkbenchWorkspaces(workspaces)
+  setAICodingWorkspaces(workspaces)
   return workspaces[idx]
 }
 
 export async function deleteWorkspace(id: string): Promise<void> {
-  const { sessions } = getAIWorkbenchConfig()
+  const { sessions } = getAICodingConfig()
   const childSessions = sessions.filter((s) => s.workspaceId === id)
   const runtimeChildSessions = Array.from(runtimeSessions.values()).filter((s) => s.workspaceId === id)
   for (const session of [...childSessions, ...runtimeChildSessions]) {
@@ -325,35 +325,35 @@ export async function deleteWorkspace(id: string): Promise<void> {
     closeSDKSession(session.id)
   }
   for (const session of runtimeChildSessions) runtimeSessions.delete(session.id)
-  setAIWorkbenchSessions(sessions.filter((s) => s.workspaceId !== id))
+  setAICodingSessions(sessions.filter((s) => s.workspaceId !== id))
 
-  const { workspaces } = getAIWorkbenchConfig()
-  setAIWorkbenchWorkspaces(workspaces.filter((w) => w.id !== id))
+  const { workspaces } = getAICodingConfig()
+  setAICodingWorkspaces(workspaces.filter((w) => w.id !== id))
   logger.info(`[workbench] Workspace deleted: ${id}, closed ${childSessions.length + runtimeChildSessions.length} sessions`)
 }
 
-export function getSessionsForWorkspace(workspaceId: string): AIWorkbenchSession[] {
+export function getSessionsForWorkspace(workspaceId: string): AICodingSession[] {
   return getSessions().filter((s) => s.workspaceId === workspaceId)
 }
 
 // ── Sessions ──
 
-export function getSessions(): AIWorkbenchSession[] {
-  const persistedSessions = getAIWorkbenchConfig().sessions.filter((s) => s.source !== 'local')
+export function getSessions(): AICodingSession[] {
+  const persistedSessions = getAICodingConfig().sessions.filter((s) => s.source !== 'local')
   return [...persistedSessions, ...runtimeSessions.values()]
 }
 
-function getSessionById(id: string): AIWorkbenchSession | undefined {
-  return runtimeSessions.get(id) || getAIWorkbenchConfig().sessions.find((s) => s.id === id)
+function getSessionById(id: string): AICodingSession | undefined {
+  return runtimeSessions.get(id) || getAICodingConfig().sessions.find((s) => s.id === id)
 }
 
 export function createSession(
   workspaceId: string,
   toolType: AIToolType,
   source: 'local' | 'im' = 'local'
-): AIWorkbenchSession {
+): AICodingSession {
   const now = Date.now()
-  const session: AIWorkbenchSession = {
+  const session: AICodingSession = {
     id: randomUUID(),
     workspaceId,
     toolType,
@@ -363,9 +363,9 @@ export function createSession(
     createdAt: now,
     updatedAt: now
   }
-  const { sessions } = getAIWorkbenchConfig()
+  const { sessions } = getAICodingConfig()
   sessions.push(session)
-  setAIWorkbenchSessions(sessions)
+  setAICodingSessions(sessions)
   logger.info(`[workbench] Session created: ${session.id} tool=${toolType} workspace=${workspaceId}`)
   notifyDataChanged()
   return session
@@ -374,10 +374,10 @@ export function createSession(
 export function createRuntimeSession(
   workspaceId: string,
   toolType: AIToolType,
-  updates: Partial<Pick<AIWorkbenchSession, 'toolSessionId' | 'title'>> = {}
-): AIWorkbenchSession {
+  updates: Partial<Pick<AICodingSession, 'toolSessionId' | 'title'>> = {}
+): AICodingSession {
   const now = Date.now()
-  const session: AIWorkbenchSession = {
+  const session: AICodingSession = {
     id: randomUUID(),
     workspaceId,
     toolType,
@@ -396,8 +396,8 @@ export function createRuntimeSession(
 
 export function updateSession(
   id: string,
-  updates: Partial<Omit<AIWorkbenchSession, 'id' | 'createdAt'>>
-): AIWorkbenchSession | null {
+  updates: Partial<Omit<AICodingSession, 'id' | 'createdAt'>>
+): AICodingSession | null {
   const runtimeSession = runtimeSessions.get(id)
   if (runtimeSession) {
     const updated = { ...runtimeSession, ...updates, updatedAt: Date.now() }
@@ -406,11 +406,11 @@ export function updateSession(
     return updated
   }
 
-  const { sessions } = getAIWorkbenchConfig()
+  const { sessions } = getAICodingConfig()
   const idx = sessions.findIndex((s) => s.id === id)
   if (idx === -1) return null
   sessions[idx] = { ...sessions[idx], ...updates, updatedAt: Date.now() }
-  setAIWorkbenchSessions(sessions)
+  setAICodingSessions(sessions)
   notifyDataChanged()
   return sessions[idx]
 }
@@ -425,8 +425,8 @@ export function deleteSession(id: string): void {
     return
   }
 
-  const { sessions } = getAIWorkbenchConfig()
-  setAIWorkbenchSessions(sessions.filter((s) => s.id !== id))
+  const { sessions } = getAICodingConfig()
+  setAICodingSessions(sessions.filter((s) => s.id !== id))
   logger.info(`[workbench] Session deleted: ${id}`)
   notifyDataChanged()
 }
@@ -442,7 +442,7 @@ export async function launchSession(
   id: string,
   opts?: { forcePty?: boolean; cols?: number; rows?: number }
 ): Promise<{ success: boolean; error?: string }> {
-  const config = getAIWorkbenchConfig()
+  const config = getAICodingConfig()
   const session = getSessionById(id)
   if (!session) return { success: false, error: '会话不存在' }
 
@@ -541,7 +541,7 @@ export async function executeSessionSlashCommand(
  * Stop the session: kill PTY/pipe process, set status -> closed.
  * Session record is kept for potential resume via toolSessionId.
  */
-export async function stopSession(id: string): Promise<AIWorkbenchSession | null> {
+export async function stopSession(id: string): Promise<AICodingSession | null> {
   killPtySession(id)
   closeSDKSession(id)
   closeCodexSession(id)
@@ -558,35 +558,35 @@ export async function stopSession(id: string): Promise<AIWorkbenchSession | null
 
 // ── Groups ──
 
-export function getGroups(): AIWorkbenchGroup[] {
-  return getAIWorkbenchConfig().groups
+export function getGroups(): AICodingGroup[] {
+  return getAICodingConfig().groups
 }
 
-export function createGroup(name: string): AIWorkbenchGroup {
-  const { groups } = getAIWorkbenchConfig()
+export function createGroup(name: string): AICodingGroup {
+  const { groups } = getAICodingConfig()
   const maxOrder = groups.reduce((max, g) => Math.max(max, g.order), 0)
-  const group: AIWorkbenchGroup = {
+  const group: AICodingGroup = {
     id: randomUUID(),
     name,
     isDefault: false,
     order: maxOrder + 1
   }
   groups.push(group)
-  setAIWorkbenchGroups(groups)
+  setAICodingGroups(groups)
   return group
 }
 
-export function renameGroup(id: string, name: string): AIWorkbenchGroup | null {
-  const { groups } = getAIWorkbenchConfig()
+export function renameGroup(id: string, name: string): AICodingGroup | null {
+  const { groups } = getAICodingConfig()
   const group = groups.find((g) => g.id === id)
   if (!group || group.isDefault) return null
   group.name = name
-  setAIWorkbenchGroups(groups)
+  setAICodingGroups(groups)
   return group
 }
 
 export function deleteGroup(id: string): { success: boolean; error?: string } {
-  const config = getAIWorkbenchConfig()
+  const config = getAICodingConfig()
   const group = config.groups.find((g) => g.id === id)
   if (!group) return { success: false, error: '分组不存在' }
   if (group.isDefault) return { success: false, error: '默认分组不可删除' }
@@ -597,19 +597,19 @@ export function deleteGroup(id: string): { success: boolean; error?: string } {
   const workspaces = config.workspaces.map((w) =>
     w.groupId === id ? { ...w, groupId: defaultGroup.id, updatedAt: Date.now() } : w
   )
-  setAIWorkbenchWorkspaces(workspaces)
-  setAIWorkbenchGroups(config.groups.filter((g) => g.id !== id))
+  setAICodingWorkspaces(workspaces)
+  setAICodingGroups(config.groups.filter((g) => g.id !== id))
   return { success: true }
 }
 
 // ── IM Config ──
 
-export function getIMConfig(): AIWorkbenchIMConfig {
-  return getAIWorkbenchConfig().imConfig
+export function getIMConfig(): AICodingIMConfig {
+  return getAICodingConfig().imConfig
 }
 
-export function saveIMConfig(imConfig: AIWorkbenchIMConfig): void {
-  setAIWorkbenchIMConfig(imConfig)
+export function saveIMConfig(imConfig: AICodingIMConfig): void {
+  setAICodingIMConfig(imConfig)
 }
 
 // ── Re-exports ──

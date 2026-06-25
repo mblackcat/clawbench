@@ -411,7 +411,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'settings.aiAssistant.capabilitiesTitle': '能力与子代理',
     'settings.aiAssistant.behaviorTitle': '行为设置',
 
-    // AI Coding (Workbench)
+    // AI Coding
     'coding.title': 'AI Coding',
     'coding.newWorkspace': '新建工作区',
     'coding.searchWorkspace': '搜索工作区',
@@ -1964,7 +1964,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'settings.aiAssistant.capabilitiesTitle': 'Capabilities & Sub-agents',
     'settings.aiAssistant.behaviorTitle': 'Behavior Settings',
 
-    // AI Coding (Workbench)
+    // AI Coding
     'coding.title': 'AI Coding',
     'coding.newWorkspace': 'New Workspace',
     'coding.searchWorkspace': 'Search workspaces',

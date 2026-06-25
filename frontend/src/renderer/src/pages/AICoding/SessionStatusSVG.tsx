@@ -1,6 +1,6 @@
 import React from 'react'
 import { theme } from 'antd'
-import type { SessionStatus, SessionActivity } from '../../types/ai-workbench'
+import type { SessionStatus, SessionActivity } from '../../types/ai-coding'
 
 interface SessionStatusSVGProps {
   status: SessionStatus

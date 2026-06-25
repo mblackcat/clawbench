@@ -78,7 +78,7 @@ const AIToolsSettings: React.FC = () => {
       setFkConfigSynced(res.exists && res.hasCredentials)
     }).catch(() => {})
     // Check if IM feishu credentials are configured
-    window.api.aiWorkbench.getIMConfig().then((cfg: any) => {
+    window.api.aiCoding.getIMConfig().then((cfg: any) => {
       const feishu = cfg?.feishu
       setFkHasImCredentials(!!(feishu?.appId && feishu?.appSecret))
     }).catch(() => {})

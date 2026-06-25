@@ -17,7 +17,7 @@ import { BrowserWindow } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs'
 import * as logger from '../utils/logger'
-import type { AIToolType } from '../store/ai-workbench.store'
+import type { AIToolType } from '../store/ai-coding.store'
 
 // Lazy-import the SDK to avoid issues if it's not installed
 let sdkQuery: typeof import('@anthropic-ai/claude-agent-sdk').query | null = null
@@ -44,7 +44,7 @@ interface SDKSessionState {
   isProcessing: boolean
   permissionMode: SDKPermissionMode
   env?: Record<string, string | undefined>
-  /** Callbacks registered by ai-workbench.service.ts */
+  /** Callbacks registered by ai-coding.service.ts */
   onEvent?: (sessionId: string, data: Record<string, unknown>) => void
   onClose?: (sessionId: string) => void
   onError?: (sessionId: string, err: Error) => void
@@ -180,7 +180,7 @@ export function detectManagedInteractiveState(
 
 function forwardToRenderer(sessionId: string, event: Record<string, unknown>): void {
   BrowserWindow.getAllWindows().forEach((win) => {
-    win.webContents.send('ai-workbench:pipe-event', { sessionId, event })
+    win.webContents.send('ai-coding:pipe-event', { sessionId, event })
   })
 }
 

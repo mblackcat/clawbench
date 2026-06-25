@@ -4,11 +4,11 @@ import { RobotOutlined, MessageOutlined, CheckCircleFilled, CloseCircleFilled, T
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { rehypeHighlightPlugin } from '../../utils/markdown-plugins'
-import WorkbenchChatMessage, { getToolSummary } from './WorkbenchChatMessage'
+import CodingChatMessage, { getToolSummary } from './CodingChatMessage'
 import AskUserQuestionBlock from './AskUserQuestionBlock'
 import TodoUpdateBlock from './TodoUpdateBlock'
 import { useT } from '../../i18n'
-import type { WorkbenchMessage, WorkbenchContentBlock } from '../../types/ai-workbench'
+import type { WorkbenchMessage, WorkbenchContentBlock } from '../../types/ai-coding'
 import { externalLinkMarkdownComponents } from '../../utils/markdown-links'
 import '../AIChat/chat-styles.css'
 
@@ -19,7 +19,7 @@ function isNearBottom(el: HTMLElement): boolean {
   return el.scrollHeight - el.scrollTop - el.clientHeight <= AUTO_SCROLL_THRESHOLD
 }
 
-interface WorkbenchMessageListProps {
+interface CodingMessageListProps {
   messages: WorkbenchMessage[]
   isStreaming: boolean
   streamingBlocks: WorkbenchContentBlock[]
@@ -27,7 +27,7 @@ interface WorkbenchMessageListProps {
   sessionId?: string
 }
 
-const WorkbenchMessageList: React.FC<WorkbenchMessageListProps> = ({
+const CodingMessageList: React.FC<CodingMessageListProps> = ({
   messages, isStreaming, streamingBlocks, hasExistingSession, sessionId
 }) => {
   const { token } = theme.useToken()
@@ -155,7 +155,7 @@ const WorkbenchMessageList: React.FC<WorkbenchMessageListProps> = ({
       style={{ flex: 1, overflow: 'auto', paddingTop: 8, paddingBottom: 8, overflowAnchor: 'none' }}
     >
       {messages.map((msg) => (
-        <WorkbenchChatMessage key={msg.id} message={msg} onToolToggle={handleToolToggle} />
+        <CodingChatMessage key={msg.id} message={msg} onToolToggle={handleToolToggle} />
       ))}
 
       {/* Streaming message preview */}
@@ -333,4 +333,4 @@ const WorkbenchMessageList: React.FC<WorkbenchMessageListProps> = ({
   )
 }
 
-export default WorkbenchMessageList
+export default CodingMessageList

@@ -12,10 +12,10 @@ import {
 } from '@ant-design/icons'
 import { AI_TOOL_SHORT_NAMES, AI_TOOL_TAG_COLORS, AI_TOOL_TAG_STYLE, renderAIToolTagLabel } from './aiToolMeta'
 import { useT } from '../../i18n'
-import { useAIWorkbenchStore } from '../../stores/useAIWorkbenchStore'
-import type { AIToolType } from '../../types/ai-workbench'
+import { useAICodingStore } from '../../stores/useAICodingStore'
+import type { AIToolType } from '../../types/ai-coding'
 
-interface AIWorkbenchSidebarProps {
+interface AICodingSidebarProps {
   onNewWorkspace: () => void
   onNewSession: (workspaceId: string) => void
   onSelectSession: (sessionId: string) => void
@@ -68,7 +68,7 @@ function persistCollapsedWorkspaceIds(ids: Set<string>): void {
   }
 }
 
-const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
+const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
   onNewWorkspace,
   onNewSession,
   onSelectSession
@@ -77,14 +77,14 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
   const { token } = theme.useToken()
   const { modal, message } = App.useApp()
 
-  const workspaces = useAIWorkbenchStore((s) => s.workspaces)
-  const sessions = useAIWorkbenchStore((s) => s.sessions)
-  const groups = useAIWorkbenchStore((s) => s.groups)
-  const activeSessionId = useAIWorkbenchStore((s) => s.activeSessionId)
-  const deleteWorkspace = useAIWorkbenchStore((s) => s.deleteWorkspace)
-  const updateWorkspace = useAIWorkbenchStore((s) => s.updateWorkspace)
-  const renameGroup = useAIWorkbenchStore((s) => s.renameGroup)
-  const deleteGroup = useAIWorkbenchStore((s) => s.deleteGroup)
+  const workspaces = useAICodingStore((s) => s.workspaces)
+  const sessions = useAICodingStore((s) => s.sessions)
+  const groups = useAICodingStore((s) => s.groups)
+  const activeSessionId = useAICodingStore((s) => s.activeSessionId)
+  const deleteWorkspace = useAICodingStore((s) => s.deleteWorkspace)
+  const updateWorkspace = useAICodingStore((s) => s.updateWorkspace)
+  const renameGroup = useAICodingStore((s) => s.renameGroup)
+  const deleteGroup = useAICodingStore((s) => s.deleteGroup)
 
   const [sidebarWidth, setSidebarWidth] = useState(240)
   const isResizing = useRef(false)
@@ -104,15 +104,15 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
   const [nativeSessionVisibleCounts, setNativeSessionVisibleCounts] = useState<Record<string, number>>({})
   const nativeFetchInFlightRef = useRef<Set<string>>(new Set())
 
-  const createSession = useAIWorkbenchStore((s) => s.createSession)
-  const updateSession = useAIWorkbenchStore((s) => s.updateSession)
+  const createSession = useAICodingStore((s) => s.createSession)
+  const updateSession = useAICodingStore((s) => s.updateSession)
 
   // Diff stats per workspace (keyed by workspace id)
   const [diffStats, setDiffStats] = useState<Record<string, { additions: number; deletions: number }>>({})
 
   const syncOpenedSessionTitles = useCallback(async (wsId: string, nativeSessions: SidebarNativeSession[]) => {
     const nativeByKey = new Map(nativeSessions.map((ns) => [`${ns.toolType}:${ns.sessionId}`, ns]))
-    const currentSessions = useAIWorkbenchStore.getState().sessions
+    const currentSessions = useAICodingStore.getState().sessions
     const updates = currentSessions
       .filter((session) => session.workspaceId === wsId && session.toolSessionId)
       .map((session) => {
@@ -168,7 +168,7 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
       const results = await Promise.all(
         TOOLS_WITH_NATIVE_SESSIONS.map(async (tt) => {
           try {
-            const list = await window.api.aiWorkbench.listNativeSessions(ws.workingDir, tt)
+            const list = await window.api.aiCoding.listNativeSessions(ws.workingDir, tt)
             return (list || []).map(ns => ({ ...ns, toolType: tt }))
           } catch { return [] }
         })
@@ -954,4 +954,4 @@ const AIWorkbenchSidebar: React.FC<AIWorkbenchSidebarProps> = ({
   )
 }
 
-export default AIWorkbenchSidebar
+export default AICodingSidebar

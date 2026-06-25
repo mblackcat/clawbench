@@ -6,7 +6,7 @@ export interface ModuleVisibility {
   aiAgents: boolean
   aiTerminal: boolean
   localEnv: boolean
-  aiWorkbench: boolean
+  aiCoding: boolean
 }
 
 const DEFAULT_MODULE_VISIBILITY: ModuleVisibility = {
@@ -14,7 +14,7 @@ const DEFAULT_MODULE_VISIBILITY: ModuleVisibility = {
   aiAgents: true,
   aiTerminal: true,
   localEnv: true,
-  aiWorkbench: true
+  aiCoding: true
 }
 
 interface SettingsState {

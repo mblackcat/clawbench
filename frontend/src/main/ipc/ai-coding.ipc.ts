@@ -29,16 +29,16 @@ import {
   getIMConfig,
   saveIMConfig,
   detectAvailableCLIs
-} from '../services/ai-workbench.service'
+} from '../services/ai-coding.service'
 import { listNativeSessions, loadNativeSessionTranscript } from '../services/native-sessions.service'
 import { writeToPty, resizePty, killPtySession } from '../services/pty-manager.service'
 import { loadShellEnv } from '../services/cli-detect.service'
 import { getIMBridgeService } from '../services/im/im-bridge.service'
 import { settingsStore } from '../store/settings.store'
-import { getIMAutoConnect, setIMAutoConnect } from '../store/ai-workbench.store'
+import { getIMAutoConnect, setIMAutoConnect } from '../store/ai-coding.store'
 
 /**
- * Auto-connect IM if AI Workbench module is enabled and Feishu credentials
+ * Auto-connect IM if AI Coding module is enabled and Feishu credentials
  * are configured. Runs asynchronously after IPC registration so it doesn't
  * block app startup.
  */
@@ -47,7 +47,7 @@ async function autoConnectIM(): Promise<void> {
     const moduleVisibility = settingsStore.get('moduleVisibility') as unknown as
       | Record<string, boolean>
       | undefined
-    if (!moduleVisibility?.aiWorkbench) return
+    if (!moduleVisibility?.aiCoding) return
 
     // Only auto-connect if the user was previously connected (not explicitly disconnected)
     if (!getIMAutoConnect()) return
@@ -56,16 +56,16 @@ async function autoConnectIM(): Promise<void> {
     const { appId, appSecret } = imConfig.feishu
     if (!appId || !appSecret) return
 
-    console.log('[AIWorkbench] Auto-connecting IM (Feishu)…')
+    console.log('[AICoding] Auto-connecting IM (Feishu)…')
     const bridge = getIMBridgeService()
     await bridge.connect('feishu')
-    console.log('[AIWorkbench] IM auto-connect succeeded')
+    console.log('[AICoding] IM auto-connect succeeded')
   } catch (err) {
-    console.error('[AIWorkbench] IM auto-connect failed:', err)
+    console.error('[AICoding] IM auto-connect failed:', err)
   }
 }
 
-export function registerAIWorkbenchIpc(): void {
+export function registerAICodingIpc(): void {
   // Reset any sessions that were active before this process started
   resetActiveSessionsOnStart()
 
@@ -75,40 +75,40 @@ export function registerAIWorkbenchIpc(): void {
 
   // ── Workspaces ──
 
-  ipcMain.handle('ai-workbench:get-workspaces', async () => {
+  ipcMain.handle('ai-coding:get-workspaces', async () => {
     return getWorkspaces()
   })
 
   ipcMain.handle(
-    'ai-workbench:create-workspace',
+    'ai-coding:create-workspace',
     async (_event, workingDir: string, groupId: string) => {
       return createWorkspace(workingDir, groupId)
     }
   )
 
   ipcMain.handle(
-    'ai-workbench:update-workspace',
+    'ai-coding:update-workspace',
     async (_event, id: string, updates: Record<string, unknown>) => {
       return updateWorkspace(id, updates)
     }
   )
 
-  ipcMain.handle('ai-workbench:delete-workspace', async (_event, id: string) => {
+  ipcMain.handle('ai-coding:delete-workspace', async (_event, id: string) => {
     return deleteWorkspace(id)
   })
 
-  ipcMain.handle('ai-workbench:get-workspace-sessions', async (_event, workspaceId: string) => {
+  ipcMain.handle('ai-coding:get-workspace-sessions', async (_event, workspaceId: string) => {
     return getSessionsForWorkspace(workspaceId)
   })
 
   // ── Sessions ──
 
-  ipcMain.handle('ai-workbench:get-sessions', async () => {
+  ipcMain.handle('ai-coding:get-sessions', async () => {
     return getSessions()
   })
 
   ipcMain.handle(
-    'ai-workbench:create-session',
+    'ai-coding:create-session',
     async (_event, workspaceId: string, toolType: string, source?: string) => {
       return source === 'im'
         ? createSession(workspaceId, toolType as any, 'im')
@@ -117,38 +117,38 @@ export function registerAIWorkbenchIpc(): void {
   )
 
   ipcMain.handle(
-    'ai-workbench:update-session',
+    'ai-coding:update-session',
     async (_event, id: string, updates: Record<string, unknown>) => {
       return updateSession(id, updates)
     }
   )
 
-  ipcMain.handle('ai-workbench:delete-session', async (_event, id: string) => {
+  ipcMain.handle('ai-coding:delete-session', async (_event, id: string) => {
     return deleteSession(id)
   })
 
-  ipcMain.handle('ai-workbench:stop-session', async (_event, id: string) => {
+  ipcMain.handle('ai-coding:stop-session', async (_event, id: string) => {
     return stopSession(id)
   })
 
-  ipcMain.handle('ai-workbench:launch-session', async (_event, id: string, opts?: { forcePty?: boolean; cols?: number; rows?: number }) => {
+  ipcMain.handle('ai-coding:launch-session', async (_event, id: string, opts?: { forcePty?: boolean; cols?: number; rows?: number }) => {
     return launchSession(id, opts)
   })
 
-  ipcMain.handle('ai-workbench:write-to-session', async (_event, sessionId: string, text: string) => {
+  ipcMain.handle('ai-coding:write-to-session', async (_event, sessionId: string, text: string) => {
     return writeToSession(sessionId, text)
   })
 
-  ipcMain.handle('ai-workbench:interrupt-session', async (_event, sessionId: string) => {
+  ipcMain.handle('ai-coding:interrupt-session', async (_event, sessionId: string) => {
     interruptSession(sessionId)
     return { success: true }
   })
 
-  ipcMain.handle('ai-workbench:execute-slash-command', async (_event, sessionId: string, command: string) => {
+  ipcMain.handle('ai-coding:execute-slash-command', async (_event, sessionId: string, command: string) => {
     return executeSessionSlashCommand(sessionId, command)
   })
 
-  ipcMain.handle('ai-workbench:set-permission-mode', async (_event, sessionId: string, mode: string) => {
+  ipcMain.handle('ai-coding:set-permission-mode', async (_event, sessionId: string, mode: string) => {
     return setSessionPermissionMode(sessionId, mode)
   })
 
@@ -172,63 +172,63 @@ export function registerAIWorkbenchIpc(): void {
 
   // ── CLI detection ──
 
-  ipcMain.handle('ai-workbench:detect-tools', async () => {
+  ipcMain.handle('ai-coding:detect-tools', async () => {
     return detectAvailableCLIs()
   })
 
   // ── Native session listing (Claude, Codex, Gemini, etc.) ──
 
-  ipcMain.handle('ai-workbench:list-native-sessions', async (_event, workingDir: string, toolType: string) => {
+  ipcMain.handle('ai-coding:list-native-sessions', async (_event, workingDir: string, toolType: string) => {
     return listNativeSessions(workingDir, toolType as any)
   })
 
-  ipcMain.handle('ai-workbench:load-native-session-transcript', async (_event, workingDir: string, toolType: string, sessionId: string) => {
+  ipcMain.handle('ai-coding:load-native-session-transcript', async (_event, workingDir: string, toolType: string, sessionId: string) => {
     return loadNativeSessionTranscript(workingDir, toolType as any, sessionId)
   })
 
   // ── Session output (for IM cards) ──
 
-  ipcMain.handle('ai-workbench:get-session-output', async (_event, sessionId: string) => {
+  ipcMain.handle('ai-coding:get-session-output', async (_event, sessionId: string) => {
     return getSessionOutput(sessionId)
   })
 
-  ipcMain.handle('ai-workbench:get-raw-session-output', async (_event, sessionId: string) => {
+  ipcMain.handle('ai-coding:get-raw-session-output', async (_event, sessionId: string) => {
     return getRawSessionOutput(sessionId)
   })
 
   // ── Groups ──
 
-  ipcMain.handle('ai-workbench:get-groups', async () => {
+  ipcMain.handle('ai-coding:get-groups', async () => {
     return getGroups()
   })
 
-  ipcMain.handle('ai-workbench:create-group', async (_event, name: string) => {
+  ipcMain.handle('ai-coding:create-group', async (_event, name: string) => {
     return createGroup(name)
   })
 
-  ipcMain.handle('ai-workbench:rename-group', async (_event, id: string, name: string) => {
+  ipcMain.handle('ai-coding:rename-group', async (_event, id: string, name: string) => {
     return renameGroup(id, name)
   })
 
-  ipcMain.handle('ai-workbench:delete-group', async (_event, id: string) => {
+  ipcMain.handle('ai-coding:delete-group', async (_event, id: string) => {
     return deleteGroup(id)
   })
 
   // ── IM Config ──
 
-  ipcMain.handle('ai-workbench:get-im-config', async () => {
+  ipcMain.handle('ai-coding:get-im-config', async () => {
     return getIMConfig()
   })
 
-  ipcMain.handle('ai-workbench:save-im-config', async (_event, config) => {
+  ipcMain.handle('ai-coding:save-im-config', async (_event, config) => {
     return saveIMConfig(config)
   })
 
-  ipcMain.handle('ai-workbench:open-directory', async (_event, dirPath: string) => {
+  ipcMain.handle('ai-coding:open-directory', async (_event, dirPath: string) => {
     return shell.openPath(dirPath)
   })
 
-  ipcMain.handle('ai-workbench:open-terminal', async (_event, dirPath: string, toolCommand?: string) => {
+  ipcMain.handle('ai-coding:open-terminal', async (_event, dirPath: string, toolCommand?: string) => {
     const platform = process.platform
     // Build the shell command: always cd first, then optionally launch the tool
     const cdAndRun = toolCommand ? `cd "${dirPath}" && ${toolCommand}` : `cd "${dirPath}"`
@@ -310,26 +310,26 @@ export function registerAIWorkbenchIpc(): void {
 
   // ── IM Bridge ──
 
-  ipcMain.handle('ai-workbench:im-connect', async () => {
+  ipcMain.handle('ai-coding:im-connect', async () => {
     const bridge = getIMBridgeService()
     await bridge.connect('feishu')
     setIMAutoConnect(true)
     return { success: true }
   })
 
-  ipcMain.handle('ai-workbench:im-disconnect', async () => {
+  ipcMain.handle('ai-coding:im-disconnect', async () => {
     const bridge = getIMBridgeService()
     await bridge.disconnect()
     setIMAutoConnect(false)
     return { success: true }
   })
 
-  ipcMain.handle('ai-workbench:im-get-status', async () => {
+  ipcMain.handle('ai-coding:im-get-status', async () => {
     const bridge = getIMBridgeService()
     return bridge.getConnectionStatus()
   })
 
-  ipcMain.handle('ai-workbench:im-test', async () => {
+  ipcMain.handle('ai-coding:im-test', async () => {
     const bridge = getIMBridgeService()
     return bridge.testConnection()
   })

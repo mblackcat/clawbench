@@ -3,11 +3,11 @@ import { Allotment } from 'allotment'
 import { Button, Tooltip, Typography, theme } from 'antd'
 import { CloseOutlined, MessageOutlined, PlusOutlined } from '@ant-design/icons'
 import PaneTabBar from './PaneTabBar'
-import WorkbenchChatPanel from './WorkbenchChatPanel'
-import WorkbenchTerminalView from './WorkbenchTerminalView'
-import { useAIWorkbenchStore } from '../../stores/useAIWorkbenchStore'
+import CodingChatPanel from './CodingChatPanel'
+import CodingTerminalView from './CodingTerminalView'
+import { useAICodingStore } from '../../stores/useAICodingStore'
 import { useT } from '../../i18n'
-import type { AIToolType, ClaudeViewMode } from '../../types/ai-workbench'
+import type { AIToolType, ClaudeViewMode } from '../../types/ai-coding'
 
 const { Text } = Typography
 
@@ -39,7 +39,7 @@ const TabGroup: React.FC<TabGroupProps> = ({
     claudeViewModes, setClaudeViewMode,
     setPaneActiveTab, removeTabFromPane, addTabToPane,
     createSession, updateSession, deleteSession, setFocusedPane, fetchAll, setActiveSession,
-  } = useAIWorkbenchStore()
+  } = useAICodingStore()
 
   const tabs = useMemo(
     () => tabIds.map(id => sessions.find(s => s.id === id)).filter(Boolean) as typeof sessions,
@@ -64,7 +64,7 @@ const TabGroup: React.FC<TabGroupProps> = ({
     if (!activeTabId) return
     const session = sessions.find(s => s.id === activeTabId)
     if (session && session.status !== 'closed' && session.status !== 'completed' && session.status !== 'error') {
-      try { await window.api.aiWorkbench.stopSession(activeTabId) } catch { /* */ }
+      try { await window.api.aiCoding.stopSession(activeTabId) } catch { /* */ }
     }
     setClaudeViewMode(activeTabId, mode)
   }, [activeTabId, sessions, setClaudeViewMode])
@@ -149,11 +149,11 @@ const TabGroup: React.FC<TabGroupProps> = ({
   const handleContentDragLeave = useCallback(() => setDropEdge(null), [])
 
   const handleSplitRight = useCallback((sessionId: string) => {
-    useAIWorkbenchStore.getState().splitPane(paneId, 'horizontal', sessionId)
+    useAICodingStore.getState().splitPane(paneId, 'horizontal', sessionId)
   }, [paneId])
 
   const handleSplitDown = useCallback((sessionId: string) => {
-    useAIWorkbenchStore.getState().splitPane(paneId, 'vertical', sessionId)
+    useAICodingStore.getState().splitPane(paneId, 'vertical', sessionId)
   }, [paneId])
 
   const handlePaneClick = useCallback(() => {
@@ -258,13 +258,13 @@ const TabGroup: React.FC<TabGroupProps> = ({
 
   const activeContent = activeTabId && activeSession ? (
     CHAT_VIEW_TOOLS.has(activeSession.toolType) && claudeViewMode === 'chat' ? (
-      <WorkbenchChatPanel
+      <CodingChatPanel
         sessionId={activeTabId}
         onNewSession={handleNewSession}
         onCloseSession={handleCloseTab}
       />
     ) : (
-      <WorkbenchTerminalView
+      <CodingTerminalView
         key={activeTabId}
         sessionId={activeTabId}
         onNewSession={handleNewSession}
@@ -359,7 +359,7 @@ const TabGroup: React.FC<TabGroupProps> = ({
       <Allotment.Pane minSize={120}>
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
           {terminalTabBar}
-          <WorkbenchTerminalView
+          <CodingTerminalView
             key={activeTerminalSessionId}
             sessionId={activeTerminalSessionId}
             onNewSession={handleNewSession}

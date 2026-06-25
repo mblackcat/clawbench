@@ -1,5 +1,5 @@
 /**
- * IM Bridge Service — orchestrator between IM adapters and AI Workbench.
+ * IM Bridge Service — orchestrator between IM adapters and AI Coding.
  *
  * Responsibilities:
  * - Manage adapter lifecycle (connect / disconnect)
@@ -49,8 +49,8 @@ import {
   writeToSession,
   getSessionOutput,
   getIMConfig
-} from '../ai-workbench.service'
-import type { AIToolType } from '../../store/ai-workbench.store'
+} from '../ai-coding.service'
+import type { AIToolType } from '../../store/ai-coding.store'
 import { listSubApps, getSubAppPath } from '../subapp.service'
 import { listWorkspaces, setActiveWorkspace } from '../workspace.service'
 import { executeSubAppWithCallbacks, resolvePythonCommand } from '../python-runner.service'
@@ -1081,14 +1081,14 @@ class IMBridgeService {
   private broadcastStatus(status: IMConnectionStatus): void {
     const windows = BrowserWindow.getAllWindows()
     for (const win of windows) {
-      win.webContents.send('ai-workbench:im-status-changed', status)
+      win.webContents.send('ai-coding:im-status-changed', status)
     }
   }
 
   private notifyRendererRefresh(): void {
     const windows = BrowserWindow.getAllWindows()
     for (const win of windows) {
-      win.webContents.send('ai-workbench:data-changed')
+      win.webContents.send('ai-coding:data-changed')
     }
   }
 }

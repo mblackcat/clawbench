@@ -2,8 +2,8 @@ import React, { useState, useCallback } from 'react'
 import { Button, Input, Tabs, Tag, theme } from 'antd'
 import { CheckCircleFilled, QuestionCircleOutlined } from '@ant-design/icons'
 import { useT } from '../../i18n'
-import { useAIWorkbenchStore } from '../../stores/useAIWorkbenchStore'
-import type { AskUserQuestionItem } from '../../types/ai-workbench'
+import { useAICodingStore } from '../../stores/useAICodingStore'
+import type { AskUserQuestionItem } from '../../types/ai-coding'
 
 const { TextArea } = Input
 
@@ -156,7 +156,7 @@ const AskUserQuestionBlock: React.FC<AskUserQuestionBlockProps> = ({
 }) => {
   const { token } = theme.useToken()
   const t = useT()
-  const answerQuestion = useAIWorkbenchStore(s => s.answerQuestion)
+  const answerQuestion = useAICodingStore(s => s.answerQuestion)
 
   // Per-question selections and custom text
   const [selections, setSelections] = useState<Map<number, Set<string>>>(() => new Map())

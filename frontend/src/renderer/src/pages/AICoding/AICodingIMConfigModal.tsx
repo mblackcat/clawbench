@@ -7,24 +7,24 @@ import {
   LoadingOutlined,
   FileTextOutlined
 } from '@ant-design/icons'
-import type { AIWorkbenchIMConfig, AIWorkbenchIMConnectionStatus } from '../../types/ai-workbench'
+import type { AICodingIMConfig, AICodingIMConnectionStatus } from '../../types/ai-coding'
 import FeishuGuideModal from '../../components/FeishuGuideModal'
 import { useT } from '../../i18n'
 
 const { Text } = Typography
 
-interface AIWorkbenchIMConfigModalProps {
+interface AICodingIMConfigModalProps {
   open: boolean
-  config: AIWorkbenchIMConfig
-  imStatus: AIWorkbenchIMConnectionStatus
-  onOk: (config: AIWorkbenchIMConfig) => Promise<void>
+  config: AICodingIMConfig
+  imStatus: AICodingIMConnectionStatus
+  onOk: (config: AICodingIMConfig) => Promise<void>
   onCancel: () => void
   onConnect: () => Promise<void>
   onDisconnect: () => Promise<void>
   onTest: () => Promise<{ success: boolean; error?: string }>
 }
 
-const AIWorkbenchIMConfigModal: React.FC<AIWorkbenchIMConfigModalProps> = ({
+const AICodingIMConfigModal: React.FC<AICodingIMConfigModalProps> = ({
   open,
   config,
   imStatus,
@@ -225,4 +225,4 @@ const AIWorkbenchIMConfigModal: React.FC<AIWorkbenchIMConfigModalProps> = ({
   )
 }
 
-export default AIWorkbenchIMConfigModal
+export default AICodingIMConfigModal

@@ -1,19 +1,19 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react'
 import { Spin, App, theme, Typography } from 'antd'
 import { MessageOutlined } from '@ant-design/icons'
-import AIWorkbenchSidebar from './AIWorkbenchSidebar'
+import AICodingSidebar from './AICodingSidebar'
 import SplitContainer from './SplitContainer'
 import VcsChangesPanel from './VcsChangesPanel'
-import AIWorkbenchNewWorkspaceDialog from './AIWorkbenchNewWorkspaceDialog'
-import AIWorkbenchNewSessionDialog from './AIWorkbenchNewSessionDialog'
+import AICodingNewWorkspaceDialog from './AICodingNewWorkspaceDialog'
+import AICodingNewSessionDialog from './AICodingNewSessionDialog'
 import { useT } from '../../i18n'
-import { useAIWorkbenchStore } from '../../stores/useAIWorkbenchStore'
+import { useAICodingStore } from '../../stores/useAICodingStore'
 import { findLeafBySessionId, collectLeaves } from '../../types/split-layout'
-import type { AIToolType } from '../../types/ai-workbench'
+import type { AIToolType } from '../../types/ai-coding'
 
 const { Text } = Typography
 
-const AIWorkbenchPage: React.FC = () => {
+const AICodingPage: React.FC = () => {
   const t = useT()
   const { message } = App.useApp()
   const { token } = theme.useToken()
@@ -28,7 +28,7 @@ const AIWorkbenchPage: React.FC = () => {
     addTabToPane,
     focusedPaneId,
     createSession,
-  } = useAIWorkbenchStore()
+  } = useAICodingStore()
 
   const activeSession = useMemo(
     () => sessions.find(s => s.id === activeSessionId),
@@ -54,7 +54,7 @@ const AIWorkbenchPage: React.FC = () => {
   }, [])
 
   // Get the working dir for the active session's workspace
-  const workspaces = useAIWorkbenchStore((s) => s.workspaces)
+  const workspaces = useAICodingStore((s) => s.workspaces)
   const activeWorkingDir = useMemo(() => {
     if (!activeSession) return ''
     const ws = workspaces.find((w) => w.id === activeSession.workspaceId)
@@ -62,7 +62,7 @@ const AIWorkbenchPage: React.FC = () => {
   }, [activeSession, workspaces])
 
   // Global layout (not per-workspace)
-  const globalLayout = useAIWorkbenchStore((s) => s.globalLayout)
+  const globalLayout = useAICodingStore((s) => s.globalLayout)
   const layout = useMemo(() => {
     return getOrCreateLayout()
   }, [globalLayout, getOrCreateLayout])
@@ -98,7 +98,7 @@ const AIWorkbenchPage: React.FC = () => {
   const handleCreateWorkspace = useCallback(
     async (workingDir: string, groupId: string) => {
       try {
-        await window.api.aiWorkbench.createWorkspace(workingDir, groupId)
+        await window.api.aiCoding.createWorkspace(workingDir, groupId)
         setNewWorkspaceOpen(false)
         await fetchAll()
       } catch {
@@ -144,7 +144,7 @@ const AIWorkbenchPage: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
-      <AIWorkbenchSidebar
+      <AICodingSidebar
         onNewWorkspace={handleNewWorkspace}
         onNewSession={handleNewSession}
         onSelectSession={handleSelectSession}
@@ -177,7 +177,7 @@ const AIWorkbenchPage: React.FC = () => {
         />
       )}
 
-      <AIWorkbenchNewWorkspaceDialog
+      <AICodingNewWorkspaceDialog
         open={newWorkspaceOpen}
         groups={groups}
         defaultGroupId={defaultGroupId}
@@ -185,7 +185,7 @@ const AIWorkbenchPage: React.FC = () => {
         onCancel={() => setNewWorkspaceOpen(false)}
       />
 
-      <AIWorkbenchNewSessionDialog
+      <AICodingNewSessionDialog
         open={newSessionOpen}
         onOk={handleCreateSession}
         onCancel={() => setNewSessionOpen(false)}
@@ -194,4 +194,4 @@ const AIWorkbenchPage: React.FC = () => {
   )
 }
 
-export default AIWorkbenchPage
+export default AICodingPage

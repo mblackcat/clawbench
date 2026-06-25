@@ -2,7 +2,7 @@ import React, { useCallback, useMemo, useRef } from 'react'
 import { Allotment } from 'allotment'
 import 'allotment/dist/style.css'
 import TabGroup from './TabGroup'
-import { useAIWorkbenchStore } from '../../stores/useAIWorkbenchStore'
+import { useAICodingStore } from '../../stores/useAICodingStore'
 import type { LayoutNode } from '../../types/split-layout'
 
 /** Generate a structural fingerprint for keying Allotment so it remounts on structure changes */
@@ -21,10 +21,10 @@ interface SplitContainerProps {
 const SplitContainer: React.FC<SplitContainerProps> = ({
   layout, gitPanelOpen, onToggleGitPanel, path = [],
 }) => {
-  const focusedPaneId = useAIWorkbenchStore(s => s.focusedPaneId)
-  const moveTab = useAIWorkbenchStore(s => s.moveTab)
-  const splitPane = useAIWorkbenchStore(s => s.splitPane)
-  const setSplitSizes = useAIWorkbenchStore(s => s.setSplitSizes)
+  const focusedPaneId = useAICodingStore(s => s.focusedPaneId)
+  const moveTab = useAICodingStore(s => s.moveTab)
+  const splitPane = useAICodingStore(s => s.splitPane)
+  const setSplitSizes = useAICodingStore(s => s.setSplitSizes)
 
   const dragRef = useRef<{ sessionId: string; fromPaneId: string } | null>(null)
 
