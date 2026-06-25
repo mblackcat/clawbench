@@ -97,20 +97,26 @@ export function createAppScaffold(
     const appType = (appInfo.type as string) || 'app'
 
     // Generate manifest.json
-    const manifest = {
+    const manifest: Record<string, unknown> = {
       id: appInfo.id,
       name: appInfo.name,
       version: appInfo.version,
       description: appInfo.description,
       type: appType,
       author: appInfo.author,
-      entry: appInfo.entry || (appType === 'ai-skill' ? 'SKILL.md' : appType === 'prompt' ? 'prompt.md' : 'main.py'),
+      entry: appInfo.entry || (appType === 'ai-skill' ? 'SKILL.md' : appType === 'prompt' ? 'prompt.md' : appType === 'link' ? 'link.json' : 'main.py'),
       category: appInfo.category || 'general',
       supported_workspace_types: appInfo.supported_workspace_types || [],
       params: appInfo.params || [],
       confirm_before_run: appInfo.confirm_before_run || false,
       min_sdk_version: appInfo.min_sdk_version || '1.0.0',
       published: false // 新创建的应用默认未发布
+    }
+    // Link type carries url/icon/mini in the manifest
+    if (appType === 'link') {
+      manifest.url = appInfo.url || ''
+      if (appInfo.icon) manifest.icon = appInfo.icon
+      manifest.mini = appInfo.mini ?? false
     }
     fs.writeFileSync(join(appDir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf-8')
 

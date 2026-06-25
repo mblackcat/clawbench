@@ -369,6 +369,22 @@ export function executeSubApp(
   })
 }
 
+export function sendUiEventToSubApp(taskId: string, event: Record<string, unknown>): boolean {
+  const proc = runningTasks.get(taskId)
+  if (!proc || !proc.stdin || proc.stdin.destroyed) {
+    logger.warn(`Cannot send UI event to task ${taskId}: process not found or stdin closed`)
+    return false
+  }
+
+  try {
+    proc.stdin.write(`${JSON.stringify(event)}\n`)
+    return true
+  } catch (err) {
+    logger.warn(`Failed to send UI event to task ${taskId}:`, err)
+    return false
+  }
+}
+
 /**
  * Processes a single output line from the Python process.
  * Attempts to parse as JSON; if successful, routes based on the type field.

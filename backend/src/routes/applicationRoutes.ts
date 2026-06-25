@@ -8,6 +8,7 @@ import {
   updateApplicationHandler,
   deleteApplicationHandler,
   uploadApplicationPackageHandler,
+  downloadApplicationPackageHandler,
 } from '../controllers/applicationController';
 import { authenticate } from '../middleware/auth';
 
@@ -35,6 +36,12 @@ applicationRouter.post('/', authenticate, createApplicationHandler);
  * 获取应用列表（已发布的应用）
  */
 applicationRouter.get('/', getApplicationsHandler);
+
+/**
+ * GET /api/v1/applications/:applicationId/download
+ * 下载应用包（已发布应用，公开访问）
+ */
+applicationRouter.get('/:applicationId/download', downloadApplicationPackageHandler);
 
 /**
  * GET /api/v1/applications/:applicationId

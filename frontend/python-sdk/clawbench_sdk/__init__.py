@@ -15,6 +15,7 @@ from clawbench_sdk.ui import (
     emit_ui_show,
     emit_ui_update,
     emit_ui_close,
+    read_ui_event,
     load_ui_from_json,
 )
 
@@ -35,6 +36,7 @@ __all__ = [
     "emit_ui_show",
     "emit_ui_update",
     "emit_ui_close",
+    "read_ui_event",
     "load_ui_from_json",
 ]
 

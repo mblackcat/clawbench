@@ -12,6 +12,7 @@ import {
 } from '../services/publisher.service'
 import type { AppInfo } from '../services/publisher.service'
 import { listSubApps } from '../services/subapp.service'
+import { readSkillMeta } from '../services/skill-install.service'
 import { settingsStore } from '../store/settings.store'
 import { getUserAppsPath } from '../utils/paths'
 import * as logger from '../utils/logger'
@@ -158,8 +159,20 @@ export function registerDeveloperIpc(): void {
   })
 
   ipcMain.handle('developer:write-file', async (_event, filePath: string, content: string) => {
-    fs.writeFileSync(filePath, content, 'utf-8')
-    return true
+    try {
+      // Ensure the parent directory exists (AI-generated files may live in
+      // nested subdirectories that haven't been created yet).
+      const dir = dirname(filePath)
+      if (dir && !fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true })
+      }
+      fs.writeFileSync(filePath, content, 'utf-8')
+      return true
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logger.error(`Failed to write file ${filePath}:`, message)
+      throw new Error(`写入文件失败 (${filePath}): ${message}`)
+    }
   })
 
   // ── File tree operations ───────────────────────────────────────────────────
@@ -366,6 +379,66 @@ export function registerDeveloperIpc(): void {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       logger.error('Failed to package app:', message)
+      throw new Error(message)
+    }
+  })
+
+  ipcMain.handle('developer:package-dir', async (_event, sourceDir: string) => {
+    logger.info('Packaging skill directory:', sourceDir)
+
+    try {
+      if (!fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) {
+        throw new Error(`Directory does not exist: ${sourceDir}`)
+      }
+      if (!fs.existsSync(join(sourceDir, 'SKILL.md'))) {
+        throw new Error('No SKILL.md found in directory')
+      }
+
+      const meta = readSkillMeta(sourceDir)
+      const id = meta.manifestId || `skill.${meta.name}`
+
+      // Package from a staging copy so we can guarantee a manifest without
+      // mutating the user's original (possibly read-only) source folder.
+      const tmpDir = join(os.tmpdir(), 'clawbench-publish')
+      fs.mkdirSync(tmpDir, { recursive: true })
+      const stageDir = join(tmpDir, `stage-${Date.now()}`)
+      fs.cpSync(sourceDir, stageDir, { recursive: true, dereference: true })
+
+      let manifest: Record<string, unknown>
+      const manifestPath = join(stageDir, 'manifest.json')
+      if (fs.existsSync(manifestPath)) {
+        manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'))
+      } else {
+        manifest = {
+          id,
+          name: meta.displayName,
+          version: meta.version,
+          description: meta.description,
+          type: 'ai-skill',
+          entry: 'SKILL.md'
+        }
+        fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8')
+      }
+
+      const zipFileName = `${manifest.id}-${manifest.version}.zip`
+      const zipPath = join(tmpDir, zipFileName)
+      if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath)
+
+      zipDirectory(stageDir, zipPath)
+      const buffer = fs.readFileSync(zipPath)
+
+      try {
+        fs.unlinkSync(zipPath)
+        fs.rmSync(stageDir, { recursive: true, force: true })
+      } catch {
+        /* ignore cleanup errors */
+      }
+
+      logger.info(`Skill dir packaged: ${zipFileName}, size: ${buffer.length} bytes`)
+      return { buffer, fileName: zipFileName, fileSize: buffer.length, manifest }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logger.error('Failed to package skill directory:', message)
       throw new Error(message)
     }
   })

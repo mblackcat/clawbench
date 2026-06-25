@@ -14,29 +14,28 @@ import {
 import { CloudUploadOutlined } from '@ant-design/icons'
 import { useLocation, useNavigate } from 'react-router-dom'
 import type { SubAppManifest } from '../../types/subapp'
-import { apiClient } from '../../services/apiClient'
 import { applicationManager } from '../../services/applicationManager'
 import { useAuthStore } from '../../stores/useAuthStore'
+import { useT } from '../../i18n'
 
 const { Title, Paragraph } = Typography
-
-const TYPE_LABELS: Record<string, string> = {
-  app: '应用',
-  'ai-skill': 'AI 技能',
-  prompt: '提示词'
-}
-
-function getTypeLabel(type?: string): string {
-  return TYPE_LABELS[type || 'app'] || '应用'
-}
 
 const AppPublisher: React.FC = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const { message } = App.useApp()
+  const t = useT()
   const { loggedIn, isLocalMode } = useAuthStore()
   const canPublish = loggedIn && !isLocalMode
   const initialAppId = (location.state as { appId?: string })?.appId
+
+  const getTypeLabel = (type?: string): string => {
+    switch (type) {
+      case 'ai-skill': return t('appPublisher.typeSkill')
+      case 'prompt': return t('appPublisher.typePrompt')
+      default: return t('appPublisher.typeApp')
+    }
+  }
 
   const [apps, setApps] = useState<SubAppManifest[]>([])
   const [selectedAppId, setSelectedAppId] = useState<string | undefined>(initialAppId)
@@ -52,10 +51,10 @@ const AppPublisher: React.FC = () => {
   const typeLabel = getTypeLabel(selectedApp?.type)
 
   const steps = [
-    { title: `选择${typeLabel}` },
-    { title: `创建/更新${typeLabel}` },
-    { title: `上传${typeLabel}包` },
-    { title: '完成' }
+    { title: t('appPublisher.stepSelect', typeLabel) },
+    { title: t('appPublisher.stepCreate', typeLabel) },
+    { title: t('appPublisher.stepUpload', typeLabel) },
+    { title: t('appPublisher.stepDone') }
   ]
 
   useEffect(() => {
@@ -65,12 +64,13 @@ const AppPublisher: React.FC = () => {
         const result = await window.api.developer.listMyApps()
         setApps(result)
       } catch {
-        message.error('加载应用列表失败')
+        message.error(t('appPublisher.loadListFailed'))
       } finally {
         setLoading(false)
       }
     }
     fetchApps()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handlePublish = async (): Promise<void> => {
@@ -83,13 +83,13 @@ const AppPublisher: React.FC = () => {
       // 检查用户是否登录（支持本地模式 + 密码/飞书登录）
       const { loggedIn, isLocalMode } = useAuthStore.getState()
       if (!loggedIn || isLocalMode) {
-        throw new Error(isLocalMode ? '本地模式不支持发布，请使用账号登录' : '请先登录后再发布')
+        throw new Error(isLocalMode ? t('appPublisher.localModeError') : t('appPublisher.loginRequiredError'))
       }
 
       // 步骤1: 准备应用信息
       const prepareResult = await window.api.developer.publishApp(selectedAppId)
       if (!prepareResult.success) {
-        throw new Error(prepareResult.error || '准备应用失败')
+        throw new Error(prepareResult.error || t('appPublisher.prepareFailed'))
       }
 
       const manifest = prepareResult.manifest
@@ -134,7 +134,7 @@ const AppPublisher: React.FC = () => {
         }
       } catch (error) {
         console.error('Failed to create/update application:', error)
-        throw new Error('创建或更新应用失败')
+        throw new Error(t('appPublisher.createOrUpdateFailed'))
       }
 
       // 步骤3: 打包并上传应用包
@@ -153,20 +153,20 @@ const AppPublisher: React.FC = () => {
         applicationId,
         file,
         manifest.version,
-        `发布 ${manifest.name} v${manifest.version}`
+        t('appPublisher.changelog', manifest.name, manifest.version)
       )
 
       setCurrentStep(3)
       setPublishResult({
         status: 'success',
-        message: `${getTypeLabel(manifest.type)} "${manifest.name}" v${manifest.version} 已成功发布到服务端。`
+        message: t('appPublisher.publishSuccessMsg', getTypeLabel(manifest.type), manifest.name, manifest.version)
       })
 
     } catch (err) {
       console.error('Publish failed:', err)
       setPublishResult({
         status: 'error',
-        message: err instanceof Error ? err.message : '发布失败'
+        message: err instanceof Error ? err.message : t('appPublisher.publishFailed')
       })
     } finally {
       setPublishing(false)
@@ -186,17 +186,17 @@ const AppPublisher: React.FC = () => {
       <div style={{ maxWidth: 600, margin: '0 auto' }}>
         <Result
           status={publishResult.status}
-          title={publishResult.status === 'success' ? '发布成功' : '发布失败'}
+          title={publishResult.status === 'success' ? t('appPublisher.resultSuccess') : t('appPublisher.resultError')}
           subTitle={publishResult.message}
           extra={[
             <Button key="back" onClick={() => navigate('/apps/library')}>
-              返回发现
+              {t('appPublisher.backToDiscover')}
             </Button>,
             <Button key="reset" type="primary" onClick={() => {
               setPublishResult(null)
               setCurrentStep(0)
             }}>
-              继续发布
+              {t('appPublisher.continuePublish')}
             </Button>
           ]}
         />
@@ -207,15 +207,15 @@ const AppPublisher: React.FC = () => {
   return (
     <div style={{ maxWidth: 800, margin: '0 auto' }}>
       <Title level={4} style={{ marginBottom: 24 }}>
-        发布{typeLabel}
+        {t('appPublisher.title', typeLabel)}
       </Title>
 
       {!canPublish && (
         <Card style={{ marginBottom: 16, background: '#fff7e6', borderColor: '#ffa940' }}>
           <Paragraph style={{ margin: 0 }}>
             {isLocalMode
-              ? '本地模式不支持发布，请使用账号登录后再发布。'
-              : '发布需要登录。请先登录后再继续。'}
+              ? t('appPublisher.localModeHint')
+              : t('appPublisher.loginHint')}
           </Paragraph>
         </Card>
       )}
@@ -226,9 +226,9 @@ const AppPublisher: React.FC = () => {
           <div style={{ textAlign: 'center', padding: 24 }}>
             <Spin size="large" />
             <div style={{ marginTop: 16 }}>
-              {currentStep === 1 && `正在准备${typeLabel}信息...`}
-              {currentStep === 2 && `正在创建/更新${typeLabel}...`}
-              {currentStep === 3 && `正在打包并上传${typeLabel}包...`}
+              {currentStep === 1 && t('appPublisher.preparingInfo', typeLabel)}
+              {currentStep === 2 && t('appPublisher.creatingUpdating', typeLabel)}
+              {currentStep === 3 && t('appPublisher.packagingUploading', typeLabel)}
             </div>
           </div>
         </Card>
@@ -240,7 +240,7 @@ const AppPublisher: React.FC = () => {
             <Select
               value={selectedAppId}
               onChange={setSelectedAppId}
-              placeholder={`选择要发布的${typeLabel}`}
+              placeholder={t('appPublisher.selectPlaceholder', typeLabel)}
               style={{ width: '100%' }}
               size="large"
               options={apps.map((app) => ({
@@ -253,23 +253,23 @@ const AppPublisher: React.FC = () => {
           {selectedApp && (
             <Card style={{ marginBottom: 16 }}>
               <Descriptions column={1} size="small">
-                <Descriptions.Item label="名称">{selectedApp.name}</Descriptions.Item>
-                <Descriptions.Item label="ID">{selectedApp.id}</Descriptions.Item>
-                <Descriptions.Item label="版本">
+                <Descriptions.Item label={t('appPublisher.labelName')}>{selectedApp.name}</Descriptions.Item>
+                <Descriptions.Item label={t('appPublisher.labelId')}>{selectedApp.id}</Descriptions.Item>
+                <Descriptions.Item label={t('appPublisher.labelVersion')}>
                   <Tag>{selectedApp.version}</Tag>
                 </Descriptions.Item>
-                <Descriptions.Item label="描述">
+                <Descriptions.Item label={t('appPublisher.labelDescription')}>
                   {selectedApp.description}
                 </Descriptions.Item>
-                <Descriptions.Item label="作者">
+                <Descriptions.Item label={t('appPublisher.labelAuthor')}>
                   {selectedApp.author && (typeof selectedApp.author === 'string' ? selectedApp.author : selectedApp.author.name)}
                 </Descriptions.Item>
-                <Descriptions.Item label="入口">{selectedApp.entry}</Descriptions.Item>
+                <Descriptions.Item label={t('appPublisher.labelEntry')}>{selectedApp.entry}</Descriptions.Item>
                 {selectedApp.supported_workspace_types &&
                   selectedApp.supported_workspace_types.length > 0 && (
-                    <Descriptions.Item label="支持的工作区">
-                      {selectedApp.supported_workspace_types.map((t) => (
-                        <Tag key={t}>{t}</Tag>
+                    <Descriptions.Item label={t('appPublisher.labelWorkspaces')}>
+                      {selectedApp.supported_workspace_types.map((wt) => (
+                        <Tag key={wt}>{wt}</Tag>
                       ))}
                     </Descriptions.Item>
                   )}
@@ -286,7 +286,7 @@ const AppPublisher: React.FC = () => {
             size="large"
             block
           >
-            发布到服务端
+            {t('appPublisher.publishButton')}
           </Button>
         </>
       )}

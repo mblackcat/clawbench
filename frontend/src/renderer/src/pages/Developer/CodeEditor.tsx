@@ -13,7 +13,8 @@ import {
   Badge,
   Menu,
   Modal,
-  Input
+  Input,
+  Tooltip
 } from 'antd'
 import type { MenuProps } from 'antd'
 import {
@@ -28,12 +29,14 @@ import {
   FileAddOutlined,
   FolderAddOutlined,
   EditOutlined,
-  DeleteOutlined
+  DeleteOutlined,
+  MessageOutlined
 } from '@ant-design/icons'
 import Editor from '@monaco-editor/react'
 import type { DataNode } from 'antd/es/tree'
 import type { SubAppOutput } from '../../types/subapp'
 import AIGenerateModal from '../../components/AIGenerateModal'
+import EditorChatPanel from '../../components/EditorChatPanel'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { useT } from '../../i18n'
 
@@ -96,6 +99,7 @@ const CodeEditor: React.FC = () => {
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null)
   const [aiModalOpen, setAIModalOpen] = useState(false)
   const [aiModalManifest, setAIModalManifest] = useState<Record<string, unknown>>({})
+  const [chatVisible, setChatVisible] = useState(false)
   const outputEndRef = useRef<HTMLDivElement>(null)
   const initialLoadDone = useRef(false)
   const currentTaskIdRef = useRef<string | null>(null)
@@ -414,6 +418,31 @@ const CodeEditor: React.FC = () => {
     }
   }
 
+  // ── Refresh after AI chat edits ──────────────────────────────────────────────
+  // The chat panel writes files directly; refresh the tree and reload any open
+  // tabs from disk (skipping tabs with unsaved local edits to avoid clobbering).
+  const handleChatFilesChanged = async () => {
+    if (!appId) return
+    try {
+      const fileList = await window.api.developer.listAppFiles(appId)
+      setFiles(fileList as FileNode[])
+      const reloaded = await Promise.all(
+        tabs.map(async (tab) => {
+          if (tab.modified) return tab
+          try {
+            const content = await window.api.developer.readFile(tab.path)
+            return { ...tab, content: content as string }
+          } catch {
+            return tab
+          }
+        })
+      )
+      setTabs(reloaded)
+    } catch {
+      // non-fatal: tree refresh is best-effort
+    }
+  }
+
   const getFileLanguage = (fileName: string): string => {
     const ext = fileName.split('.').pop()?.toLowerCase()
     const langMap: Record<string, string> = {
@@ -612,45 +641,65 @@ const CodeEditor: React.FC = () => {
       {/* Header */}
       <div
         style={{
-          padding: '12px 16px',
+          padding: '8px 16px',
           borderBottom: `1px solid ${token.colorBorderSecondary}`,
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center'
         }}
       >
+        {/* Left: back + title */}
         <Space>
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/apps/my-contributions')}>
-            {t('codeEditor.back')}
-          </Button>
+          <Tooltip title={t('codeEditor.back')}>
+            <Button
+              type="text"
+              icon={<ArrowLeftOutlined />}
+              onClick={() => navigate('/apps/my-contributions')}
+            />
+          </Tooltip>
           <Title level={5} style={{ margin: 0 }}>
             {t('codeEditor.title', appId || '')}
           </Title>
         </Space>
-        <Space>
-          <Button icon={<SaveOutlined />} onClick={saveAllFiles}>
-            {t('codeEditor.saveAll')}
+
+        {/* Center: primary Run / Stop */}
+        {isRunning ? (
+          <Button danger icon={<CloseOutlined />} onClick={stopApp}>
+            {t('codeEditor.stop')}
           </Button>
-          <Button icon={<CodeOutlined />} onClick={handleOpenInIde}>
-            {t('codeEditor.openInIde')}
+        ) : (
+          <Button type="primary" icon={<PlayCircleOutlined />} onClick={runApp}>
+            {t('codeEditor.run')}
           </Button>
-          <Button icon={<RobotOutlined />} onClick={handleOpenAIGenerate}>
-            {t('codeEditor.aiGenerate')}
-          </Button>
-          {isRunning ? (
-            <Button danger icon={<CloseOutlined />} onClick={stopApp}>
-              {t('codeEditor.stop')}
-            </Button>
-          ) : (
-            <Button type="primary" icon={<PlayCircleOutlined />} onClick={runApp}>
-              {t('codeEditor.run')}
-            </Button>
-          )}
-          <Badge count={outputLines.length} offset={[-5, 5]}>
-            <Button icon={<CodeOutlined />} onClick={() => setOutputVisible(!outputVisible)}>
-              {outputVisible ? t('codeEditor.hideOutput') : t('codeEditor.showOutput')}
-            </Button>
-          </Badge>
+        )}
+
+        {/* Right: editor + AI + output + chat toggle (icon-only) */}
+        <Space size={4}>
+          <Tooltip title={t('codeEditor.saveAll')}>
+            <Button type="text" icon={<SaveOutlined />} onClick={saveAllFiles} />
+          </Tooltip>
+          <Tooltip title={t('codeEditor.openInIde')}>
+            <Button type="text" icon={<CodeOutlined />} onClick={handleOpenInIde} />
+          </Tooltip>
+          <Tooltip title={t('codeEditor.aiGenerate')}>
+            <Button type="text" icon={<RobotOutlined />} onClick={handleOpenAIGenerate} />
+          </Tooltip>
+          <Tooltip title={outputVisible ? t('codeEditor.hideOutput') : t('codeEditor.showOutput')}>
+            <Badge count={outputLines.length} offset={[-2, 2]} size="small">
+              <Button
+                type="text"
+                icon={<CodeOutlined />}
+                onClick={() => setOutputVisible(!outputVisible)}
+              />
+            </Badge>
+          </Tooltip>
+          <Tooltip title={chatVisible ? t('codeEditor.hideChat') : t('codeEditor.showChat')}>
+            <Button
+              type={chatVisible ? 'primary' : 'text'}
+              icon={<MessageOutlined />}
+              onClick={() => setChatVisible(!chatVisible)}
+            />
+          </Tooltip>
         </Space>
       </div>
 
@@ -766,6 +815,26 @@ const CodeEditor: React.FC = () => {
             </>
           )}
         </Content>
+
+        {/* AI Chat Sidebar (collapsible) */}
+        {chatVisible && (
+          <Sider
+            width={380}
+            style={{
+              background: token.colorBgContainer,
+              borderLeft: `1px solid ${token.colorBorderSecondary}`
+            }}
+          >
+            {appId && (
+              <EditorChatPanel
+                appId={appId}
+                appPath={appPath}
+                onFilesChanged={handleChatFilesChanged}
+                onClose={() => setChatVisible(false)}
+              />
+            )}
+          </Sider>
+        )}
       </Layout>
 
       {/* Output Drawer */}

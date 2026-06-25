@@ -8,9 +8,10 @@ import { Modal, theme } from 'antd';
 import {
   AppstoreOutlined,
   ThunderboltOutlined,
-  FileTextOutlined
+  FileTextOutlined,
+  LinkOutlined
 } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useT } from '../i18n';
 
 interface CreateTypeModalProps {
@@ -20,6 +21,7 @@ interface CreateTypeModalProps {
 
 const CreateTypeModal: React.FC<CreateTypeModalProps> = ({ open, onClose }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { token } = theme.useToken();
   const t = useT();
 
@@ -44,12 +46,21 @@ const CreateTypeModal: React.FC<CreateTypeModalProps> = ({ open, onClose }) => {
       title: t('createType.prompt'),
       description: t('createType.promptDesc'),
       route: '/developer/new-prompt'
+    },
+    {
+      key: 'link',
+      icon: <LinkOutlined style={{ fontSize: 32 }} />,
+      title: t('createType.link'),
+      description: t('createType.linkDesc'),
+      route: '/developer/new-link'
     }
   ];
 
   const handleSelect = (route: string) => {
     onClose();
-    navigate(route);
+    // Remember where Create was launched from so the editor's Back button
+    // can return to the originating page (Installed / Discover / Mine).
+    navigate(route, { state: { from: location.pathname } });
   };
 
   return (
@@ -58,7 +69,7 @@ const CreateTypeModal: React.FC<CreateTypeModalProps> = ({ open, onClose }) => {
       open={open}
       onCancel={onClose}
       footer={null}
-      width={560}
+      width={720}
     >
       <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
         {types.map((item) => (

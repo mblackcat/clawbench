@@ -3,7 +3,7 @@
  * 创建/编辑提示词 — 简单文本输入
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Typography, Input, Button, App, theme } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -22,6 +22,9 @@ const PromptEditor: React.FC = () => {
   const t = useT();
 
   const editAppId = (location.state as any)?.appId;
+  const fromPath = (location.state as any)?.from as string | undefined;
+  const backTarget = fromPath || '/apps/my-contributions';
+  const savingRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -32,6 +35,7 @@ const PromptEditor: React.FC = () => {
     if (editAppId) {
       loadExistingPrompt(editAppId);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editAppId]);
 
   const loadExistingPrompt = async (appId: string) => {
@@ -52,20 +56,22 @@ const PromptEditor: React.FC = () => {
       }
     } catch (error) {
       console.error('Failed to load prompt:', error);
-      message.error('加载提示词失败');
+      message.error(t('promptEditor.loadFailed'));
     }
   };
 
   const handleSave = async () => {
     if (!name.trim()) {
-      message.error('请输入提示词名称');
+      message.error(t('promptEditor.nameRequired'));
       return;
     }
     if (!promptContent.trim()) {
-      message.error('请输入提示词内容');
+      message.error(t('promptEditor.contentRequired'));
       return;
     }
 
+    if (savingRef.current) return;
+    savingRef.current = true;
     setLoading(true);
     try {
       const manifest = {
@@ -82,55 +88,56 @@ const PromptEditor: React.FC = () => {
         await window.api.developer.updateApp(editAppId, manifest);
         const appPath = await window.api.developer.getAppPath(editAppId);
         await window.api.developer.writeFile(`${appPath}/prompt.md`, promptContent);
-        message.success('提示词已更新');
+        message.success(t('promptEditor.promptUpdated'));
       } else {
         const appPath = await window.api.developer.createApp(manifest);
         await window.api.developer.writeFile(`${appPath}/prompt.md`, promptContent);
-        message.success('提示词已创建');
+        message.success(t('promptEditor.promptCreated'));
       }
 
       navigate('/apps/my-contributions');
     } catch (error) {
       console.error('Failed to save prompt:', error);
-      message.error('保存提示词失败');
+      message.error(t('promptEditor.saveFailed'));
     } finally {
       setLoading(false);
+      savingRef.current = false;
     }
   };
 
   return (
     <div style={{ padding: 24, maxWidth: 800 }}>
       <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center', gap: 12 }}>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/apps/my-contributions')}>
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(backTarget)}>
           {t('common.back')}
         </Button>
         <Title level={4} style={{ margin: 0 }}>
-          {editAppId ? '编辑提示词' : '创建提示词'}
+          {editAppId ? t('promptEditor.editTitle') : t('promptEditor.createTitle')}
         </Title>
       </div>
 
       <div style={{ marginBottom: 16 }}>
-        <Text strong>名称 *</Text>
+        <Text strong>{t('promptEditor.name')}</Text>
         <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="给这个提示词起个名字"
+          placeholder={t('promptEditor.namePlaceholder')}
           style={{ marginTop: 8 }}
         />
       </div>
 
       <div style={{ marginBottom: 16 }}>
-        <Text strong>描述</Text>
+        <Text strong>{t('promptEditor.description')}</Text>
         <Input
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="简要描述用途"
+          placeholder={t('promptEditor.descPlaceholder')}
           style={{ marginTop: 8 }}
         />
       </div>
 
       <div style={{ marginBottom: 16 }}>
-        <Text strong>版本</Text>
+        <Text strong>{t('promptEditor.version')}</Text>
         <Input
           value={version}
           onChange={(e) => setVersion(e.target.value)}
@@ -140,18 +147,18 @@ const PromptEditor: React.FC = () => {
       </div>
 
       <div style={{ marginBottom: 24 }}>
-        <Text strong>提示词内容 *</Text>
+        <Text strong>{t('promptEditor.content')}</Text>
         <TextArea
           value={promptContent}
           onChange={(e) => setPromptContent(e.target.value)}
-          placeholder="输入你的 Prompt 文本..."
+          placeholder={t('promptEditor.contentPlaceholder')}
           rows={15}
           style={{ marginTop: 8, fontFamily: 'monospace', fontSize: 13 }}
         />
       </div>
 
-      <Button type="primary" size="large" loading={loading} onClick={handleSave}>
-        {editAppId ? '保存更新' : '创建提示词'}
+      <Button type="primary" size="large" loading={loading} disabled={loading} onClick={handleSave}>
+        {editAppId ? t('promptEditor.saveUpdate') : t('promptEditor.create')}
       </Button>
     </div>
   );

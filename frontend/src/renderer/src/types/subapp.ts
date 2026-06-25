@@ -17,8 +17,10 @@ export interface SubAppManifest {
   description: string
   author: string | { name: string; email?: string; feishu_id?: string }
   icon?: string
-  type?: 'app' | 'ai-skill' | 'prompt'
+  type?: 'app' | 'ai-skill' | 'prompt' | 'link'
   entry: string
+  url?: string // for type 'link'
+  mini?: boolean // for type 'link' — render as compact 1/4-size card
   python_requirements?: string
   supported_workspace_types?: string[]
   confirm_before_run?: boolean

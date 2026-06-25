@@ -15,6 +15,7 @@ import { registerAIWorkbenchIpc } from './ai-workbench.ipc'
 import { registerAITerminalIpc } from './ai-terminal.ipc'
 import { registerMcpIpc } from './mcp.ipc'
 import { registerSkillIpc } from './skill.ipc'
+import { registerLinkIpc } from './link.ipc'
 import { registerWindowIpc } from './window.ipc'
 import { registerAgentMemoryIpc } from './agent-memory.ipc'
 import { registerInternalToolsIpc } from './internal-tools.ipc'
@@ -39,6 +40,7 @@ export function registerAllIpcHandlers(): void {
   registerAITerminalIpc()
   registerMcpIpc()
   registerSkillIpc()
+  registerLinkIpc()
   registerWindowIpc()
   registerAgentMemoryIpc()
   registerInternalToolsIpc()

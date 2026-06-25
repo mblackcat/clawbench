@@ -6,6 +6,7 @@ and receive user interaction events.
 """
 
 import json
+import sys
 from dataclasses import dataclass, field, asdict
 from enum import Enum
 from typing import Any, Dict, List, Optional, Callable
@@ -220,6 +221,22 @@ def emit_ui_close(dialog_id: str) -> None:
         'type': 'ui_close',
         'dialog_id': dialog_id,
     })
+
+
+def read_ui_event() -> Optional[Dict[str, Any]]:
+    """Block until the renderer sends a UI event to this app.
+
+    UI events are delivered as JSON lines on stdin. Returns ``None`` when stdin
+    is closed or the received line cannot be parsed.
+    """
+    line = sys.stdin.readline()
+    if not line:
+        return None
+
+    try:
+        return json.loads(line)
+    except json.JSONDecodeError:
+        return None
 
 
 def load_ui_from_json(json_path: str) -> Dialog:
