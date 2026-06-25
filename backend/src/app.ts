@@ -20,14 +20,12 @@ export function createApp(): Application {
   const app = express();
 
   // 基础中间件
-  // CORS：设置了 CORS_ORIGIN 时启用白名单；未设置时保持开放（桌面客户端
-  // 的 Origin 不固定），但在生产环境打印告警提醒收紧
+  // CORS：设置了 CORS_ORIGIN 时启用白名单。生产环境缺失会在 config 加载时
+  // 直接报错（fail-secure），因此走到 else 开放分支的只可能是开发环境。
   if (config.cors.origins) {
     app.use(cors({ origin: config.cors.origins, credentials: true }));
   } else {
-    if (config.nodeEnv === 'production') {
-      logger.warn('CORS_ORIGIN is not set — all origins are allowed. Set CORS_ORIGIN to restrict.');
-    }
+    logger.warn('CORS_ORIGIN is not set — all origins are allowed (development only).');
     app.use(cors());
   }
   app.use(express.json());

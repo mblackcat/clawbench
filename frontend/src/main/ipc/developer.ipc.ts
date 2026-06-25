@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import fs from 'fs'
-import { join, dirname } from 'path'
+import { join, dirname, resolve, relative, isAbsolute, sep } from 'path'
 import os from 'os'
 import { execSync, spawn } from 'child_process'
 import { zipDirectory } from '../utils/zip'
@@ -86,6 +86,27 @@ function detectLocalTerminal(): string | null {
 }
 
 export function registerDeveloperIpc(): void {
+  // ── Path-traversal guard ─────────────────────────────────────────────────
+  // The file-tree handlers below receive absolute paths straight from the
+  // renderer. Every legitimate path is derived from `getAppPath(appId)`, i.e.
+  // it lives under userData/user-apps. Reject anything that resolves outside
+  // that root so a malicious/buggy caller cannot read or clobber arbitrary
+  // files on disk (e.g. ~/.ssh, system config).
+  const assertWithinAppRoots = (p: string): string => {
+    if (typeof p !== 'string' || p.length === 0) {
+      throw new Error('Invalid path')
+    }
+    const root = resolve(getUserAppsPath())
+    const resolved = resolve(p)
+    const rel = relative(root, resolved)
+    // Inside the root when the relative path neither escapes upward (`..`)
+    // nor is itself absolute (different drive on Windows).
+    if (rel !== '' && (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel))) {
+      throw new Error(`Path is outside the allowed app directory: ${p}`)
+    }
+    return resolved
+  }
+
   ipcMain.handle('developer:create-app', async (_event, appInfo: AppInfo) => {
     const result = createAppScaffold(appInfo)
     if (!result.success) throw new Error(result.error)
@@ -152,6 +173,7 @@ export function registerDeveloperIpc(): void {
   })
 
   ipcMain.handle('developer:read-file', async (_event, filePath: string) => {
+    assertWithinAppRoots(filePath)
     if (!fs.existsSync(filePath)) {
       throw new Error(`File not found: ${filePath}`)
     }
@@ -159,6 +181,7 @@ export function registerDeveloperIpc(): void {
   })
 
   ipcMain.handle('developer:write-file', async (_event, filePath: string, content: string) => {
+    assertWithinAppRoots(filePath)
     try {
       // Ensure the parent directory exists (AI-generated files may live in
       // nested subdirectories that haven't been created yet).
@@ -178,6 +201,7 @@ export function registerDeveloperIpc(): void {
   // ── File tree operations ───────────────────────────────────────────────────
 
   ipcMain.handle('developer:create-file', async (_event, filePath: string) => {
+    assertWithinAppRoots(filePath)
     const dir = dirname(filePath)
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true })
@@ -187,11 +211,14 @@ export function registerDeveloperIpc(): void {
   })
 
   ipcMain.handle('developer:create-folder', async (_event, folderPath: string) => {
+    assertWithinAppRoots(folderPath)
     fs.mkdirSync(folderPath, { recursive: true })
     return true
   })
 
   ipcMain.handle('developer:rename-file', async (_event, oldPath: string, newPath: string) => {
+    assertWithinAppRoots(oldPath)
+    assertWithinAppRoots(newPath)
     if (!fs.existsSync(oldPath)) {
       throw new Error(`Path not found: ${oldPath}`)
     }
@@ -203,6 +230,7 @@ export function registerDeveloperIpc(): void {
   })
 
   ipcMain.handle('developer:delete-file', async (_event, filePath: string) => {
+    assertWithinAppRoots(filePath)
     if (!fs.existsSync(filePath)) {
       throw new Error(`Path not found: ${filePath}`)
     }
@@ -216,6 +244,8 @@ export function registerDeveloperIpc(): void {
   })
 
   ipcMain.handle('developer:move-file', async (_event, oldPath: string, newPath: string) => {
+    assertWithinAppRoots(oldPath)
+    assertWithinAppRoots(newPath)
     if (!fs.existsSync(oldPath)) {
       throw new Error(`Path not found: ${oldPath}`)
     }
