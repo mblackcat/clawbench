@@ -5,7 +5,7 @@
  */
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { Typography, Empty, Button, Tag, Tooltip, theme, App, Space } from 'antd';
+import { Typography, Empty, Button, Tag, Tooltip, theme, App, Space, Segmented, Tabs } from 'antd';
 import {
   SyncOutlined,
   PlayCircleOutlined,
@@ -19,7 +19,9 @@ import {
   SnippetsOutlined,
   LinkOutlined,
   ExportOutlined,
-  CloseOutlined
+  CloseOutlined,
+  AppstoreOutlined,
+  ProfileOutlined
 } from '@ant-design/icons';
 import {
   DndContext,
@@ -49,6 +51,9 @@ import { openExternalLink } from '../../utils/markdown-links';
 import { useT } from '../../i18n';
 
 const { Title, Text } = Typography;
+
+type ViewMode = 'tiled' | 'tabbed';
+const VIEW_MODE_STORAGE_KEY = 'workbench.viewMode';
 
 interface SubAppInfo {
   id: string
@@ -492,6 +497,17 @@ const InstalledAppsPage: React.FC = () => {
   const [drawerAppId, setDrawerAppId] = useState<string>('');
   const [createModalOpen, setCreateModalOpen] = useState(false);
 
+  // View mode (平铺 / tab 页签), persisted across sessions.
+  const [viewMode, setViewMode] = useState<ViewMode>(() =>
+    localStorage.getItem(VIEW_MODE_STORAGE_KEY) === 'tabbed' ? 'tabbed' : 'tiled'
+  );
+  const [activeTab, setActiveTab] = useState<string>('app');
+
+  const handleViewModeChange = (value: ViewMode) => {
+    setViewMode(value);
+    localStorage.setItem(VIEW_MODE_STORAGE_KEY, value);
+  };
+
   const isLocalMode = useAuthStore((state) => state.isLocalMode);
   const t = useT();
 
@@ -591,6 +607,14 @@ const InstalledAppsPage: React.FC = () => {
     }
     return groups.filter(g => g.items.length > 0);
   }, [apps, t]);
+
+  // Keep the tabbed-view active key pointing at an existing group.
+  useEffect(() => {
+    if (groupedApps.length === 0) return;
+    if (!groupedApps.some((g) => g.key === activeTab)) {
+      setActiveTab(groupedApps[0].key);
+    }
+  }, [groupedApps, activeTab]);
 
   const getAuthorId = (author: string | { name: string; email?: string; feishu_id?: string } | undefined): string | undefined => {
     if (!author) return undefined;
@@ -774,11 +798,80 @@ const InstalledAppsPage: React.FC = () => {
 
   const hasApps = apps.length > 0;
 
+  /** Renders the sortable card grid for a single category group (no header). */
+  const renderGroupGrid = (group: { key: string; items: AppWithType[] }) => (
+    <SortableContext items={group.items.map((a) => a.id)} strategy={rectSortingStrategy}>
+      <div
+        style={
+          group.key === 'link'
+            ? {
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(102px, 1fr))',
+                gridAutoRows: '60px',
+                gridAutoFlow: 'dense',
+                gap: 16
+              }
+            : {
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                gap: 16
+              }
+        }
+      >
+        {group.items.map((app, index) => {
+          if (group.key === 'link') {
+            return (
+              <SortableLinkCard
+                key={app.id}
+                appWithType={app}
+                token={token}
+                t={t}
+                onOpen={handleOpenLink}
+                onUninstall={handleUninstall}
+              />
+            );
+          }
+          // 快捷键只对第一组（app）的前 9 个生效
+          const globalIndex = group.key === 'app' ? index : -1;
+          const shortcutLabel =
+            globalIndex >= 0 && globalIndex < 9 && appShortcutEnabled
+              ? `${modifierLabel} + ${globalIndex + 1}`
+              : null;
+          return (
+            <SortableAppCard
+              key={app.id}
+              appWithType={app}
+              index={index}
+              shortcutLabel={shortcutLabel}
+              token={token}
+              t={t}
+              getAppTypeTag={getAppTypeTag}
+              getManifestTypeTag={getManifestTypeTag}
+              onRun={handleRun}
+              onUninstall={handleUninstall}
+              onActivateSkill={handleActivateSkill}
+              onCopyPrompt={handleCopyPrompt}
+              onTryPrompt={handleTryPrompt}
+            />
+          );
+        })}
+      </div>
+    </SortableContext>
+  );
+
   return (
     <div style={{ padding: 24 }}>
       <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Title level={4} style={{ margin: 0 }}>{t('workbench.title')}</Title>
         <div style={{ display: 'flex', gap: 8 }}>
+          <Segmented
+            value={viewMode}
+            onChange={(v) => handleViewModeChange(v as ViewMode)}
+            options={[
+              { value: 'tiled', icon: <Tooltip title={t('workbench.viewTiled')}><AppstoreOutlined /></Tooltip> },
+              { value: 'tabbed', icon: <Tooltip title={t('workbench.viewTabbed')}><ProfileOutlined /></Tooltip> }
+            ]}
+          />
           {!isLocalMode && (
             <Button icon={<CompassOutlined />} onClick={() => navigate('/apps/library')}>
               {t('workbench.discover')}
@@ -806,80 +899,34 @@ const InstalledAppsPage: React.FC = () => {
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
         >
-          {groupedApps.map((group) => (
-            <div key={group.key} style={{ marginBottom: 24 }}>
-              <Text
-                type="secondary"
-                style={{
-                  display: 'block',
-                  marginBottom: 12,
-                  fontSize: 13,
-                  fontWeight: 500
-                }}
-              >
-                {group.label}
-              </Text>
-              <SortableContext
-                items={group.items.map((a) => a.id)}
-                strategy={rectSortingStrategy}
-              >
-                <div
-                  style={
-                    group.key === 'link'
-                      ? {
-                          display: 'grid',
-                          gridTemplateColumns: 'repeat(auto-fill, minmax(102px, 1fr))',
-                          gridAutoRows: '60px',
-                          gridAutoFlow: 'dense',
-                          gap: 16
-                        }
-                      : {
-                          display: 'grid',
-                          gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-                          gap: 16
-                        }
-                  }
+          {viewMode === 'tabbed' ? (
+            <Tabs
+              activeKey={groupedApps.some((g) => g.key === activeTab) ? activeTab : groupedApps[0]?.key}
+              onChange={setActiveTab}
+              items={groupedApps.map((group) => ({
+                key: group.key,
+                label: group.label,
+                children: renderGroupGrid(group)
+              }))}
+            />
+          ) : (
+            groupedApps.map((group) => (
+              <div key={group.key} style={{ marginBottom: 24 }}>
+                <Text
+                  type="secondary"
+                  style={{
+                    display: 'block',
+                    marginBottom: 12,
+                    fontSize: 13,
+                    fontWeight: 500
+                  }}
                 >
-                  {group.items.map((app, index) => {
-                    if (group.key === 'link') {
-                      return (
-                        <SortableLinkCard
-                          key={app.id}
-                          appWithType={app}
-                          token={token}
-                          t={t}
-                          onOpen={handleOpenLink}
-                          onUninstall={handleUninstall}
-                        />
-                      );
-                    }
-                    // 快捷键只对第一组（app）的前 9 个生效
-                    const globalIndex = group.key === 'app' ? index : -1;
-                    const shortcutLabel = globalIndex >= 0 && globalIndex < 9 && appShortcutEnabled
-                      ? `${modifierLabel} + ${globalIndex + 1}`
-                      : null;
-                    return (
-                      <SortableAppCard
-                        key={app.id}
-                        appWithType={app}
-                        index={index}
-                        shortcutLabel={shortcutLabel}
-                        token={token}
-                        t={t}
-                        getAppTypeTag={getAppTypeTag}
-                        getManifestTypeTag={getManifestTypeTag}
-                        onRun={handleRun}
-                        onUninstall={handleUninstall}
-                        onActivateSkill={handleActivateSkill}
-                        onCopyPrompt={handleCopyPrompt}
-                        onTryPrompt={handleTryPrompt}
-                      />
-                    );
-                  })}
-                </div>
-              </SortableContext>
-            </div>
-          ))}
+                  {group.label}
+                </Text>
+                {renderGroupGrid(group)}
+              </div>
+            ))
+          )}
         </DndContext>
       )}
 

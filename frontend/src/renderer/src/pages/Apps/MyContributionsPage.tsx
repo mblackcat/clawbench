@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { Typography, Tag, Tooltip, theme, Button, App } from 'antd';
+import { Typography, Tag, Tooltip, theme, Button, App, Tabs, Empty } from 'antd';
 import {
   EditOutlined,
   CloudUploadOutlined,
@@ -12,7 +12,7 @@ import {
   ArrowLeftOutlined,
   ExportOutlined
 } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { applicationManager } from '../../services/applicationManager';
 import type { Application } from '../../types/api';
 import { useSubAppStore } from '../../stores/useSubAppStore';
@@ -24,6 +24,12 @@ import SkillsManager, { type SelfSkill } from '../../components/SkillsManager';
 import { useT } from '../../i18n';
 
 const { Title, Text } = Typography;
+
+type MineTabKey = 'app' | 'ai-skill' | 'prompt' | 'link';
+const MINE_TAB_STORAGE_KEY = 'mine.activeTab';
+
+const isMineTabKey = (v: unknown): v is MineTabKey =>
+  v === 'app' || v === 'ai-skill' || v === 'prompt' || v === 'link';
 
 interface SubAppInfo {
   id: string
@@ -40,11 +46,33 @@ interface LocalAppWithType extends SubAppInfo {
 
 const MyContributionsPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { token } = theme.useToken();
   const { message } = App.useApp();
   const t = useT();
   const [localApps, setLocalApps] = useState<LocalAppWithType[]>([]);
   const [allApps, setAllApps] = useState<Application[]>([]);
+
+  // Active category tab — restored from localStorage, overridable via navigation state.
+  const [activeTab, setActiveTab] = useState<MineTabKey>(() => {
+    const stored = localStorage.getItem(MINE_TAB_STORAGE_KEY);
+    return isMineTabKey(stored) ? stored : 'app';
+  });
+
+  // "下载打开后切换到对应页签" — a caller can navigate here with { state: { tab } }.
+  useEffect(() => {
+    const hint = (location.state as { tab?: unknown } | null)?.tab;
+    if (isMineTabKey(hint)) {
+      setActiveTab(hint);
+    }
+  }, [location.state]);
+
+  const handleTabChange = (key: string) => {
+    if (isMineTabKey(key)) {
+      setActiveTab(key);
+      localStorage.setItem(MINE_TAB_STORAGE_KEY, key);
+    }
+  };
 
   const fetchApps = useSubAppStore((state) => state.fetchApps);
   const appInfos = useSubAppStore((state) => state.appInfos);
@@ -98,26 +126,24 @@ const MyContributionsPage: React.FC = () => {
     setLocalApps(classified);
   };
 
-  /** 按 manifest.type 分成三组：应用 → AI 技能 → 提示词 */
-  const groupedApps = useMemo(() => {
-    const groups: { key: string; label: string; items: LocalAppWithType[] }[] = [
-      { key: 'app', label: t('mine.groupApp'), items: [] },
-      { key: 'ai-skill', label: t('mine.groupSkill'), items: [] },
-      { key: 'prompt', label: t('mine.groupPrompt'), items: [] },
-      { key: 'link', label: t('mine.groupLink'), items: [] }
-    ];
-    const groupMap = new Map(groups.map(g => [g.key, g]));
+  /** 按 manifest.type 分类，供各 Tab 取用。 */
+  const itemsByCategory = useMemo(() => {
+    const map: Record<MineTabKey, LocalAppWithType[]> = {
+      app: [],
+      'ai-skill': [],
+      prompt: [],
+      link: []
+    };
     for (const app of localApps) {
-      const type = app.manifest.type || 'app';
-      const group = groupMap.get(type);
-      if (group) {
-        group.items.push(app);
+      const type = (app.manifest.type || 'app') as MineTabKey;
+      if (map[type]) {
+        map[type].push(app);
       } else {
-        groupMap.get('app')!.items.push(app);
+        map.app.push(app);
       }
     }
-    return groups.filter(g => g.items.length > 0);
-  }, [localApps, t]);
+    return map;
+  }, [localApps]);
 
   /** AI-skill self/managed entries handed to SkillsManager. */
   const selfSkills = useMemo<SelfSkill[]>(
@@ -126,12 +152,6 @@ const MyContributionsPage: React.FC = () => {
         .filter((a) => a.manifest.type === 'ai-skill')
         .map((a) => ({ id: a.id, manifest: a.manifest, appType: a.appType })),
     [localApps]
-  );
-
-  /** Non-skill groups rendered with the classic card layout. */
-  const nonSkillGroups = useMemo(
-    () => groupedApps.filter((g) => g.key !== 'ai-skill'),
-    [groupedApps]
   );
 
   const getAuthorId = (author: string | { name: string; email?: string; feishu_id?: string } | undefined): string | undefined => {
@@ -322,6 +342,48 @@ const MyContributionsPage: React.FC = () => {
     );
   };
 
+  const gridStyle: React.CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+    gap: 16
+  };
+
+  const renderCardGrid = (items: LocalAppWithType[], emptyLabel: string) =>
+    items.length === 0 ? (
+      <Empty description={emptyLabel} />
+    ) : (
+      <div style={gridStyle}>{items.map((app) => renderLocalAppCard(app))}</div>
+    );
+
+  const tabItems = [
+    {
+      key: 'app',
+      label: t('mine.groupApp'),
+      children: renderCardGrid(itemsByCategory.app, t('mine.emptyCategory'))
+    },
+    {
+      key: 'ai-skill',
+      label: t('mine.groupSkill'),
+      children: (
+        <SkillsManager
+          selfSkills={selfSkills}
+          onEditSelf={(id) => handleEdit(id, 'ai-skill')}
+          onPublishSelf={(id) => handlePublish(id)}
+        />
+      )
+    },
+    {
+      key: 'prompt',
+      label: t('mine.groupPrompt'),
+      children: renderCardGrid(itemsByCategory.prompt, t('mine.emptyCategory'))
+    },
+    {
+      key: 'link',
+      label: t('mine.groupLink'),
+      children: renderCardGrid(itemsByCategory.link, t('mine.emptyCategory'))
+    }
+  ];
+
   return (
     <div style={{ padding: 24 }}>
       <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -331,47 +393,7 @@ const MyContributionsPage: React.FC = () => {
         <Title level={4} style={{ margin: 0 }}>{t('mine.title')}</Title>
       </div>
 
-      {/* AI 技能：导入 / 全局生效 / 项目生效 + 自建 */}
-      <div style={{ marginBottom: 24 }}>
-        <Text
-          type="secondary"
-          style={{ display: 'block', marginBottom: 12, fontSize: 13, fontWeight: 500 }}
-        >
-          {t('mine.groupSkill')}
-        </Text>
-        <SkillsManager
-          selfSkills={selfSkills}
-          onEditSelf={(id) => handleEdit(id, 'ai-skill')}
-          onPublishSelf={(id) => handlePublish(id)}
-        />
-      </div>
-
-      {nonSkillGroups.length === 0 ? null : (
-        nonSkillGroups.map((group) => (
-          <div key={group.key} style={{ marginBottom: 24 }}>
-            <Text
-              type="secondary"
-              style={{
-                display: 'block',
-                marginBottom: 12,
-                fontSize: 13,
-                fontWeight: 500
-              }}
-            >
-              {group.label}
-            </Text>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-                gap: 16
-              }}
-            >
-              {group.items.map((app) => renderLocalAppCard(app))}
-            </div>
-          </div>
-        ))
-      )}
+      <Tabs activeKey={activeTab} onChange={handleTabChange} items={tabItems} />
     </div>
   );
 };

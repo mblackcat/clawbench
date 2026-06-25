@@ -175,7 +175,8 @@ const AppEditor: React.FC = () => {
         navigate(`/developer/code/${newAppId}`)
       }
     } catch (err) {
-      message.error(editMode ? t('appEditor.updateFailed') : t('appEditor.createFailed'))
+      const detail = err instanceof Error ? err.message : String(err)
+      message.error(`${editMode ? t('appEditor.updateFailed') : t('appEditor.createFailed')}: ${detail}`)
     } finally {
       setGenerating(false)
       submittingRef.current = false
@@ -233,7 +234,8 @@ const AppEditor: React.FC = () => {
       setAIModalManifest(manifest)
       setAIModalOpen(true)
     } catch (err) {
-      message.error(t('appEditor.createDirFailed'))
+      const detail = err instanceof Error ? err.message : String(err)
+      message.error(`${t('appEditor.createDirFailed')}: ${detail}`)
     } finally {
       setGenerating(false)
       submittingRef.current = false

@@ -159,8 +159,20 @@ export function registerDeveloperIpc(): void {
   })
 
   ipcMain.handle('developer:write-file', async (_event, filePath: string, content: string) => {
-    fs.writeFileSync(filePath, content, 'utf-8')
-    return true
+    try {
+      // Ensure the parent directory exists (AI-generated files may live in
+      // nested subdirectories that haven't been created yet).
+      const dir = dirname(filePath)
+      if (dir && !fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true })
+      }
+      fs.writeFileSync(filePath, content, 'utf-8')
+      return true
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logger.error(`Failed to write file ${filePath}:`, message)
+      throw new Error(`写入文件失败 (${filePath}): ${message}`)
+    }
   })
 
   // ── File tree operations ───────────────────────────────────────────────────

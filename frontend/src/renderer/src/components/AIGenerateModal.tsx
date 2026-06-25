@@ -3,6 +3,7 @@ import { Modal, Input, Button, Space, Typography, Alert, List, Spin, theme, App 
 import { RobotOutlined, FileOutlined, CheckCircleOutlined } from '@ant-design/icons'
 import { useAIModelStore } from '../stores/useAIModelStore'
 import apiClient, { API_BASE_URL } from '../services/apiClient'
+import { SUBAPP_CODEGEN_SYSTEM_PROMPT } from '../skills/subappCreateSkill'
 
 const { TextArea } = Input
 const { Text, Paragraph } = Typography
@@ -17,57 +18,17 @@ export interface AIGenerateModalProps {
 
 type GenerateStatus = 'idle' | 'generating' | 'success' | 'error'
 
-const SYSTEM_PROMPT = `You are a code generator for ClawBench Python sub-apps. Generate complete, working Python code based on a given manifest.
+// The built-in "create sub-app" skill prompt (full SDK + UI reference) lives in
+// ../skills/subappCreateSkill so it can be shared with the editor chat panel.
+const SYSTEM_PROMPT = SUBAPP_CODEGEN_SYSTEM_PROMPT
 
-## ClawBenchApp SDK
-
-\`\`\`python
-from clawbench_sdk import ClawBenchApp
-
-class MyApp(ClawBenchApp):
-    def run(self) -> None:
-        # self.workspace.path      - str: absolute path to workspace root
-        # self.workspace.vcs_type  - str: "git"|"svn"|"perforce"|""
-        # self.workspace.name      - str: workspace display name
-        # self.params              - dict: parameter values from manifest
-
-        self.emit_output("message", "info")    # levels: info|warn|error|debug
-        self.emit_progress(50.0, "label")       # 0.0-100.0
-        self.emit_result(True, "Done!")         # MUST be called at end of run()
-
-if __name__ == "__main__":
-    MyApp.execute()
-\`\`\`
-
-## Rules
-- Import: \`from clawbench_sdk import ClawBenchApp\`
-- Always end \`run()\` with \`self.emit_result(success: bool, summary: str)\`
-- Wrap all logic in try/except; on exception: call \`self.emit_error(str(e), traceback.format_exc())\`, then \`self.emit_result(False, "Failed: ...")\`
-- Add \`import traceback\` when using traceback.format_exc()
-- Use type hints on all function signatures
-- Write real, substantive code that actually implements the described functionality
-- Do NOT add sys.path manipulation
-
-## Output Format
-
-Output each file using this EXACT format (one block per file, no JSON):
-
-### FILE: main.py
-\`\`\`python
-<complete python source code here>
-\`\`\`
-
-### FILE: README.md
-\`\`\`markdown
-<brief usage documentation in Chinese>
-\`\`\`
-
-Rules for output:
-- Use exactly \`### FILE: <filename>\` as the header for each file
-- Put content inside a fenced code block with the correct language tag
-- Add additional \`### FILE:\` blocks for helper modules if needed
-- Do NOT include manifest.json
-- Do NOT add any explanation text outside the file blocks`
+// Join an app directory with a relative file name without producing double
+// slashes; the main-process write-file handler creates any missing parents.
+function joinAppPath(appPath: string, name: string): string {
+  const base = appPath.replace(/[\\/]+$/, '')
+  const rel = name.replace(/^[\\/]+/, '')
+  return `${base}/${rel}`
+}
 
 // ── Streaming helpers (module-level, not inside component) ──────────────────
 
@@ -243,7 +204,7 @@ const AIGenerateModal: React.FC<AIGenerateModalProps> = ({
   onSuccess
 }) => {
   const { token } = theme.useToken()
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const [instructions, setInstructions] = useState('')
   const [status, setStatus] = useState<GenerateStatus>('idle')
   const [statusText, setStatusText] = useState('')
@@ -269,9 +230,24 @@ const AIGenerateModal: React.FC<AIGenerateModalProps> = ({
 
   const handleClose = useCallback(() => {
     if (status === 'generating') return
+    // Confirm before discarding non-empty input that hasn't been used yet.
+    if (status === 'idle' && instructions.trim().length > 0) {
+      modal.confirm({
+        title: '放弃已填写的内容？',
+        content: '你已填写了额外说明，关闭后将丢失这些内容。确定要关闭吗？',
+        okText: '关闭',
+        okType: 'danger',
+        cancelText: '继续编辑',
+        onOk: () => {
+          reset()
+          onClose()
+        }
+      })
+      return
+    }
     reset()
     onClose()
-  }, [status, reset, onClose])
+  }, [status, instructions, reset, onClose, modal])
 
   const handleGenerate = async () => {
     // Re-fetch to ensure latest model state
@@ -341,7 +317,7 @@ const AIGenerateModal: React.FC<AIGenerateModalProps> = ({
       const fileNames: string[] = []
 
       for (const [name, fileContent] of Object.entries(files)) {
-        await window.api.developer.writeFile(`${appPath}/${name}`, fileContent)
+        await window.api.developer.writeFile(joinAppPath(appPath, name), fileContent)
         fileNames.push(name)
       }
 
