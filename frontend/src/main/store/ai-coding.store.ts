@@ -32,7 +32,7 @@ export interface AICodingSession {
   title?: string
   createdAt: number
   updatedAt: number
-  // Runtime fields persisted so the workbench can re-attach after a restart
+  // Runtime fields persisted so AI Coding can re-attach after a restart
   pidFile?: string
 }
 

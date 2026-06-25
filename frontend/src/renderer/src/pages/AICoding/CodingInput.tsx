@@ -6,7 +6,7 @@ import {
   FolderOutlined, BranchesOutlined, DollarOutlined, MessageOutlined, DashboardOutlined, UnlockOutlined
 } from '@ant-design/icons'
 import { useT } from '../../i18n'
-import type { AIToolType, WorkbenchContentBlock, CodingMode, WorkbenchPendingFile } from '../../types/ai-coding'
+import type { AIToolType, CodingContentBlock, CodingMode, CodingPendingFile } from '../../types/ai-coding'
 
 const { TextArea } = Input
 
@@ -53,7 +53,7 @@ interface CodingInputProps {
   workingDir?: string
   costUsd?: number
   messageCount?: number
-  contextUsage?: Extract<WorkbenchContentBlock, { type: 'context_usage' }>
+  contextUsage?: Extract<CodingContentBlock, { type: 'context_usage' }>
   onSend: (text: string) => void
   onModeChange: (mode: CodingMode) => void
   onInterrupt: () => void
@@ -77,7 +77,7 @@ const CodingInput: React.FC<CodingInputProps> = ({
 }) => {
   const [inputValue, setInputValue] = useState('')
   const [isComposing, setIsComposing] = useState(false)
-  const [pendingFiles, setPendingFiles] = useState<WorkbenchPendingFile[]>([])
+  const [pendingFiles, setPendingFiles] = useState<CodingPendingFile[]>([])
   const [slashIndex, setSlashIndex] = useState(-1) // selected index in inline autocomplete
   const textAreaRef = useRef<any>(null)
   const { token } = theme.useToken()
@@ -213,7 +213,7 @@ const CodingInput: React.FC<CodingInputProps> = ({
     try {
       const filePaths = await window.api.dialog.selectFiles()
       if (filePaths.length === 0) return
-      const newFiles: WorkbenchPendingFile[] = filePaths.map(fp => {
+      const newFiles: CodingPendingFile[] = filePaths.map(fp => {
         const fileName = fp.split('/').pop() || fp.split('\\').pop() || fp
         const ext = fileName.split('.').pop()?.toLowerCase() || ''
         return {

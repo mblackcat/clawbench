@@ -178,7 +178,7 @@ function handleSDKEvent(sessionId: string, data: Record<string, unknown>): void 
 }
 
 function handleSDKClose(sessionId: string): void {
-  logger.info(`[workbench] SDK session closed: ${sessionId}`)
+  logger.info(`[AICoding] SDK session closed: ${sessionId}`)
   const session = getSessionById(sessionId)
   if (session && session.status !== 'closed') {
     updateSession(sessionId, { status: 'completed', lastActivity: 'none' })
@@ -187,7 +187,7 @@ function handleSDKClose(sessionId: string): void {
 }
 
 function handleSDKError(sessionId: string, _err: Error): void {
-  logger.error(`[workbench] SDK session error: ${sessionId}`)
+  logger.error(`[AICoding] SDK session error: ${sessionId}`)
   const session = getSessionById(sessionId)
   if (session && session.status !== 'closed') {
     updateSession(sessionId, { status: 'error' as any, lastActivity: 'none' })
@@ -201,9 +201,9 @@ function handleSDKError(sessionId: string, _err: Error): void {
  */
 function handlePtyExit(sessionId: string, exitCode: number): void {
   if (exitCode === 0) {
-    logger.info(`[workbench] PTY session exited: ${sessionId} code=${exitCode}`)
+    logger.info(`[AICoding] PTY session exited: ${sessionId} code=${exitCode}`)
   } else {
-    logger.warn(`[workbench] PTY session exited: ${sessionId} code=${exitCode}`)
+    logger.warn(`[AICoding] PTY session exited: ${sessionId} code=${exitCode}`)
   }
   const session = getSessionById(sessionId)
   if (session && session.status !== 'closed') {
@@ -241,7 +241,7 @@ export function resetActiveSessionsOnStart(): void {
     return { ...s, status: 'closed', lastActivity: 'none', updatedAt: Date.now() }
   })
   const count = updated.filter((s, i) => s !== sessions[i]).length
-  logger.info(`[workbench] Reset ${count} stale sessions on start`)
+  logger.info(`[AICoding] Reset ${count} stale sessions on start`)
   setAICodingSessions(updated)
 }
 
@@ -273,7 +273,7 @@ export async function writeToSession(sessionId: string, text: string): Promise<{
     return { success: true }
   }
 
-  logger.warn(`[workbench] Write to session failed: ${sessionId} — session not running`)
+  logger.warn(`[AICoding] Write to session failed: ${sessionId} — session not running`)
   return { success: false, error: '会话未运行' }
 }
 
@@ -300,7 +300,7 @@ export function createWorkspace(
   const { workspaces } = getAICodingConfig()
   workspaces.push(workspace)
   setAICodingWorkspaces(workspaces)
-  logger.info(`[workbench] Workspace created: ${workspace.id} dir=${workingDir}`)
+  logger.info(`[AICoding] Workspace created: ${workspace.id} dir=${workingDir}`)
   return workspace
 }
 
@@ -329,7 +329,7 @@ export async function deleteWorkspace(id: string): Promise<void> {
 
   const { workspaces } = getAICodingConfig()
   setAICodingWorkspaces(workspaces.filter((w) => w.id !== id))
-  logger.info(`[workbench] Workspace deleted: ${id}, closed ${childSessions.length + runtimeChildSessions.length} sessions`)
+  logger.info(`[AICoding] Workspace deleted: ${id}, closed ${childSessions.length + runtimeChildSessions.length} sessions`)
 }
 
 export function getSessionsForWorkspace(workspaceId: string): AICodingSession[] {
@@ -366,7 +366,7 @@ export function createSession(
   const { sessions } = getAICodingConfig()
   sessions.push(session)
   setAICodingSessions(sessions)
-  logger.info(`[workbench] Session created: ${session.id} tool=${toolType} workspace=${workspaceId}`)
+  logger.info(`[AICoding] Session created: ${session.id} tool=${toolType} workspace=${workspaceId}`)
   notifyDataChanged()
   return session
 }
@@ -389,7 +389,7 @@ export function createRuntimeSession(
     ...updates
   }
   runtimeSessions.set(session.id, session)
-  logger.info(`[workbench] Runtime session created: ${session.id} tool=${toolType} workspace=${workspaceId}`)
+  logger.info(`[AICoding] Runtime session created: ${session.id} tool=${toolType} workspace=${workspaceId}`)
   notifyDataChanged()
   return session
 }
@@ -420,14 +420,14 @@ export function deleteSession(id: string): void {
   closeSDKSession(id)
   closeCodexSession(id)
   if (runtimeSessions.delete(id)) {
-    logger.info(`[workbench] Runtime session deleted: ${id}`)
+    logger.info(`[AICoding] Runtime session deleted: ${id}`)
     notifyDataChanged()
     return
   }
 
   const { sessions } = getAICodingConfig()
   setAICodingSessions(sessions.filter((s) => s.id !== id))
-  logger.info(`[workbench] Session deleted: ${id}`)
+  logger.info(`[AICoding] Session deleted: ${id}`)
   notifyDataChanged()
 }
 
@@ -504,11 +504,11 @@ export async function launchSession(
     const mode = (session.toolType === 'claude' && !opts?.forcePty)
       ? 'sdk'
       : (session.toolType === 'codex' && !opts?.forcePty) ? 'codex-app-server' : 'pty'
-    logger.info(`[workbench] Session launched: ${id} tool=${session.toolType} mode=${mode}`)
+    logger.info(`[AICoding] Session launched: ${id} tool=${session.toolType} mode=${mode}`)
     return { success: true }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
-    logger.error(`[workbench] Failed to launch session ${id}: ${msg}`)
+    logger.error(`[AICoding] Failed to launch session ${id}: ${msg}`)
     return { success: false, error: msg }
   }
 }
@@ -545,7 +545,7 @@ export async function stopSession(id: string): Promise<AICodingSession | null> {
   killPtySession(id)
   closeSDKSession(id)
   closeCodexSession(id)
-  logger.info(`[workbench] Session stopped: ${id}`)
+  logger.info(`[AICoding] Session stopped: ${id}`)
 
   const session = getSessionById(id)
   let durationMs: number | undefined

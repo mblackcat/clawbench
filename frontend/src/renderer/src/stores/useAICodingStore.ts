@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type {
   AICodingWorkspace, AICodingSession, AICodingGroup, AICodingIMConfig,
   AICodingIMConnectionStatus, AIToolType, DetectedCLI,
-  WorkbenchMessage, WorkbenchContentBlock, CodingMode, ClaudeViewMode,
+  CodingMessage, CodingContentBlock, CodingMode, ClaudeViewMode,
   AskUserQuestionItem
 } from '../types/ai-coding'
 import type { LayoutNode, LeafNode, SplitDirection } from '../types/split-layout'
@@ -41,17 +41,17 @@ function toRuntimePermissionMode(toolType: AIToolType, mode: CodingMode): string
 const MSG_STORAGE_KEY = 'cb-workbench-messages'
 const MSG_PER_SESSION_LIMIT = 100
 
-function loadPersistedMessages(): Record<string, WorkbenchMessage[]> {
+function loadPersistedMessages(): Record<string, CodingMessage[]> {
   try {
     const raw = localStorage.getItem(MSG_STORAGE_KEY)
     return raw ? JSON.parse(raw) : {}
   } catch { return {} }
 }
 
-function persistMessages(msgs: Record<string, WorkbenchMessage[]>): void {
+function persistMessages(msgs: Record<string, CodingMessage[]>): void {
   try {
     // Trim each session to the latest N messages before saving
-    const trimmed: Record<string, WorkbenchMessage[]> = {}
+    const trimmed: Record<string, CodingMessage[]> = {}
     for (const [sid, arr] of Object.entries(msgs)) {
       if (arr.length > 0) {
         trimmed[sid] = arr.length > MSG_PER_SESSION_LIMIT ? arr.slice(-MSG_PER_SESSION_LIMIT) : arr
@@ -61,8 +61,8 @@ function persistMessages(msgs: Record<string, WorkbenchMessage[]>): void {
   } catch { /* storage full — silently skip */ }
 }
 
-function parseClaudeEvent(event: Record<string, unknown>): WorkbenchContentBlock[] {
-  const blocks: WorkbenchContentBlock[] = []
+function parseClaudeEvent(event: Record<string, unknown>): CodingContentBlock[] {
+  const blocks: CodingContentBlock[] = []
   const msgType = event.type as string
   if (msgType === 'context_usage') {
     const usage = (event.usage || {}) as Record<string, number>
@@ -100,9 +100,9 @@ interface AICodingState {
   workspaces: AICodingWorkspace[]; sessions: AICodingSession[]; groups: AICodingGroup[]
   imConfig: AICodingIMConfig; imStatus: AICodingIMConnectionStatus; loading: boolean
   activeSessionId: string | null
-  sessionMessages: Record<string, WorkbenchMessage[]>; sessionStreaming: Record<string, boolean>
-  sessionStreamingBlocks: Record<string, WorkbenchContentBlock[]>; sessionModes: Record<string, CodingMode>
-  sessionContextUsage: Record<string, Extract<WorkbenchContentBlock, { type: 'context_usage' }> | null>
+  sessionMessages: Record<string, CodingMessage[]>; sessionStreaming: Record<string, boolean>
+  sessionStreamingBlocks: Record<string, CodingContentBlock[]>; sessionModes: Record<string, CodingMode>
+  sessionContextUsage: Record<string, Extract<CodingContentBlock, { type: 'context_usage' }> | null>
   fetchWorkspaces: () => Promise<void>; fetchSessions: () => Promise<void>; fetchGroups: () => Promise<void>
   fetchIMConfig: () => Promise<void>; fetchAll: () => Promise<void>
   createWorkspace: (wd: string, gid: string) => Promise<AICodingWorkspace>
@@ -224,7 +224,7 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
       const et = (event as any).type as string
       if (et === 'pipe_exit' || et === 'pipe_error' || et === 'slash_command_done') {
         const cb = st.sessionStreamingBlocks[sessionId] || []
-        if (cb.length > 0) { const m: WorkbenchMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: cb, timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] }, sessionPendingQuestions: { ...s.sessionPendingQuestions, [sessionId]: null } })) }
+        if (cb.length > 0) { const m: CodingMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: cb, timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] }, sessionPendingQuestions: { ...s.sessionPendingQuestions, [sessionId]: null } })) }
         else set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionPendingQuestions: { ...s.sessionPendingQuestions, [sessionId]: null } }))
         return
       }
@@ -232,13 +232,13 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
         const content = (event as any).content as string; if (!content) return
         set(s => { const blocks = [...(s.sessionStreamingBlocks[sessionId] || [])]; const last = blocks[blocks.length - 1]; if (last && last.type === 'raw_output') blocks[blocks.length - 1] = { type: 'raw_output', text: last.text + '\n' + content }; else blocks.push({ type: 'raw_output', text: content }); return { sessionStreaming: { ...s.sessionStreaming, [sessionId]: true }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: blocks } } })
         const act = (event as any).activity as string
-        if (act === 'waiting_input' || act === 'auth_request') { const cur = get(); const blocks = cur.sessionStreamingBlocks[sessionId] || []; if (blocks.length > 0) { const m: WorkbenchMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks, timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } })) } }
+        if (act === 'waiting_input' || act === 'auth_request') { const cur = get(); const blocks = cur.sessionStreamingBlocks[sessionId] || []; if (blocks.length > 0) { const m: CodingMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks, timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } })) } }
         return
       }
       if (session.toolType === 'claude' || session.toolType === 'codex') {
         if (et === 'context_usage') {
           const pb = parseClaudeEvent(event as Record<string, unknown>)
-          const usageBlock = pb.find((b): b is Extract<WorkbenchContentBlock, { type: 'context_usage' }> => b.type === 'context_usage')
+          const usageBlock = pb.find((b): b is Extract<CodingContentBlock, { type: 'context_usage' }> => b.type === 'context_usage')
           if (usageBlock) {
             set(s => ({
               sessionContextUsage: { ...s.sessionContextUsage, [sessionId]: usageBlock },
@@ -255,7 +255,7 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
         }
         // Handle AskUserQuestion dedicated event
         if (et === 'ask_user_question') {
-          const questionBlock: WorkbenchContentBlock = {
+          const questionBlock: CodingContentBlock = {
             type: 'ask_user_question',
             id: (event as any).id || '',
             questions: (event as any).questions || [],
@@ -265,7 +265,7 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
           const cur = get()
           const existingBlocks = cur.sessionStreamingBlocks[sessionId] || []
           const allBlocks = [...existingBlocks, questionBlock]
-          const m: WorkbenchMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: allBlocks, timestamp: Date.now() }
+          const m: CodingMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: allBlocks, timestamp: Date.now() }
           set(s => ({
             sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] },
             sessionStreaming: { ...s.sessionStreaming, [sessionId]: false },
@@ -276,7 +276,7 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
         }
         // Handle TodoWrite dedicated event — append to streaming blocks (non-interactive)
         if (et === 'todo_update') {
-          const todoBlock: WorkbenchContentBlock = {
+          const todoBlock: CodingContentBlock = {
             type: 'todo_update',
             todos: (event as any).todos || [],
           }
@@ -297,8 +297,8 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
           return
         }
         if (et === 'assistant') { set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: true }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [...(s.sessionStreamingBlocks[sessionId] || []), ...pb] } })); return }
-        if (et === 'result') { const existing = get().sessionStreamingBlocks[sessionId] || []; let ab = [...existing]; if (ab.length === 0) { const resultText = typeof (event as any).result === 'string' ? (event as any).result : ''; if (resultText) ab.push({ type: 'text', text: resultText }) }; const usage = (event as any).usage; if (usage && !ab.some(b => b.type === 'context_usage')) ab.push({ type: 'context_usage', inputTokens: usage.inputTokens, cachedInputTokens: usage.cachedInputTokens, outputTokens: usage.outputTokens, usedTokens: usage.usedTokens, contextWindow: usage.contextWindow }); const cost = typeof (event as any).cost_usd === 'number' ? (event as any).cost_usd : undefined; if (ab.length > 0) { const m: WorkbenchMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: ab, timestamp: Date.now(), costUsd: cost }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } })) } else set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } })); return }
-        if (et === 'error') { const ab = [...(get().sessionStreamingBlocks[sessionId] || []), ...pb]; if (ab.length > 0) { const m: WorkbenchMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: ab, timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } })) } }
+        if (et === 'result') { const existing = get().sessionStreamingBlocks[sessionId] || []; let ab = [...existing]; if (ab.length === 0) { const resultText = typeof (event as any).result === 'string' ? (event as any).result : ''; if (resultText) ab.push({ type: 'text', text: resultText }) }; const usage = (event as any).usage; if (usage && !ab.some(b => b.type === 'context_usage')) ab.push({ type: 'context_usage', inputTokens: usage.inputTokens, cachedInputTokens: usage.cachedInputTokens, outputTokens: usage.outputTokens, usedTokens: usage.usedTokens, contextWindow: usage.contextWindow }); const cost = typeof (event as any).cost_usd === 'number' ? (event as any).cost_usd : undefined; if (ab.length > 0) { const m: CodingMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: ab, timestamp: Date.now(), costUsd: cost }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } })) } else set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } })); return }
+        if (et === 'error') { const ab = [...(get().sessionStreamingBlocks[sessionId] || []), ...pb]; if (ab.length > 0) { const m: CodingMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: ab, timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } })) } }
       }
     })
     return () => { u1(); u2(); u3(); u4() }
@@ -331,7 +331,7 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
 
       set(s => {
         if ((s.sessionMessages[sessionId] || []).length > 0) return {}
-        const messages: WorkbenchMessage[] = transcript.slice(-MSG_PER_SESSION_LIMIT).map((msg, idx) => ({
+        const messages: CodingMessage[] = transcript.slice(-MSG_PER_SESSION_LIMIT).map((msg, idx) => ({
           id: `native-${sessionId}-${msg.timestamp || Date.now()}-${idx}`,
           sessionId,
           role: msg.role,
@@ -341,7 +341,7 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
         const contextBlock = [...messages]
           .flatMap((msg) => msg.blocks)
           .reverse()
-          .find((block): block is Extract<WorkbenchContentBlock, { type: 'context_usage' }> => block.type === 'context_usage')
+          .find((block): block is Extract<CodingContentBlock, { type: 'context_usage' }> => block.type === 'context_usage')
         return {
           sessionMessages: { ...s.sessionMessages, [sessionId]: messages },
           ...(contextBlock ? { sessionContextUsage: { ...s.sessionContextUsage, [sessionId]: contextBlock } } : {})
@@ -358,32 +358,32 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
 
   sendUserMessage: async (sessionId, text) => {
     const { sessions } = get(); const session = sessions.find(s => s.id === sessionId); if (!session) return
-    const userMsg: WorkbenchMessage = { id: genMsgId(), sessionId, role: 'user', blocks: [{ type: 'text', text }], timestamp: Date.now() }
+    const userMsg: CodingMessage = { id: genMsgId(), sessionId, role: 'user', blocks: [{ type: 'text', text }], timestamp: Date.now() }
     set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), userMsg] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: true }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } }))
     if (!session.title) { const t = text.slice(0, 50) + (text.length > 50 ? '…' : ''); try { await get().updateSession(sessionId, { title: t }) } catch { /* */ } }
     if (session.status === 'closed' || session.status === 'completed' || session.status === 'error') {
       const r = await get().launchSession(sessionId)
-      if (!r.success) { const em: WorkbenchMessage = { id: genMsgId(), sessionId, role: 'system', blocks: [{ type: 'text', text: `启动失败: ${r.error}` }], timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), em] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false } })); return }
+      if (!r.success) { const em: CodingMessage = { id: genMsgId(), sessionId, role: 'system', blocks: [{ type: 'text', text: `启动失败: ${r.error}` }], timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), em] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false } })); return }
       const activeMode = get().sessionModes[sessionId] || 'ask-first'
       await window.api.aiCoding.setPermissionMode(sessionId, toRuntimePermissionMode(session.toolType, activeMode)).catch(() => {})
       await new Promise(r => setTimeout(r, 500))
     }
-    try { await window.api.aiCoding.writeToSession(sessionId, text) } catch (err: any) { const em: WorkbenchMessage = { id: genMsgId(), sessionId, role: 'system', blocks: [{ type: 'text', text: `发送失败: ${err?.message || String(err)}` }], timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), em] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false } })) }
+    try { await window.api.aiCoding.writeToSession(sessionId, text) } catch (err: any) { const em: CodingMessage = { id: genMsgId(), sessionId, role: 'system', blocks: [{ type: 'text', text: `发送失败: ${err?.message || String(err)}` }], timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), em] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false } })) }
   },
   clearSessionMessages: (sid) => set(s => ({ sessionMessages: { ...s.sessionMessages, [sid]: [] }, sessionStreaming: { ...s.sessionStreaming, [sid]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sid]: [] } })),
   executeSlashCommand: async (sessionId, command) => {
     // Add a system message showing the command, then set streaming
-    const cmdMsg: WorkbenchMessage = { id: genMsgId(), sessionId, role: 'user', blocks: [{ type: 'text', text: command }], timestamp: Date.now() }
+    const cmdMsg: CodingMessage = { id: genMsgId(), sessionId, role: 'user', blocks: [{ type: 'text', text: command }], timestamp: Date.now() }
     set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), cmdMsg] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: true }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } }))
     try {
       const r = await window.api.aiCoding.executeSlashCommand(sessionId, command)
       if (!r.success) {
-        const em: WorkbenchMessage = { id: genMsgId(), sessionId, role: 'system', blocks: [{ type: 'text', text: `命令执行失败: ${r.error}` }], timestamp: Date.now() }
+        const em: CodingMessage = { id: genMsgId(), sessionId, role: 'system', blocks: [{ type: 'text', text: `命令执行失败: ${r.error}` }], timestamp: Date.now() }
         set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), em] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false } }))
       }
       // Success: response events come via onPipeEvent listener (slash_command_done finalizes)
     } catch (err: any) {
-      const em: WorkbenchMessage = { id: genMsgId(), sessionId, role: 'system', blocks: [{ type: 'text', text: `命令执行失败: ${err?.message || String(err)}` }], timestamp: Date.now() }
+      const em: CodingMessage = { id: genMsgId(), sessionId, role: 'system', blocks: [{ type: 'text', text: `命令执行失败: ${err?.message || String(err)}` }], timestamp: Date.now() }
       set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), em] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false } }))
     }
   },

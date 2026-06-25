@@ -71,7 +71,7 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
     {
       key: '/local-env',
       icon: <LaptopOutlined />,
-      label: t('menu.devEnv'),
+      label: t('menu.localEnv'),
       moduleKey: 'localEnv'
     },
     {

@@ -3,7 +3,7 @@ import { useAICodingStore } from '../../stores/useAICodingStore'
 import CodingMessageList from './CodingMessageList'
 import CodingInput from './CodingInput'
 import { useT } from '../../i18n'
-import type { CodingMode, WorkbenchMessage } from '../../types/ai-coding'
+import type { CodingMode, CodingMessage } from '../../types/ai-coding'
 
 let localMsgCounter = 0
 function genLocalMsgId(): string { return `wm-local-${Date.now()}-${++localMsgCounter}` }
@@ -67,7 +67,7 @@ const CodingChatPanel: React.FC<CodingChatPanelProps> = ({ sessionId, onNewSessi
 
   /** Add a local system message bubble */
   const addLocalMessage = useCallback((text: string) => {
-    const msg: WorkbenchMessage = {
+    const msg: CodingMessage = {
       id: genLocalMsgId(), sessionId, role: 'system',
       blocks: [{ type: 'text', text }],
       timestamp: Date.now()

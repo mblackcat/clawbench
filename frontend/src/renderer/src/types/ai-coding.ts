@@ -65,9 +65,9 @@ export interface AICodingSession {
   pidFile?: string
 }
 
-// ── Workbench Chat Message Types ──
+// ── AI Coding Chat Message Types ──
 
-export type WorkbenchContentBlock =
+export type CodingContentBlock =
   | { type: 'text'; text: string }
   | { type: 'thinking'; text: string }
   | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
@@ -77,11 +77,11 @@ export type WorkbenchContentBlock =
   | { type: 'todo_update'; todos: TodoItem[] }
   | { type: 'context_usage'; inputTokens?: number; cachedInputTokens?: number; outputTokens?: number; usedTokens?: number; contextWindow?: number }
 
-export interface WorkbenchMessage {
+export interface CodingMessage {
   id: string
   sessionId: string
   role: 'user' | 'assistant' | 'system'
-  blocks: WorkbenchContentBlock[]
+  blocks: CodingContentBlock[]
   timestamp: number
   costUsd?: number
 }
@@ -121,7 +121,7 @@ export interface AICodingIMConnectionStatus {
   connectedAt?: number
 }
 
-export interface WorkbenchPendingFile {
+export interface CodingPendingFile {
   id: string
   filePath: string
   fileName: string

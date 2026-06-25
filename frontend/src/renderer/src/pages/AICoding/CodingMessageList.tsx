@@ -8,7 +8,7 @@ import CodingChatMessage, { getToolSummary } from './CodingChatMessage'
 import AskUserQuestionBlock from './AskUserQuestionBlock'
 import TodoUpdateBlock from './TodoUpdateBlock'
 import { useT } from '../../i18n'
-import type { WorkbenchMessage, WorkbenchContentBlock } from '../../types/ai-coding'
+import type { CodingMessage, CodingContentBlock } from '../../types/ai-coding'
 import { externalLinkMarkdownComponents } from '../../utils/markdown-links'
 import '../AIChat/chat-styles.css'
 
@@ -20,9 +20,9 @@ function isNearBottom(el: HTMLElement): boolean {
 }
 
 interface CodingMessageListProps {
-  messages: WorkbenchMessage[]
+  messages: CodingMessage[]
   isStreaming: boolean
-  streamingBlocks: WorkbenchContentBlock[]
+  streamingBlocks: CodingContentBlock[]
   hasExistingSession?: boolean
   sessionId?: string
 }

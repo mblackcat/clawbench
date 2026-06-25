@@ -1,3 +1,8 @@
+/**
+ * AI Coding 模块入口（canonical: `aiCoding` / 路由 `/ai-coding`）
+ * 子概念：chat bubble & tui —— Claude Code / Codex / Gemini 编程会话。
+ * 注意：本模块旧名为 "AIWorkbench"，与资源中心 Workbench(`/workbench`) 无关。
+ */
 import React, { useEffect, useState, useMemo, useCallback } from 'react'
 import { Spin, App, theme, Typography } from 'antd'
 import { MessageOutlined } from '@ant-design/icons'

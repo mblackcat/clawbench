@@ -477,7 +477,7 @@ export interface ClawBenchAPI {
     }>>
     loadNativeSessionTranscript: (workingDir: string, toolType: string, sessionId: string) => Promise<Array<{
       role: 'user' | 'assistant' | 'system'
-      blocks: import('./ai-coding').WorkbenchContentBlock[]
+      blocks: import('./ai-coding').CodingContentBlock[]
       timestamp: number
     }>>
     getSessionOutput: (sessionId: string) => Promise<string>

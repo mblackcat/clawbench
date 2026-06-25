@@ -10,7 +10,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'menu.aiTerminal': 'AI 终端',
     'menu.aiAgents': 'AI 智能体',
     'menu.workbench': '工作台',
-    'menu.devEnv': '开发环境',
+    'menu.localEnv': '开发环境',
     'menu.settings': '设置',
 
     // Workbench 页面
@@ -1563,7 +1563,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'menu.aiTerminal': 'AI Terminal',
     'menu.aiAgents': 'AI Agents',
     'menu.workbench': 'Workbench',
-    'menu.devEnv': 'DevEnv Setup',
+    'menu.localEnv': 'DevEnv Setup',
     'menu.settings': 'Settings',
 
     // Workbench page
