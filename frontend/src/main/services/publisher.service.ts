@@ -122,59 +122,44 @@ export function createAppScaffold(
 
     // Only generate main.py + requirements.txt for type=app
     if (appType === 'app') {
+      const params = (appInfo.params as Array<{ name: string; type?: string; default?: unknown; label?: string }>) || []
+
+      // Build param access examples from the user-defined params
+      const paramAccessLines = params.length > 0
+        ? params.map((p) => {
+            const defaultVal = p.default !== undefined && p.default !== '' ? JSON.stringify(p.default) : 'None'
+            return `        # ${p.label || p.name}: self.params.get("${p.name}", ${defaultVal})`
+          }).join('\n')
+        : '        # Access params via self.params (dict)'
+
       const mainPy = `#!/usr/bin/env python3
 """${appInfo.name} - ${appInfo.description}"""
 
-import argparse
-import json
-import sys
+from clawbench_sdk import ClawBenchApp
 
 
-def output(message: str, level: str = "info"):
-    """Send output to ClawBench."""
-    print(json.dumps({"type": "output", "message": message, "level": level}))
-    sys.stdout.flush()
+class App(ClawBenchApp):
+    def run(self) -> None:
+        self.emit_output("Starting ${appInfo.name}...")
+        self.emit_progress(0, "Initializing...")
 
+${paramAccessLines}
 
-def progress(percent: float, message: str = ""):
-    """Report progress to ClawBench."""
-    print(json.dumps({"type": "progress", "percent": percent, "message": message}))
-    sys.stdout.flush()
+        # TODO: Implement your app logic here
+        # self.emit_output("Processing...", "info")
+        # self.emit_progress(50.0, "Halfway there")
 
-
-def result(success: bool, summary: str = ""):
-    """Send final result to ClawBench."""
-    print(json.dumps({"type": "result", "success": success, "summary": summary}))
-    sys.stdout.flush()
-
-
-def main():
-    parser = argparse.ArgumentParser(description="${appInfo.description}")
-    parser.add_argument("--params", required=True, help="Path to params JSON file")
-    parser.add_argument("--workspace", required=True, help="Path to workspace JSON file")
-    args = parser.parse_args()
-
-    with open(args.params, "r") as f:
-        params = json.load(f)
-
-    with open(args.workspace, "r") as f:
-        workspace = json.load(f)
-
-    output("Starting ${appInfo.name}...")
-    progress(0, "Initializing...")
-
-    # TODO: Implement your app logic here
-
-    progress(100, "Done")
-    result(True, "Task completed successfully")
+        self.emit_progress(100, "Done")
+        self.emit_result(True, "Task completed successfully")
 
 
 if __name__ == "__main__":
-    main()
+    App.execute()
 `
       fs.writeFileSync(join(appDir, appInfo.entry || 'main.py'), mainPy, 'utf-8')
 
-      const requirementsTxt = `# Add your Python dependencies here
+      const requirementsTxt = `clawbench-sdk>=1.0.0
+# Add your Python dependencies here
 # Example:
 # requests>=2.28.0
 `
