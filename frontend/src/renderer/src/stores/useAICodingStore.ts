@@ -1,10 +1,10 @@
 import { create } from 'zustand'
 import type {
-  AIWorkbenchWorkspace, AIWorkbenchSession, AIWorkbenchGroup, AIWorkbenchIMConfig,
-  AIWorkbenchIMConnectionStatus, AIToolType, DetectedCLI,
-  WorkbenchMessage, WorkbenchContentBlock, WorkbenchMode, ClaudeViewMode,
+  AICodingWorkspace, AICodingSession, AICodingGroup, AICodingIMConfig,
+  AICodingIMConnectionStatus, AIToolType, DetectedCLI,
+  CodingMessage, CodingContentBlock, CodingMode, ClaudeViewMode,
   AskUserQuestionItem
-} from '../types/ai-workbench'
+} from '../types/ai-coding'
 import type { LayoutNode, LeafNode, SplitDirection } from '../types/split-layout'
 import {
   genPaneId, createDefaultLayout, findLeaf, findLeafBySessionId,
@@ -16,9 +16,9 @@ function genMsgId(): string { return `wm-${Date.now()}-${++msgCounter}` }
 const transcriptHydrationInFlight = new Set<string>()
 
 function upsertSessionList(
-  sessions: AIWorkbenchSession[],
-  session: AIWorkbenchSession
-): AIWorkbenchSession[] {
+  sessions: AICodingSession[],
+  session: AICodingSession
+): AICodingSession[] {
   const idx = sessions.findIndex((s) => s.id === session.id)
   if (idx === -1) return [...sessions, session]
   const next = [...sessions]
@@ -26,9 +26,9 @@ function upsertSessionList(
   return next
 }
 
-function toRuntimePermissionMode(toolType: AIToolType, mode: WorkbenchMode): string {
+function toRuntimePermissionMode(toolType: AIToolType, mode: CodingMode): string {
   if (toolType === 'codex') return mode
-  const modeMap: Record<WorkbenchMode, string> = {
+  const modeMap: Record<CodingMode, string> = {
     'plan': 'plan',
     'ask-first': 'default',
     'auto-edit': 'bypassPermissions',
@@ -41,17 +41,17 @@ function toRuntimePermissionMode(toolType: AIToolType, mode: WorkbenchMode): str
 const MSG_STORAGE_KEY = 'cb-workbench-messages'
 const MSG_PER_SESSION_LIMIT = 100
 
-function loadPersistedMessages(): Record<string, WorkbenchMessage[]> {
+function loadPersistedMessages(): Record<string, CodingMessage[]> {
   try {
     const raw = localStorage.getItem(MSG_STORAGE_KEY)
     return raw ? JSON.parse(raw) : {}
   } catch { return {} }
 }
 
-function persistMessages(msgs: Record<string, WorkbenchMessage[]>): void {
+function persistMessages(msgs: Record<string, CodingMessage[]>): void {
   try {
     // Trim each session to the latest N messages before saving
-    const trimmed: Record<string, WorkbenchMessage[]> = {}
+    const trimmed: Record<string, CodingMessage[]> = {}
     for (const [sid, arr] of Object.entries(msgs)) {
       if (arr.length > 0) {
         trimmed[sid] = arr.length > MSG_PER_SESSION_LIMIT ? arr.slice(-MSG_PER_SESSION_LIMIT) : arr
@@ -61,8 +61,8 @@ function persistMessages(msgs: Record<string, WorkbenchMessage[]>): void {
   } catch { /* storage full — silently skip */ }
 }
 
-function parseClaudeEvent(event: Record<string, unknown>): WorkbenchContentBlock[] {
-  const blocks: WorkbenchContentBlock[] = []
+function parseClaudeEvent(event: Record<string, unknown>): CodingContentBlock[] {
+  const blocks: CodingContentBlock[] = []
   const msgType = event.type as string
   if (msgType === 'context_usage') {
     const usage = (event.usage || {}) as Record<string, number>
@@ -96,34 +96,34 @@ function parseClaudeEvent(event: Record<string, unknown>): WorkbenchContentBlock
   return blocks
 }
 
-interface AIWorkbenchState {
-  workspaces: AIWorkbenchWorkspace[]; sessions: AIWorkbenchSession[]; groups: AIWorkbenchGroup[]
-  imConfig: AIWorkbenchIMConfig; imStatus: AIWorkbenchIMConnectionStatus; loading: boolean
+interface AICodingState {
+  workspaces: AICodingWorkspace[]; sessions: AICodingSession[]; groups: AICodingGroup[]
+  imConfig: AICodingIMConfig; imStatus: AICodingIMConnectionStatus; loading: boolean
   activeSessionId: string | null
-  sessionMessages: Record<string, WorkbenchMessage[]>; sessionStreaming: Record<string, boolean>
-  sessionStreamingBlocks: Record<string, WorkbenchContentBlock[]>; sessionModes: Record<string, WorkbenchMode>
-  sessionContextUsage: Record<string, Extract<WorkbenchContentBlock, { type: 'context_usage' }> | null>
+  sessionMessages: Record<string, CodingMessage[]>; sessionStreaming: Record<string, boolean>
+  sessionStreamingBlocks: Record<string, CodingContentBlock[]>; sessionModes: Record<string, CodingMode>
+  sessionContextUsage: Record<string, Extract<CodingContentBlock, { type: 'context_usage' }> | null>
   fetchWorkspaces: () => Promise<void>; fetchSessions: () => Promise<void>; fetchGroups: () => Promise<void>
   fetchIMConfig: () => Promise<void>; fetchAll: () => Promise<void>
-  createWorkspace: (wd: string, gid: string) => Promise<AIWorkbenchWorkspace>
-  updateWorkspace: (id: string, u: Partial<AIWorkbenchWorkspace>) => Promise<void>
+  createWorkspace: (wd: string, gid: string) => Promise<AICodingWorkspace>
+  updateWorkspace: (id: string, u: Partial<AICodingWorkspace>) => Promise<void>
   deleteWorkspace: (id: string) => Promise<void>
-  createSession: (wid: string, tt: AIToolType, src?: 'local' | 'im') => Promise<AIWorkbenchSession>
-  updateSession: (id: string, u: Partial<AIWorkbenchSession>) => Promise<void>
+  createSession: (wid: string, tt: AIToolType, src?: 'local' | 'im') => Promise<AICodingSession>
+  updateSession: (id: string, u: Partial<AICodingSession>) => Promise<void>
   deleteSession: (id: string) => Promise<void>; stopSession: (id: string) => Promise<void>
   launchSession: (id: string, opts?: { forcePty?: boolean; cols?: number; rows?: number }) => Promise<{ success: boolean; error?: string }>
-  createGroup: (n: string) => Promise<AIWorkbenchGroup>; renameGroup: (id: string, n: string) => Promise<void>
+  createGroup: (n: string) => Promise<AICodingGroup>; renameGroup: (id: string, n: string) => Promise<void>
   deleteGroup: (id: string) => Promise<{ success: boolean; error?: string }>
-  saveIMConfig: (c: AIWorkbenchIMConfig) => Promise<void>
+  saveIMConfig: (c: AICodingIMConfig) => Promise<void>
   imConnect: () => Promise<void>; imDisconnect: () => Promise<void>
   imTest: () => Promise<{ success: boolean; error?: string }>
-  fetchIMStatus: () => Promise<void>; setIMStatus: (s: AIWorkbenchIMConnectionStatus) => void
+  fetchIMStatus: () => Promise<void>; setIMStatus: (s: AICodingIMConnectionStatus) => void
   initListeners: () => () => void; setActiveSession: (sid: string | null) => void
   hydrateSessionTranscript: (sid: string) => Promise<void>
   createAndOpenSession: (wid: string, tt: AIToolType) => Promise<void>; detectTools: () => Promise<DetectedCLI[]>
   sendUserMessage: (sid: string, text: string) => Promise<void>; clearSessionMessages: (sid: string) => void
   executeSlashCommand: (sid: string, command: string) => Promise<void>
-  setSessionMode: (sid: string, m: WorkbenchMode) => void; interruptSession: (sid: string) => Promise<void>
+  setSessionMode: (sid: string, m: CodingMode) => void; interruptSession: (sid: string) => Promise<void>
   claudeViewModes: Record<string, ClaudeViewMode>
   setClaudeViewMode: (sid: string, m: ClaudeViewMode) => void
   sessionPendingQuestions: Record<string, { id: string; questions: AskUserQuestionItem[] } | null>
@@ -142,7 +142,7 @@ interface AIWorkbenchState {
   setSplitSizes: (path: number[], sizes: number[]) => void
 }
 
-export const useAIWorkbenchStore = create<AIWorkbenchState>((set, get) => ({
+export const useAICodingStore = create<AICodingState>((set, get) => ({
   workspaces: [], sessions: [], groups: [],
   imConfig: { feishu: { appId: '', appSecret: '' } }, imStatus: { state: 'disconnected' }, loading: false,
   activeSessionId: null, sessionMessages: loadPersistedMessages(), sessionStreaming: {}, sessionStreamingBlocks: {}, sessionModes: {}, sessionContextUsage: {},
@@ -151,29 +151,29 @@ export const useAIWorkbenchStore = create<AIWorkbenchState>((set, get) => ({
   globalLayout: null,
   focusedPaneId: null,
 
-  fetchWorkspaces: async () => { try { set({ workspaces: await window.api.aiWorkbench.getWorkspaces() }) } catch (e) { console.error('fetch workspaces:', e) } },
-  fetchSessions: async () => { try { set({ sessions: await window.api.aiWorkbench.getSessions() }) } catch (e) { console.error('fetch sessions:', e) } },
-  fetchGroups: async () => { try { set({ groups: await window.api.aiWorkbench.getGroups() }) } catch (e) { console.error('fetch groups:', e) } },
-  fetchIMConfig: async () => { try { set({ imConfig: await window.api.aiWorkbench.getIMConfig() }) } catch (e) { console.error('fetch IM config:', e) } },
+  fetchWorkspaces: async () => { try { set({ workspaces: await window.api.aiCoding.getWorkspaces() }) } catch (e) { console.error('fetch workspaces:', e) } },
+  fetchSessions: async () => { try { set({ sessions: await window.api.aiCoding.getSessions() }) } catch (e) { console.error('fetch sessions:', e) } },
+  fetchGroups: async () => { try { set({ groups: await window.api.aiCoding.getGroups() }) } catch (e) { console.error('fetch groups:', e) } },
+  fetchIMConfig: async () => { try { set({ imConfig: await window.api.aiCoding.getIMConfig() }) } catch (e) { console.error('fetch IM config:', e) } },
   fetchAll: async () => {
     set({ loading: true })
     try {
       const [workspaces, sessions, groups, imConfig, imStatus] = await Promise.all([
-        window.api.aiWorkbench.getWorkspaces(), window.api.aiWorkbench.getSessions(),
-        window.api.aiWorkbench.getGroups(), window.api.aiWorkbench.getIMConfig(), window.api.aiWorkbench.imGetStatus()])
+        window.api.aiCoding.getWorkspaces(), window.api.aiCoding.getSessions(),
+        window.api.aiCoding.getGroups(), window.api.aiCoding.getIMConfig(), window.api.aiCoding.imGetStatus()])
       set({ workspaces, sessions, groups, imConfig, imStatus, loading: false })
     } catch (e) { console.error('fetch all:', e); set({ loading: false }) }
   },
-  createWorkspace: async (wd, gid) => { const w = await window.api.aiWorkbench.createWorkspace(wd, gid); set({ workspaces: await window.api.aiWorkbench.getWorkspaces() }); return w },
-  updateWorkspace: async (id, u) => { await window.api.aiWorkbench.updateWorkspace(id, u); set({ workspaces: await window.api.aiWorkbench.getWorkspaces() }) },
+  createWorkspace: async (wd, gid) => { const w = await window.api.aiCoding.createWorkspace(wd, gid); set({ workspaces: await window.api.aiCoding.getWorkspaces() }); return w },
+  updateWorkspace: async (id, u) => { await window.api.aiCoding.updateWorkspace(id, u); set({ workspaces: await window.api.aiCoding.getWorkspaces() }) },
   deleteWorkspace: async (id) => {
     const { sessions, activeSessionId } = get(); const wsIds = new Set(sessions.filter(s => s.workspaceId === id).map(s => s.id))
-    await window.api.aiWorkbench.deleteWorkspace(id)
-    const [workspaces, ss] = await Promise.all([window.api.aiWorkbench.getWorkspaces(), window.api.aiWorkbench.getSessions()])
+    await window.api.aiCoding.deleteWorkspace(id)
+    const [workspaces, ss] = await Promise.all([window.api.aiCoding.getWorkspaces(), window.api.aiCoding.getSessions()])
     set({ workspaces, sessions: ss, activeSessionId: activeSessionId && wsIds.has(activeSessionId) ? null : activeSessionId })
   },
   createSession: async (wid, tt, src = 'local') => {
-    const session = await window.api.aiWorkbench.createSession(wid, tt, src)
+    const session = await window.api.aiCoding.createSession(wid, tt, src)
     set((state) => ({ sessions: upsertSessionList(state.sessions, session) }))
     return session
   },
@@ -183,48 +183,48 @@ export const useAIWorkbenchStore = create<AIWorkbenchState>((set, get) => ({
         session.id === id ? { ...session, ...updates, updatedAt: Date.now() } : session
       )
     }))
-    const updated = await window.api.aiWorkbench.updateSession(id, updates)
+    const updated = await window.api.aiCoding.updateSession(id, updates)
     if (updated) {
       set((state) => ({ sessions: upsertSessionList(state.sessions, updated) }))
     } else {
-      set({ sessions: await window.api.aiWorkbench.getSessions() })
+      set({ sessions: await window.api.aiCoding.getSessions() })
     }
   },
   deleteSession: async (id) => {
     const { activeSessionId: aid, sessionMessages: sm, sessionStreaming: ss, sessionStreamingBlocks: sb, sessionModes: smo, sessionContextUsage: scu } = get()
-    await window.api.aiWorkbench.deleteSession(id); const sessions = await window.api.aiWorkbench.getSessions()
+    await window.api.aiCoding.deleteSession(id); const sessions = await window.api.aiCoding.getSessions()
     const nm = { ...sm }; const ns = { ...ss }; const nb = { ...sb }; const nmo = { ...smo }; const ncu = { ...scu }; delete nm[id]; delete ns[id]; delete nb[id]; delete nmo[id]; delete ncu[id]
     set({ sessions, activeSessionId: aid === id ? null : aid, sessionMessages: nm, sessionStreaming: ns, sessionStreamingBlocks: nb, sessionModes: nmo, sessionContextUsage: ncu })
   },
-  stopSession: async (id) => { await window.api.aiWorkbench.stopSession(id); const sessions = await window.api.aiWorkbench.getSessions(); set(s => ({ sessions, sessionStreaming: { ...s.sessionStreaming, [id]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [id]: [] } })) },
-  launchSession: async (id, opts) => { const r = await window.api.aiWorkbench.launchSession(id, opts); if (r.success) set({ sessions: await window.api.aiWorkbench.getSessions() }); return r },
-  createGroup: async (n) => { const g = await window.api.aiWorkbench.createGroup(n); set({ groups: await window.api.aiWorkbench.getGroups() }); return g },
-  renameGroup: async (id, n) => { await window.api.aiWorkbench.renameGroup(id, n); set({ groups: await window.api.aiWorkbench.getGroups() }) },
+  stopSession: async (id) => { await window.api.aiCoding.stopSession(id); const sessions = await window.api.aiCoding.getSessions(); set(s => ({ sessions, sessionStreaming: { ...s.sessionStreaming, [id]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [id]: [] } })) },
+  launchSession: async (id, opts) => { const r = await window.api.aiCoding.launchSession(id, opts); if (r.success) set({ sessions: await window.api.aiCoding.getSessions() }); return r },
+  createGroup: async (n) => { const g = await window.api.aiCoding.createGroup(n); set({ groups: await window.api.aiCoding.getGroups() }); return g },
+  renameGroup: async (id, n) => { await window.api.aiCoding.renameGroup(id, n); set({ groups: await window.api.aiCoding.getGroups() }) },
   deleteGroup: async (id) => {
-    const r = await window.api.aiWorkbench.deleteGroup(id)
-    if (r.success) { const [w, s, g] = await Promise.all([window.api.aiWorkbench.getWorkspaces(), window.api.aiWorkbench.getSessions(), window.api.aiWorkbench.getGroups()]); set({ workspaces: w, sessions: s, groups: g }) }
+    const r = await window.api.aiCoding.deleteGroup(id)
+    if (r.success) { const [w, s, g] = await Promise.all([window.api.aiCoding.getWorkspaces(), window.api.aiCoding.getSessions(), window.api.aiCoding.getGroups()]); set({ workspaces: w, sessions: s, groups: g }) }
     return r
   },
-  saveIMConfig: async (c) => { await window.api.aiWorkbench.saveIMConfig(c); set({ imConfig: c }) },
-  imConnect: async () => { set({ imStatus: { state: 'connecting' } }); try { await window.api.aiWorkbench.imConnect() } catch (e: any) { set({ imStatus: { state: 'error', error: e?.message || String(e) } }); throw e } },
-  imDisconnect: async () => { await window.api.aiWorkbench.imDisconnect(); set({ imStatus: { state: 'disconnected' } }) },
-  imTest: async () => window.api.aiWorkbench.imTest(),
-  fetchIMStatus: async () => { try { set({ imStatus: await window.api.aiWorkbench.imGetStatus() }) } catch (e) { console.error('fetch IM status:', e) } },
+  saveIMConfig: async (c) => { await window.api.aiCoding.saveIMConfig(c); set({ imConfig: c }) },
+  imConnect: async () => { set({ imStatus: { state: 'connecting' } }); try { await window.api.aiCoding.imConnect() } catch (e: any) { set({ imStatus: { state: 'error', error: e?.message || String(e) } }); throw e } },
+  imDisconnect: async () => { await window.api.aiCoding.imDisconnect(); set({ imStatus: { state: 'disconnected' } }) },
+  imTest: async () => window.api.aiCoding.imTest(),
+  fetchIMStatus: async () => { try { set({ imStatus: await window.api.aiCoding.imGetStatus() }) } catch (e) { console.error('fetch IM status:', e) } },
   setIMStatus: (status) => set({ imStatus: status }),
 
   initListeners: () => {
-    const u1 = window.api.aiWorkbench.onIMStatusChanged((s) => get().setIMStatus(s as AIWorkbenchIMConnectionStatus))
-    const u2 = window.api.aiWorkbench.onDataChanged(() => { get().fetchWorkspaces(); get().fetchSessions(); get().fetchGroups() })
-    const u3 = window.api.aiWorkbench.onPtyExit(({ sessionId }) => {
+    const u1 = window.api.aiCoding.onIMStatusChanged((s) => get().setIMStatus(s as AICodingIMConnectionStatus))
+    const u2 = window.api.aiCoding.onDataChanged(() => { get().fetchWorkspaces(); get().fetchSessions(); get().fetchGroups() })
+    const u3 = window.api.aiCoding.onPtyExit(({ sessionId }) => {
       set(st => ({ sessions: st.sessions.map(s => s.id === sessionId ? { ...s, status: 'closed' as const, lastActivity: 'none' as const, updatedAt: Date.now() } : s) }))
       get().fetchSessions()
     })
-    const u4 = window.api.aiWorkbench.onPipeEvent(({ sessionId, event }) => {
+    const u4 = window.api.aiCoding.onPipeEvent(({ sessionId, event }) => {
       const st = get(); const session = st.sessions.find(s => s.id === sessionId); if (!session) return
       const et = (event as any).type as string
       if (et === 'pipe_exit' || et === 'pipe_error' || et === 'slash_command_done') {
         const cb = st.sessionStreamingBlocks[sessionId] || []
-        if (cb.length > 0) { const m: WorkbenchMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: cb, timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] }, sessionPendingQuestions: { ...s.sessionPendingQuestions, [sessionId]: null } })) }
+        if (cb.length > 0) { const m: CodingMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: cb, timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] }, sessionPendingQuestions: { ...s.sessionPendingQuestions, [sessionId]: null } })) }
         else set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionPendingQuestions: { ...s.sessionPendingQuestions, [sessionId]: null } }))
         return
       }
@@ -232,13 +232,13 @@ export const useAIWorkbenchStore = create<AIWorkbenchState>((set, get) => ({
         const content = (event as any).content as string; if (!content) return
         set(s => { const blocks = [...(s.sessionStreamingBlocks[sessionId] || [])]; const last = blocks[blocks.length - 1]; if (last && last.type === 'raw_output') blocks[blocks.length - 1] = { type: 'raw_output', text: last.text + '\n' + content }; else blocks.push({ type: 'raw_output', text: content }); return { sessionStreaming: { ...s.sessionStreaming, [sessionId]: true }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: blocks } } })
         const act = (event as any).activity as string
-        if (act === 'waiting_input' || act === 'auth_request') { const cur = get(); const blocks = cur.sessionStreamingBlocks[sessionId] || []; if (blocks.length > 0) { const m: WorkbenchMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks, timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } })) } }
+        if (act === 'waiting_input' || act === 'auth_request') { const cur = get(); const blocks = cur.sessionStreamingBlocks[sessionId] || []; if (blocks.length > 0) { const m: CodingMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks, timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } })) } }
         return
       }
       if (session.toolType === 'claude' || session.toolType === 'codex') {
         if (et === 'context_usage') {
           const pb = parseClaudeEvent(event as Record<string, unknown>)
-          const usageBlock = pb.find((b): b is Extract<WorkbenchContentBlock, { type: 'context_usage' }> => b.type === 'context_usage')
+          const usageBlock = pb.find((b): b is Extract<CodingContentBlock, { type: 'context_usage' }> => b.type === 'context_usage')
           if (usageBlock) {
             set(s => ({
               sessionContextUsage: { ...s.sessionContextUsage, [sessionId]: usageBlock },
@@ -255,7 +255,7 @@ export const useAIWorkbenchStore = create<AIWorkbenchState>((set, get) => ({
         }
         // Handle AskUserQuestion dedicated event
         if (et === 'ask_user_question') {
-          const questionBlock: WorkbenchContentBlock = {
+          const questionBlock: CodingContentBlock = {
             type: 'ask_user_question',
             id: (event as any).id || '',
             questions: (event as any).questions || [],
@@ -265,7 +265,7 @@ export const useAIWorkbenchStore = create<AIWorkbenchState>((set, get) => ({
           const cur = get()
           const existingBlocks = cur.sessionStreamingBlocks[sessionId] || []
           const allBlocks = [...existingBlocks, questionBlock]
-          const m: WorkbenchMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: allBlocks, timestamp: Date.now() }
+          const m: CodingMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: allBlocks, timestamp: Date.now() }
           set(s => ({
             sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] },
             sessionStreaming: { ...s.sessionStreaming, [sessionId]: false },
@@ -276,7 +276,7 @@ export const useAIWorkbenchStore = create<AIWorkbenchState>((set, get) => ({
         }
         // Handle TodoWrite dedicated event — append to streaming blocks (non-interactive)
         if (et === 'todo_update') {
-          const todoBlock: WorkbenchContentBlock = {
+          const todoBlock: CodingContentBlock = {
             type: 'todo_update',
             todos: (event as any).todos || [],
           }
@@ -297,8 +297,8 @@ export const useAIWorkbenchStore = create<AIWorkbenchState>((set, get) => ({
           return
         }
         if (et === 'assistant') { set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: true }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [...(s.sessionStreamingBlocks[sessionId] || []), ...pb] } })); return }
-        if (et === 'result') { const existing = get().sessionStreamingBlocks[sessionId] || []; let ab = [...existing]; if (ab.length === 0) { const resultText = typeof (event as any).result === 'string' ? (event as any).result : ''; if (resultText) ab.push({ type: 'text', text: resultText }) }; const usage = (event as any).usage; if (usage && !ab.some(b => b.type === 'context_usage')) ab.push({ type: 'context_usage', inputTokens: usage.inputTokens, cachedInputTokens: usage.cachedInputTokens, outputTokens: usage.outputTokens, usedTokens: usage.usedTokens, contextWindow: usage.contextWindow }); const cost = typeof (event as any).cost_usd === 'number' ? (event as any).cost_usd : undefined; if (ab.length > 0) { const m: WorkbenchMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: ab, timestamp: Date.now(), costUsd: cost }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } })) } else set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } })); return }
-        if (et === 'error') { const ab = [...(get().sessionStreamingBlocks[sessionId] || []), ...pb]; if (ab.length > 0) { const m: WorkbenchMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: ab, timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } })) } }
+        if (et === 'result') { const existing = get().sessionStreamingBlocks[sessionId] || []; let ab = [...existing]; if (ab.length === 0) { const resultText = typeof (event as any).result === 'string' ? (event as any).result : ''; if (resultText) ab.push({ type: 'text', text: resultText }) }; const usage = (event as any).usage; if (usage && !ab.some(b => b.type === 'context_usage')) ab.push({ type: 'context_usage', inputTokens: usage.inputTokens, cachedInputTokens: usage.cachedInputTokens, outputTokens: usage.outputTokens, usedTokens: usage.usedTokens, contextWindow: usage.contextWindow }); const cost = typeof (event as any).cost_usd === 'number' ? (event as any).cost_usd : undefined; if (ab.length > 0) { const m: CodingMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: ab, timestamp: Date.now(), costUsd: cost }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } })) } else set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } })); return }
+        if (et === 'error') { const ab = [...(get().sessionStreamingBlocks[sessionId] || []), ...pb]; if (ab.length > 0) { const m: CodingMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: ab, timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } })) } }
       }
     })
     return () => { u1(); u2(); u3(); u4() }
@@ -322,7 +322,7 @@ export const useAIWorkbenchStore = create<AIWorkbenchState>((set, get) => ({
     transcriptHydrationInFlight.add(key)
 
     try {
-      const transcript = await window.api.aiWorkbench.loadNativeSessionTranscript(
+      const transcript = await window.api.aiCoding.loadNativeSessionTranscript(
         workspace.workingDir,
         session.toolType,
         session.toolSessionId
@@ -331,7 +331,7 @@ export const useAIWorkbenchStore = create<AIWorkbenchState>((set, get) => ({
 
       set(s => {
         if ((s.sessionMessages[sessionId] || []).length > 0) return {}
-        const messages: WorkbenchMessage[] = transcript.slice(-MSG_PER_SESSION_LIMIT).map((msg, idx) => ({
+        const messages: CodingMessage[] = transcript.slice(-MSG_PER_SESSION_LIMIT).map((msg, idx) => ({
           id: `native-${sessionId}-${msg.timestamp || Date.now()}-${idx}`,
           sessionId,
           role: msg.role,
@@ -341,7 +341,7 @@ export const useAIWorkbenchStore = create<AIWorkbenchState>((set, get) => ({
         const contextBlock = [...messages]
           .flatMap((msg) => msg.blocks)
           .reverse()
-          .find((block): block is Extract<WorkbenchContentBlock, { type: 'context_usage' }> => block.type === 'context_usage')
+          .find((block): block is Extract<CodingContentBlock, { type: 'context_usage' }> => block.type === 'context_usage')
         return {
           sessionMessages: { ...s.sessionMessages, [sessionId]: messages },
           ...(contextBlock ? { sessionContextUsage: { ...s.sessionContextUsage, [sessionId]: contextBlock } } : {})
@@ -354,36 +354,36 @@ export const useAIWorkbenchStore = create<AIWorkbenchState>((set, get) => ({
     }
   },
   createAndOpenSession: async (wid, tt) => { const s = await get().createSession(wid, tt, 'local'); set({ activeSessionId: s.id }) },
-  detectTools: async () => window.api.aiWorkbench.detectTools(),
+  detectTools: async () => window.api.aiCoding.detectTools(),
 
   sendUserMessage: async (sessionId, text) => {
     const { sessions } = get(); const session = sessions.find(s => s.id === sessionId); if (!session) return
-    const userMsg: WorkbenchMessage = { id: genMsgId(), sessionId, role: 'user', blocks: [{ type: 'text', text }], timestamp: Date.now() }
+    const userMsg: CodingMessage = { id: genMsgId(), sessionId, role: 'user', blocks: [{ type: 'text', text }], timestamp: Date.now() }
     set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), userMsg] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: true }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } }))
     if (!session.title) { const t = text.slice(0, 50) + (text.length > 50 ? '…' : ''); try { await get().updateSession(sessionId, { title: t }) } catch { /* */ } }
     if (session.status === 'closed' || session.status === 'completed' || session.status === 'error') {
       const r = await get().launchSession(sessionId)
-      if (!r.success) { const em: WorkbenchMessage = { id: genMsgId(), sessionId, role: 'system', blocks: [{ type: 'text', text: `启动失败: ${r.error}` }], timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), em] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false } })); return }
+      if (!r.success) { const em: CodingMessage = { id: genMsgId(), sessionId, role: 'system', blocks: [{ type: 'text', text: `启动失败: ${r.error}` }], timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), em] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false } })); return }
       const activeMode = get().sessionModes[sessionId] || 'ask-first'
-      await window.api.aiWorkbench.setPermissionMode(sessionId, toRuntimePermissionMode(session.toolType, activeMode)).catch(() => {})
+      await window.api.aiCoding.setPermissionMode(sessionId, toRuntimePermissionMode(session.toolType, activeMode)).catch(() => {})
       await new Promise(r => setTimeout(r, 500))
     }
-    try { await window.api.aiWorkbench.writeToSession(sessionId, text) } catch (err: any) { const em: WorkbenchMessage = { id: genMsgId(), sessionId, role: 'system', blocks: [{ type: 'text', text: `发送失败: ${err?.message || String(err)}` }], timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), em] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false } })) }
+    try { await window.api.aiCoding.writeToSession(sessionId, text) } catch (err: any) { const em: CodingMessage = { id: genMsgId(), sessionId, role: 'system', blocks: [{ type: 'text', text: `发送失败: ${err?.message || String(err)}` }], timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), em] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false } })) }
   },
   clearSessionMessages: (sid) => set(s => ({ sessionMessages: { ...s.sessionMessages, [sid]: [] }, sessionStreaming: { ...s.sessionStreaming, [sid]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sid]: [] } })),
   executeSlashCommand: async (sessionId, command) => {
     // Add a system message showing the command, then set streaming
-    const cmdMsg: WorkbenchMessage = { id: genMsgId(), sessionId, role: 'user', blocks: [{ type: 'text', text: command }], timestamp: Date.now() }
+    const cmdMsg: CodingMessage = { id: genMsgId(), sessionId, role: 'user', blocks: [{ type: 'text', text: command }], timestamp: Date.now() }
     set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), cmdMsg] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: true }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } }))
     try {
-      const r = await window.api.aiWorkbench.executeSlashCommand(sessionId, command)
+      const r = await window.api.aiCoding.executeSlashCommand(sessionId, command)
       if (!r.success) {
-        const em: WorkbenchMessage = { id: genMsgId(), sessionId, role: 'system', blocks: [{ type: 'text', text: `命令执行失败: ${r.error}` }], timestamp: Date.now() }
+        const em: CodingMessage = { id: genMsgId(), sessionId, role: 'system', blocks: [{ type: 'text', text: `命令执行失败: ${r.error}` }], timestamp: Date.now() }
         set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), em] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false } }))
       }
       // Success: response events come via onPipeEvent listener (slash_command_done finalizes)
     } catch (err: any) {
-      const em: WorkbenchMessage = { id: genMsgId(), sessionId, role: 'system', blocks: [{ type: 'text', text: `命令执行失败: ${err?.message || String(err)}` }], timestamp: Date.now() }
+      const em: CodingMessage = { id: genMsgId(), sessionId, role: 'system', blocks: [{ type: 'text', text: `命令执行失败: ${err?.message || String(err)}` }], timestamp: Date.now() }
       set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), em] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false } }))
     }
   },
@@ -392,10 +392,10 @@ export const useAIWorkbenchStore = create<AIWorkbenchState>((set, get) => ({
     // Sync permission mode to SDK session
     const session = get().sessions.find(s => s.id === sid)
     const runtimeMode = toRuntimePermissionMode(session?.toolType || 'claude', m)
-    window.api.aiWorkbench.setPermissionMode(sid, runtimeMode).catch(() => { /* session may not be running yet */ })
+    window.api.aiCoding.setPermissionMode(sid, runtimeMode).catch(() => { /* session may not be running yet */ })
   },
   setClaudeViewMode: (sid, m) => { localStorage.setItem('cb-claude-view-mode', m); set(s => ({ claudeViewModes: { ...s.claudeViewModes, [sid]: m } })) },
-  interruptSession: async (sid) => { try { await window.api.aiWorkbench.interruptSession(sid) } catch { /* */ } },
+  interruptSession: async (sid) => { try { await window.api.aiCoding.interruptSession(sid) } catch { /* */ } },
   answerQuestion: async (sessionId, questionId, answerText) => {
     // Mark the question block as answered
     set(s => {
@@ -588,7 +588,7 @@ function _loadPersistedLayout(): LayoutNode | null {
 
 // Auto-persist sessionMessages on change (debounced)
 let _persistTimer: ReturnType<typeof setTimeout> | null = null
-useAIWorkbenchStore.subscribe(
+useAICodingStore.subscribe(
   (state, prev) => {
     if (state.sessionMessages !== prev.sessionMessages) {
       if (_persistTimer) clearTimeout(_persistTimer)

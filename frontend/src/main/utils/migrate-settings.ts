@@ -39,12 +39,21 @@ export function migrateSettings(): void {
       logger.warn(`userAppDir does not exist: ${userAppDir}, resetting to default`)
       const defaultPath = getUserAppsPath()
       settingsStore.set('userAppDir', defaultPath)
-      
+
       // 创建默认目录
       if (!fs.existsSync(defaultPath)) {
         fs.mkdirSync(defaultPath, { recursive: true })
         logger.info(`Created default userAppDir: ${defaultPath}`)
       }
+    }
+
+    // 模块重命名 AI Workbench → AI Coding：迁移 moduleVisibility 的 key
+    const mv = settingsStore.get('moduleVisibility') as unknown as Record<string, boolean> | undefined
+    if (mv && 'aiWorkbench' in mv && !('aiCoding' in mv)) {
+      mv.aiCoding = mv.aiWorkbench
+      delete mv.aiWorkbench
+      settingsStore.set('moduleVisibility', mv as any)
+      logger.info('Migrated moduleVisibility key: aiWorkbench -> aiCoding')
     }
   } catch (error) {
     logger.error('Failed to migrate settings:', error)

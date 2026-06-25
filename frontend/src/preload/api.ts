@@ -429,37 +429,37 @@ export const api = {
       ipcRenderer.invoke('copiper:load-reference-data', workspacePath, tableNames)
   },
 
-  aiWorkbench: {
-    getWorkspaces: () => ipcRenderer.invoke('ai-workbench:get-workspaces'),
+  aiCoding: {
+    getWorkspaces: () => ipcRenderer.invoke('ai-coding:get-workspaces'),
     createWorkspace: (workingDir: string, groupId: string) =>
-      ipcRenderer.invoke('ai-workbench:create-workspace', workingDir, groupId),
+      ipcRenderer.invoke('ai-coding:create-workspace', workingDir, groupId),
     updateWorkspace: (id: string, updates: Record<string, unknown>) =>
-      ipcRenderer.invoke('ai-workbench:update-workspace', id, updates),
-    deleteWorkspace: (id: string) => ipcRenderer.invoke('ai-workbench:delete-workspace', id),
+      ipcRenderer.invoke('ai-coding:update-workspace', id, updates),
+    deleteWorkspace: (id: string) => ipcRenderer.invoke('ai-coding:delete-workspace', id),
     getWorkspaceSessions: (workspaceId: string) =>
-      ipcRenderer.invoke('ai-workbench:get-workspace-sessions', workspaceId),
-    getSessions: () => ipcRenderer.invoke('ai-workbench:get-sessions'),
+      ipcRenderer.invoke('ai-coding:get-workspace-sessions', workspaceId),
+    getSessions: () => ipcRenderer.invoke('ai-coding:get-sessions'),
     createSession: (workspaceId: string, toolType: string, source?: string) =>
-      ipcRenderer.invoke('ai-workbench:create-session', workspaceId, toolType, source),
+      ipcRenderer.invoke('ai-coding:create-session', workspaceId, toolType, source),
     updateSession: (id: string, updates: Record<string, unknown>) =>
-      ipcRenderer.invoke('ai-workbench:update-session', id, updates),
-    deleteSession: (id: string) => ipcRenderer.invoke('ai-workbench:delete-session', id),
-    stopSession: (id: string) => ipcRenderer.invoke('ai-workbench:stop-session', id),
-    launchSession: (id: string, opts?: { forcePty?: boolean; cols?: number; rows?: number }) => ipcRenderer.invoke('ai-workbench:launch-session', id, opts),
+      ipcRenderer.invoke('ai-coding:update-session', id, updates),
+    deleteSession: (id: string) => ipcRenderer.invoke('ai-coding:delete-session', id),
+    stopSession: (id: string) => ipcRenderer.invoke('ai-coding:stop-session', id),
+    launchSession: (id: string, opts?: { forcePty?: boolean; cols?: number; rows?: number }) => ipcRenderer.invoke('ai-coding:launch-session', id, opts),
     writeToSession: (sessionId: string, text: string) =>
-      ipcRenderer.invoke('ai-workbench:write-to-session', sessionId, text),
+      ipcRenderer.invoke('ai-coding:write-to-session', sessionId, text),
     interruptSession: (sessionId: string) =>
-      ipcRenderer.invoke('ai-workbench:interrupt-session', sessionId),
+      ipcRenderer.invoke('ai-coding:interrupt-session', sessionId),
     executeSlashCommand: (sessionId: string, command: string) =>
-      ipcRenderer.invoke('ai-workbench:execute-slash-command', sessionId, command),
+      ipcRenderer.invoke('ai-coding:execute-slash-command', sessionId, command),
     setPermissionMode: (sessionId: string, mode: string) =>
-      ipcRenderer.invoke('ai-workbench:set-permission-mode', sessionId, mode),
+      ipcRenderer.invoke('ai-coding:set-permission-mode', sessionId, mode),
 
     // Pipe event stream (structured events from CLI tools)
     onPipeEvent: (callback: (data: { sessionId: string; event: any }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
-      ipcRenderer.on('ai-workbench:pipe-event', handler)
-      return () => ipcRenderer.removeListener('ai-workbench:pipe-event', handler)
+      ipcRenderer.on('ai-coding:pipe-event', handler)
+      return () => ipcRenderer.removeListener('ai-coding:pipe-event', handler)
     },
 
     // PTY management (legacy)
@@ -480,43 +480,43 @@ export const api = {
     },
 
     // CLI detection
-    detectTools: () => ipcRenderer.invoke('ai-workbench:detect-tools'),
+    detectTools: () => ipcRenderer.invoke('ai-coding:detect-tools'),
 
     // Native session listing (reads CLI tool session history from filesystem/CLI)
     listNativeSessions: (workingDir: string, toolType: string) =>
-      ipcRenderer.invoke('ai-workbench:list-native-sessions', workingDir, toolType),
+      ipcRenderer.invoke('ai-coding:list-native-sessions', workingDir, toolType),
     loadNativeSessionTranscript: (workingDir: string, toolType: string, sessionId: string) =>
-      ipcRenderer.invoke('ai-workbench:load-native-session-transcript', workingDir, toolType, sessionId),
+      ipcRenderer.invoke('ai-coding:load-native-session-transcript', workingDir, toolType, sessionId),
 
     // Session output
     getSessionOutput: (sessionId: string) =>
-      ipcRenderer.invoke('ai-workbench:get-session-output', sessionId),
+      ipcRenderer.invoke('ai-coding:get-session-output', sessionId),
     getRawSessionOutput: (sessionId: string) =>
-      ipcRenderer.invoke('ai-workbench:get-raw-session-output', sessionId),
+      ipcRenderer.invoke('ai-coding:get-raw-session-output', sessionId),
 
-    getGroups: () => ipcRenderer.invoke('ai-workbench:get-groups'),
-    createGroup: (name: string) => ipcRenderer.invoke('ai-workbench:create-group', name),
+    getGroups: () => ipcRenderer.invoke('ai-coding:get-groups'),
+    createGroup: (name: string) => ipcRenderer.invoke('ai-coding:create-group', name),
     renameGroup: (id: string, name: string) =>
-      ipcRenderer.invoke('ai-workbench:rename-group', id, name),
-    deleteGroup: (id: string) => ipcRenderer.invoke('ai-workbench:delete-group', id),
-    getIMConfig: () => ipcRenderer.invoke('ai-workbench:get-im-config'),
+      ipcRenderer.invoke('ai-coding:rename-group', id, name),
+    deleteGroup: (id: string) => ipcRenderer.invoke('ai-coding:delete-group', id),
+    getIMConfig: () => ipcRenderer.invoke('ai-coding:get-im-config'),
     saveIMConfig: (config: Record<string, unknown>) =>
-      ipcRenderer.invoke('ai-workbench:save-im-config', config),
-    openDirectory: (dirPath: string) => ipcRenderer.invoke('ai-workbench:open-directory', dirPath),
-    openTerminal: (dirPath: string, toolCommand?: string) => ipcRenderer.invoke('ai-workbench:open-terminal', dirPath, toolCommand),
-    imConnect: () => ipcRenderer.invoke('ai-workbench:im-connect'),
-    imDisconnect: () => ipcRenderer.invoke('ai-workbench:im-disconnect'),
-    imGetStatus: () => ipcRenderer.invoke('ai-workbench:im-get-status'),
-    imTest: () => ipcRenderer.invoke('ai-workbench:im-test'),
+      ipcRenderer.invoke('ai-coding:save-im-config', config),
+    openDirectory: (dirPath: string) => ipcRenderer.invoke('ai-coding:open-directory', dirPath),
+    openTerminal: (dirPath: string, toolCommand?: string) => ipcRenderer.invoke('ai-coding:open-terminal', dirPath, toolCommand),
+    imConnect: () => ipcRenderer.invoke('ai-coding:im-connect'),
+    imDisconnect: () => ipcRenderer.invoke('ai-coding:im-disconnect'),
+    imGetStatus: () => ipcRenderer.invoke('ai-coding:im-get-status'),
+    imTest: () => ipcRenderer.invoke('ai-coding:im-test'),
     onIMStatusChanged: (callback: (data: unknown) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data)
-      ipcRenderer.on('ai-workbench:im-status-changed', handler)
-      return () => ipcRenderer.removeListener('ai-workbench:im-status-changed', handler)
+      ipcRenderer.on('ai-coding:im-status-changed', handler)
+      return () => ipcRenderer.removeListener('ai-coding:im-status-changed', handler)
     },
     onDataChanged: (callback: () => void) => {
       const handler = () => callback()
-      ipcRenderer.on('ai-workbench:data-changed', handler)
-      return () => ipcRenderer.removeListener('ai-workbench:data-changed', handler)
+      ipcRenderer.on('ai-coding:data-changed', handler)
+      return () => ipcRenderer.removeListener('ai-coding:data-changed', handler)
     }
   },
 
@@ -577,7 +577,7 @@ export const api = {
     getRawTerminalOutput: (sessionId: string) =>
       ipcRenderer.invoke('ai-terminal:get-raw-terminal-output', sessionId),
 
-    // PTY events (shared channel with ai-workbench)
+    // PTY events (shared channel with ai-coding)
     onPtyData: (callback: (data: { sessionId: string; data: string }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
       ipcRenderer.on('pty:data', handler)

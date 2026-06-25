@@ -20,6 +20,7 @@ import type {
   IMCardPayload
 } from './types'
 import { toFeishuCardJSON } from './feishu-cards'
+import * as logger from '../../utils/logger'
 
 // Lazy-import the SDK so the module is tree-shakeable and doesn't blow up
 // when the user hasn't installed it (though we do install it as a dependency).
@@ -85,20 +86,20 @@ export class FeishuAdapter implements IMAdapter {
       const eventDispatcher = new lark.EventDispatcher({}).register({
         'im.message.receive_v1': async (data: any) => {
           try {
-            console.log('[FeishuAdapter] Received message event:', JSON.stringify(data))
+            logger.debug('[FeishuAdapter] Received message event:', JSON.stringify(data))
             // The data structure can be different depending on SDK version or event type.
             // Sometimes it's nested under 'event', sometimes flattened.
             const msg = data?.message || data?.event?.message
             const sender = data?.sender || data?.event?.sender
             if (!msg) {
-              console.log('[FeishuAdapter] No message object found in event data')
+              logger.debug('[FeishuAdapter] No message object found in event data')
               return
             }
 
             // Handle text and post (rich text) messages
             const msgType = msg.message_type
             if (msgType !== 'text' && msgType !== 'post') {
-              console.log('[FeishuAdapter] Ignoring message type:', msgType)
+              logger.debug('[FeishuAdapter] Ignoring message type:', msgType)
               return
             }
 
@@ -121,11 +122,11 @@ export class FeishuAdapter implements IMAdapter {
                 }
               }
             } catch (err) {
-              console.error('[FeishuAdapter] Error parsing message content:', err)
+              logger.error('[FeishuAdapter] Error parsing message content:', err)
               text = msg.content || ''
             }
 
-            console.log('[FeishuAdapter] Parsed text:', text)
+            logger.debug('[FeishuAdapter] Parsed text:', text)
 
             if (!text.trim()) return
 
@@ -137,13 +138,13 @@ export class FeishuAdapter implements IMAdapter {
               senderName: sender?.sender_id?.user_id || ''
             })
           } catch (err) {
-            console.error('[FeishuAdapter] Error handling incoming message:', err)
+            logger.error('[FeishuAdapter] Error handling incoming message:', err)
           }
         },
         'card.action.trigger': async (data: any) => {
           let isFormSubmit = false
           try {
-            console.log('[FeishuAdapter] Received card callback:', JSON.stringify(data))
+            logger.debug('[FeishuAdapter] Received card callback:', JSON.stringify(data))
             // EventDispatcher passes the event body flat (no .event wrapper),
             // but guard against both structures just in case.
             const event = data?.event || data
@@ -152,7 +153,7 @@ export class FeishuAdapter implements IMAdapter {
             const operator = event?.operator
             const context = event?.context || {}
 
-            console.log('[FeishuAdapter] Card action parsed:', JSON.stringify({ tag: action?.tag, value, form_value: action?.form_value }))
+            logger.debug('[FeishuAdapter] Card action parsed:', JSON.stringify({ tag: action?.tag, value, form_value: action?.form_value }))
 
             // When form_action_type=submit, Feishu does NOT pass the button's custom value field.
             // Instead, session ID is encoded in the button name as "send_button_<sessionId>".
@@ -170,7 +171,7 @@ export class FeishuAdapter implements IMAdapter {
               formValue: action?.form_value || undefined
             })
           } catch (err) {
-            console.error('[FeishuAdapter] Error handling card callback:', err)
+            logger.error('[FeishuAdapter] Error handling card callback:', err)
           }
           // For schema 2.0 form submissions, return a toast to acknowledge;
           // returning {} for submit actions causes error code 200530.
@@ -220,7 +221,7 @@ export class FeishuAdapter implements IMAdapter {
         }
       }
     } catch (err) {
-      console.error('[FeishuAdapter] Error during disconnect:', err)
+      logger.error('[FeishuAdapter] Error during disconnect:', err)
     } finally {
       this.wsClient = null
       this.client = null
@@ -242,7 +243,7 @@ export class FeishuAdapter implements IMAdapter {
       })
 
       if (resp.code !== 0) {
-        console.error('[FeishuAdapter] sendCard failed:', resp.code, resp.msg)
+        logger.error('[FeishuAdapter] sendCard failed:', resp.code, resp.msg)
         throw new Error(`Feishu API error: ${resp.code} ${resp.msg}`)
       }
 
@@ -252,7 +253,7 @@ export class FeishuAdapter implements IMAdapter {
       }
       return messageId
     } catch (err) {
-      console.error('[FeishuAdapter] sendCard exception:', err)
+      logger.error('[FeishuAdapter] sendCard exception:', err)
       throw err
     }
   }
@@ -269,11 +270,11 @@ export class FeishuAdapter implements IMAdapter {
       })
 
       if (resp.code !== 0) {
-        console.error('[FeishuAdapter] updateCard failed:', resp.code, resp.msg)
+        logger.error('[FeishuAdapter] updateCard failed:', resp.code, resp.msg)
         throw new Error(`Feishu API error: ${resp.code} ${resp.msg}`)
       }
     } catch (err) {
-      console.error('[FeishuAdapter] updateCard exception:', err)
+      logger.error('[FeishuAdapter] updateCard exception:', err)
       throw err
     }
   }
@@ -292,13 +293,13 @@ export class FeishuAdapter implements IMAdapter {
       })
 
       if (resp.code !== 0) {
-        console.error('[FeishuAdapter] sendText failed:', resp.code, resp.msg)
+        logger.error('[FeishuAdapter] sendText failed:', resp.code, resp.msg)
         throw new Error(`Feishu API error: ${resp.code} ${resp.msg}`)
       }
 
       return resp?.data?.message_id || ''
     } catch (err) {
-      console.error('[FeishuAdapter] sendText exception:', err)
+      logger.error('[FeishuAdapter] sendText exception:', err)
       throw err
     }
   }
@@ -315,7 +316,7 @@ export class FeishuAdapter implements IMAdapter {
       })
     } catch (err) {
       // Non-critical — silently log and continue
-      console.error('[FeishuAdapter] addReaction failed:', err)
+      logger.error('[FeishuAdapter] addReaction failed:', err)
     }
   }
 }

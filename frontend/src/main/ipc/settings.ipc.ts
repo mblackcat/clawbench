@@ -17,7 +17,7 @@ import {
 } from '../services/settings.service'
 import { setLastChatModel, getLastChatModel, setLastBuiltinChatModel, getLastBuiltinChatModel, getLastChatModelSource, getChatPreferences, setChatPreferences, getAiToolsConfig, getAiToolsConfigRaw, setAiToolsConfig, getAgentSettings, setAgentSettings } from '../store/settings.store'
 import { saveApiToken, clearApiToken } from '../store/api-credentials.store'
-import { getIMConfig } from '../services/ai-workbench.service'
+import { getIMConfig } from '../services/ai-coding.service'
 import { refreshGlobalShortcuts } from '../services/shortcut.service'
 
 export function registerSettingsIpc(): void {

@@ -12,7 +12,7 @@ import { rehypeHighlightPlugin } from '../../utils/markdown-plugins'
 import { ModelAvatar, UserAvatar } from '../../components/ProviderIcons'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useT } from '../../i18n'
-import type { WorkbenchMessage, WorkbenchContentBlock } from '../../types/ai-workbench'
+import type { CodingMessage, CodingContentBlock } from '../../types/ai-coding'
 import AskUserQuestionBlock from './AskUserQuestionBlock'
 import TodoUpdateBlock from './TodoUpdateBlock'
 import ThinkingBlock from '../../components/ThinkingBlock'
@@ -291,7 +291,7 @@ const ToolResultBlock: React.FC<{ content: string; isError?: boolean; onToggle?:
   )
 }
 
-const ContextUsageBlock: React.FC<Extract<WorkbenchContentBlock, { type: 'context_usage' }>> = (block) => {
+const ContextUsageBlock: React.FC<Extract<CodingContentBlock, { type: 'context_usage' }>> = (block) => {
   const { token } = theme.useToken()
   const used = block.usedTokens ?? ((block.inputTokens || 0) + (block.cachedInputTokens || 0))
   const total = block.contextWindow || 0
@@ -319,7 +319,7 @@ const ContextUsageBlock: React.FC<Extract<WorkbenchContentBlock, { type: 'contex
 
 // ── Content Block Renderer (for text/thinking/raw_output) ──
 
-const ContentBlockRenderer: React.FC<{ block: WorkbenchContentBlock }> = ({ block }) => {
+const ContentBlockRenderer: React.FC<{ block: CodingContentBlock }> = ({ block }) => {
   const { token } = theme.useToken()
 
   switch (block.type) {
@@ -357,7 +357,7 @@ const ContentBlockRenderer: React.FC<{ block: WorkbenchContentBlock }> = ({ bloc
 
 // ── Render blocks with tool_use + tool_result pairing ──
 
-function renderAssistantBlocks(blocks: WorkbenchContentBlock[], sessionId: string, onToolToggle?: ToolToggleHandler): React.ReactNode[] {
+function renderAssistantBlocks(blocks: CodingContentBlock[], sessionId: string, onToolToggle?: ToolToggleHandler): React.ReactNode[] {
   // Build a map: tool_use.id → tool_result
   const resultMap = new Map<string, { content: string; isError?: boolean }>()
   for (const b of blocks) {
@@ -401,12 +401,12 @@ function renderAssistantBlocks(blocks: WorkbenchContentBlock[], sessionId: strin
 
 // ── Main Component ──
 
-interface WorkbenchChatMessageProps {
-  message: WorkbenchMessage
+interface CodingChatMessageProps {
+  message: CodingMessage
   onToolToggle?: ToolToggleHandler
 }
 
-const WorkbenchChatMessage: React.FC<WorkbenchChatMessageProps> = ({ message, onToolToggle }) => {
+const CodingChatMessage: React.FC<CodingChatMessageProps> = ({ message, onToolToggle }) => {
   const { token } = theme.useToken()
   const user = useAuthStore((s) => s.user)
 
@@ -473,4 +473,4 @@ const WorkbenchChatMessage: React.FC<WorkbenchChatMessageProps> = ({ message, on
 }
 
 export { getToolSummary }
-export default WorkbenchChatMessage
+export default CodingChatMessage

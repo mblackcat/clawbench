@@ -1,5 +1,7 @@
 /**
- * 收藏栏页面（原已装应用）
+ * 收藏栏页面（原已装应用）—— Workbench 模块（canonical: `workbench` / 路由 `/workbench/installed`）
+ * Workbench 子概念：sub apps & ai skills & prompts & links（资源中心）。
+ * 注意：本模块旧名/旧路由为 "Apps"(`/apps`)，与 AI Coding(`/ai-coding`) 无关。
  * 统一显示所有本地收藏内容（app/skill/prompt）
  * 支持长按拖拽排序
  */
@@ -873,12 +875,12 @@ const InstalledAppsPage: React.FC = () => {
             ]}
           />
           {!isLocalMode && (
-            <Button icon={<CompassOutlined />} onClick={() => navigate('/apps/library')}>
+            <Button icon={<CompassOutlined />} onClick={() => navigate('/workbench/library')}>
               {t('workbench.discover')}
             </Button>
           )}
           <Space.Compact>
-            <Button icon={<SnippetsOutlined />} onClick={() => navigate('/apps/my-contributions')}>
+            <Button icon={<SnippetsOutlined />} onClick={() => navigate('/workbench/my-contributions')}>
               {t('workbench.mine')}
             </Button>
             <Button icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>

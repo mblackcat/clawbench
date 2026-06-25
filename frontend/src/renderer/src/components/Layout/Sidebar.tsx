@@ -46,10 +46,10 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
       moduleKey: 'aiChat'
     },
     {
-      key: '/ai-workbench',
+      key: '/ai-coding',
       icon: <CodepenOutlined />,
       label: t('menu.aiCoding'),
-      moduleKey: 'aiWorkbench'
+      moduleKey: 'aiCoding'
     },
     {
       key: '/ai-terminal',
@@ -64,14 +64,14 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
       moduleKey: 'aiAgents'
     },
     {
-      key: '/apps',
+      key: '/workbench',
       icon: <StarOutlined />,
       label: t('menu.workbench')
     },
     {
       key: '/local-env',
       icon: <LaptopOutlined />,
-      label: t('menu.devEnv'),
+      label: t('menu.localEnv'),
       moduleKey: 'localEnv'
     },
     {
@@ -96,15 +96,15 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
   // Persist the active top-level route on every navigation (not just menu clicks)
   useEffect(() => {
     if (selectedKey && selectedKey !== '/') {
-      // Store the actual pathname so routes like /apps/installed restore correctly
-      const route = selectedKey === '/apps' ? '/apps/installed' : selectedKey
+      // Store the actual pathname so routes like /workbench/installed restore correctly
+      const route = selectedKey === '/workbench' ? '/workbench/installed' : selectedKey
       localStorage.setItem('lastRoute', route)
     }
   }, [selectedKey])
 
   const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
-    if (key === '/apps') {
-      navigate('/apps/installed')
+    if (key === '/workbench') {
+      navigate('/workbench/installed')
     } else {
       navigate(key)
     }

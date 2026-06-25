@@ -39,7 +39,7 @@ export type SessionActivity =
   | 'auth_request'  // asking for user authorization
   | 'none'
 
-export interface AIWorkbenchWorkspace {
+export interface AICodingWorkspace {
   id: string
   title: string           // basename(workingDir)
   workingDir: string
@@ -48,7 +48,7 @@ export interface AIWorkbenchWorkspace {
   updatedAt: number
 }
 
-export interface AIWorkbenchSession {
+export interface AICodingSession {
   id: string
   workspaceId: string       // FK to workspace
   toolSessionId?: string    // AI tool's native session ID for --resume
@@ -65,9 +65,9 @@ export interface AIWorkbenchSession {
   pidFile?: string
 }
 
-// ── Workbench Chat Message Types ──
+// ── AI Coding Chat Message Types ──
 
-export type WorkbenchContentBlock =
+export type CodingContentBlock =
   | { type: 'text'; text: string }
   | { type: 'thinking'; text: string }
   | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
@@ -77,51 +77,51 @@ export type WorkbenchContentBlock =
   | { type: 'todo_update'; todos: TodoItem[] }
   | { type: 'context_usage'; inputTokens?: number; cachedInputTokens?: number; outputTokens?: number; usedTokens?: number; contextWindow?: number }
 
-export interface WorkbenchMessage {
+export interface CodingMessage {
   id: string
   sessionId: string
   role: 'user' | 'assistant' | 'system'
-  blocks: WorkbenchContentBlock[]
+  blocks: CodingContentBlock[]
   timestamp: number
   costUsd?: number
 }
 
-export type WorkbenchMode = 'plan' | 'ask-first' | 'auto-edit' | 'full-access'
+export type CodingMode = 'plan' | 'ask-first' | 'auto-edit' | 'full-access'
 
 /** Claude session view mode: chat UI vs raw CLI terminal */
 export type ClaudeViewMode = 'chat' | 'cli'
 export type CodingViewMode = ClaudeViewMode
 
-export interface AIWorkbenchGroup {
+export interface AICodingGroup {
   id: string
   name: string
   isDefault: boolean
   order: number
 }
 
-export interface AIWorkbenchIMConfig {
+export interface AICodingIMConfig {
   feishu: {
     appId: string
     appSecret: string
   }
 }
 
-export interface AIWorkbenchConfig {
-  workspaces: AIWorkbenchWorkspace[]
-  sessions: AIWorkbenchSession[]
-  groups: AIWorkbenchGroup[]
-  imConfig: AIWorkbenchIMConfig
+export interface AICodingConfig {
+  workspaces: AICodingWorkspace[]
+  sessions: AICodingSession[]
+  groups: AICodingGroup[]
+  imConfig: AICodingIMConfig
 }
 
-export type AIWorkbenchIMConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error'
+export type AICodingIMConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error'
 
-export interface AIWorkbenchIMConnectionStatus {
-  state: AIWorkbenchIMConnectionState
+export interface AICodingIMConnectionStatus {
+  state: AICodingIMConnectionState
   error?: string
   connectedAt?: number
 }
 
-export interface WorkbenchPendingFile {
+export interface CodingPendingFile {
   id: string
   filePath: string
   fileName: string

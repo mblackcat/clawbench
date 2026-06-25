@@ -63,13 +63,13 @@ backend/src/
 
 | Module | Route | Description |
 |---|---|---|
-| 收藏栏 | `/apps/installed` | 已收藏资源卡片（应用/技能/提示词），拖拽排序，按类型执行不同操作 |
-| 发现 | `/apps/library` | 多资源发现市场：3 Tab（应用/AI 技能/提示词），搜索、安装、发布 |
-| 我的 | `/apps/my-contributions` | 本地创建的所有资源管理（草稿/本地/已发布状态） |
+| 收藏栏 | `/workbench/installed` | 已收藏资源卡片（应用/技能/提示词），拖拽排序，按类型执行不同操作 |
+| 发现 | `/workbench/library` | 多资源发现市场：3 Tab（应用/AI 技能/提示词），搜索、安装、发布 |
+| 我的 | `/workbench/my-contributions` | 本地创建的所有资源管理（草稿/本地/已发布状态） |
 | Developer | `/developer/*` | App editor (4-step), SkillEditor (3-step), PromptEditor, Monaco code editor, publisher |
 | AI Chat | `/ai-chat` | Multi-model chat (OpenAI/Claude/Gemini), streaming, tool calling, MCP, welcome view |
 | AI Agents | `/ai-agents` | AI agent management hub; OpenClaw at `/ai-agents/openclaw`; Hermes Agent at `/ai-agents/hermes` |
-| AI Workbench | `/ai-workbench` | AI coding sessions (Claude Code/Codex/Gemini), Feishu IM control |
+| AI Coding | `/ai-coding` | AI coding sessions (Claude Code/Codex/Gemini), Feishu IM control |
 | AI Terminal | `/ai-terminal` | Terminal + DB dual mode: local/SSH terminals, multi-DB GUI (MySQL/PG/Mongo/SQLite), AI assistant |
 | Local Env | `/local-env` | Dev tool detection & install (Python/Node/Git/Docker + AI tools) |
 | Settings | `/settings` | General, modules, AI models, MCP servers, image generation |
@@ -88,10 +88,10 @@ backend/src/
 | `frontend/src/preload/api.ts` | Typed bridge defining the entire `window.api` surface (incl. `skill` namespace) |
 | `frontend/src/main/services/ai.service.ts` | AI provider adapters (OpenAI-compatible, Claude, Google) + streaming via StreamEmitter + tool calling |
 | `frontend/src/main/services/mcp/mcp-client.service.ts` | MCP client: stdio/SSE transport, tool listing, tool calling |
-| `frontend/src/main/services/im/im-bridge.service.ts` | IM Bridge: connects IM adapters to AI Workbench |
+| `frontend/src/main/services/im/im-bridge.service.ts` | IM Bridge: connects IM adapters to AI Coding |
 | `frontend/src/main/services/ai-terminal.service.ts` | AI Terminal: SSH parsing, PTY management, multi-DB connection pool + query |
 | `frontend/src/renderer/src/stores/useChatStore.ts` | Chat state: conversations, messages, streaming, tool calling |
-| `frontend/src/renderer/src/components/ThinkingBlock.tsx` | Shared AI thinking/reasoning block component (used by AIChat, AIWorkbench, AITerminal) |
+| `frontend/src/renderer/src/components/ThinkingBlock.tsx` | Shared AI thinking/reasoning block component (used by AIChat, AICoding, AITerminal) |
 | `frontend/src/renderer/src/utils/markdown-plugins.ts` | Shared rehype-highlight config with lowlight/common (37 languages) for reduced bundle size |
 | `frontend/src/renderer/src/components/WeatherEffect.tsx` | 全屏天气粒子效果（雪/雨/风叶/烟花/樱花/流星/孔明灯），Canvas overlay + useWeatherEffect hook |
 | `frontend/src/renderer/src/i18n/index.ts` | 全局多语言翻译（中英文），useT() hook |
@@ -114,7 +114,7 @@ backend/src/
 - **API calls**: Use `apiClient` service (auto JWT management)
 - **DnD**: `@dnd-kit/core` + `@dnd-kit/sortable` with `PointerSensor` + `activationConstraint`
 - **Markdown**: Use `rehypeHighlightPlugin` from `utils/markdown-plugins.ts` (NOT raw `rehype-highlight`) — uses lowlight/common for reduced bundle size
-- **AI Shared Components**: `ThinkingBlock` in `components/ThinkingBlock.tsx` — shared across AIChat, AIWorkbench, AITerminal
+- **AI Shared Components**: `ThinkingBlock` in `components/ThinkingBlock.tsx` — shared across AIChat, AICoding, AITerminal
 
 ### Main Process
 

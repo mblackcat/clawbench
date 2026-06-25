@@ -1,5 +1,5 @@
 /**
- * IM Bridge Service — orchestrator between IM adapters and AI Workbench.
+ * IM Bridge Service — orchestrator between IM adapters and AI Coding.
  *
  * Responsibilities:
  * - Manage adapter lifecycle (connect / disconnect)
@@ -49,8 +49,8 @@ import {
   writeToSession,
   getSessionOutput,
   getIMConfig
-} from '../ai-workbench.service'
-import type { AIToolType } from '../../store/ai-workbench.store'
+} from '../ai-coding.service'
+import type { AIToolType } from '../../store/ai-coding.store'
 import { listSubApps, getSubAppPath } from '../subapp.service'
 import { listWorkspaces, setActiveWorkspace } from '../workspace.service'
 import { executeSubAppWithCallbacks, resolvePythonCommand } from '../python-runner.service'
@@ -184,9 +184,9 @@ class IMBridgeService {
 
   private async handleIncomingMessage(msg: IMIncomingMessage): Promise<void> {
     const { chatId, text } = msg
-    console.log('[IMBridge] Handling incoming message:', text)
+    logger.debug('[IMBridge] Handling incoming message:', text)
     const parsed = parseCommand(text)
-    console.log('[IMBridge] Parsed command:', parsed)
+    logger.debug('[IMBridge] Parsed command:', parsed)
 
     try {
       switch (parsed.command) {
@@ -265,7 +265,7 @@ class IMBridgeService {
         }
       }
     } catch (err) {
-      console.error('[IMBridge] Error handling command:', parsed.command, err)
+      logger.error('[IMBridge] Error handling command:', parsed.command, err)
       try {
         await this.adapter?.sendText(chatId, `处理指令时出错: ${err}`)
       } catch {
@@ -853,10 +853,10 @@ class IMBridgeService {
           // Form submit: sessionId in actionValue, text in formValue.user_input
           const sessionId = cb.actionValue
           const text = (cb.formValue?.user_input || '').trim()
-          console.log('[IMBridge] form_input callback:', { sessionId, text, formValue: cb.formValue })
+          logger.debug('[IMBridge] form_input callback:', { sessionId, text, formValue: cb.formValue })
           if (sessionId && text) {
             const result = await writeToSession(sessionId, text)
-            console.log('[IMBridge] writeToSession result:', result)
+            logger.debug('[IMBridge] writeToSession result:', result)
             if (result.success) {
               this.notifyRendererRefresh()
               const mapping = this.cardMappings.find(m => m.sessionId === sessionId)
@@ -866,13 +866,13 @@ class IMBridgeService {
               }
             }
           } else {
-            console.warn('[IMBridge] form_input: missing sessionId or text', { sessionId, text, cb })
+            logger.warn('[IMBridge] form_input: missing sessionId or text', { sessionId, text, cb })
           }
           break
         }
       }
     } catch (err) {
-      console.error('[IMBridge] Error handling card callback:', cb.actionTag, err)
+      logger.error('[IMBridge] Error handling card callback:', cb.actionTag, err)
     }
   }
 
@@ -882,7 +882,7 @@ class IMBridgeService {
     this.stopUpdateTimer()
     this.updateTimer = setInterval(() => {
       this.refreshAllActiveCards().catch((err) =>
-        console.error('[IMBridge] Card refresh error:', err)
+        logger.error('[IMBridge] Card refresh error:', err)
       )
     }, 5_000)
   }
@@ -936,7 +936,7 @@ class IMBridgeService {
         }
         mapping.lastSnapshot = snapshot
       } catch (err) {
-        console.error(
+        logger.error(
           '[IMBridge] Failed to refresh card for session',
           mapping.sessionId,
           err
@@ -1081,14 +1081,14 @@ class IMBridgeService {
   private broadcastStatus(status: IMConnectionStatus): void {
     const windows = BrowserWindow.getAllWindows()
     for (const win of windows) {
-      win.webContents.send('ai-workbench:im-status-changed', status)
+      win.webContents.send('ai-coding:im-status-changed', status)
     }
   }
 
   private notifyRendererRefresh(): void {
     const windows = BrowserWindow.getAllWindows()
     for (const win of windows) {
-      win.webContents.send('ai-workbench:data-changed')
+      win.webContents.send('ai-coding:data-changed')
     }
   }
 }

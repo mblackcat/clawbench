@@ -17,10 +17,10 @@ import { useSettingsStore } from '../../stores/useSettingsStore'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { useUpdaterStore } from '../../stores/useUpdaterStore'
 import { useNotificationStore } from '../../stores/useNotificationStore'
-import { useAIWorkbenchStore } from '../../stores/useAIWorkbenchStore'
+import { useAICodingStore } from '../../stores/useAICodingStore'
 import WorkspaceSwitcher from '../WorkspaceSwitcher'
 import GitBranchSelector from '../GitBranchSelector'
-import AIWorkbenchIMConfigModal from '../../pages/AIWorkbench/AIWorkbenchIMConfigModal'
+import AICodingIMConfigModal from '../../pages/AICoding/AICodingIMConfigModal'
 import { UserAvatar } from '../ProviderIcons'
 
 const { Text } = Typography
@@ -72,12 +72,12 @@ const TopBar: React.FC = () => {
   const initUpdater = useUpdaterStore((state) => state.init)
   const initNotifications = useNotificationStore((state) => state.init)
 
-  const imConfig = useAIWorkbenchStore((state) => state.imConfig)
-  const imStatus = useAIWorkbenchStore((state) => state.imStatus)
-  const saveIMConfig = useAIWorkbenchStore((state) => state.saveIMConfig)
-  const imConnect = useAIWorkbenchStore((state) => state.imConnect)
-  const imDisconnect = useAIWorkbenchStore((state) => state.imDisconnect)
-  const imTest = useAIWorkbenchStore((state) => state.imTest)
+  const imConfig = useAICodingStore((state) => state.imConfig)
+  const imStatus = useAICodingStore((state) => state.imStatus)
+  const saveIMConfig = useAICodingStore((state) => state.saveIMConfig)
+  const imConnect = useAICodingStore((state) => state.imConnect)
+  const imDisconnect = useAICodingStore((state) => state.imDisconnect)
+  const imTest = useAICodingStore((state) => state.imTest)
 
   const [imModalOpen, setIMModalOpen] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
@@ -307,7 +307,7 @@ const TopBar: React.FC = () => {
         )}
       </div>
 
-      <AIWorkbenchIMConfigModal
+      <AICodingIMConfigModal
         open={imModalOpen}
         config={imConfig}
         imStatus={imStatus}

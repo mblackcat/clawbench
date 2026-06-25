@@ -6,7 +6,7 @@ import {
   FolderOutlined, BranchesOutlined, DollarOutlined, MessageOutlined, DashboardOutlined, UnlockOutlined
 } from '@ant-design/icons'
 import { useT } from '../../i18n'
-import type { AIToolType, WorkbenchContentBlock, WorkbenchMode, WorkbenchPendingFile } from '../../types/ai-workbench'
+import type { AIToolType, CodingContentBlock, CodingMode, CodingPendingFile } from '../../types/ai-coding'
 
 const { TextArea } = Input
 
@@ -44,40 +44,40 @@ const CODEX_SLASH_COMMANDS = [
   { key: '/review', label: '/review', descKey: 'coding.slashReview' },
 ]
 
-interface WorkbenchInputProps {
+interface CodingInputProps {
   sessionId: string
   toolType: AIToolType
   isStreaming: boolean
-  mode: WorkbenchMode
+  mode: CodingMode
   hasPendingQuestion?: boolean
   workingDir?: string
   costUsd?: number
   messageCount?: number
-  contextUsage?: Extract<WorkbenchContentBlock, { type: 'context_usage' }>
+  contextUsage?: Extract<CodingContentBlock, { type: 'context_usage' }>
   onSend: (text: string) => void
-  onModeChange: (mode: WorkbenchMode) => void
+  onModeChange: (mode: CodingMode) => void
   onInterrupt: () => void
   onStop: () => void
 }
 
-const CLAUDE_MODES: { key: WorkbenchMode; labelKey: string; icon: React.ReactNode }[] = [
+const CLAUDE_MODES: { key: CodingMode; labelKey: string; icon: React.ReactNode }[] = [
   { key: 'plan', labelKey: 'coding.modePlan', icon: <BulbOutlined /> },
   { key: 'ask-first', labelKey: 'coding.modeAskFirst', icon: <QuestionCircleOutlined /> },
   { key: 'auto-edit', labelKey: 'coding.modeAutoEdit', icon: <EditOutlined /> },
 ]
 
-const CODEX_MODES: { key: WorkbenchMode; labelKey: string; icon: React.ReactNode }[] = [
+const CODEX_MODES: { key: CodingMode; labelKey: string; icon: React.ReactNode }[] = [
   { key: 'ask-first', labelKey: 'coding.codexModeAsk', icon: <QuestionCircleOutlined /> },
   { key: 'auto-edit', labelKey: 'coding.codexModeAuto', icon: <EditOutlined /> },
   { key: 'full-access', labelKey: 'coding.codexModeFull', icon: <UnlockOutlined /> },
 ]
 
-const WorkbenchInput: React.FC<WorkbenchInputProps> = ({
+const CodingInput: React.FC<CodingInputProps> = ({
   sessionId: _sessionId, toolType, isStreaming, mode, hasPendingQuestion, workingDir, costUsd, messageCount, contextUsage, onSend, onModeChange, onInterrupt, onStop
 }) => {
   const [inputValue, setInputValue] = useState('')
   const [isComposing, setIsComposing] = useState(false)
-  const [pendingFiles, setPendingFiles] = useState<WorkbenchPendingFile[]>([])
+  const [pendingFiles, setPendingFiles] = useState<CodingPendingFile[]>([])
   const [slashIndex, setSlashIndex] = useState(-1) // selected index in inline autocomplete
   const textAreaRef = useRef<any>(null)
   const { token } = theme.useToken()
@@ -213,7 +213,7 @@ const WorkbenchInput: React.FC<WorkbenchInputProps> = ({
     try {
       const filePaths = await window.api.dialog.selectFiles()
       if (filePaths.length === 0) return
-      const newFiles: WorkbenchPendingFile[] = filePaths.map(fp => {
+      const newFiles: CodingPendingFile[] = filePaths.map(fp => {
         const fileName = fp.split('/').pop() || fp.split('\\').pop() || fp
         const ext = fileName.split('.').pop()?.toLowerCase() || ''
         return {
@@ -563,4 +563,4 @@ const WorkbenchInput: React.FC<WorkbenchInputProps> = ({
   )
 }
 
-export default WorkbenchInput
+export default CodingInput

@@ -11,7 +11,7 @@ import { registerHermesIpc } from './hermes.ipc'
 import { registerCopiperIpc } from './copiper.ipc'
 import { registerUpdaterIpc } from './updater.ipc'
 import { registerLocalEnvIpc } from './local-env.ipc'
-import { registerAIWorkbenchIpc } from './ai-workbench.ipc'
+import { registerAICodingIpc } from './ai-coding.ipc'
 import { registerAITerminalIpc } from './ai-terminal.ipc'
 import { registerMcpIpc } from './mcp.ipc'
 import { registerSkillIpc } from './skill.ipc'
@@ -36,7 +36,7 @@ export function registerAllIpcHandlers(): void {
   registerCopiperIpc()
   registerUpdaterIpc()
   registerLocalEnvIpc()
-  registerAIWorkbenchIpc()
+  registerAICodingIpc()
   registerAITerminalIpc()
   registerMcpIpc()
   registerSkillIpc()

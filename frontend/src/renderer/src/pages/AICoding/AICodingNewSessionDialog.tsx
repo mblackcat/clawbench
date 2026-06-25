@@ -3,18 +3,18 @@ import { Modal, List, Tag, Spin, theme, Button, Tooltip } from 'antd'
 import { CheckCircleOutlined, CloseCircleOutlined, ReloadOutlined } from '@ant-design/icons'
 import { AI_TOOL_TAG_COLORS, AI_TOOL_TAG_STYLE, renderAIToolTagLabel } from './aiToolMeta'
 import { useT } from '../../i18n'
-import type { AIToolType, DetectedCLI } from '../../types/ai-workbench'
+import type { AIToolType, DetectedCLI } from '../../types/ai-coding'
 
 // Module-level cache so tools are only detected once per app session
 let toolsCache: DetectedCLI[] | null = null
 
-interface AIWorkbenchNewSessionDialogProps {
+interface AICodingNewSessionDialogProps {
   open: boolean
   onOk: (toolType: AIToolType) => void
   onCancel: () => void
 }
 
-const AIWorkbenchNewSessionDialog: React.FC<AIWorkbenchNewSessionDialogProps> = ({
+const AICodingNewSessionDialog: React.FC<AICodingNewSessionDialogProps> = ({
   open,
   onOk,
   onCancel
@@ -30,7 +30,7 @@ const AIWorkbenchNewSessionDialog: React.FC<AIWorkbenchNewSessionDialogProps> = 
       return
     }
     setLoading(true)
-    window.api.aiWorkbench
+    window.api.aiCoding
       .detectTools()
       .then((detected) => {
         // Exclude plain terminal — users open that via the sidebar terminal icon
@@ -120,4 +120,4 @@ const AIWorkbenchNewSessionDialog: React.FC<AIWorkbenchNewSessionDialogProps> = 
   )
 }
 
-export default AIWorkbenchNewSessionDialog
+export default AICodingNewSessionDialog

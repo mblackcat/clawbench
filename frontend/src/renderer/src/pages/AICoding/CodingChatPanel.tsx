@@ -1,9 +1,9 @@
 import React, { useMemo, useCallback } from 'react'
-import { useAIWorkbenchStore } from '../../stores/useAIWorkbenchStore'
-import WorkbenchMessageList from './WorkbenchMessageList'
-import WorkbenchInput from './WorkbenchInput'
+import { useAICodingStore } from '../../stores/useAICodingStore'
+import CodingMessageList from './CodingMessageList'
+import CodingInput from './CodingInput'
 import { useT } from '../../i18n'
-import type { WorkbenchMode, WorkbenchMessage } from '../../types/ai-workbench'
+import type { CodingMode, CodingMessage } from '../../types/ai-coding'
 
 let localMsgCounter = 0
 function genLocalMsgId(): string { return `wm-local-${Date.now()}-${++localMsgCounter}` }
@@ -39,13 +39,13 @@ const HELP_TEXT = `可用命令:
 以下命令请在 CLI 模式下使用:
 /memory, /mcp, /doctor`
 
-interface WorkbenchChatPanelProps {
+interface CodingChatPanelProps {
   sessionId: string
   onNewSession: () => void
   onCloseSession?: (sessionId: string) => void
 }
 
-const WorkbenchChatPanel: React.FC<WorkbenchChatPanelProps> = ({ sessionId, onNewSession, onCloseSession }) => {
+const CodingChatPanel: React.FC<CodingChatPanelProps> = ({ sessionId, onNewSession, onCloseSession }) => {
   const t = useT()
   const {
     sessions, workspaces,
@@ -53,7 +53,7 @@ const WorkbenchChatPanel: React.FC<WorkbenchChatPanelProps> = ({ sessionId, onNe
     sessionPendingQuestions,
     sendUserMessage, setSessionMode, interruptSession, stopSession,
     clearSessionMessages,
-  } = useAIWorkbenchStore()
+  } = useAICodingStore()
 
   const session = useMemo(() => sessions.find(s => s.id === sessionId), [sessions, sessionId])
   const workspace = useMemo(() => session ? workspaces.find(w => w.id === session.workspaceId) : null, [workspaces, session])
@@ -61,18 +61,18 @@ const WorkbenchChatPanel: React.FC<WorkbenchChatPanelProps> = ({ sessionId, onNe
   const messages = sessionMessages[sessionId] || []
   const isStreaming = sessionStreaming[sessionId] || false
   const streamingBlocks = sessionStreamingBlocks[sessionId] || []
-  const mode: WorkbenchMode = sessionModes[sessionId] || 'ask-first'
+  const mode: CodingMode = sessionModes[sessionId] || 'ask-first'
   const hasPendingQuestion = !!sessionPendingQuestions[sessionId]
   const contextUsage = sessionContextUsage[sessionId] || undefined
 
   /** Add a local system message bubble */
   const addLocalMessage = useCallback((text: string) => {
-    const msg: WorkbenchMessage = {
+    const msg: CodingMessage = {
       id: genLocalMsgId(), sessionId, role: 'system',
       blocks: [{ type: 'text', text }],
       timestamp: Date.now()
     }
-    useAIWorkbenchStore.setState(s => ({
+    useAICodingStore.setState(s => ({
       sessionMessages: {
         ...s.sessionMessages,
         [sessionId]: [...(s.sessionMessages[sessionId] || []), msg]
@@ -116,7 +116,7 @@ const WorkbenchChatPanel: React.FC<WorkbenchChatPanelProps> = ({ sessionId, onNe
     sendUserMessage(sessionId, text)
   }, [sessionId, session?.toolType, sendUserMessage, clearSessionMessages, setSessionMode, addLocalMessage, messages, contextUsage, t])
 
-  const handleModeChange = useCallback((m: WorkbenchMode) => {
+  const handleModeChange = useCallback((m: CodingMode) => {
     setSessionMode(sessionId, m)
   }, [sessionId, setSessionMode])
 
@@ -127,14 +127,14 @@ const WorkbenchChatPanel: React.FC<WorkbenchChatPanelProps> = ({ sessionId, onNe
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <WorkbenchMessageList
+      <CodingMessageList
         messages={messages}
         isStreaming={isStreaming}
         streamingBlocks={streamingBlocks}
         hasExistingSession={!!session?.toolSessionId && messages.length === 0}
         sessionId={sessionId}
       />
-      <WorkbenchInput
+      <CodingInput
         sessionId={sessionId}
         toolType={session.toolType}
         isStreaming={isStreaming}
@@ -153,4 +153,4 @@ const WorkbenchChatPanel: React.FC<WorkbenchChatPanelProps> = ({ sessionId, onNe
   )
 }
 
-export default WorkbenchChatPanel
+export default CodingChatPanel

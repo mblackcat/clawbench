@@ -21,16 +21,26 @@ if (
   );
 }
 
+// CORS 守卫：生产环境必须显式配置 CORS_ORIGIN 白名单，否则拒绝启动。
+// 缺省放行所有来源属 fail-open，生产环境不可接受。
+const corsOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean)
+  : null;
+if (nodeEnv === 'production' && (!corsOrigins || corsOrigins.length === 0)) {
+  throw new Error(
+    'FATAL: CORS_ORIGIN must be set to an explicit origin allowlist in production'
+  );
+}
+
 export const config = {
   // 服务器配置
   port: parseInt(process.env.PORT || '3001', 10),
   nodeEnv,
 
-  // CORS 白名单（逗号分隔的 origin 列表；不设置时允许所有来源）
+  // CORS 白名单（逗号分隔的 origin 列表；开发环境不设置时允许所有来源，
+  // 生产环境必须设置，见上方守卫）
   cors: {
-    origins: process.env.CORS_ORIGIN
-      ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean)
-      : null,
+    origins: corsOrigins,
   },
 
   // 数据库配置

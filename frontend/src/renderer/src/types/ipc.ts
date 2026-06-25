@@ -432,30 +432,30 @@ export interface ClawBenchAPI {
       tableNames: string[]
     ) => Promise<Record<string, Array<{ id: number | string; idx_name?: string }>>>
   }
-  aiWorkbench: {
-    getWorkspaces: () => Promise<import('./ai-workbench').AIWorkbenchWorkspace[]>
+  aiCoding: {
+    getWorkspaces: () => Promise<import('./ai-coding').AICodingWorkspace[]>
     createWorkspace: (
       workingDir: string,
       groupId: string
-    ) => Promise<import('./ai-workbench').AIWorkbenchWorkspace>
+    ) => Promise<import('./ai-coding').AICodingWorkspace>
     updateWorkspace: (
       id: string,
-      updates: Partial<import('./ai-workbench').AIWorkbenchWorkspace>
-    ) => Promise<import('./ai-workbench').AIWorkbenchWorkspace | null>
+      updates: Partial<import('./ai-coding').AICodingWorkspace>
+    ) => Promise<import('./ai-coding').AICodingWorkspace | null>
     deleteWorkspace: (id: string) => Promise<void>
-    getWorkspaceSessions: (workspaceId: string) => Promise<import('./ai-workbench').AIWorkbenchSession[]>
-    getSessions: () => Promise<import('./ai-workbench').AIWorkbenchSession[]>
+    getWorkspaceSessions: (workspaceId: string) => Promise<import('./ai-coding').AICodingSession[]>
+    getSessions: () => Promise<import('./ai-coding').AICodingSession[]>
     createSession: (
       workspaceId: string,
       toolType: string,
       source?: string
-    ) => Promise<import('./ai-workbench').AIWorkbenchSession>
+    ) => Promise<import('./ai-coding').AICodingSession>
     updateSession: (
       id: string,
-      updates: Partial<import('./ai-workbench').AIWorkbenchSession>
-    ) => Promise<import('./ai-workbench').AIWorkbenchSession | null>
+      updates: Partial<import('./ai-coding').AICodingSession>
+    ) => Promise<import('./ai-coding').AICodingSession | null>
     deleteSession: (id: string) => Promise<void>
-    stopSession: (id: string) => Promise<import('./ai-workbench').AIWorkbenchSession | null>
+    stopSession: (id: string) => Promise<import('./ai-coding').AICodingSession | null>
     launchSession: (id: string, opts?: { forcePty?: boolean; cols?: number; rows?: number }) => Promise<{ success: boolean; error?: string }>
     writeToSession: (sessionId: string, text: string) => Promise<{ success: boolean; error?: string }>
     interruptSession: (sessionId: string) => Promise<{ success: boolean }>
@@ -477,28 +477,28 @@ export interface ClawBenchAPI {
     }>>
     loadNativeSessionTranscript: (workingDir: string, toolType: string, sessionId: string) => Promise<Array<{
       role: 'user' | 'assistant' | 'system'
-      blocks: import('./ai-workbench').WorkbenchContentBlock[]
+      blocks: import('./ai-coding').CodingContentBlock[]
       timestamp: number
     }>>
     getSessionOutput: (sessionId: string) => Promise<string>
     getRawSessionOutput: (sessionId: string) => Promise<string>
-    getGroups: () => Promise<import('./ai-workbench').AIWorkbenchGroup[]>
-    createGroup: (name: string) => Promise<import('./ai-workbench').AIWorkbenchGroup>
+    getGroups: () => Promise<import('./ai-coding').AICodingGroup[]>
+    createGroup: (name: string) => Promise<import('./ai-coding').AICodingGroup>
     renameGroup: (
       id: string,
       name: string
-    ) => Promise<import('./ai-workbench').AIWorkbenchGroup | null>
+    ) => Promise<import('./ai-coding').AICodingGroup | null>
     deleteGroup: (id: string) => Promise<{ success: boolean; error?: string }>
-    getIMConfig: () => Promise<import('./ai-workbench').AIWorkbenchIMConfig>
-    saveIMConfig: (config: import('./ai-workbench').AIWorkbenchIMConfig) => Promise<void>
+    getIMConfig: () => Promise<import('./ai-coding').AICodingIMConfig>
+    saveIMConfig: (config: import('./ai-coding').AICodingIMConfig) => Promise<void>
     openDirectory: (dirPath: string) => Promise<string>
     openTerminal: (dirPath: string, toolCommand?: string) => Promise<{ success: boolean }>
     imConnect: () => Promise<{ success: boolean }>
     imDisconnect: () => Promise<{ success: boolean }>
-    imGetStatus: () => Promise<import('./ai-workbench').AIWorkbenchIMConnectionStatus>
+    imGetStatus: () => Promise<import('./ai-coding').AICodingIMConnectionStatus>
     imTest: () => Promise<{ success: boolean; error?: string }>
     onIMStatusChanged: (
-      callback: (status: import('./ai-workbench').AIWorkbenchIMConnectionStatus) => void
+      callback: (status: import('./ai-coding').AICodingIMConnectionStatus) => void
     ) => () => void
     onDataChanged: (callback: () => void) => () => void
   }

@@ -40,7 +40,7 @@ interface ModuleCardConfig {
 
 const MODULE_CARDS: ModuleCardConfig[] = [
   { key: 'aiChat', titleKey: 'modules.aiChat', descKey: 'settings.moduleDescAiChat' },
-  { key: 'aiWorkbench', titleKey: 'modules.aiCoding', descKey: 'settings.moduleDescAiCoding' },
+  { key: 'aiCoding', titleKey: 'modules.aiCoding', descKey: 'settings.moduleDescAiCoding' },
   { key: 'aiTerminal', titleKey: 'modules.aiTerminal', descKey: 'settings.moduleDescAiTerminal' },
   { key: 'aiAgents', titleKey: 'modules.aiAgents', descKey: 'settings.moduleDescAiAgents' },
   { key: 'localEnv', titleKey: 'modules.localEnv', descKey: 'settings.moduleDescLocalEnv' },

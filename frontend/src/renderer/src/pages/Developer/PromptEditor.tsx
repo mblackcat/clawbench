@@ -23,7 +23,7 @@ const PromptEditor: React.FC = () => {
 
   const editAppId = (location.state as any)?.appId;
   const fromPath = (location.state as any)?.from as string | undefined;
-  const backTarget = fromPath || '/apps/my-contributions';
+  const backTarget = fromPath || '/workbench/my-contributions';
   const savingRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState('');
@@ -95,7 +95,7 @@ const PromptEditor: React.FC = () => {
         message.success(t('promptEditor.promptCreated'));
       }
 
-      navigate('/apps/my-contributions');
+      navigate('/workbench/my-contributions');
     } catch (error) {
       console.error('Failed to save prompt:', error);
       message.error(t('promptEditor.saveFailed'));

@@ -3,10 +3,10 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
-import { useAIWorkbenchStore } from '../../stores/useAIWorkbenchStore'
-import type { ClaudeViewMode } from '../../types/ai-workbench'
+import { useAICodingStore } from '../../stores/useAICodingStore'
+import type { ClaudeViewMode } from '../../types/ai-coding'
 
-interface WorkbenchTerminalViewProps {
+interface CodingTerminalViewProps {
   sessionId: string
   onNewSession: () => void
   onCloseSession?: (sessionId: string) => void
@@ -23,8 +23,8 @@ interface WorkbenchTerminalViewProps {
  * input directly to the PTY process — providing a full embedded terminal
  * experience within the workbench panel.
  */
-const WorkbenchTerminalView: React.FC<WorkbenchTerminalViewProps> = ({ sessionId }) => {
-  const { sessions, launchSession } = useAIWorkbenchStore()
+const CodingTerminalView: React.FC<CodingTerminalViewProps> = ({ sessionId }) => {
+  const { sessions, launchSession } = useAICodingStore()
 
   const session = useMemo(() => sessions.find(s => s.id === sessionId), [sessions, sessionId])
 
@@ -164,7 +164,7 @@ const WorkbenchTerminalView: React.FC<WorkbenchTerminalViewProps> = ({ sessionId
         if (matchesPaste) {
           event.preventDefault()
           navigator.clipboard.readText().then((text) => {
-            if (text) window.api.aiWorkbench.writePty(sessionIdRef.current, text)
+            if (text) window.api.aiCoding.writePty(sessionIdRef.current, text)
           }).catch(() => { /* clipboard read denied or empty */ })
           return false
         }
@@ -173,12 +173,12 @@ const WorkbenchTerminalView: React.FC<WorkbenchTerminalViewProps> = ({ sessionId
     })
 
     term.onData((data) => {
-      window.api.aiWorkbench.writePty(sessionIdRef.current, data)
+      window.api.aiCoding.writePty(sessionIdRef.current, data)
     })
 
     let replayed = false
     const queuedData: string[] = []
-    const unsubData = window.api.aiWorkbench.onPtyData(({ sessionId: sid, data }) => {
+    const unsubData = window.api.aiCoding.onPtyData(({ sessionId: sid, data }) => {
       if (sid === sessionIdRef.current) {
         if (replayed) term.write(data)
         else queuedData.push(data)
@@ -188,7 +188,7 @@ const WorkbenchTerminalView: React.FC<WorkbenchTerminalViewProps> = ({ sessionId
     const fitAndResize = (): void => {
       try {
         fitAddon.fit()
-        window.api.aiWorkbench.resizePty(sessionIdRef.current, term.cols, term.rows)
+        window.api.aiCoding.resizePty(sessionIdRef.current, term.cols, term.rows)
       } catch {
         // xterm-fit can throw while the container is not measurable.
       }
@@ -198,7 +198,7 @@ const WorkbenchTerminalView: React.FC<WorkbenchTerminalViewProps> = ({ sessionId
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
       fitAndResize()
 
-      const currentSession = useAIWorkbenchStore.getState().sessions.find(s => s.id === sessionId)
+      const currentSession = useAICodingStore.getState().sessions.find(s => s.id === sessionId)
       const needsForcedPty = currentSession?.toolType === 'claude' || currentSession?.toolType === 'codex'
       const needsLaunch =
         !currentSession ||
@@ -208,7 +208,7 @@ const WorkbenchTerminalView: React.FC<WorkbenchTerminalViewProps> = ({ sessionId
 
       if (needsForcedPty) {
         if (!needsLaunch) {
-          try { await window.api.aiWorkbench.stopSession(sessionId) } catch { /* */ }
+          try { await window.api.aiCoding.stopSession(sessionId) } catch { /* */ }
         }
         const result = await launchSession(sessionId, { forcePty: true, cols: term.cols, rows: term.rows })
         if (!result.success) {
@@ -220,7 +220,7 @@ const WorkbenchTerminalView: React.FC<WorkbenchTerminalViewProps> = ({ sessionId
           term.writeln(`\x1b[31mFailed to start session: ${result.error ?? 'Unknown error'}\x1b[0m`)
         }
       } else {
-        const buffered = await window.api.aiWorkbench.getRawSessionOutput(sessionId)
+        const buffered = await window.api.aiCoding.getRawSessionOutput(sessionId)
         if (buffered) term.write(buffered)
       }
 
@@ -296,4 +296,4 @@ const WorkbenchTerminalView: React.FC<WorkbenchTerminalViewProps> = ({ sessionId
   )
 }
 
-export default WorkbenchTerminalView
+export default CodingTerminalView

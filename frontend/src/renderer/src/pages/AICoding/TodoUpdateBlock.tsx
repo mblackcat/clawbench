@@ -2,7 +2,7 @@ import React from 'react'
 import { theme, Spin } from 'antd'
 import { CheckCircleFilled, ClockCircleOutlined } from '@ant-design/icons'
 import { useT } from '../../i18n'
-import type { TodoItem } from '../../types/ai-workbench'
+import type { TodoItem } from '../../types/ai-coding'
 
 interface TodoUpdateBlockProps {
   todos: TodoItem[]
