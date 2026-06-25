@@ -26,32 +26,30 @@ ClawBench is a cross-platform desktop application (macOS & Windows) that brings 
 
 ## Features
 
-### AI Modules
+### Workbench — Team Collaboration Hub
 
-- **AI Chat** — Multi-model conversations (OpenAI / Claude / Gemini) with streaming, tool calling, MCP integration, and image generation
-- **AI Workbench** — Manage Claude Code, Codex, and Gemini CLI coding sessions from a visual interface, with optional Feishu IM remote control
-- **AI Terminal** — Terminal + Database dual-mode: local/SSH terminals alongside a multi-database GUI (MySQL, PostgreSQL, MongoDB, SQLite) with an AI assistant
-- **AI Agents** — Agent management hub with OpenClaw visual multi-node scenarios and community skills
+A unified workspace for creating, managing, and sharing development resources across your team:
 
-### Mini-App Marketplace
-
-- **Three resource types**: Apps (Python sub-apps), AI Skills (deployable to Claude/Codex/Gemini workspaces), and Prompts
+- **Four resource types**: Automation apps (Python sub-apps), AI Skills (deployable to Claude/Codex/Gemini workspaces), Prompts, and Links (curated URL collections)
+- **Create & Publish** — Built-in editors for each resource type (App Editor, Skill Editor, Prompt Editor) with one-click publishing to the marketplace
 - **Discover & Install** — Browse, search, install, and update community-contributed resources
-- **Create & Publish** — Built-in editors for each resource type (App Editor, Skill Editor, Prompt Editor) with one-click publishing
-- **Favorites Bar** — Pin and drag-sort your most-used resources for quick access
+- **Favorites Bar** — Pin and drag-sort your most-used resources for quick access; different actions per type (run apps, activate skills, copy prompts, open links)
 
-### Developer Tools
+### AI Tool Modules
 
-- **Local Environment** — Detect and install dev tools (Python, Node.js, Git, Docker, and AI CLI tools)
-- **Code Editor** — Monaco-based editor integrated into the app creation workflow
-- **Multi-language** — Full Chinese and English UI support
+- **AI Chat** — Multi-model conversations (OpenAI / Claude / Gemini) with streaming, local tool calling (file system, shell commands), web search, MCP integration, and image generation
+- **AI Coding** — Unified environment for managing Claude Code, Codex, and Gemini CLI coding sessions from a visual interface, with optional Feishu IM remote control
+- **AI Terminal** — AI-assisted dual-mode terminal: local/SSH shells with AI command suggestions, plus a multi-database GUI (MySQL, PostgreSQL, MongoDB, SQLite) with AI-powered query assistance
+- **AI Agents** — Lightweight agent management hub with OpenClaw (visual multi-node scenarios) and Hermes (messaging gateway connecting AI to Telegram/Discord/Slack/Signal)
 
 ### Platform
 
 - Cross-platform: macOS (Intel + Apple Silicon) and Windows
+- Local environment detection and setup (Python, Node.js, Git, Docker, AI CLI tools)
+- Monaco-based code editor integrated into the app creation workflow
 - Auto-update with self-hosted release server
 - SQLite / MySQL / PostgreSQL backend support
-- JWT authentication and user management
+- JWT authentication, full Chinese and English UI
 
 ## Installation
 
@@ -66,17 +64,19 @@ Download the latest release for your platform:
 
 ## Use Cases
 
-**Daily AI-Assisted Coding** — Use AI Chat or AI Workbench to get code suggestions, debug issues, or generate boilerplate across multiple AI models without leaving the workbench.
+**Team Knowledge Sharing** — Package common workflows as AI Skills, Prompts, or curated Link collections, publish them to the marketplace, and let your team install and reuse them with one click.
 
-**Database Management** — Connect to MySQL, PostgreSQL, MongoDB, or SQLite databases through the AI Terminal's DB mode. Run queries, browse tables, and get AI-powered SQL suggestions.
+**Custom Automation** — Build Python mini-apps to automate repetitive tasks (CI triggers, code analysis, data processing) and share them as marketplace resources anyone can run.
 
-**Remote Server Operations** — Open SSH terminals within ClawBench and use the AI assistant to help with server administration, log analysis, and troubleshooting.
+**AI Skill Deployment** — Create AI skills (as SKILL.md files) and deploy them into Claude Code, Codex, or Gemini CLI workspaces with automatic detection and placement.
 
-**Team Knowledge Sharing** — Package common workflows as AI Skills or Prompts, publish them to the marketplace, and let your team install them with one click.
+**Multi-Model AI Assistance** — Use AI Chat to interact with multiple AI models for code generation, debugging, and knowledge retrieval, with built-in tool calling and web search.
 
-**Custom Automation** — Write Python mini-apps to automate repetitive tasks (CI triggers, code analysis, data processing) and run them directly from the favorites bar.
+**Database Management** — Connect to MySQL, PostgreSQL, MongoDB, or SQLite through the AI Terminal's DB mode. Get AI-powered SQL suggestions while browsing tables and running queries.
 
-**AI Skill Deployment** — Create and deploy AI skills (as SKILL.md files) into Claude Code, Codex, or Gemini CLI workspaces with automatic detection and placement.
+**Remote Server Operations** — Open SSH terminals within ClawBench and use the AI assistant for server administration, log analysis, and troubleshooting.
+
+**Agent Orchestration** — Manage OpenClaw visual multi-node scenarios or connect Hermes to Telegram/Discord/Slack for messaging-based AI automation.
 
 ## Local Development
 
