@@ -26,32 +26,30 @@ ClawBench 是一款跨平台桌面应用（macOS & Windows），将 AI 编码助
 
 ## 核心功能
 
-### AI 模块
+### 工作台 — 团队协作中心
 
-- **AI Chat** — 多模型对话（OpenAI / Claude / Gemini），支持流式输出、Tool Calling、MCP 集成、图片生成
-- **AI Workbench** — 可视化管理 Claude Code、Codex、Gemini CLI 编码会话，支持飞书 IM 远程控制
-- **AI Terminal** — 终端 + 数据库双模式：本地/SSH 终端 + 多数据库 GUI（MySQL、PostgreSQL、MongoDB、SQLite），内置 AI 助手
-- **AI Agents** — 智能代理管理中心，OpenClaw 可视化多节点场景和社区技能
+统一的工作区，用于创建、管理和分享开发资源，支持团队协同：
 
-### 迷你应用市场
-
-- **三种资源类型**：应用（Python 子应用）、AI 技能（可部署到 Claude/Codex/Gemini 工作区）、提示词
+- **四种资源类型**：自动化小程序（Python 子应用）、AI 技能（可部署到 Claude/Codex/Gemini 工作区）、提示词、链接（收藏的 URL）
+- **创建与发布** — 各资源类型专属编辑器（应用编辑器、技能编辑器、提示词编辑器），一键发布到市场
 - **发现与安装** — 浏览、搜索、安装和更新社区贡献的资源
-- **创建与发布** — 内置编辑器（应用编辑器、技能编辑器、提示词编辑器），一键发布
-- **收藏栏** — 置顶和拖拽排序常用资源，快速访问
+- **收藏栏** — 置顶和拖拽排序常用资源，快速访问；按类型执行不同操作（运行小程序、激活技能、复制提示词、打开链接）
 
-### 开发者工具
+### AI 工具模块
 
-- **本地环境检测** — 自动检测和安装开发工具（Python、Node.js、Git、Docker 及 AI CLI 工具）
-- **代码编辑器** — 基于 Monaco 的编辑器，集成在应用创建流程中
-- **中英双语** — 完整的中英文界面支持
+- **AI Chat** — 多模型对话（OpenAI / Claude / Gemini），支持流式输出、本地工具调用（文件系统、Shell 命令）、联网搜索、MCP 集成、图片生成
+- **AI Coding** — 统一管理 Claude Code、Codex、Gemini CLI 编码会话的可视化环境，支持飞书 IM 远程控制
+- **AI Terminal** — AI 辅助双模式终端：本地/SSH 终端（AI 命令建议）+ 多数据库 GUI（MySQL、PostgreSQL、MongoDB、SQLite），AI 辅助查询
+- **AI Agents** — 轻量级智能代理管理，支持 OpenClaw（可视化多节点场景编排）和 Hermes（消息网关，连接 AI 到 Telegram/Discord/Slack/Signal）
 
 ### 平台特性
 
 - 跨平台：macOS（Intel + Apple Silicon）和 Windows
+- 本地环境检测与配置（Python、Node.js、Git、Docker、AI CLI 工具）
+- 基于 Monaco 的代码编辑器，集成在应用创建流程中
 - 自动更新，自托管发布服务器
 - 支持 SQLite / MySQL / PostgreSQL 后端
-- JWT 认证和用户管理
+- JWT 认证，完整中英文界面
 
 ## 安装
 
@@ -66,17 +64,19 @@ ClawBench 是一款跨平台桌面应用（macOS & Windows），将 AI 编码助
 
 ## 使用场景
 
-**日常 AI 辅助编码** — 使用 AI Chat 或 AI Workbench 获取代码建议、调试问题或生成样板代码，支持多种 AI 模型，无需离开工作台。
+**团队知识共享** — 将常用工作流封装为 AI 技能、提示词或链接集合，发布到市场，团队成员一键安装即可复用。
 
-**数据库管理** — 通过 AI Terminal 的 DB 模式连接 MySQL、PostgreSQL、MongoDB 或 SQLite 数据库，执行查询、浏览表结构，获取 AI 驱动的 SQL 建议。
+**自定义自动化** — 编写 Python 小程序自动化重复任务（CI 触发、代码分析、数据处理），发布为市场资源供所有人使用。
+
+**AI 技能部署** — 创建 AI 技能（SKILL.md 文件），自动检测并一键部署到 Claude Code、Codex 或 Gemini CLI 工作区。
+
+**多模型 AI 辅助** — 使用 AI Chat 对接多种 AI 模型，进行代码生成、调试和知识检索，支持本地工具调用和联网搜索。
+
+**数据库管理** — 通过 AI Terminal 的 DB 模式连接 MySQL、PostgreSQL、MongoDB 或 SQLite，获取 AI 辅助 SQL 建议，浏览表结构并执行查询。
 
 **远程服务器运维** — 在 ClawBench 中打开 SSH 终端，借助 AI 助手进行服务器管理、日志分析和问题排查。
 
-**团队知识共享** — 将常用工作流封装为 AI 技能或提示词，发布到市场，团队成员一键安装即可使用。
-
-**自定义自动化** — 编写 Python 迷你应用来自动化重复任务（CI 触发、代码分析、数据处理），直接从收藏栏运行。
-
-**AI 技能部署** — 创建 AI 技能（SKILL.md 文件），自动检测并部署到 Claude Code、Codex 或 Gemini CLI 工作区。
+**智能代理编排** — 使用 OpenClaw 编排可视化多节点场景，或通过 Hermes 连接 Telegram/Discord/Slack 实现消息驱动的 AI 自动化。
 
 ## 本地开发
 
