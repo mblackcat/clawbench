@@ -655,7 +655,7 @@ const CodeEditor: React.FC = () => {
             <Button
               type="text"
               icon={<ArrowLeftOutlined />}
-              onClick={() => navigate('/apps/my-contributions')}
+              onClick={() => navigate('/workbench/my-contributions')}
             />
           </Tooltip>
           <Title level={5} style={{ margin: 0 }}>

@@ -873,12 +873,12 @@ const InstalledAppsPage: React.FC = () => {
             ]}
           />
           {!isLocalMode && (
-            <Button icon={<CompassOutlined />} onClick={() => navigate('/apps/library')}>
+            <Button icon={<CompassOutlined />} onClick={() => navigate('/workbench/library')}>
               {t('workbench.discover')}
             </Button>
           )}
           <Space.Compact>
-            <Button icon={<SnippetsOutlined />} onClick={() => navigate('/apps/my-contributions')}>
+            <Button icon={<SnippetsOutlined />} onClick={() => navigate('/workbench/my-contributions')}>
               {t('workbench.mine')}
             </Button>
             <Button icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>

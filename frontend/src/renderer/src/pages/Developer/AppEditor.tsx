@@ -81,7 +81,7 @@ const AppEditor: React.FC = () => {
           })
         } catch (err) {
           message.error(t('appEditor.loadFailed'))
-          navigate('/apps/my-contributions')
+          navigate('/workbench/my-contributions')
         } finally {
           setLoading(false)
         }
@@ -196,7 +196,7 @@ const AppEditor: React.FC = () => {
         try {
           await window.api.developer.deleteApp(appId)
           message.success(t('appEditor.appDeleted'))
-          navigate('/apps/my-contributions')
+          navigate('/workbench/my-contributions')
         } catch (err) {
           const errorMsg = err instanceof Error ? err.message : String(err)
           message.error(t('appEditor.deleteFailed', errorMsg))
@@ -244,7 +244,7 @@ const AppEditor: React.FC = () => {
 
   const handleClose = () => {
     const state = location.state as { from?: string } | null
-    navigate(state?.from || '/apps/my-contributions')
+    navigate(state?.from || '/workbench/my-contributions')
   }
 
   return (

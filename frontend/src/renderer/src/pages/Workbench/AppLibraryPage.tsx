@@ -464,7 +464,7 @@ const AppLibraryPage: React.FC = () => {
         <Space.Compact size="large">
           <Button
             icon={<SnippetsOutlined />}
-            onClick={() => navigate('/apps/my-contributions')}
+            onClick={() => navigate('/workbench/my-contributions')}
           >
             {t('discover.mine')}
           </Button>

@@ -189,7 +189,7 @@ const AppPublisher: React.FC = () => {
           title={publishResult.status === 'success' ? t('appPublisher.resultSuccess') : t('appPublisher.resultError')}
           subTitle={publishResult.message}
           extra={[
-            <Button key="back" onClick={() => navigate('/apps/library')}>
+            <Button key="back" onClick={() => navigate('/workbench/library')}>
               {t('appPublisher.backToDiscover')}
             </Button>,
             <Button key="reset" type="primary" onClick={() => {

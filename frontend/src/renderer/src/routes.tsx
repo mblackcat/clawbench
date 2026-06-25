@@ -1,12 +1,12 @@
 import React, { Suspense } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Spin } from 'antd'
 import AppLayout from './components/Layout/AppLayout'
 import RequireAuth from './components/RequireAuth'
 import LoginPage from './pages/Login/LoginPage'
-import InstalledAppsPage from './pages/Apps/InstalledAppsPage'
-import AppLibraryPage from './pages/Apps/AppLibraryPage'
-import AppDetailPage from './pages/Apps/AppDetailPage'
+import InstalledAppsPage from './pages/Workbench/InstalledAppsPage'
+import AppLibraryPage from './pages/Workbench/AppLibraryPage'
+import AppDetailPage from './pages/Workbench/AppDetailPage'
 
 // Lazy-loaded pages: deferred until the user navigates to them
 const AIChatPage = React.lazy(() => import('./pages/AIChat/AIChatPage'))
@@ -23,13 +23,21 @@ const SettingsPage = React.lazy(() => import('./pages/Settings/SettingsPage'))
 const SkillEditor = React.lazy(() => import('./pages/Developer/SkillEditor'))
 const PromptEditor = React.lazy(() => import('./pages/Developer/PromptEditor'))
 const LinkEditor = React.lazy(() => import('./pages/Developer/LinkEditor'))
-const MyContributionsPage = React.lazy(() => import('./pages/Apps/MyContributionsPage'))
+const MyContributionsPage = React.lazy(() => import('./pages/Workbench/MyContributionsPage'))
 
 const LazyFallback: React.FC = () => (
   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
     <Spin />
   </div>
 )
+
+// Backward-compat: the Apps module was renamed to Workbench. Redirect any
+// legacy /apps/* path (incl. persisted lastRoute) to its /workbench/* equivalent.
+const AppsRedirect: React.FC = () => {
+  const location = useLocation()
+  const to = location.pathname.replace(/^\/apps/, '/workbench') + location.search
+  return <Navigate to={to} replace />
+}
 
 const AppRoutes: React.FC = () => {
   return (
@@ -38,10 +46,10 @@ const AppRoutes: React.FC = () => {
         <Route path="/" element={<Navigate to={localStorage.getItem('lastRoute') || '/ai-chat'} replace />} />
         <Route path="/login" element={<LoginPage />} />
         <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
-          <Route path="/apps/installed" element={<InstalledAppsPage />} />
-          <Route path="/apps/library" element={<AppLibraryPage />} />
-          <Route path="/apps/detail/:appId" element={<AppDetailPage />} />
-          <Route path="/copiper" element={<Navigate to="/apps/installed" replace />} />
+          <Route path="/workbench/installed" element={<InstalledAppsPage />} />
+          <Route path="/workbench/library" element={<AppLibraryPage />} />
+          <Route path="/workbench/detail/:appId" element={<AppDetailPage />} />
+          <Route path="/copiper" element={<Navigate to="/workbench/installed" replace />} />
           <Route path="/ai-chat" element={<AIChatPage />} />
           <Route path="/developer/new" element={<AppEditor />} />
           <Route path="/developer/code/:appId" element={<CodeEditor />} />
@@ -49,7 +57,7 @@ const AppRoutes: React.FC = () => {
           <Route path="/developer/new-skill" element={<SkillEditor />} />
           <Route path="/developer/new-prompt" element={<PromptEditor />} />
           <Route path="/developer/new-link" element={<LinkEditor />} />
-          <Route path="/apps/my-contributions" element={<MyContributionsPage />} />
+          <Route path="/workbench/my-contributions" element={<MyContributionsPage />} />
           <Route path="/ai-agents" element={<AIAgentsPage />} />
           <Route path="/ai-agents/openclaw" element={<OpenClawPage />} />
           <Route path="/ai-agents/hermes" element={<HermesPage />} />
@@ -59,6 +67,8 @@ const AppRoutes: React.FC = () => {
           <Route path="/ai-workbench" element={<Navigate to="/ai-coding" replace />} />
           <Route path="/ai-terminal" element={<AITerminalPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/apps" element={<Navigate to="/workbench/installed" replace />} />
+          <Route path="/apps/*" element={<AppsRedirect />} />
         </Route>
       </Routes>
     </Suspense>

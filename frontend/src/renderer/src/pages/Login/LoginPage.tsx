@@ -49,7 +49,7 @@ const LoginPage: React.FC = () => {
 
   useEffect(() => {
     if (loggedIn) {
-      const lastRoute = localStorage.getItem('lastRoute') || '/apps/installed'
+      const lastRoute = localStorage.getItem('lastRoute') || '/workbench/installed'
       navigate(lastRoute)
     }
   }, [loggedIn, navigate])

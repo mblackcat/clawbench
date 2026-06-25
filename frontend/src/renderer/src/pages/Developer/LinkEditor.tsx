@@ -22,7 +22,7 @@ const LinkEditor: React.FC = () => {
 
   const editAppId = (location.state as any)?.appId;
   const fromPath = (location.state as any)?.from as string | undefined;
-  const backTarget = fromPath || '/apps/my-contributions';
+  const backTarget = fromPath || '/workbench/my-contributions';
   const savingRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState('');
