@@ -20,17 +20,18 @@ import type { MenuProps } from 'antd'
 import {
   SaveOutlined,
   PlayCircleOutlined,
+  PauseCircleOutlined,
   ArrowLeftOutlined,
   FileOutlined,
   FolderOutlined,
-  CloseOutlined,
   RobotOutlined,
-  CodeOutlined,
+  ProfileOutlined,
+  ExportOutlined,
+  CommentOutlined,
   FileAddOutlined,
   FolderAddOutlined,
   EditOutlined,
-  DeleteOutlined,
-  MessageOutlined
+  DeleteOutlined
 } from '@ant-design/icons'
 import Editor from '@monaco-editor/react'
 import type { DataNode } from 'antd/es/tree'
@@ -662,41 +663,48 @@ const CodeEditor: React.FC = () => {
           </Title>
         </Space>
 
-        {/* Center: primary Run / Stop */}
-        {isRunning ? (
-          <Button danger icon={<CloseOutlined />} onClick={stopApp}>
-            {t('codeEditor.stop')}
-          </Button>
-        ) : (
-          <Button type="primary" icon={<PlayCircleOutlined />} onClick={runApp}>
-            {t('codeEditor.run')}
-          </Button>
-        )}
-
-        {/* Right: editor + AI + output + chat toggle (icon-only) */}
+        {/* Center: Run / Log / Save (icon buttons) */}
         <Space size={4}>
-          <Tooltip title={t('codeEditor.saveAll')}>
-            <Button type="text" icon={<SaveOutlined />} onClick={saveAllFiles} />
-          </Tooltip>
-          <Tooltip title={t('codeEditor.openInIde')}>
-            <Button type="text" icon={<CodeOutlined />} onClick={handleOpenInIde} />
-          </Tooltip>
-          <Tooltip title={t('codeEditor.aiGenerate')}>
-            <Button type="text" icon={<RobotOutlined />} onClick={handleOpenAIGenerate} />
-          </Tooltip>
+          {isRunning ? (
+            <Tooltip title={t('codeEditor.stop')}>
+              <Button danger type="text" icon={<PauseCircleOutlined />} onClick={stopApp} />
+            </Tooltip>
+          ) : (
+            <Tooltip title={t('codeEditor.run')}>
+              <Button
+                type="text"
+                icon={<PlayCircleOutlined />}
+                onClick={runApp}
+                style={{ color: token.colorPrimary }}
+              />
+            </Tooltip>
+          )}
           <Tooltip title={outputVisible ? t('codeEditor.hideOutput') : t('codeEditor.showOutput')}>
             <Badge count={outputLines.length} offset={[-2, 2]} size="small">
               <Button
-                type="text"
-                icon={<CodeOutlined />}
+                type={outputVisible ? 'primary' : 'text'}
+                icon={<ProfileOutlined />}
                 onClick={() => setOutputVisible(!outputVisible)}
               />
             </Badge>
           </Tooltip>
+          <Tooltip title={t('codeEditor.saveAll')}>
+            <Button type="text" icon={<SaveOutlined />} onClick={saveAllFiles} />
+          </Tooltip>
+        </Space>
+
+        {/* Right: IDE + AI generate + AI chat toggle (icon-only) */}
+        <Space size={4}>
+          <Tooltip title={t('codeEditor.openInIde')}>
+            <Button type="text" icon={<ExportOutlined />} onClick={handleOpenInIde} />
+          </Tooltip>
+          <Tooltip title={t('codeEditor.aiGenerate')}>
+            <Button type="text" icon={<RobotOutlined />} onClick={handleOpenAIGenerate} />
+          </Tooltip>
           <Tooltip title={chatVisible ? t('codeEditor.hideChat') : t('codeEditor.showChat')}>
             <Button
               type={chatVisible ? 'primary' : 'text'}
-              icon={<MessageOutlined />}
+              icon={<CommentOutlined />}
               onClick={() => setChatVisible(!chatVisible)}
             />
           </Tooltip>
