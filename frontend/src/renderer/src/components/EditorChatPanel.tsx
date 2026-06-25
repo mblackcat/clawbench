@@ -20,7 +20,9 @@ import { useAIModelStore } from '../stores/useAIModelStore'
 import { rehypeHighlightPlugin } from '../utils/markdown-plugins'
 import { externalLinkMarkdownComponents } from '../utils/markdown-links'
 import ThinkingBlock from './ThinkingBlock'
+import ModelSelector from '../pages/AIChat/ModelSelector'
 import { SUBAPP_CHAT_SYSTEM_PROMPT, SUBAPP_CHAT_TOOLS } from '../skills/subappCreateSkill'
+import { apiClient, API_BASE_URL } from '../services/apiClient'
 import '../pages/AIChat/chat-styles.css'
 
 const { TextArea } = Input
@@ -95,28 +97,37 @@ const EditorChatPanel: React.FC<EditorChatPanelProps> = ({
   const cancelledRef = useRef(false)
   const rejectStreamRef = useRef<((err: Error) => void) | null>(null)
 
-  const { selectedModelSource, selectedModelConfigId, selectedModelId, localModels, fetchLocalModels } =
+  const { selectedModelSource, selectedModelConfigId, selectedModelId, builtinModels, localModels, fetchBuiltinModels, fetchLocalModels, initializeSelectedModel } =
     useAIModelStore()
 
   useEffect(() => {
-    fetchLocalModels()
-  }, [fetchLocalModels])
+    Promise.all([fetchBuiltinModels(), fetchLocalModels()]).then(() => {
+      initializeSelectedModel()
+    })
+  }, [fetchBuiltinModels, fetchLocalModels, initializeSelectedModel])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, streamingContentRef.current, streamingThinkingRef.current, streamingToolsRef.current])
 
-  // Resolve a tool-capable LOCAL model: agentic file tools require the local
-  // streaming path (the built-in server stream does not support tool calling).
-  const resolveLocalModel = useCallback((): { configId: string; modelId: string } | null => {
-    if (selectedModelSource === 'local' && selectedModelConfigId && selectedModelId) {
-      return { configId: selectedModelConfigId, modelId: selectedModelId }
+  // Resolve the current model selection (works for both builtin and local).
+  const resolveModel = useCallback((): { source: 'builtin' | 'local'; configId: string; modelId: string } | null => {
+    if (selectedModelSource === 'builtin' && selectedModelId) {
+      return { source: 'builtin', configId: '', modelId: selectedModelId }
     }
+    if (selectedModelSource === 'local' && selectedModelConfigId && selectedModelId) {
+      return { source: 'local', configId: selectedModelConfigId, modelId: selectedModelId }
+    }
+    // Fallback: any local model
     for (const c of localModels) {
-      if (c.models.length > 0) return { configId: c.id, modelId: c.models[0] }
+      if (c.models.length > 0) return { source: 'local', configId: c.id, modelId: c.models[0] }
+    }
+    // Fallback: any builtin model
+    if (builtinModels.length > 0) {
+      return { source: 'builtin', configId: '', modelId: builtinModels[0].id }
     }
     return null
-  }, [selectedModelSource, selectedModelConfigId, selectedModelId, localModels])
+  }, [selectedModelSource, selectedModelConfigId, selectedModelId, localModels, builtinModels])
 
   const executeTool = useCallback(
     async (toolName: string, input: Record<string, any>): Promise<{ result: string; isError: boolean }> => {
@@ -240,11 +251,118 @@ const EditorChatPanel: React.FC<EditorChatPanelProps> = ({
     [forceUpdate]
   )
 
+  // Stream one round via backend API (for builtin/server models).
+  const streamBuiltinOneRound = useCallback(
+    (
+      modelId: string,
+      apiMessages: Array<any>
+    ): Promise<
+      | { type: 'done'; content: string; thinking: string }
+      | {
+          type: 'tool_use'
+          content: string
+          thinking: string
+          toolCallId: string
+          toolName: string
+          toolInput: Record<string, any>
+        }
+    > => {
+      return new Promise((resolve, reject) => {
+        ;(async () => {
+          const token = apiClient.getToken()
+          const response = await fetch(`${API_BASE_URL}/ai/chat/stream`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              modelId,
+              messages: apiMessages,
+              tools: SUBAPP_CHAT_TOOLS,
+              enableThinking: true
+            })
+          })
+
+          if (!response.ok) {
+            throw new Error(`Stream request failed: ${response.status}`)
+          }
+
+          const reader = response.body?.getReader()
+          if (!reader) throw new Error('No response body')
+          const decoder = new TextDecoder()
+          let buffer = ''
+          let roundContent = ''
+          let roundThinking = ''
+
+          cancelledRef.current = false
+          rejectStreamRef.current = (err: Error) => {
+            reader.cancel()
+            reject(err)
+          }
+
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done || cancelledRef.current) break
+            buffer += decoder.decode(value, { stream: true })
+
+            const lines = buffer.split('\n')
+            buffer = lines.pop() || ''
+
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue
+              const data = line.slice(6).trim()
+              if (!data || data === '[DONE]') continue
+
+              let parsed: any
+              try {
+                parsed = JSON.parse(data)
+              } catch {
+                continue
+              }
+
+              if (parsed.type === 'delta' && parsed.content) {
+                roundContent += parsed.content
+                streamingContentRef.current += parsed.content
+                forceUpdate()
+              } else if (parsed.type === 'thinking_delta' && parsed.content) {
+                roundThinking += parsed.content
+                streamingThinkingRef.current += parsed.content
+                forceUpdate()
+              } else if (parsed.type === 'tool_use' && parsed.toolCall) {
+                rejectStreamRef.current = null
+                resolve({
+                  type: 'tool_use',
+                  content: roundContent,
+                  thinking: roundThinking,
+                  toolCallId: parsed.toolCall.id,
+                  toolName: parsed.toolCall.name,
+                  toolInput: parsed.toolCall.input
+                })
+                return
+              } else if (parsed.type === 'done') {
+                rejectStreamRef.current = null
+                resolve({ type: 'done', content: roundContent, thinking: roundThinking })
+                return
+              } else if (parsed.type === 'error') {
+                throw new Error(parsed.message || 'Stream error')
+              }
+            }
+          }
+
+          rejectStreamRef.current = null
+          resolve({ type: 'done', content: roundContent, thinking: roundThinking })
+        })().catch(reject)
+      })
+    },
+    [forceUpdate]
+  )
+
   const handleSend = useCallback(async () => {
     const text = inputValue.trim()
     if (!text || streaming) return
 
-    const model = resolveLocalModel()
+    const model = resolveModel()
     if (!model) {
       setMessages((prev) => [
         ...prev,
@@ -253,7 +371,7 @@ const EditorChatPanel: React.FC<EditorChatPanelProps> = ({
           id: `a-${Date.now()}`,
           role: 'assistant',
           content:
-            '⚠️ AI 编码助手需要一个**本地模型**（支持工具调用）。请在「设置 → AI 模型」中添加并启用一个模型（如 Claude / OpenAI / Gemini），然后重试。'
+            '⚠️ 未找到可用模型。请在「设置 → AI 模型」中添加并启用一个模型（如 Claude / OpenAI / Gemini），然后重试。'
         }
       ])
       setInputValue('')
@@ -286,7 +404,9 @@ const EditorChatPanel: React.FC<EditorChatPanelProps> = ({
       for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
         if (cancelledRef.current) break
 
-        const res = await streamOneRound(model.configId, apiMessages, model.modelId)
+        const res = model.source === 'builtin'
+          ? await streamBuiltinOneRound(model.modelId, apiMessages)
+          : await streamOneRound(model.configId, apiMessages, model.modelId)
         if (res.thinking) finalThinking = res.thinking
 
         if (res.type === 'done') {
@@ -354,7 +474,7 @@ const EditorChatPanel: React.FC<EditorChatPanelProps> = ({
       setStreaming(false)
       forceUpdate()
     }
-  }, [inputValue, streaming, messages, resolveLocalModel, streamOneRound, executeTool, forceUpdate])
+  }, [inputValue, streaming, messages, resolveModel, streamOneRound, streamBuiltinOneRound, executeTool, forceUpdate])
 
   const handleCancel = useCallback(() => {
     cancelledRef.current = true
@@ -468,6 +588,7 @@ const EditorChatPanel: React.FC<EditorChatPanelProps> = ({
         <Text strong style={{ flex: 1 }}>
           AI 编码
         </Text>
+        <ModelSelector size="small" />
         <Tooltip title="清空对话">
           <Button type="text" size="small" icon={<ClearOutlined />} onClick={handleClear} disabled={streaming} />
         </Tooltip>
