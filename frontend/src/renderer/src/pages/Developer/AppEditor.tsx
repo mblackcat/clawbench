@@ -96,8 +96,6 @@ const AppEditor: React.FC = () => {
       }
     } else if (currentStep === 1) {
       setCurrentStep(2)
-    } else if (currentStep === 2) {
-      setCurrentStep(3)
     }
   }
 
@@ -155,7 +153,6 @@ const AppEditor: React.FC = () => {
   const handleGenerate = async (): Promise<void> => {
     if (submittingRef.current) return
     submittingRef.current = true
-    setGenerating(true)
     try {
       const manifest = getManifestPreview()
 
@@ -173,7 +170,6 @@ const AppEditor: React.FC = () => {
       const detail = err instanceof Error ? err.message : String(err)
       message.error(`${editMode ? t('appEditor.updateFailed') : t('appEditor.createFailed')}: ${detail}`)
     } finally {
-      setGenerating(false)
       submittingRef.current = false
     }
   }
