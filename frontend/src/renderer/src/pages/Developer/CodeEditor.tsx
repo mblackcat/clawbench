@@ -24,7 +24,6 @@ import {
   ArrowLeftOutlined,
   FileOutlined,
   FolderOutlined,
-  RobotOutlined,
   ProfileOutlined,
   ExportOutlined,
   CommentOutlined,
@@ -36,7 +35,6 @@ import {
 import Editor from '@monaco-editor/react'
 import type { DataNode } from 'antd/es/tree'
 import type { SubAppOutput } from '../../types/subapp'
-import AIGenerateModal from '../../components/AIGenerateModal'
 import EditorChatPanel from '../../components/EditorChatPanel'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { useT } from '../../i18n'
@@ -98,8 +96,6 @@ const CodeEditor: React.FC = () => {
   const [outputLines, setOutputLines] = useState<OutputLine[]>([])
   const [isRunning, setIsRunning] = useState(false)
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null)
-  const [aiModalOpen, setAIModalOpen] = useState(false)
-  const [aiModalManifest, setAIModalManifest] = useState<Record<string, unknown>>({})
   const [chatVisible, setChatVisible] = useState(false)
   const outputEndRef = useRef<HTMLDivElement>(null)
   const initialLoadDone = useRef(false)
@@ -366,19 +362,6 @@ const CodeEditor: React.FC = () => {
       } catch (err) {
         message.error(t('codeEditor.cancelFailed'))
       }
-    }
-  }
-
-  const handleOpenAIGenerate = async () => {
-    if (!appId) return
-    try {
-      const manifest = (await window.api.subapp.getManifest(
-        appId
-      )) as unknown as Record<string, unknown>
-      setAIModalManifest(manifest)
-      setAIModalOpen(true)
-    } catch {
-      message.error(t('codeEditor.loadManifestFailed'))
     }
   }
 
@@ -693,13 +676,10 @@ const CodeEditor: React.FC = () => {
           </Tooltip>
         </Space>
 
-        {/* Right: IDE + AI generate + AI chat toggle (icon-only) */}
+        {/* Right: IDE + AI chat toggle (icon-only) */}
         <Space size={4}>
           <Tooltip title={t('codeEditor.openInIde')}>
             <Button type="text" icon={<ExportOutlined />} onClick={handleOpenInIde} />
-          </Tooltip>
-          <Tooltip title={t('codeEditor.aiGenerate')}>
-            <Button type="text" icon={<RobotOutlined />} onClick={handleOpenAIGenerate} />
           </Tooltip>
           <Tooltip title={chatVisible ? t('codeEditor.hideChat') : t('codeEditor.showChat')}>
             <Button
@@ -954,19 +934,6 @@ const CodeEditor: React.FC = () => {
           style={{ marginTop: 8 }}
         />
       </Modal>
-
-      {appId && (
-        <AIGenerateModal
-          open={aiModalOpen}
-          manifest={aiModalManifest}
-          appId={appId}
-          onClose={() => setAIModalOpen(false)}
-          onSuccess={() => {
-            setAIModalOpen(false)
-            reloadAllFiles()
-          }}
-        />
-      )}
     </Layout>
   )
 }

@@ -14,11 +14,10 @@ import {
   Spin,
   theme
 } from 'antd'
-import { PlusOutlined, MinusCircleOutlined, DeleteOutlined, CodeOutlined, RobotOutlined, ArrowLeftOutlined } from '@ant-design/icons'
+import { PlusOutlined, MinusCircleOutlined, DeleteOutlined, CodeOutlined, ArrowLeftOutlined } from '@ant-design/icons'
 import { useNavigate, useLocation } from 'react-router-dom'
 import type { ParamType } from '../../types/subapp'
 import { useAuthStore } from '../../stores/useAuthStore'
-import AIGenerateModal from '../../components/AIGenerateModal'
 import { useT } from '../../i18n'
 
 const { Title, Paragraph } = Typography
@@ -47,13 +46,9 @@ const AppEditor: React.FC = () => {
   const t = useT()
   const [currentStep, setCurrentStep] = useState(0)
   const [form] = Form.useForm()
-  const [generating, setGenerating] = useState(false)
   const [loading, setLoading] = useState(false)
   const [editMode, setEditMode] = useState(false)
   const [appId, setAppId] = useState<string | null>(null)
-  const [aiModalOpen, setAIModalOpen] = useState(false)
-  const [aiModalAppId, setAIModalAppId] = useState('')
-  const [aiModalManifest, setAIModalManifest] = useState<Record<string, unknown>>({})
   const user = useAuthStore((state) => state.user)
   // Stable generated app id for create mode (prevents duplicate apps from
   // regenerating a new UUID on every preview/submit call).
@@ -101,8 +96,6 @@ const AppEditor: React.FC = () => {
       }
     } else if (currentStep === 1) {
       setCurrentStep(2)
-    } else if (currentStep === 2) {
-      setCurrentStep(3)
     }
   }
 
@@ -160,7 +153,6 @@ const AppEditor: React.FC = () => {
   const handleGenerate = async (): Promise<void> => {
     if (submittingRef.current) return
     submittingRef.current = true
-    setGenerating(true)
     try {
       const manifest = getManifestPreview()
 
@@ -178,7 +170,6 @@ const AppEditor: React.FC = () => {
       const detail = err instanceof Error ? err.message : String(err)
       message.error(`${editMode ? t('appEditor.updateFailed') : t('appEditor.createFailed')}: ${detail}`)
     } finally {
-      setGenerating(false)
       submittingRef.current = false
     }
   }
@@ -208,38 +199,6 @@ const AppEditor: React.FC = () => {
   const handleCodeEditor = () => {
     if (!appId) return
     navigate(`/developer/code/${appId}`)
-  }
-
-  const handleAIGenerate = async (): Promise<void> => {
-    if (submittingRef.current) return
-    submittingRef.current = true
-    setGenerating(true)
-    try {
-      const manifest = getManifestPreview()
-      let effectiveAppId: string
-
-      if (editMode && appId) {
-        await window.api.developer.updateApp(appId, manifest)
-        effectiveAppId = appId
-      } else {
-        await window.api.developer.createApp(manifest)
-        effectiveAppId = manifest.id as string
-        setAppId(effectiveAppId)
-        // Switch to edit semantics so a subsequent submit updates instead of
-        // creating a second copy.
-        setEditMode(true)
-      }
-
-      setAIModalAppId(effectiveAppId)
-      setAIModalManifest(manifest)
-      setAIModalOpen(true)
-    } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err)
-      message.error(`${t('appEditor.createDirFailed')}: ${detail}`)
-    } finally {
-      setGenerating(false)
-      submittingRef.current = false
-    }
   }
 
   const handleClose = () => {
@@ -295,8 +254,7 @@ const AppEditor: React.FC = () => {
       <Steps current={currentStep} items={[
         { title: t('appEditor.stepBasicInfo') },
         { title: t('appEditor.stepParams') },
-        { title: t('appEditor.stepPreview') },
-        { title: t('appEditor.stepGenerate') }
+        { title: t('appEditor.stepPreview') }
       ]} style={{ marginBottom: 32 }} />
 
       <Form form={form} layout="vertical">
@@ -438,21 +396,6 @@ const AppEditor: React.FC = () => {
           </Card>
         </div>
 
-        {/* Step 4: Generating */}
-        <div style={{ display: currentStep === 3 ? 'block' : 'none' }}>
-          {generating ? (
-            <div style={{ textAlign: 'center', padding: 48 }}>
-              <Spin size="large" />
-              <div style={{ marginTop: 16, color: token.colorTextSecondary }}>
-                {editMode ? t('appEditor.generatingUpdate') : t('appEditor.generatingCreate')}
-              </div>
-            </div>
-          ) : (
-            <div style={{ textAlign: 'center', padding: 48 }}>
-              <Paragraph>{t('appEditor.generateHint')}</Paragraph>
-            </div>
-          )}
-        </div>
       </Form>
 
       {/* Navigation Buttons */}
@@ -464,46 +407,21 @@ const AppEditor: React.FC = () => {
         }}
       >
         <div>
-          {currentStep > 0 && currentStep < 3 && <Button onClick={handlePrev}>{t('appEditor.prev')}</Button>}
+          {currentStep > 0 && <Button onClick={handlePrev}>{t('appEditor.prev')}</Button>}
         </div>
         <Space>
-          {currentStep < 3 && <Button onClick={handleClose}>{t('appEditor.cancel')}</Button>}
+          <Button onClick={handleClose}>{t('appEditor.cancel')}</Button>
           {currentStep < 2 ? (
             <Button type="primary" onClick={handleNext}>
               {t('appEditor.next')}
             </Button>
-          ) : currentStep === 2 ? (
-            <Button type="primary" onClick={handleNext}>
-              {t('appEditor.confirmGenerate')}
-            </Button>
           ) : (
-            <Space>
-              <Button
-                icon={<RobotOutlined />}
-                loading={generating}
-                disabled={generating}
-                onClick={handleAIGenerate}
-              >
-                {t('appEditor.aiGenerate')}
-              </Button>
-              <Button type="primary" loading={generating} disabled={generating} onClick={handleGenerate}>
-                {editMode ? t('appEditor.saveAndOpen') : t('appEditor.generateAndOpen')}
-              </Button>
-            </Space>
+            <Button type="primary" onClick={handleGenerate}>
+              {editMode ? t('appEditor.saveAndOpen') : t('appEditor.generateAndOpen')}
+            </Button>
           )}
         </Space>
       </div>
-
-      <AIGenerateModal
-        open={aiModalOpen}
-        manifest={aiModalManifest}
-        appId={aiModalAppId}
-        onClose={() => setAIModalOpen(false)}
-        onSuccess={() => {
-          setAIModalOpen(false)
-          navigate(`/developer/code/${aiModalAppId}`)
-        }}
-      />
     </div>
   )
 }
