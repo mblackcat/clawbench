@@ -33,6 +33,7 @@ export async function initializePostgresSchema(database: DatabaseAdapter): Promi
   await database.run(`ALTER TABLE users ADD COLUMN IF NOT EXISTS feishu_open_id TEXT`);
   await database.run(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT`);
   await database.run(`ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider TEXT`);
+  await database.run(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user'`);
 
   // 应用表
   await database.run(`

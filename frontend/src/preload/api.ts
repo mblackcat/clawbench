@@ -709,5 +709,13 @@ export const api = {
     }
   },
 
+  protocol: {
+    onInstallApp: (callback: (data: { appId: string; name: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
+      ipcRenderer.on('protocol:install-app', handler)
+      return () => ipcRenderer.removeListener('protocol:install-app', handler)
+    }
+  },
+
   platform: process.platform
 }

@@ -34,14 +34,14 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
   const currentDb = dbName?.db;
 
   if (currentDb) {
-    for (const col of ['feishu_open_id', 'avatar_url', 'auth_provider']) {
+    for (const col of ['feishu_open_id', 'avatar_url', 'auth_provider', 'role']) {
       const exists = await database.get<{ cnt: number }>(
         `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS
          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'users' AND COLUMN_NAME = ?`,
         [currentDb, col]
       );
       if (!exists || exists.cnt === 0) {
-        const colType = col === 'avatar_url' ? 'TEXT' : col === 'auth_provider' ? 'VARCHAR(50)' : 'VARCHAR(255)';
+        const colType = col === 'avatar_url' ? 'TEXT' : col === 'auth_provider' ? 'VARCHAR(50)' : col === 'role' ? "VARCHAR(50) DEFAULT 'user'" : 'VARCHAR(255)';
         await database.run(`ALTER TABLE users ADD COLUMN ${col} ${colType}`);
       }
     }

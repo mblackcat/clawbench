@@ -1,5 +1,6 @@
 import express, { Application } from 'express';
 import cors from 'cors';
+import path from 'path';
 import rateLimit from 'express-rate-limit';
 import { config } from './config/index';
 import { requestLogger } from './middleware/requestLogger';
@@ -12,6 +13,7 @@ import { aiRouter } from './routes/aiRoutes';
 import { authRouter } from './routes/authRoutes';
 import { releaseRouter } from './routes/releaseRoutes';
 import { agentMemoryRouter } from './routes/agentMemoryRoutes';
+import { adminRouter } from './routes/adminRoutes';
 
 /**
  * 创建 Express 应用
@@ -90,6 +92,34 @@ export function createApp(): Application {
 
   // Agent memory 路由
   app.use('/api/v1/agent', agentMemoryRouter);
+
+  // Admin routes (require auth + admin role)
+  app.use('/api/v1/admin', adminRouter);
+
+  // === Static file serving for admin/store web panel ===
+  const adminPublicDir = path.join(__dirname, '..', 'public', 'admin');
+
+  // Serve built assets (JS, CSS, images, etc.)
+  app.use('/admin', express.static(adminPublicDir));
+  app.use('/store', express.static(adminPublicDir));
+
+  // SPA fallback: serve index.html for all /admin/* and /store/* routes
+  const serveAdminIndex = (req: express.Request, res: express.Response) => {
+    const indexPath = path.join(adminPublicDir, 'index.html');
+    res.sendFile(indexPath, (err) => {
+      if (err) {
+        res.status(200).json({
+          success: true,
+          message: 'Admin panel not built yet. Run: cd admin-panel && npm run build',
+        });
+      }
+    });
+  };
+
+  app.get('/admin', serveAdminIndex);
+  app.get('/admin/*', serveAdminIndex);
+  app.get('/store', serveAdminIndex);
+  app.get('/store/*', serveAdminIndex);
 
   // 404 处理
   app.use(notFoundHandler);

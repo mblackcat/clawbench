@@ -6,6 +6,7 @@ import {
   listReleasesHandler,
   serveReleaseFileHandler,
   deleteReleaseFileHandler,
+  listLatestReleasesHandler,
 } from '../controllers/releaseController';
 
 // Release artifacts can be large (DMG/EXE up to 500 MB)
@@ -27,6 +28,12 @@ releaseRouter.post('/upload', authenticate, upload.array('files'), uploadRelease
  * List all release files (requires auth)
  */
 releaseRouter.get('/', authenticate, listReleasesHandler);
+
+/**
+ * GET /api/v1/releases/latest
+ * List latest release info for public download page — no auth required
+ */
+releaseRouter.get('/latest', listLatestReleasesHandler);
 
 /**
  * GET /api/v1/releases/:filename

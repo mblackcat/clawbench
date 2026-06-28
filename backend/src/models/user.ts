@@ -13,6 +13,7 @@ export interface User {
   feishuOpenId?: string;
   avatarUrl?: string;
   authProvider?: string;
+  role: 'admin' | 'user';
   createdAt: number;
   updatedAt: number;
 }
@@ -47,6 +48,7 @@ export interface UserResponse {
   feishuOpenId?: string;
   avatarUrl?: string;
   authProvider?: string;
+  role: 'admin' | 'user';
   createdAt: number;
   updatedAt: number;
 }
@@ -62,6 +64,7 @@ export interface UserRow {
   feishu_open_id?: string;
   avatar_url?: string;
   auth_provider?: string;
+  role: string;
   created_at: number;
   updated_at: number;
 }
@@ -78,6 +81,7 @@ export function userRowToUser(row: UserRow): User {
     feishuOpenId: row.feishu_open_id || undefined,
     avatarUrl: row.avatar_url || undefined,
     authProvider: row.auth_provider || undefined,
+    role: (row.role as 'admin' | 'user') || 'user',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -94,6 +98,7 @@ export function userToResponse(user: User): UserResponse {
     feishuOpenId: user.feishuOpenId,
     avatarUrl: user.avatarUrl,
     authProvider: user.authProvider,
+    role: user.role,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
