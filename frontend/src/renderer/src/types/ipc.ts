@@ -158,6 +158,16 @@ export interface ClawBenchAPI {
     openFileInEditor: (filePath: string) => Promise<void>
     openSSHConfig: () => Promise<void>
     openAppDirectory: (appPath: string) => Promise<void>
+
+    // Path-based operations (relaxed guard — for workspace skill directories)
+    listDir: (dirPath: string) => Promise<Array<{ name: string; path: string; isDirectory: boolean }>>
+    readPathFile: (filePath: string) => Promise<string>
+    writePathFile: (filePath: string, content: string) => Promise<void>
+    createPathFile: (filePath: string) => Promise<void>
+    createPathDir: (dirPath: string) => Promise<void>
+    renamePath: (oldPath: string, newPath: string) => Promise<void>
+    deletePath: (filePath: string) => Promise<void>
+    movePath: (oldPath: string, newPath: string) => Promise<void>
   }
   git: {
     listBranches: (workspacePath: string) => Promise<{

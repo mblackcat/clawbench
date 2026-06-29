@@ -14,6 +14,7 @@ import type { AppInfo } from '../services/publisher.service'
 import { listSubApps } from '../services/subapp.service'
 import { readSkillMeta } from '../services/skill-install.service'
 import { settingsStore } from '../store/settings.store'
+import { getAllWorkspaces } from '../store/workspace.store'
 import { getUserAppsPath } from '../utils/paths'
 import * as logger from '../utils/logger'
 
@@ -499,5 +500,164 @@ export function registerDeveloperIpc(): void {
       logger.error('Failed to open app directory:', message)
       throw err
     }
+  })
+
+  // ── Path-based file operations (relaxed guard for workspace skills) ──────────
+  // These handlers accept absolute paths that may point outside the user-apps
+  // directory — used by SkillDetailView to browse workspace skill directories.
+  // The guard still restricts access to known-safe locations: user-apps root,
+  // registered workspace directories, and AI-tool config dirs (~/.claude etc.).
+
+  const assertWithinKnownRoots = (p: string): string => {
+    if (typeof p !== 'string' || p.length === 0) {
+      throw new Error('Invalid path')
+    }
+    const resolved = resolve(p)
+
+    // 1) User-apps directory
+    const appsRoot = resolve(getUserAppsPath())
+    const relApp = relative(appsRoot, resolved)
+    if (relApp !== '' && !relApp.startsWith(`..${sep}`) && !isAbsolute(relApp)) {
+      return resolved
+    }
+
+    // 2) Registered workspace directories
+    const workspaces = getAllWorkspaces()
+    for (const ws of workspaces) {
+      if (!ws.path) continue
+      const wsRoot = resolve(String(ws.path))
+      const rel = relative(wsRoot, resolved)
+      if (rel !== '' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel)) {
+        return resolved
+      }
+    }
+
+    // 3) Home-directory AI tool config dirs (~/.claude, ~/.codex, ~/.gemini)
+    const home = os.homedir()
+    const aiDirs = ['.claude', '.codex', '.gemini'].map((d) => resolve(home, d))
+    for (const dir of aiDirs) {
+      const rel = relative(dir, resolved)
+      if (rel !== '' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel)) {
+        return resolved
+      }
+    }
+
+    throw new Error(`Path is outside allowed directories: ${p}`)
+  }
+
+  ipcMain.handle('developer:list-dir', async (_event, dirPath: string) => {
+    assertWithinKnownRoots(dirPath)
+
+    // Resolve symlinks / junctions to get the real path on disk.
+    // fs.readdirSync on the symlink itself usually works, but on Windows
+    // junctions can behave inconsistently, so we resolve first.
+    let effectivePath: string
+    try {
+      effectivePath = fs.realpathSync(dirPath)
+    } catch {
+      throw new Error(
+        `Cannot resolve path (broken symlink or missing directory): ${dirPath}`
+      )
+    }
+
+    // If the resolved target lives outside known roots, fall back to the
+    // original symlink path (the guard already approved it).
+    try {
+      assertWithinKnownRoots(effectivePath)
+    } catch {
+      logger.warn(
+        `list-dir: resolved path outside known roots, using original: ${effectivePath} → ${dirPath}`
+      )
+      effectivePath = dirPath
+    }
+
+    if (!fs.statSync(effectivePath).isDirectory()) {
+      throw new Error(`Not a directory: ${dirPath}`)
+    }
+
+    const files: Array<{ name: string; path: string; isDirectory: boolean }> = []
+    const entries = fs.readdirSync(effectivePath, { withFileTypes: true })
+    for (const entry of entries) {
+      files.push({
+        name: entry.name,
+        path: join(effectivePath, entry.name),
+        isDirectory: entry.isDirectory()
+      })
+    }
+    return files
+  })
+
+  ipcMain.handle('developer:read-path-file', async (_event, filePath: string) => {
+    assertWithinKnownRoots(filePath)
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`File not found: ${filePath}`)
+    }
+    return fs.readFileSync(filePath, 'utf-8')
+  })
+
+  ipcMain.handle('developer:write-path-file', async (_event, filePath: string, content: string) => {
+    assertWithinKnownRoots(filePath)
+    const dir = dirname(filePath)
+    if (dir && !fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true })
+    }
+    fs.writeFileSync(filePath, content, 'utf-8')
+    return true
+  })
+
+  ipcMain.handle('developer:create-path-file', async (_event, filePath: string) => {
+    assertWithinKnownRoots(filePath)
+    const dir = dirname(filePath)
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true })
+    }
+    fs.writeFileSync(filePath, '', 'utf-8')
+    return true
+  })
+
+  ipcMain.handle('developer:create-path-dir', async (_event, dirPath: string) => {
+    assertWithinKnownRoots(dirPath)
+    fs.mkdirSync(dirPath, { recursive: true })
+    return true
+  })
+
+  ipcMain.handle('developer:rename-path', async (_event, oldPath: string, newPath: string) => {
+    assertWithinKnownRoots(oldPath)
+    assertWithinKnownRoots(newPath)
+    if (!fs.existsSync(oldPath)) {
+      throw new Error(`Path not found: ${oldPath}`)
+    }
+    if (fs.existsSync(newPath)) {
+      throw new Error(`Target already exists: ${newPath}`)
+    }
+    fs.renameSync(oldPath, newPath)
+    return true
+  })
+
+  ipcMain.handle('developer:delete-path', async (_event, filePath: string) => {
+    assertWithinKnownRoots(filePath)
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`Path not found: ${filePath}`)
+    }
+    const stat = fs.statSync(filePath)
+    if (stat.isDirectory()) {
+      fs.rmSync(filePath, { recursive: true, force: true })
+    } else {
+      fs.unlinkSync(filePath)
+    }
+    return true
+  })
+
+  ipcMain.handle('developer:move-path', async (_event, oldPath: string, newPath: string) => {
+    assertWithinKnownRoots(oldPath)
+    assertWithinKnownRoots(newPath)
+    if (!fs.existsSync(oldPath)) {
+      throw new Error(`Path not found: ${oldPath}`)
+    }
+    if (fs.existsSync(newPath)) {
+      throw new Error(`Target already exists: ${newPath}`)
+    }
+    fs.renameSync(oldPath, newPath)
+    return true
   })
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   Layout,
@@ -97,10 +97,21 @@ const CodeEditor: React.FC = () => {
   const [isRunning, setIsRunning] = useState(false)
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null)
   const [chatVisible, setChatVisible] = useState(false)
+  const CHAT_MIN_WIDTH = 320
+  const CHAT_MAX_WIDTH = 800
+  const [chatWidth, setChatWidth] = useState<number>(() => {
+    const saved = Number(localStorage.getItem('cb-codeeditor-chat-width'))
+    return saved >= CHAT_MIN_WIDTH && saved <= CHAT_MAX_WIDTH ? saved : 460
+  })
   const outputEndRef = useRef<HTMLDivElement>(null)
   const initialLoadDone = useRef(false)
   const currentTaskIdRef = useRef<string | null>(null)
   const runPendingRef = useRef(false)
+  const chatWidthRef = useRef(chatWidth)
+  chatWidthRef.current = chatWidth
+  const tabsRef = useRef(tabs)
+  tabsRef.current = tabs
+  const filesChangedTimerRef = useRef<number | null>(null)
 
   // ── Context menu state ──────────────────────────────────────────────────────
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
@@ -405,27 +416,64 @@ const CodeEditor: React.FC = () => {
   // ── Refresh after AI chat edits ──────────────────────────────────────────────
   // The chat panel writes files directly; refresh the tree and reload any open
   // tabs from disk (skipping tabs with unsaved local edits to avoid clobbering).
-  const handleChatFilesChanged = async () => {
+  //
+  // Debounced + change-diffed: the embedded coding session fires this on every
+  // tool-use message. Without debouncing/diffing, each call re-read every open
+  // file and pushed fresh strings into Monaco, which froze the UI during a reply.
+  // We coalesce bursts and only touch React state when content actually changed.
+  const handleChatFilesChanged = useCallback(() => {
     if (!appId) return
-    try {
-      const fileList = await window.api.developer.listAppFiles(appId)
-      setFiles(fileList as FileNode[])
-      const reloaded = await Promise.all(
-        tabs.map(async (tab) => {
-          if (tab.modified) return tab
-          try {
-            const content = await window.api.developer.readFile(tab.path)
-            return { ...tab, content: content as string }
-          } catch {
-            return tab
-          }
-        })
-      )
-      setTabs(reloaded)
-    } catch {
-      // non-fatal: tree refresh is best-effort
+    if (filesChangedTimerRef.current !== null) {
+      window.clearTimeout(filesChangedTimerRef.current)
     }
-  }
+    filesChangedTimerRef.current = window.setTimeout(async () => {
+      filesChangedTimerRef.current = null
+      try {
+        const fileList = await window.api.developer.listAppFiles(appId)
+        setFiles(fileList as FileNode[])
+        const current = tabsRef.current
+        const reloaded = await Promise.all(
+          current.map(async (tab) => {
+            if (tab.modified) return tab
+            try {
+              const content = await window.api.developer.readFile(tab.path)
+              // Preserve identity when unchanged so Monaco doesn't re-apply the value
+              return content === tab.content ? tab : { ...tab, content: content as string }
+            } catch {
+              return tab
+            }
+          })
+        )
+        const changed = reloaded.some((tab, i) => tab !== current[i])
+        if (changed) setTabs(reloaded)
+      } catch {
+        // non-fatal: tree refresh is best-effort
+      }
+    }, 600)
+  }, [appId])
+
+  // ── Resizable AI Coding sidebar ──────────────────────────────────────────────
+  const startChatResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    const onMove = (ev: MouseEvent) => {
+      const next = Math.min(CHAT_MAX_WIDTH, Math.max(CHAT_MIN_WIDTH, window.innerWidth - ev.clientX))
+      setChatWidth(next)
+    }
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      localStorage.setItem('cb-codeeditor-chat-width', String(chatWidthRef.current))
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }, [])
+
+  // Flush any pending debounced refresh on unmount
+  useEffect(() => () => {
+    if (filesChangedTimerRef.current !== null) {
+      window.clearTimeout(filesChangedTimerRef.current)
+    }
+  }, [])
 
   const getFileLanguage = (fileName: string): string => {
     const ext = fileName.split('.').pop()?.toLowerCase()
@@ -804,15 +852,24 @@ const CodeEditor: React.FC = () => {
           )}
         </Content>
 
-        {/* AI Coding Sidebar (collapsible) */}
+        {/* AI Coding Sidebar (collapsible + resizable) */}
         {chatVisible && (
           <Sider
-            width={380}
+            width={chatWidth}
             style={{
               background: token.colorBgContainer,
-              borderLeft: `1px solid ${token.colorBorderSecondary}`
+              borderLeft: `1px solid ${token.colorBorderSecondary}`,
+              position: 'relative'
             }}
           >
+            {/* Drag handle on the left edge */}
+            <div
+              onMouseDown={startChatResize}
+              style={{
+                position: 'absolute', left: 0, top: 0, bottom: 0, width: 6,
+                cursor: 'col-resize', zIndex: 10
+              }}
+            />
             <EmbeddedCodingPanel
               appPath={appPath}
               onFilesChanged={handleChatFilesChanged}

@@ -23,6 +23,7 @@ const SettingsPage = React.lazy(() => import('./pages/Settings/SettingsPage'))
 const SkillEditor = React.lazy(() => import('./pages/Developer/SkillEditor'))
 const PromptEditor = React.lazy(() => import('./pages/Developer/PromptEditor'))
 const LinkEditor = React.lazy(() => import('./pages/Developer/LinkEditor'))
+const SkillDetailView = React.lazy(() => import('./pages/Developer/SkillDetailView'))
 const MyContributionsPage = React.lazy(() => import('./pages/Workbench/MyContributionsPage'))
 
 const LazyFallback: React.FC = () => (
@@ -49,6 +50,7 @@ const AppRoutes: React.FC = () => {
           <Route path="/workbench/installed" element={<InstalledAppsPage />} />
           <Route path="/workbench/library" element={<AppLibraryPage />} />
           <Route path="/workbench/detail/:appId" element={<AppDetailPage />} />
+          <Route path="/workbench/skill-detail/:appId" element={<SkillDetailView />} />
           <Route path="/copiper" element={<Navigate to="/workbench/installed" replace />} />
           <Route path="/ai-chat" element={<AIChatPage />} />
           <Route path="/developer/new" element={<AppEditor />} />

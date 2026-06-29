@@ -22,11 +22,13 @@ import {
   FolderOpenOutlined,
   FileAddOutlined,
   ImportOutlined,
-  InboxOutlined
+  InboxOutlined,
+  FileTextOutlined
 } from '@ant-design/icons'
 import { useSkillStore } from '../stores/useSkillStore'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { useAuthStore } from '../stores/useAuthStore'
+import { useNavigate } from 'react-router-dom'
 import { applicationManager } from '../services/applicationManager'
 import { SkillToolTag } from './ProviderIcons'
 import SkillInstallModal from './SkillInstallModal'
@@ -47,6 +49,7 @@ interface SkillsManagerProps {
   selfSkills: SelfSkill[]
   onEditSelf: (appId: string) => void
   onPublishSelf: (appId: string) => void
+  onDetailSelf: (appId: string) => void
 }
 
 interface Badge {
@@ -65,11 +68,17 @@ interface CardAction {
 const SkillsManager: React.FC<SkillsManagerProps> = ({
   selfSkills,
   onEditSelf,
-  onPublishSelf
+  onPublishSelf,
+  onDetailSelf
 }) => {
   const { token } = theme.useToken()
   const { message } = App.useApp()
   const t = useT()
+  const navigate = useNavigate()
+
+  const handleDetailPath = useCallback((skillPath: string) => {
+    navigate(`/workbench/skill-detail/_ws?path=${encodeURIComponent(skillPath)}`)
+  }, [navigate])
 
   const activeWorkspace = useWorkspaceStore((s) => s.activeWorkspace)
   const { loggedIn, isLocalMode } = useAuthStore()
@@ -427,6 +436,13 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({
                         onClick: () => onEditSelf(s.id)
                       },
                       {
+                        key: 'detail',
+                        icon: <FileTextOutlined />,
+                        label: t('skillDetail.detail'),
+                        color: token.colorPrimary,
+                        onClick: () => onDetailSelf(s.id)
+                      },
+                      {
                         key: 'publish',
                         icon: <CloudUploadOutlined />,
                         label: s.appType === 'published' ? t('mine.republish') : t('mine.publish'),
@@ -459,6 +475,13 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({
                         label: t('skill.action.install'),
                         color: token.colorPrimary,
                         onClick: () => openInstall(s.sourcePath, s.name)
+                      },
+                      {
+                        key: 'detail',
+                        icon: <FileTextOutlined />,
+                        label: t('skillDetail.detail'),
+                        color: token.colorTextSecondary,
+                        onClick: () => handleDetailPath(s.sourcePath)
                       },
                       {
                         key: 'publish',
@@ -497,6 +520,13 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({
                     tools: variants.map((v) => v.tool),
                     actions: [
                       {
+                        key: 'detail',
+                        icon: <FileTextOutlined />,
+                        label: t('skillDetail.detail'),
+                        color: token.colorTextSecondary,
+                        onClick: () => handleDetailPath(first.path)
+                      },
+                      {
                         key: 'publish',
                         icon:
                           publishingKey === `global-${name}` ? <Spin size="small" /> : <CloudUploadOutlined />,
@@ -526,6 +556,13 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({
                     badges: [{ label: t('skill.badge.project'), color: 'cyan' }],
                     tools: variants.map((v) => v.tool),
                     actions: [
+                      {
+                        key: 'detail',
+                        icon: <FileTextOutlined />,
+                        label: t('skillDetail.detail'),
+                        color: token.colorTextSecondary,
+                        onClick: () => handleDetailPath(first.path)
+                      },
                       {
                         key: 'publish',
                         icon:

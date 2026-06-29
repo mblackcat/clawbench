@@ -3,7 +3,7 @@
  * 展示用户本地创建的所有 app/skill/prompt
  */
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { Typography, Tag, Tooltip, theme, Button, App, Tabs, Empty } from 'antd';
 import {
   EditOutlined,
@@ -187,6 +187,10 @@ const MyContributionsPage: React.FC = () => {
     navigate('/developer/publish', { state: { appId } });
   };
 
+  const handleViewDetail = useCallback((appId: string) => {
+    navigate(`/workbench/skill-detail/${appId}`);
+  }, [navigate]);
+
   const handleRun = async (appId: string, appName: string) => {
     try {
       const taskId = await window.api.subapp.execute(appId, {});
@@ -273,6 +277,24 @@ const MyContributionsPage: React.FC = () => {
 
           {isLink ? (
             <>
+              <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorderSecondary }} />
+              <div
+                onClick={() => handlePublish(id)}
+                style={{
+                  flex: 1,
+                  padding: '8px 0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  cursor: 'pointer',
+                  color: token.colorPrimary,
+                  fontWeight: 500,
+                  fontSize: 13
+                }}
+              >
+                <CloudUploadOutlined /> {appType === 'published' ? t('mine.republish') : t('mine.publish')}
+              </div>
               <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorderSecondary }} />
               <div
                 onClick={() => handleOpenLink(app)}
@@ -369,6 +391,7 @@ const MyContributionsPage: React.FC = () => {
           selfSkills={selfSkills}
           onEditSelf={(id) => handleEdit(id, 'ai-skill')}
           onPublishSelf={(id) => handlePublish(id)}
+          onDetailSelf={handleViewDetail}
         />
       )
     },
@@ -387,7 +410,7 @@ const MyContributionsPage: React.FC = () => {
   return (
     <div style={{ padding: 24 }}>
       <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center', gap: 12 }}>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)}>
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/workbench/installed')}>
           {t('common.back')}
         </Button>
         <Title level={4} style={{ margin: 0 }}>{t('mine.title')}</Title>
