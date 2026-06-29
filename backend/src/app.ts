@@ -102,12 +102,23 @@ export function createApp(): Application {
   // === Static file serving for admin/store web panel ===
   const adminPublicDir = path.join(__dirname, '..', 'admin-panel', 'dist');
 
-  // Serve built assets (JS, CSS, images, etc.)
-  app.use('/admin', express.static(adminPublicDir));
+  // Serve built assets (JS, CSS, images, etc.) with appropriate caching
+  app.use('/admin', express.static(adminPublicDir, {
+    setHeaders: (res, filePath) => {
+      // HTML files should not be cached (they reference hashed bundles)
+      if (filePath.endsWith('.html')) {
+        res.set('Cache-Control', 'no-cache');
+      } else if (filePath.match(/\.(js|css|svg|png|ico|woff2?)$/)) {
+        // Hashed assets can be cached for 1 year
+        res.set('Cache-Control', 'public, max-age=31536000, immutable');
+      }
+    },
+  }));
   app.use('/store', express.static(adminPublicDir));
 
   // SPA fallback: serve index.html for all /admin/* and /store/* routes
   const serveAdminIndex = (req: express.Request, res: express.Response) => {
+    res.set('Cache-Control', 'no-cache');
     const indexPath = path.join(adminPublicDir, 'index.html');
     res.sendFile(indexPath, (err) => {
       if (err) {
