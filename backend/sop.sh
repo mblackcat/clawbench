@@ -84,6 +84,14 @@ function start() {
         exit 1
     fi
 
+    # Build admin web panel if not already built
+    if [ ! -f "admin-panel/dist/index.html" ]; then
+        log "Admin panel not built — building now..."
+        rebuild_admin
+    else
+        log "Admin panel dist/ found. Skipping build (use -rebuild to force)."
+    fi
+
     log "Starting service with PM2 (Cluster Mode)..."
     # Use PM2 to start/reload the application
     # If it's already running, reload it for zero-downtime deployment
@@ -125,6 +133,37 @@ function restart() {
     log "Service restarted."
 }
 
+function rebuild_admin() {
+    log "Rebuilding admin panel..."
+    local admin_dir="admin-panel"
+
+    if [ ! -d "$admin_dir" ]; then
+        log "Error: admin-panel directory not found."
+        exit 1
+    fi
+
+    cd "$admin_dir" || exit 1
+
+    if [ ! -d "node_modules" ]; then
+        log "Installing admin-panel dependencies..."
+        npm install
+        if [ $? -ne 0 ]; then
+            log "admin-panel npm install failed."
+            exit 1
+        fi
+    fi
+
+    log "Building admin-panel (vite)..."
+    npm run build
+    if [ $? -ne 0 ]; then
+        log "admin-panel build failed."
+        exit 1
+    fi
+
+    cd ..
+    log "Admin panel build complete. (dist → admin-panel/dist/)"
+}
+
 function status() {
     $PM2_CMD status
     # Also show logs tail
@@ -151,14 +190,18 @@ case "$1" in
     -status)
         status
         ;;
+    -rebuild)
+        rebuild_admin
+        ;;
     *)
-        echo "Usage: $0 {-init|-dev|-start|-restart|-stop|-status}"
+        echo "Usage: $0 {-init|-dev|-start|-restart|-stop|-status|-rebuild}"
         echo "  -init    : Install dependencies and setup .env"
         echo "  -dev     : Start local debug server (npm run dev)"
         echo "  -start   : Build and start production server (PM2 Cluster Mode)"
         echo "  -restart : Reload production server (Zero Downtime)"
         echo "  -stop    : Stop production server"
         echo "  -status  : Check PM2 status"
+        echo "  -rebuild : Rebuild admin web panel (admin-panel/dist/)"
         exit 1
         ;;
 esac
