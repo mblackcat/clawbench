@@ -14,6 +14,7 @@ import type { AppInfo } from '../services/publisher.service'
 import { listSubApps } from '../services/subapp.service'
 import { readSkillMeta } from '../services/skill-install.service'
 import { settingsStore } from '../store/settings.store'
+import { getAllWorkspaces } from '../store/workspace.store'
 import { getUserAppsPath } from '../utils/paths'
 import * as logger from '../utils/logger'
 
@@ -521,8 +522,7 @@ export function registerDeveloperIpc(): void {
     }
 
     // 2) Registered workspace directories
-    const rawWs = settingsStore.get('workspaces')
-    const workspaces: Array<{ path: string }> = Array.isArray(rawWs) ? rawWs : []
+    const workspaces = getAllWorkspaces()
     for (const ws of workspaces) {
       if (!ws.path) continue
       const wsRoot = resolve(String(ws.path))
