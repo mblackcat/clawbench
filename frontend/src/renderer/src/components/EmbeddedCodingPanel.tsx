@@ -2,9 +2,9 @@
  * EmbeddedCodingPanel — 在 CodeEditor 右侧边栏嵌入 AI Coding session。
  * 处理 workspace/session 生命周期，渲染 CodingChatPanel。
  */
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Button, Tooltip, Spin, Typography, theme } from 'antd'
-import { CloseOutlined, CodeOutlined } from '@ant-design/icons'
+import { CloseOutlined, CodeOutlined, PauseCircleOutlined, StopOutlined } from '@ant-design/icons'
 import { useAICodingStore } from '../stores/useAICodingStore'
 import CodingChatPanel from '../pages/AICoding/CodingChatPanel'
 import { renderAIToolTagLabel, AI_TOOL_SHORT_NAMES, AI_TOOL_NAMES } from '../pages/AICoding/aiToolMeta'
@@ -15,6 +15,11 @@ const { Text } = Typography
 
 function normalizePath(p: string): string {
   return p.replace(/\\/g, '/').replace(/\/$/, '')
+}
+
+const LAST_SESSION_KEY_PREFIX = 'cb-embedded-coding-session:'
+function lastSessionKey(appPath: string): string {
+  return LAST_SESSION_KEY_PREFIX + normalizePath(appPath)
 }
 
 interface EmbeddedCodingPanelProps {
@@ -32,9 +37,10 @@ const EmbeddedCodingPanel: React.FC<EmbeddedCodingPanelProps> = ({
   const { token } = theme.useToken()
 
   const {
-    sessions, workspaces,
-    sessionMessages,
-    fetchAll, createSession
+    sessionMessages, sessionStreaming,
+    fetchAll, createSession,
+    hydrateSessionTranscript, setActiveSession,
+    interruptSession, stopSession,
   } = useAICodingStore()
 
   const [sessionId, setSessionId] = useState<string | null>(null)
@@ -42,7 +48,17 @@ const EmbeddedCodingPanel: React.FC<EmbeddedCodingPanelProps> = ({
   const [loading, setLoading] = useState(false)
   const [initializing, setInitializing] = useState(true)
 
-  // Initialize: fetch store data + detect tools + check for existing session
+  const isStreaming = sessionId ? (sessionStreaming[sessionId] || false) : false
+
+  /** Select a session: load its transcript and mark it active so its history shows. */
+  const selectSession = useCallback((id: string) => {
+    setSessionId(id)
+    setActiveSession(id)
+    void hydrateSessionTranscript(id)
+    try { localStorage.setItem(lastSessionKey(appPath), id) } catch { /* storage full */ }
+  }, [appPath, setActiveSession, hydrateSessionTranscript])
+
+  // Initialize: fetch store data + detect tools + restore the most recent session
   useEffect(() => {
     let cancelled = false
     const init = async () => {
@@ -55,18 +71,27 @@ const EmbeddedCodingPanel: React.FC<EmbeddedCodingPanelProps> = ({
         const coding = detected.filter((c: DetectedCLI) => c.toolType !== 'terminal' && c.installed)
         if (!cancelled) setTools(coding)
 
-        // Check if there's already a workspace + session for this app path
+        // Check if there's already a workspace + sessions for this app path
         const normalized = normalizePath(appPath)
-        const existingWs = useAICodingStore.getState().workspaces.find(
+        const state = useAICodingStore.getState()
+        const existingWs = state.workspaces.find(
           (w) => normalizePath(w.workingDir) === normalized
         )
-        if (existingWs) {
-          // Find an active or recent session for this workspace
-          const wsSessions = useAICodingStore.getState().sessions.filter(
-            (s) => s.workspaceId === existingWs.id && s.status !== 'closed'
-          )
-          if (wsSessions.length > 0 && !cancelled) {
-            setSessionId(wsSessions[0].id)
+        if (existingWs && !cancelled) {
+          const wsSessions = state.sessions.filter((s) => s.workspaceId === existingWs.id)
+          if (wsSessions.length > 0) {
+            // Prefer the last session the user had open here; otherwise the most
+            // recently updated one — regardless of closed status, so a finished
+            // conversation is restored instead of dropping back to the tool picker.
+            const lastId = (() => {
+              try { return localStorage.getItem(lastSessionKey(appPath)) } catch { return null }
+            })()
+            const sorted = [...wsSessions].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+            const chosen =
+              wsSessions.find((s) => s.id === lastId) ||
+              sorted.find((s) => s.status !== 'closed') ||
+              sorted[0]
+            if (chosen) selectSession(chosen.id)
           }
         }
       } catch (err) {
@@ -77,7 +102,7 @@ const EmbeddedCodingPanel: React.FC<EmbeddedCodingPanelProps> = ({
     }
     init()
     return () => { cancelled = true }
-  }, [appPath, fetchAll])
+  }, [appPath, fetchAll, selectSession])
 
   // Watch for file-modifying tool results and trigger refresh
   const messages = sessionId ? (sessionMessages[sessionId] || []) : []
@@ -121,17 +146,25 @@ const EmbeddedCodingPanel: React.FC<EmbeddedCodingPanelProps> = ({
 
       // Create runtime session
       const session = await createSession(workspaceId, toolType, 'local')
-      setSessionId(session.id)
+      selectSession(session.id)
     } catch (err) {
       console.error('[EmbeddedCodingPanel] Failed to create session:', err)
     } finally {
       setLoading(false)
     }
-  }, [appPath, createSession, fetchAll])
+  }, [appPath, createSession, fetchAll, selectSession])
 
   const handleNewSession = useCallback(() => {
     setSessionId(null)
   }, [])
+
+  const handleInterrupt = useCallback(() => {
+    if (sessionId) void interruptSession(sessionId)
+  }, [sessionId, interruptSession])
+
+  const handleStop = useCallback(() => {
+    if (sessionId) void stopSession(sessionId)
+  }, [sessionId, stopSession])
 
   // Loading state
   if (initializing) {
@@ -213,19 +246,29 @@ const EmbeddedCodingPanel: React.FC<EmbeddedCodingPanelProps> = ({
 
   // Active session — render CodingChatPanel
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Mini header with session info + close */}
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0, overflow: 'hidden' }}>
+      {/* Mini header with session info + lifecycle controls */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '4px 8px 4px 12px',
+        padding: '4px 8px 4px 12px', gap: 8,
         borderBottom: `1px solid ${token.colorBorderSecondary}`,
         fontSize: 12, color: token.colorTextSecondary
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <CodeOutlined style={{ color: token.colorPrimary, fontSize: 12 }} />
-          <span>AI Coding</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+          <CodeOutlined style={{ color: token.colorPrimary, fontSize: 12, flexShrink: 0 }} />
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>AI Coding</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+          {isStreaming && (
+            <>
+              <Tooltip title={t('coding.interruptTask')}>
+                <Button type="text" size="small" icon={<PauseCircleOutlined />} onClick={handleInterrupt} />
+              </Tooltip>
+              <Tooltip title={t('coding.stopSession')}>
+                <Button type="text" size="small" danger icon={<StopOutlined />} onClick={handleStop} />
+              </Tooltip>
+            </>
+          )}
           <Tooltip title={t('codeEditor.newCodingSession')}>
             <Button type="text" size="small" icon={<CodeOutlined />} onClick={handleNewSession} />
           </Tooltip>
@@ -234,7 +277,7 @@ const EmbeddedCodingPanel: React.FC<EmbeddedCodingPanelProps> = ({
       </div>
 
       {/* CodingChatPanel fills remaining space */}
-      <div style={{ flex: 1, overflow: 'hidden' }}>
+      <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
         <CodingChatPanel
           sessionId={sessionId}
           onNewSession={handleNewSession}

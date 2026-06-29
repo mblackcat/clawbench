@@ -1111,6 +1111,8 @@ const translations: Record<Lang, Record<string, string>> = {
     // AI Coding - chat rendering
     'coding.thinkingProcess': '思考过程',
     'coding.thinking': '思考中…',
+    'coding.interruptTask': '中断当前任务',
+    'coding.stopSession': '停止会话',
     'coding.toolSuccess': '执行完成',
     'coding.toolError': '执行失败',
     'coding.toolResult': '执行结果',
@@ -2741,6 +2743,8 @@ const translations: Record<Lang, Record<string, string>> = {
     // AI Coding - chat rendering
     'coding.thinkingProcess': 'Thinking process',
     'coding.thinking': 'Thinking…',
+    'coding.interruptTask': 'Interrupt current task',
+    'coding.stopSession': 'Stop session',
     'coding.toolSuccess': 'Completed',
     'coding.toolError': 'Failed',
     'coding.toolResult': 'Result',

@@ -249,7 +249,7 @@ const CodingInput: React.FC<CodingInputProps> = ({
   return (
     <div style={{ padding: '8px 16px 12px', borderTop: `1px solid ${token.colorBorderSecondary}` }}>
       {/* Toolbar row (above input) */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
         {/* Mode capsule */}
         {(toolType === 'claude' || toolType === 'codex') && (
           <div
@@ -326,57 +326,57 @@ const CodingInput: React.FC<CodingInputProps> = ({
           </Dropdown>
         )}
 
-        {/* Spacer */}
-        <div style={{ flex: 1 }} />
+        {/* Right-side action cluster — kept together so it never wraps into a vertical squeeze */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, marginLeft: 'auto' }}>
+          {/* Streaming status */}
+          {isStreaming && (
+            <span style={{ color: token.colorTextSecondary, fontSize: 11, whiteSpace: 'nowrap', flexShrink: 0 }}>
+              处理中...
+            </span>
+          )}
 
-        {/* Streaming status */}
-        {isStreaming && (
-          <span style={{ color: token.colorTextSecondary, fontSize: 11 }}>
-            处理中...
-          </span>
-        )}
+          {/* Attachment button */}
+          <Tooltip title="添加附件">
+            <Button
+              type="text"
+              size="small"
+              icon={<PaperClipOutlined />}
+              onClick={handleSelectFiles}
+              disabled={isStreaming}
+            />
+          </Tooltip>
 
-        {/* Attachment button */}
-        <Tooltip title="添加附件">
-          <Button
-            type="text"
-            size="small"
-            icon={<PaperClipOutlined />}
-            onClick={handleSelectFiles}
-            disabled={isStreaming}
-          />
-        </Tooltip>
+          {/* Interrupt + Stop (streaming) */}
+          {isStreaming && (
+            <>
+              <Tooltip title="中断当前任务">
+                <Button
+                  size="small"
+                  icon={<PauseCircleOutlined />}
+                  onClick={onInterrupt}
+                />
+              </Tooltip>
+              <Tooltip title="停止会话">
+                <Button
+                  size="small"
+                  danger
+                  icon={<StopOutlined />}
+                  onClick={onStop}
+                />
+              </Tooltip>
+            </>
+          )}
 
-        {/* Interrupt + Stop (streaming) */}
-        {isStreaming && (
-          <>
-            <Tooltip title="中断当前任务">
-              <Button
-                size="small"
-                icon={<PauseCircleOutlined />}
-                onClick={onInterrupt}
-              />
-            </Tooltip>
-            <Tooltip title="停止会话">
-              <Button
-                size="small"
-                danger
-                icon={<StopOutlined />}
-                onClick={onStop}
-              />
-            </Tooltip>
-          </>
-        )}
-
-        {/* Send button */}
-        {!isStreaming && (
-          <Button
-            type="primary"
-            icon={<SendOutlined />}
-            onClick={handleSend}
-            disabled={!hasContent}
-          />
-        )}
+          {/* Send button */}
+          {!isStreaming && (
+            <Button
+              type="primary"
+              icon={<SendOutlined />}
+              onClick={handleSend}
+              disabled={!hasContent}
+            />
+          )}
+        </div>
       </div>
 
       {/* Pending file previews */}
