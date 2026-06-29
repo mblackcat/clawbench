@@ -47,7 +47,7 @@ const App: React.FC = () => {
       <Route path="/admin/auth/callback" element={<AuthCallbackPage />} />
       <Route path="/admin/*" element={<AdminShell />} />
       <Route path="/store/*" element={<StoreShell />} />
-      <Route path="*" element={<Navigate to="/store" replace />} />
+      <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
     </Routes>
   );
 };

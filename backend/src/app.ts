@@ -96,8 +96,11 @@ export function createApp(): Application {
   // Admin routes (require auth + admin role)
   app.use('/api/v1/admin', adminRouter);
 
+  // 默认路由重定向到管理面板
+  app.get('/', (req, res) => res.redirect('/admin/dashboard'));
+
   // === Static file serving for admin/store web panel ===
-  const adminPublicDir = path.join(__dirname, '..', 'public', 'admin');
+  const adminPublicDir = path.join(__dirname, '..', 'admin-panel', 'dist');
 
   // Serve built assets (JS, CSS, images, etc.)
   app.use('/admin', express.static(adminPublicDir));
