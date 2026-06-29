@@ -62,23 +62,14 @@ const Layout: React.FC<Props> = ({ admin, children }) => {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }} onClick={() => navigate('/store')}>
-            <div
+            <img
+              src="/admin/icon.svg"
+              alt="ClawBench"
               style={{
                 width: 36,
                 height: 36,
-                borderRadius: 10,
-                background: 'linear-gradient(135deg, #007AFF, #AF52DE)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'white',
-                fontWeight: 700,
-                fontSize: 18,
-                boxShadow: '0 2px 8px rgba(0, 122, 255, 0.3)',
               }}
-            >
-              C
-            </div>
+            />
             <Text strong style={{ fontSize: 18, letterSpacing: '-0.02em', color: token.colorText }}>
               ClawBench Store
             </Text>
