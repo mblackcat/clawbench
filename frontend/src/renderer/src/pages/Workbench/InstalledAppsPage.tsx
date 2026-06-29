@@ -656,8 +656,12 @@ const InstalledAppsPage: React.FC = () => {
   }, [apps, t]);
 
   // Keep the tabbed-view active key pointing at an existing group.
+  // Skip the fallback when the only group is the always-included empty
+  // ai-skill placeholder — data hasn't loaded yet, so don't switch tabs.
   useEffect(() => {
     if (groupedApps.length === 0) return;
+    const hasRealGroups = groupedApps.some(g => g.items.length > 0);
+    if (!hasRealGroups) return;
     if (!groupedApps.some((g) => g.key === activeTab)) {
       setActiveTab(groupedApps[0].key);
     }

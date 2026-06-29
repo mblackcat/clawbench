@@ -620,7 +620,7 @@ const SkillDetailView: React.FC = () => {
         </Sider>
 
         {/* Editor Area */}
-        <Content style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <Content style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           {tabs.length === 0 ? (
             <div
               style={{
@@ -685,7 +685,7 @@ const SkillDetailView: React.FC = () => {
               </div>
 
               {activeTabData && (
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                   {isPreviewActive(activeTab) ? (
                     /* Markdown Preview */
                     <div
