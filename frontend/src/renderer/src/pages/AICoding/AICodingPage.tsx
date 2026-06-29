@@ -6,6 +6,7 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react'
 import { Spin, App, theme, Typography } from 'antd'
 import { MessageOutlined } from '@ant-design/icons'
+import { useLocation } from 'react-router-dom'
 import AICodingSidebar from './AICodingSidebar'
 import SplitContainer from './SplitContainer'
 import VcsChangesPanel from './VcsChangesPanel'
@@ -94,6 +95,20 @@ const AICodingPage: React.FC = () => {
       }
     }
   }, [setActiveSession, getOrCreateLayout, focusedPaneId, addTabToPane])
+
+  // Auto-select session passed via navigation state (e.g. from workbench "AI Code" button)
+  const location = useLocation()
+  const pendingSessionId = (location.state as { selectSessionId?: string } | null)?.selectSessionId
+
+  useEffect(() => {
+    if (!pendingSessionId || loading) return
+    const exists = sessions.some(s => s.id === pendingSessionId)
+    if (exists) {
+      handleSelectSession(pendingSessionId)
+      // Clear state to prevent re-trigger on back-navigation
+      window.history.replaceState({}, '')
+    }
+  }, [pendingSessionId, loading, sessions, handleSelectSession])
 
   // New workspace flow
   const handleNewWorkspace = useCallback(() => {

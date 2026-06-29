@@ -26,16 +26,16 @@ import {
   FolderOutlined,
   ProfileOutlined,
   ExportOutlined,
-  CommentOutlined,
   FileAddOutlined,
   FolderAddOutlined,
   EditOutlined,
-  DeleteOutlined
+  DeleteOutlined,
+  CodeOutlined
 } from '@ant-design/icons'
 import Editor from '@monaco-editor/react'
 import type { DataNode } from 'antd/es/tree'
 import type { SubAppOutput } from '../../types/subapp'
-import EditorChatPanel from '../../components/EditorChatPanel'
+import EmbeddedCodingPanel from '../../components/EmbeddedCodingPanel'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { useT } from '../../i18n'
 
@@ -638,7 +638,7 @@ const CodeEditor: React.FC = () => {
             <Button
               type="text"
               icon={<ArrowLeftOutlined />}
-              onClick={() => navigate('/workbench/my-contributions')}
+              onClick={() => navigate(-1)}
             />
           </Tooltip>
           <Title level={5} style={{ margin: 0 }}>
@@ -676,7 +676,7 @@ const CodeEditor: React.FC = () => {
           </Tooltip>
         </Space>
 
-        {/* Right: IDE + AI chat toggle (icon-only) */}
+        {/* Right: IDE + AI Coding sidebar toggle */}
         <Space size={4}>
           <Tooltip title={t('codeEditor.openInIde')}>
             <Button type="text" icon={<ExportOutlined />} onClick={handleOpenInIde} />
@@ -684,7 +684,7 @@ const CodeEditor: React.FC = () => {
           <Tooltip title={chatVisible ? t('codeEditor.hideChat') : t('codeEditor.showChat')}>
             <Button
               type={chatVisible ? 'primary' : 'text'}
-              icon={<CommentOutlined />}
+              icon={<CodeOutlined />}
               onClick={() => setChatVisible(!chatVisible)}
             />
           </Tooltip>
@@ -804,7 +804,7 @@ const CodeEditor: React.FC = () => {
           )}
         </Content>
 
-        {/* AI Chat Sidebar (collapsible) */}
+        {/* AI Coding Sidebar (collapsible) */}
         {chatVisible && (
           <Sider
             width={380}
@@ -813,14 +813,11 @@ const CodeEditor: React.FC = () => {
               borderLeft: `1px solid ${token.colorBorderSecondary}`
             }}
           >
-            {appId && (
-              <EditorChatPanel
-                appId={appId}
-                appPath={appPath}
-                onFilesChanged={handleChatFilesChanged}
-                onClose={() => setChatVisible(false)}
-              />
-            )}
+            <EmbeddedCodingPanel
+              appPath={appPath}
+              onFilesChanged={handleChatFilesChanged}
+              onClose={() => setChatVisible(false)}
+            />
           </Sider>
         )}
       </Layout>
