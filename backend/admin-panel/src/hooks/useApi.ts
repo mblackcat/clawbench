@@ -57,9 +57,24 @@ export function useApi() {
 
   const logout = useCallback(() => {
     clearToken();
+    localStorage.removeItem('admin_role');
   }, []);
 
-  return { fetchApi, getToken, login, logout };
+  const getMe = useCallback(async (): Promise<string> => {
+    const cached = localStorage.getItem('admin_role');
+    if (cached) return cached;
+
+    try {
+      const json = await fetchApi<{ success: boolean; data: { role: string } }>('/api/v1/users/me');
+      const role = json.data.role;
+      localStorage.setItem('admin_role', role);
+      return role;
+    } catch {
+      return 'user';
+    }
+  }, [fetchApi]);
+
+  return { fetchApi, getToken, login, logout, getMe };
 }
 
 export class ApiError extends Error {
