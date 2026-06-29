@@ -7,6 +7,7 @@ import { logger } from '../utils/logger';
  * 飞书 OAuth 授权入口
  * GET /api/v1/auth/feishu
  * 生成飞书授权 URL 并 302 重定向
+ * Query params: source=web (redirect to admin panel) | 默认 electron
  */
 export async function feishuAuthorize(
   req: Request,
@@ -25,8 +26,9 @@ export async function feishuAuthorize(
       return;
     }
 
-    const { url } = await generateAuthUrl();
-    logger.info(`Feishu OAuth: redirecting to authorization URL`);
+    const source = req.query.source === 'web' ? 'web' : 'electron';
+    const { url } = await generateAuthUrl(source);
+    logger.info(`Feishu OAuth: redirecting to authorization URL (source=${source})`);
     res.redirect(url);
   } catch (error) {
     next(error);
@@ -53,7 +55,21 @@ export async function feishuCallback(
 
     const loginResponse = await handleCallback(code as string, state as string);
 
-    // 成功：通过 custom protocol 将 JWT + Feishu UAT 传递给 Electron 客户端
+    // 根据 source 决定重定向目标：web → admin panel，electron → custom protocol
+    if (loginResponse.source === 'web') {
+      // Web admin panel: redirect to /admin/auth/callback with token
+      const params = new URLSearchParams({
+        token: loginResponse.token,
+        userId: loginResponse.userId,
+        feishuAccessToken: loginResponse.feishuAccessToken,
+      });
+      const redirectUrl = `/admin/auth/callback?${params.toString()}`;
+      logger.info(`Feishu OAuth callback: redirecting to admin panel`);
+      res.redirect(redirectUrl);
+      return;
+    }
+
+    // Electron: 通过 custom protocol 将 JWT + Feishu UAT 传递给 Electron 客户端
     const params = new URLSearchParams({
       token: loginResponse.token,
       uat: loginResponse.feishuAccessToken,

@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
+import AuthCallbackPage from './pages/AuthCallbackPage';
 import DashboardPage from './pages/DashboardPage';
 import UserManagementPage from './pages/UserManagementPage';
 import AppStorePage from './pages/AppStorePage';
@@ -43,6 +44,7 @@ const App: React.FC = () => {
   return (
     <Routes>
       <Route path="/admin/login" element={<LoginPage />} />
+      <Route path="/admin/auth/callback" element={<AuthCallbackPage />} />
       <Route path="/admin/*" element={<AdminShell />} />
       <Route path="/store/*" element={<StoreShell />} />
       <Route path="*" element={<Navigate to="/store" replace />} />

@@ -99,13 +99,17 @@ async function getAppAccessToken(): Promise<string> {
 
 /**
  * 生成飞书授权 URL
+ * @param source 来源标识：'electron' (默认) | 'web' （用于区分回调跳转目标）
  * @returns 授权 URL 和 state
  */
-export async function generateAuthUrl(): Promise<{ url: string; state: string }> {
+export async function generateAuthUrl(source: 'electron' | 'web' = 'electron'): Promise<{ url: string; state: string }> {
   await cleanupStates();
 
   const state = randomBytes(16).toString('hex');
-  await database.run('INSERT INTO oauth_states (state, created_at) VALUES (?, ?)', [state, Date.now()]);
+  await database.run(
+    'INSERT INTO oauth_states (state, source, created_at) VALUES (?, ?, ?)',
+    [state, source, Date.now()]
+  );
 
   const redirectUri = encodeURIComponent(config.feishu.redirectUri);
   const url = `${FEISHU_AUTH_URL}?app_id=${config.feishu.appId}&redirect_uri=${redirectUri}&state=${state}`;
@@ -117,11 +121,11 @@ export async function generateAuthUrl(): Promise<{ url: string; state: string }>
  * 处理飞书 OAuth 回调
  * @param code 授权码
  * @param state CSRF state
- * @returns JWT 登录响应
+ * @returns JWT 登录响应 + source (来源标识)
  */
-export async function handleCallback(code: string, state: string): Promise<FeishuLoginResponse> {
+export async function handleCallback(code: string, state: string): Promise<FeishuLoginResponse & { source: string }> {
   // 1. 验证 state（从数据库查找）
-  const stateRow = await database.get<{ state: string; created_at: number }>(
+  const stateRow = await database.get<{ state: string; source: string; created_at: number }>(
     'SELECT * FROM oauth_states WHERE state = ?', [state]
   );
   if (!stateRow) {
@@ -132,6 +136,8 @@ export async function handleCallback(code: string, state: string): Promise<Feish
     throw new Error('State parameter expired');
   }
   await database.run('DELETE FROM oauth_states WHERE state = ?', [state]);
+
+  const oauthSource = stateRow.source || 'electron';
 
   // 2. 获取 App Access Token
   const appAccessToken = await getAppAccessToken();
@@ -236,6 +242,7 @@ export async function handleCallback(code: string, state: string): Promise<Feish
     feishuAccessToken: userAccessToken,
     feishuRefreshToken,
     feishuTokenExpiresIn,
+    source: oauthSource,
   };
 }
 

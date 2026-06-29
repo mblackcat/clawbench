@@ -38,6 +38,13 @@ export async function initializeSqliteSchema(database: DatabaseAdapter): Promise
     await database.run(`ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'`);
   }
 
+  // oauth_states migration: add source column (electron / web)
+  const stateColumns = await database.all<{ name: string }>(`PRAGMA table_info(oauth_states)`);
+  const stateColumnNames = stateColumns.map((c) => c.name);
+  if (!stateColumnNames.includes('source')) {
+    await database.run(`ALTER TABLE oauth_states ADD COLUMN source TEXT DEFAULT 'electron'`);
+  }
+
   // 应用表
   await database.run(`
     CREATE TABLE IF NOT EXISTS applications (

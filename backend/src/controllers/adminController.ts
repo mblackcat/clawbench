@@ -185,7 +185,7 @@ export async function listAllApplicationsHandler(
     res.json({
       success: true,
       data: {
-        applications: applications.map(applicationToResponse),
+        applications: applications.map((a) => applicationToResponse(a)),
         total,
         limit,
         offset,

@@ -153,6 +153,18 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 
+  // oauth_states migration: add source column
+  if (currentDb) {
+    const sourceExists = await database.get<{ cnt: number }>(
+      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'oauth_states' AND COLUMN_NAME = 'source'`,
+      [currentDb]
+    );
+    if (!sourceExists || sourceExists.cnt === 0) {
+      await database.run(`ALTER TABLE oauth_states ADD COLUMN source VARCHAR(20) DEFAULT 'electron'`);
+    }
+  }
+
   // Agent memory table
   await database.run(`
     CREATE TABLE IF NOT EXISTS agent_memories (
