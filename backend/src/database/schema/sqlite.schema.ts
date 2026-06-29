@@ -34,6 +34,9 @@ export async function initializeSqliteSchema(database: DatabaseAdapter): Promise
   if (!columnNames.includes('auth_provider')) {
     await database.run(`ALTER TABLE users ADD COLUMN auth_provider TEXT`);
   }
+  if (!columnNames.includes('role')) {
+    await database.run(`ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'`);
+  }
 
   // 应用表
   await database.run(`
@@ -137,6 +140,13 @@ export async function initializeSqliteSchema(database: DatabaseAdapter): Promise
       created_at INTEGER NOT NULL
     )
   `);
+
+  // oauth_states migration: add source column (electron / web)
+  const stateColumns = await database.all<{ name: string }>(`PRAGMA table_info(oauth_states)`);
+  const stateColumnNames = stateColumns.map((c) => c.name);
+  if (!stateColumnNames.includes('source')) {
+    await database.run(`ALTER TABLE oauth_states ADD COLUMN source TEXT DEFAULT 'electron'`);
+  }
 
   // Agent memory table
   await database.run(`

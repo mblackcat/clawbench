@@ -165,3 +165,80 @@ export async function deleteReleaseFileHandler(req: AuthRequest, res: Response):
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
   }
 }
+
+/**
+ * List latest release per platform for public download page.
+ * GET /api/v1/releases/latest
+ * Public — no authentication required.
+ * Returns the latest release info with download URLs, grouped by platform.
+ */
+function extractVersion(filename: string): string | null {
+  // Match semver patterns: x.y.z or x.y.z-beta.N
+  const match = filename.match(/(\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?)/);
+  return match ? match[1] : null;
+}
+
+export async function listLatestReleasesHandler(req: Request, res: Response): Promise<void> {
+  try {
+    if (!fs.existsSync(RELEASES_DIR)) {
+      res.json({ success: true, data: { version: null, files: [] } });
+      return;
+    }
+
+    const files = await fs.promises.readdir(RELEASES_DIR);
+    const fileInfos = await Promise.all(
+      files
+        .filter((f) => isSafeFilename(f))
+        .map(async (filename) => {
+          const stat = await fs.promises.stat(path.join(RELEASES_DIR, filename));
+          const version = extractVersion(filename);
+          const isMac = filename.endsWith('.dmg');
+          const isWin = filename.endsWith('.exe');
+          const isYml = filename.endsWith('.yml') || filename.endsWith('.yaml');
+          return {
+            filename,
+            size: stat.size,
+            version,
+            platform: isMac ? 'mac' : isWin ? 'windows' : isYml ? 'manifest' : 'other',
+            url: `/api/v1/releases/${filename}`,
+            updatedAt: stat.mtimeMs,
+          };
+        })
+    );
+
+    // Sort by version descending, then by updatedAt
+    fileInfos.sort((a, b) => {
+      if (a.version && b.version) {
+        return b.version.localeCompare(a.version, undefined, { numeric: true });
+      }
+      return b.updatedAt - a.updatedAt;
+    });
+
+    // Determine latest version
+    const latestVersion = fileInfos.find((f) => f.version)?.version || null;
+
+    // Get latest .dmg, .exe, and latest.yml
+    const macFile = fileInfos.find((f) => f.platform === 'mac');
+    const winFile = fileInfos.find((f) => f.platform === 'windows');
+    const manifestFile = fileInfos.find((f) => f.platform === 'manifest');
+
+    res.json({
+      success: true,
+      data: {
+        version: latestVersion,
+        latest: {
+          mac: macFile || null,
+          windows: winFile || null,
+          manifest: manifestFile || null,
+        },
+        allFiles: fileInfos,
+      },
+    });
+  } catch (error) {
+    logger.error('Error listing latest releases:', error);
+    res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: 'Internal server error' },
+    });
+  }
+}

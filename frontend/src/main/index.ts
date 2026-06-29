@@ -150,6 +150,24 @@ function handleProtocolUrl(url: string): void {
       logger.error('Failed to handle protocol callback:', err)
     })
   }
+
+  // Handle install protocol: clawbench://install/{appId}?name=...
+  if (url.startsWith(`${PROTOCOL}://install/`)) {
+    try {
+      const urlObj = new URL(url)
+      const pathParts = urlObj.pathname.replace(/^\/\//, '').split('/')
+      const appId = decodeURIComponent(pathParts[1] || '')
+      const appName = urlObj.searchParams.get('name') || appId
+
+      if (appId) {
+        const mainWindow = showMainWindow()
+        mainWindow.webContents.send('protocol:install-app', { appId, name: appName })
+        logger.info(`Protocol install: appId=${appId}, name=${appName}`)
+      }
+    } catch (err) {
+      logger.error('Failed to parse install protocol URL:', err)
+    }
+  }
 }
 
 function createWindow(): BrowserWindow {

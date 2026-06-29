@@ -2,6 +2,26 @@ import { DatabaseAdapter } from '../adapters/types';
 import { logger } from '../../utils/logger';
 
 /**
+ * Run a DDL statement with graceful fallback for restricted MySQL users.
+ * If the user lacks CREATE/ALTER privileges, log a warning and continue
+ * (assuming the schema was set up by a DBA). Other errors still throw.
+ */
+async function safeDDL(database: DatabaseAdapter, sql: string, params: any[] = []): Promise<void> {
+  const label = sql.trimStart().substring(0, 60).replace(/\s+/g, ' ');
+  try {
+    await database.run(sql, params);
+  } catch (err: any) {
+    const code = err?.code || err?.errno;
+    // MySQL error codes for insufficient privileges
+    if (code === 'ER_DBACCESS_DENIED_ERROR' || code === 'ER_TABLEACCESS_DENIED_ERROR' || code === 1044 || code === 1142) {
+      logger.warn(`Skipping DDL (insufficient privileges): ${label}`);
+      return;
+    }
+    throw err;
+  }
+}
+
+/**
  * MySQL schema initializer.
  *
  * Notes:
@@ -15,7 +35,7 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
   logger.info('Initializing MySQL schema...');
 
   // 用户表
-  await database.run(`
+  await safeDDL(database, `
     CREATE TABLE IF NOT EXISTS users (
       user_id VARCHAR(36) PRIMARY KEY,
       username VARCHAR(255) UNIQUE NOT NULL,
@@ -34,21 +54,21 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
   const currentDb = dbName?.db;
 
   if (currentDb) {
-    for (const col of ['feishu_open_id', 'avatar_url', 'auth_provider']) {
+    for (const col of ['feishu_open_id', 'avatar_url', 'auth_provider', 'role']) {
       const exists = await database.get<{ cnt: number }>(
         `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS
          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'users' AND COLUMN_NAME = ?`,
         [currentDb, col]
       );
       if (!exists || exists.cnt === 0) {
-        const colType = col === 'avatar_url' ? 'TEXT' : col === 'auth_provider' ? 'VARCHAR(50)' : 'VARCHAR(255)';
-        await database.run(`ALTER TABLE users ADD COLUMN ${col} ${colType}`);
+        const colType = col === 'avatar_url' ? 'TEXT' : col === 'auth_provider' ? 'VARCHAR(50)' : col === 'role' ? "VARCHAR(50) DEFAULT 'user'" : 'VARCHAR(255)';
+        await safeDDL(database,`ALTER TABLE users ADD COLUMN ${col} ${colType}`);
       }
     }
   }
 
   // 应用表
-  await database.run(`
+  await safeDDL(database,`
     CREATE TABLE IF NOT EXISTS applications (
       application_id VARCHAR(36) PRIMARY KEY,
       name VARCHAR(255) NOT NULL,
@@ -65,7 +85,7 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
   `);
 
   // 应用版本表
-  await database.run(`
+  await safeDDL(database,`
     CREATE TABLE IF NOT EXISTS application_versions (
       version_id VARCHAR(36) PRIMARY KEY,
       application_id VARCHAR(36) NOT NULL,
@@ -80,7 +100,7 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
   `);
 
   // 认证令牌表
-  await database.run(`
+  await safeDDL(database,`
     CREATE TABLE IF NOT EXISTS auth_tokens (
       token_id VARCHAR(36) PRIMARY KEY,
       user_id VARCHAR(36) NOT NULL,
@@ -93,7 +113,7 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
   `);
 
   // 对话表
-  await database.run(`
+  await safeDDL(database,`
     CREATE TABLE IF NOT EXISTS conversations (
       conversation_id VARCHAR(36) PRIMARY KEY,
       user_id VARCHAR(36) NOT NULL,
@@ -107,7 +127,7 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
   `);
 
   // 消息表
-  await database.run(`
+  await safeDDL(database,`
     CREATE TABLE IF NOT EXISTS messages (
       message_id VARCHAR(36) PRIMARY KEY,
       conversation_id VARCHAR(36) NOT NULL,
@@ -125,12 +145,12 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
       `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'messages' AND COLUMN_NAME = 'metadata'`
     );
     if (!exists || exists.cnt === 0) {
-      await database.run(`ALTER TABLE messages ADD COLUMN metadata TEXT`);
+      await safeDDL(database,`ALTER TABLE messages ADD COLUMN metadata TEXT`);
     }
   }
 
   // 聊天附件表
-  await database.run(`
+  await safeDDL(database,`
     CREATE TABLE IF NOT EXISTS chat_attachments (
       attachment_id VARCHAR(36) PRIMARY KEY,
       message_id VARCHAR(36),
@@ -146,15 +166,27 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
   `);
 
   // OAuth state 表
-  await database.run(`
+  await safeDDL(database,`
     CREATE TABLE IF NOT EXISTS oauth_states (
       state VARCHAR(64) PRIMARY KEY,
       created_at BIGINT NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 
+  // oauth_states migration: add source column
+  if (currentDb) {
+    const sourceExists = await database.get<{ cnt: number }>(
+      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'oauth_states' AND COLUMN_NAME = 'source'`,
+      [currentDb]
+    );
+    if (!sourceExists || sourceExists.cnt === 0) {
+      await safeDDL(database,`ALTER TABLE oauth_states ADD COLUMN source VARCHAR(20) DEFAULT 'electron'`);
+    }
+  }
+
   // Agent memory table
-  await database.run(`
+  await safeDDL(database,`
     CREATE TABLE IF NOT EXISTS agent_memories (
       id INT AUTO_INCREMENT PRIMARY KEY,
       user_id VARCHAR(36) NOT NULL,
@@ -173,7 +205,7 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
       [currentDb]
     );
     if (!typeExists || typeExists.cnt === 0) {
-      await database.run(`ALTER TABLE applications ADD COLUMN type VARCHAR(50) DEFAULT 'app'`);
+      await safeDDL(database,`ALTER TABLE applications ADD COLUMN type VARCHAR(50) DEFAULT 'app'`);
     }
   }
 
@@ -185,7 +217,7 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
       [currentDb, table, name]
     );
     if (!exists || exists.cnt === 0) {
-      await database.run(ddl);
+      await safeDDL(database,ddl);
     }
   };
 

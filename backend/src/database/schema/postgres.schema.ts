@@ -33,6 +33,7 @@ export async function initializePostgresSchema(database: DatabaseAdapter): Promi
   await database.run(`ALTER TABLE users ADD COLUMN IF NOT EXISTS feishu_open_id TEXT`);
   await database.run(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT`);
   await database.run(`ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider TEXT`);
+  await database.run(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user'`);
 
   // 应用表
   await database.run(`
@@ -125,6 +126,9 @@ export async function initializePostgresSchema(database: DatabaseAdapter): Promi
       created_at BIGINT NOT NULL
     )
   `);
+
+  // oauth_states migration: add source column
+  await database.run(`ALTER TABLE oauth_states ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'electron'`);
 
   // Agent memory table
   await database.run(`

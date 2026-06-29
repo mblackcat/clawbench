@@ -48,6 +48,7 @@ import { useSettingsStore } from '../../stores/useSettingsStore';
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore';
 import { useChatStore } from '../../stores/useChatStore';
 import ParamDrawer from '../../components/ParamDrawer';
+import AICodeButton from '../../components/AICodeButton';
 import CreateTypeModal from '../../components/CreateTypeModal';
 import { openExternalLink } from '../../utils/markdown-links';
 import { useT } from '../../i18n';
@@ -326,6 +327,8 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
               <PlayCircleOutlined /> {t('workbench.run')}
             </div>
           )}
+          <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorderSecondary }} />
+          <AICodeButton appId={id} />
         </div>
       </div>
     </div>
