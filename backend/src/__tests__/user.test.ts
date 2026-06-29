@@ -52,6 +52,7 @@ describe('User Model and Password Utilities', () => {
       username: 'testuser',
       email: 'test@example.com',
       password_hash: '$2a$10$abcdefghijklmnopqrstuvwxyz',
+      role: 'user',
       created_at: 1234567890000,
       updated_at: 1234567890000,
     };
@@ -61,6 +62,7 @@ describe('User Model and Password Utilities', () => {
       username: 'testuser',
       email: 'test@example.com',
       passwordHash: '$2a$10$abcdefghijklmnopqrstuvwxyz',
+      role: 'user',
       createdAt: 1234567890000,
       updatedAt: 1234567890000,
     };
@@ -96,8 +98,9 @@ describe('User Model and Password Utilities', () => {
       expect(responseKeys).toContain('email');
       expect(responseKeys).toContain('createdAt');
       expect(responseKeys).toContain('updatedAt');
+      expect(responseKeys).toContain('role');
       expect(responseKeys).not.toContain('passwordHash');
-      expect(responseKeys.length).toBe(8);
+      expect(responseKeys.length).toBe(9);
     });
   });
 });
