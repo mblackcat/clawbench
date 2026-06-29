@@ -48,6 +48,10 @@
   --text-tertiary: rgba(0, 0, 0, 0.35);
 
   --vibrant-edge: rgba(255, 255, 255, 0.6);
+
+  --mesh-color-1: rgba(0, 122, 255, 0.1);
+  --mesh-color-2: rgba(175, 82, 222, 0.08);
+  --mesh-color-3: rgba(52, 199, 89, 0.06);
 }
 
 /* Dark theme (default) */
@@ -71,39 +75,65 @@
   --text-tertiary: rgba(255, 255, 255, 0.35);
 
   --vibrant-edge: rgba(255, 255, 255, 0.08);
+
+  --mesh-color-1: rgba(0, 122, 255, 0.12);
+  --mesh-color-2: rgba(175, 82, 222, 0.09);
+  --mesh-color-3: rgba(52, 199, 89, 0.07);
 }
 
 /* ==========================================================================
    Base Styles
    ========================================================================== */
 
+/* Override Ant Design's opaque body background */
 body {
-  margin: 0;
-  padding: 0;
-  background: var(--bg-primary);
-  color: var(--text-primary);
+  margin: 0 !important;
+  padding: 0 !important;
+  background: #0a0a0f !important;
+  color: var(--text-primary) !important;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
+  position: relative;
 }
 
-#root {
-  min-height: 100vh;
-}
-
-/* Subtle animated background mesh */
+/* Animated gradient mesh background — attached to body so glass can blur through it */
 body::before {
   content: '';
   position: fixed;
   inset: 0;
-  z-index: -1;
-  opacity: 0.4;
+  z-index: 0;
+  opacity: 0.7;
   background:
-    radial-gradient(ellipse 80% 60% at 50% -20%, rgba(0, 122, 255, 0.08), transparent),
-    radial-gradient(ellipse 60% 50% at 80% 80%, rgba(175, 82, 222, 0.06), transparent),
-    radial-gradient(ellipse 50% 40% at 20% 50%, rgba(52, 199, 89, 0.04), transparent);
+    /* Primary accent blob */
+    radial-gradient(ellipse 80% 60% at 50% -20%, var(--mesh-color-1), transparent 60%),
+    /* Purple accent blob */
+    radial-gradient(ellipse 60% 50% at 85% 85%, var(--mesh-color-2), transparent 60%),
+    /* Green accent blob */
+    radial-gradient(ellipse 50% 40% at 15% 50%, var(--mesh-color-3), transparent 60%),
+    /* Secondary blue blob */
+    radial-gradient(ellipse 40% 40% at 75% 25%, rgba(0, 122, 255, 0.06), transparent 50%);
   pointer-events: none;
+}
+
+/* Subtle grid/dot pattern for texture behind glass */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  opacity: 0.03;
+  background-image:
+    radial-gradient(circle, rgba(255,255,255,0.8) 1px, transparent 1px);
+  background-size: 32px 32px;
+  pointer-events: none;
+}
+
+#root {
+  min-height: 100vh;
+  position: relative;
+  z-index: 1;
 }
 
 /* ==========================================================================
@@ -111,14 +141,15 @@ body::before {
    ========================================================================== */
 
 .ios-glass-surface {
-  background: var(--glass-surface-bg);
+  background: var(--glass-surface-bg) !important;
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid var(--glass-surface-border);
   border-radius: var(--glass-radius-md);
   box-shadow: var(--glass-surface-shadow);
   transition: transform 0.3s var(--transition-smooth),
-              box-shadow 0.3s var(--transition-smooth);
+              box-shadow 0.3s var(--transition-smooth),
+              background 0.3s var(--transition-smooth);
 }
 
 .ios-glass-surface:hover {
@@ -131,7 +162,7 @@ body::before {
    ========================================================================== */
 
 .ios-glass-elevated {
-  background: var(--glass-elevated-bg);
+  background: var(--glass-elevated-bg) !important;
   backdrop-filter: blur(40px) saturate(200%);
   -webkit-backdrop-filter: blur(40px) saturate(200%);
   border: 1px solid var(--glass-elevated-border);
@@ -165,7 +196,7 @@ body::before {
    ========================================================================== */
 
 .ios-glass-nav {
-  background: var(--glass-nav-bg);
+  background: var(--glass-nav-bg) !important;
   backdrop-filter: blur(12px) saturate(150%);
   -webkit-backdrop-filter: blur(12px) saturate(150%);
   border-right: 1px solid var(--glass-surface-border);
@@ -573,7 +604,25 @@ body::before {
    Ant Design Overrides for Glass Theme
    ========================================================================== */
 
-/* Make Ant Design modals glassy */
+/* CRITICAL: Override Ant Design dark theme opaque backgrounds */
+/* Ant Design injects a <style> tag that sets body{background:#000} — undo it */
+
+/* Make the root Ant Layout transparent so glass mesh shows through */
+.ant-layout {
+  background: transparent !important;
+}
+
+/* Sidebar / Sider */
+.ant-layout-sider {
+  background: var(--glass-nav-bg) !important;
+}
+
+/* Content area */
+.ant-layout-content {
+  background: transparent !important;
+}
+
+/* Ant Design Modal */
 .ant-modal-content {
   background: var(--glass-elevated-bg) !important;
   backdrop-filter: blur(40px) saturate(200%);
@@ -590,15 +639,23 @@ body::before {
   color: var(--text-primary) !important;
 }
 
-/* Make Ant Design inputs glassy */
+/* Ant Design Input / Form controls */
 .ant-input,
-.ant-input-password input {
+.ant-input-affix-wrapper,
+.ant-input-password input,
+.ant-input-password {
   background: var(--glass-surface-bg) !important;
   border: 1px solid var(--glass-surface-border) !important;
   color: var(--text-primary) !important;
 }
 
-.ant-input::placeholder {
+.ant-input-affix-wrapper > input.ant-input {
+  background: transparent !important;
+  border: none !important;
+}
+
+.ant-input::placeholder,
+.ant-input-affix-wrapper input::placeholder {
   color: var(--text-tertiary) !important;
 }
 
@@ -612,18 +669,51 @@ body::before {
 .ant-select-dropdown {
   background: var(--glass-elevated-bg) !important;
   backdrop-filter: blur(40px) saturate(200%);
+  -webkit-backdrop-filter: blur(40px) saturate(200%);
+  border: 1px solid var(--glass-elevated-border) !important;
+}
+
+.ant-select-item {
+  color: var(--text-primary) !important;
+}
+
+.ant-select-item-option-selected:not(.ant-select-item-option-disabled) {
+  background: rgba(0, 122, 255, 0.15) !important;
+}
+
+.ant-select-item-option-active:not(.ant-select-item-option-disabled) {
+  background: var(--glass-surface-bg) !important;
 }
 
 /* Buttons */
 .ant-btn-primary {
   background: var(--ios-accent) !important;
   border-color: var(--ios-accent) !important;
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.25);
+}
+
+.ant-btn-primary:hover {
+  background: #0070E9 !important;
+  border-color: #0070E9 !important;
 }
 
 /* Pagination */
 .ant-pagination-item-active {
   background: var(--ios-accent) !important;
   border-color: var(--ios-accent) !important;
+}
+
+.ant-pagination-item-active a {
+  color: #FFFFFF !important;
+}
+
+.ant-pagination-item {
+  background: var(--glass-surface-bg) !important;
+  border-color: var(--glass-surface-border) !important;
+}
+
+.ant-pagination-item a {
+  color: var(--text-secondary) !important;
 }
 
 /* Tabs */
@@ -639,13 +729,120 @@ body::before {
   color: var(--ios-accent) !important;
 }
 
-/* Popconfirm */
+/* Table */
+.ant-table {
+  background: transparent !important;
+}
+
+.ant-table-thead > tr > th {
+  background: var(--glass-surface-bg) !important;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--glass-surface-border) !important;
+  color: var(--text-secondary) !important;
+}
+
+.ant-table-tbody > tr > td {
+  background: transparent !important;
+  border-bottom: 1px solid var(--glass-surface-border) !important;
+  color: var(--text-primary) !important;
+}
+
+.ant-table-tbody > tr:hover > td {
+  background: var(--glass-surface-bg) !important;
+}
+
+/* Card */
+.ant-card {
+  background: var(--glass-surface-bg) !important;
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--glass-surface-border) !important;
+  border-radius: var(--glass-radius-md) !important;
+}
+
+.ant-card-head {
+  background: transparent !important;
+  border-bottom: 1px solid var(--glass-surface-border) !important;
+}
+
+/* Popconfirm / Popover */
 .ant-popover-inner {
   background: var(--glass-elevated-bg) !important;
   backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
   border: 1px solid var(--glass-elevated-border) !important;
 }
 
 .ant-popover-message {
   color: var(--text-primary) !important;
+}
+
+/* Tooltip */
+.ant-tooltip-inner {
+  background: var(--glass-elevated-bg) !important;
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  border: 1px solid var(--glass-elevated-border) !important;
+}
+
+/* Menu (sidebar navigation) */
+.ant-menu {
+  background: transparent !important;
+  border-inline-end: none !important;
+}
+
+.ant-menu-item {
+  color: var(--text-secondary) !important;
+  border-radius: 10px !important;
+  margin: 2px 8px !important;
+  width: auto !important;
+}
+
+.ant-menu-item-selected {
+  background: rgba(0, 122, 255, 0.15) !important;
+  color: var(--ios-accent) !important;
+}
+
+.ant-menu-item:hover {
+  color: var(--text-primary) !important;
+}
+
+.ant-menu-item .anticon {
+  color: inherit !important;
+}
+
+/* Divider */
+.ant-divider {
+  border-color: var(--glass-surface-border) !important;
+}
+
+.ant-divider-plain .ant-divider-inner-text {
+  color: var(--text-tertiary) !important;
+  background: transparent !important;
+}
+
+/* Spin */
+.ant-spin-dot-item {
+  background: var(--ios-accent) !important;
+}
+
+/* Typography */
+h1.ant-typography,
+h2.ant-typography,
+h3.ant-typography,
+h4.ant-typography {
+  color: var(--text-primary) !important;
+}
+
+/* Tag */
+.ant-tag {
+  background: var(--glass-surface-bg) !important;
+  border: 1px solid var(--glass-surface-border) !important;
+  color: var(--text-secondary) !important;
+}
+
+/* Badge */
+.ant-badge .ant-badge-count {
+  background: var(--ios-accent) !important;
 }

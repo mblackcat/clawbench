@@ -17,10 +17,14 @@ export async function createUser(input: CreateUserInput): Promise<User> {
   const passwordHash = await hashPassword(input.password);
   const now = Date.now();
 
+  // First user gets admin role
+  const countRow = await database.get<{ cnt: number }>('SELECT COUNT(*) AS cnt FROM users');
+  const role = countRow && countRow.cnt === 0 ? 'admin' : 'user';
+
   await database.run(
     `INSERT INTO users (user_id, username, email, password_hash, role, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [userId, input.username, input.email || null, passwordHash, 'user', now, now]
+    [userId, input.username, input.email || null, passwordHash, role, now, now]
   );
 
   return {
@@ -28,7 +32,7 @@ export async function createUser(input: CreateUserInput): Promise<User> {
     username: input.username,
     email: input.email || undefined,
     passwordHash,
-    role: 'user' as const,
+    role: role as 'admin' | 'user',
     createdAt: now,
     updatedAt: now,
   };
@@ -45,10 +49,14 @@ export async function createFeishuUser(input: CreateFeishuUserInput): Promise<Us
   // 飞书用户使用空字符串作为 password_hash，bcrypt 不会匹配空字符串
   const passwordHash = '';
 
+  // First user gets admin role
+  const countRow = await database.get<{ cnt: number }>('SELECT COUNT(*) AS cnt FROM users');
+  const role = countRow && countRow.cnt === 0 ? 'admin' : 'user';
+
   await database.run(
     `INSERT INTO users (user_id, username, email, password_hash, feishu_open_id, avatar_url, auth_provider, role, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [userId, input.username, input.email || null, passwordHash, input.feishuOpenId, input.avatarUrl || null, input.authProvider || null, 'user', now, now]
+    [userId, input.username, input.email || null, passwordHash, input.feishuOpenId, input.avatarUrl || null, input.authProvider || null, role, now, now]
   );
 
   return {
@@ -59,7 +67,7 @@ export async function createFeishuUser(input: CreateFeishuUserInput): Promise<Us
     feishuOpenId: input.feishuOpenId,
     avatarUrl: input.avatarUrl || undefined,
     authProvider: input.authProvider || undefined,
-    role: 'user' as const,
+    role: role as 'admin' | 'user',
     createdAt: now,
     updatedAt: now,
   };
