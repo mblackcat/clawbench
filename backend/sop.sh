@@ -122,13 +122,28 @@ function stop() {
 }
 
 function restart() {
+    log "Building project..."
+    npm run build
+    if [ $? -ne 0 ]; then
+        log "Build failed. Aborting restart."
+        exit 1
+    fi
+
+    # Build admin web panel if not already built
+    if [ ! -f "admin-panel/dist/index.html" ]; then
+        log "Admin panel not built — building now..."
+        rebuild_admin
+    else
+        log "Admin panel dist/ found. Skipping build (use -rebuild to force)."
+    fi
+
     log "Restarting service..."
     # 'restart' kills and restarts, 'reload' is zero-downtime
     # We use reload for better availability if running in cluster mode
     if $PM2_CMD describe "$APP_NAME" > /dev/null 2>&1; then
         $PM2_CMD reload ecosystem.config.js --env production
     else
-        start
+        $PM2_CMD start ecosystem.config.js --env production
     fi
     log "Service restarted."
 }
