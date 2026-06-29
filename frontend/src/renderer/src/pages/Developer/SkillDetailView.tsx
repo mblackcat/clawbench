@@ -576,13 +576,14 @@ const SkillDetailView: React.FC = () => {
         </Tooltip>
       </div>
 
-      <Layout>
+      <Layout style={{ flex: 1, overflow: 'hidden' }}>
         {/* File Tree Sidebar */}
         <Sider
           width={250}
           style={{
             background: token.colorBgContainer,
-            borderRight: `1px solid ${token.colorBorderSecondary}`
+            borderRight: `1px solid ${token.colorBorderSecondary}`,
+            overflow: 'auto'
           }}
         >
           <div style={{ padding: '12px 8px 4px' }}>
@@ -619,7 +620,7 @@ const SkillDetailView: React.FC = () => {
         </Sider>
 
         {/* Editor Area */}
-        <Content style={{ display: 'flex', flexDirection: 'column' }}>
+        <Content style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {tabs.length === 0 ? (
             <div
               style={{
