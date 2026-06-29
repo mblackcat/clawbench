@@ -62,7 +62,7 @@ const AppDetailPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: 64 }}>
+      <div className="ios-page-enter" style={{ display: 'flex', justifyContent: 'center', padding: 64 }}>
         <Spin size="large" />
       </div>
     );
@@ -70,11 +70,11 @@ const AppDetailPage: React.FC = () => {
 
   if (!app) {
     return (
-      <div className="ios-empty-state">
+      <div className="ios-empty-state" style={{ animation: 'pageSlideUp 0.4s var(--transition-spring) both' }}>
         <div className="ios-empty-state-icon"><AppstoreOutlined /></div>
         <h3>App Not Found</h3>
         <p>The app you're looking for doesn't exist or has been removed.</p>
-        <Button type="primary" onClick={goBack} style={{ marginTop: 16 }}>
+        <Button type="primary" onClick={goBack} style={{ marginTop: 16, borderRadius: 10 }}>
           Back to Store
         </Button>
       </div>
@@ -84,19 +84,19 @@ const AppDetailPage: React.FC = () => {
   const typeColor = TYPE_COLORS[app.type] || '#007AFF';
 
   return (
-    <div style={{ maxWidth: 800, margin: '0 auto' }}>
+    <div className="ios-page-enter" style={{ maxWidth: 800, margin: '0 auto' }}>
       {/* Back button */}
       <Button
         type="text"
         icon={<ArrowLeftOutlined />}
         onClick={goBack}
-        style={{ marginBottom: 24, color: 'var(--text-secondary)' }}
+        style={{ marginBottom: 24, color: 'var(--text-secondary)', borderRadius: 10 }}
       >
         {isAdmin ? 'Back to Admin' : 'Back to Store'}
       </Button>
 
-      {/* Header */}
-      <div style={{ display: 'flex', gap: 24, marginBottom: 32, alignItems: 'flex-start' }}>
+      {/* Header — elevated glass card */}
+      <div className="ios-glass-elevated" style={{ padding: 32, marginBottom: 24, display: 'flex', gap: 24, alignItems: 'flex-start' }}>
         <div
           className="ios-app-icon"
           style={{
@@ -104,13 +104,14 @@ const AppDetailPage: React.FC = () => {
             height: 80,
             borderRadius: 20,
             fontSize: 32,
-            background: `linear-gradient(135deg, ${typeColor}, ${typeColor}88)`,
+            background: `linear-gradient(135deg, ${typeColor}, ${typeColor}99)`,
+            boxShadow: `0 8px 24px ${typeColor}40`,
             flexShrink: 0,
           }}
         >
           {TYPE_ICONS[app.type] || <AppstoreOutlined />}
         </div>
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, position: 'relative', zIndex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
             <Title level={2} style={{ margin: 0, letterSpacing: '-0.02em' }}>
               {app.name}
@@ -119,7 +120,7 @@ const AppDetailPage: React.FC = () => {
               {app.type === 'ai-skill' ? 'AI Skill' : app.type}
             </span>
           </div>
-          <Text type="secondary" style={{ fontSize: 15, display: 'block', marginBottom: 16 }}>
+          <Text type="secondary" style={{ fontSize: 15, display: 'block', marginBottom: 20, lineHeight: 1.5 }}>
             {app.description || 'No description provided.'}
           </Text>
           <InstallButton appId={app.applicationId} appName={app.name} size="large" />

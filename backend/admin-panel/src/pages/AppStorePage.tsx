@@ -83,27 +83,35 @@ const AppStorePage: React.FC = () => {
   };
 
   return (
-    <div>
+    <div className="ios-page-enter">
       {/* Hero Section */}
       <div className="ios-hero" style={{ marginBottom: 32 }}>
-        <Title level={1} style={{ color: '#FFFFFF', marginBottom: 8, letterSpacing: '-0.03em', fontSize: 40 }}>
-          ClawBench App Store
-        </Title>
-        <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 16 }}>
-          Discover apps, AI skills, and prompts for your workflow
-        </Text>
-        <div style={{ display: 'flex', gap: 16, marginTop: 24 }}>
-          <div style={{ background: 'rgba(255,255,255,0.12)', borderRadius: 12, padding: '12px 20px' }}>
-            <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 20, fontWeight: 700, display: 'block' }}>
-              {stats.total}
-            </Text>
-            <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>Available</Text>
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          <Title level={1} style={{ color: '#FFFFFF', marginBottom: 8, letterSpacing: '-0.03em', fontSize: 40 }}>
+            ClawBench App Store
+          </Title>
+          <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 16 }}>
+            Discover apps, AI skills, and prompts for your workflow
+          </Text>
+        </div>
+        <div style={{ display: 'flex', gap: 16, marginTop: 24, position: 'relative', zIndex: 1 }}>
+          <div className="ios-hero-stat">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+              <AppstoreOutlined style={{ color: 'rgba(255,255,255,0.7)', fontSize: 14 }} />
+              <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em' }}>
+                {stats.total}
+              </Text>
+            </div>
+            <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, letterSpacing: '0.02em' }}>Available</Text>
           </div>
-          <div style={{ background: 'rgba(255,255,255,0.12)', borderRadius: 12, padding: '12px 20px' }}>
-            <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 20, fontWeight: 700, display: 'block' }}>
-              {stats.totalDownloads.toLocaleString()}
-            </Text>
-            <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>Downloads</Text>
+          <div className="ios-hero-stat">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+              <DownloadOutlined style={{ color: 'rgba(255,255,255,0.7)', fontSize: 14 }} />
+              <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em' }}>
+                {stats.totalDownloads.toLocaleString()}
+              </Text>
+            </div>
+            <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, letterSpacing: '0.02em' }}>Downloads</Text>
           </div>
         </div>
       </div>
@@ -136,7 +144,7 @@ const AppStorePage: React.FC = () => {
           <Spin size="large" />
         </div>
       ) : apps.length === 0 ? (
-        <div className="ios-empty-state">
+        <div className="ios-empty-state" style={{ animation: 'pageSlideUp 0.4s var(--transition-spring) both' }}>
           <div className="ios-empty-state-icon">
             <AppstoreOutlined />
           </div>
@@ -147,18 +155,31 @@ const AppStorePage: React.FC = () => {
         <div className="ios-card-grid">
           {apps.map((app) => (
             <GlassCard key={app.applicationId} onClick={() => handleCardClick(app)}>
-              {/* Card header */}
+              {/* Card header — gradient banner with app icon */}
               <div style={{
-                height: 120,
-                background: `linear-gradient(135deg, ${TYPE_COLORS[app.type] || '#007AFF'}22, ${TYPE_COLORS[app.type] || '#007AFF'}08)`,
+                height: 130,
+                background: `linear-gradient(135deg, ${TYPE_COLORS[app.type] || '#007AFF'}22 0%, ${TYPE_COLORS[app.type] || '#007AFF'}0A 50%, transparent 100%)`,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 position: 'relative',
               }}>
+                {/* Subtle radial glow behind icon */}
+                <div style={{
+                  position: 'absolute',
+                  width: 100,
+                  height: 100,
+                  borderRadius: '50%',
+                  background: `radial-gradient(circle, ${TYPE_COLORS[app.type] || '#007AFF'}18, transparent 70%)`,
+                }} />
                 <div
                   className="ios-app-icon"
-                  style={{ background: `linear-gradient(135deg, ${TYPE_COLORS[app.type] || '#007AFF'}, ${TYPE_COLORS[app.type] || '#007AFF'}88)` }}
+                  style={{
+                    background: `linear-gradient(135deg, ${TYPE_COLORS[app.type] || '#007AFF'}, ${TYPE_COLORS[app.type] || '#007AFF'}99)`,
+                    boxShadow: `0 4px 16px ${TYPE_COLORS[app.type] || '#007AFF'}40`,
+                    position: 'relative',
+                    zIndex: 1,
+                  }}
                 >
                   {TYPE_ICONS[app.type] || <CodeOutlined />}
                 </div>

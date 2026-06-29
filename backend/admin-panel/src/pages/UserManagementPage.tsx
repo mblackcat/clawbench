@@ -135,12 +135,12 @@ const UserManagementPage: React.FC = () => {
   ];
 
   return (
-    <div>
+    <div className="ios-page-enter">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <Title level={3} style={{ margin: 0, letterSpacing: '-0.02em' }}>
           User Management
         </Title>
-        <Button icon={<ReloadOutlined />} onClick={loadUsers}>
+        <Button icon={<ReloadOutlined />} onClick={loadUsers} style={{ borderRadius: 10 }}>
           Refresh
         </Button>
       </div>
@@ -153,7 +153,14 @@ const UserManagementPage: React.FC = () => {
         />
       </div>
 
-      <div className="ios-table-container">
+      <div className="ios-table-container" style={{
+        background: 'var(--glass-surface-bg)',
+        backdropFilter: 'blur(20px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+        borderRadius: 'var(--glass-radius-md)',
+        border: '1px solid var(--glass-surface-border)',
+        overflow: 'hidden',
+      }}>
         <Table
           columns={columns}
           dataSource={users}

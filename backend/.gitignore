@@ -4,6 +4,9 @@ node_modules/
 # Build output
 dist/
 
+# Admin panel build output
+admin-panel/dist/
+
 # Environment variables
 .env
 

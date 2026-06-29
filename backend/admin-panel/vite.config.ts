@@ -7,7 +7,7 @@ export default defineConfig({
   root: '.',
   base: '/admin/',
   build: {
-    outDir: '../public/admin',
+    outDir: 'dist',
     emptyOutDir: true,
     assetsDir: 'assets',
   },

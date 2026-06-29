@@ -5,6 +5,9 @@ import {
   AppstoreOutlined,
   DownloadOutlined,
   CloudUploadOutlined,
+  ThunderboltOutlined,
+  MessageOutlined,
+  CodeOutlined,
 } from '@ant-design/icons';
 import { useApi } from '../hooks/useApi';
 import StatCard from '../components/StatCard';
@@ -12,6 +15,18 @@ import GlassCard from '../components/GlassCard';
 import type { DashboardStats } from '../types';
 
 const { Title, Text } = Typography;
+
+const TYPE_ICONS: Record<string, React.ReactNode> = {
+  app: <AppstoreOutlined />,
+  'ai-skill': <ThunderboltOutlined />,
+  prompt: <MessageOutlined />,
+};
+
+const TYPE_COLORS: Record<string, string> = {
+  app: '#007AFF',
+  'ai-skill': '#AF52DE',
+  prompt: '#34C759',
+};
 
 const DashboardPage: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -36,14 +51,14 @@ const DashboardPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 300 }}>
+      <div className="ios-page-enter" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 300 }}>
         <Spin size="large" />
       </div>
     );
   }
 
   return (
-    <div>
+    <div className="ios-page-enter">
       <Title level={3} style={{ marginBottom: 24, letterSpacing: '-0.02em' }}>
         Dashboard
       </Title>
@@ -67,17 +82,36 @@ const DashboardPage: React.FC = () => {
               <div
                 key={type}
                 style={{
-                  padding: '12px 24px',
-                  borderRadius: 12,
+                  padding: '16px 24px',
+                  borderRadius: 16,
                   background: 'var(--glass-surface-bg)',
+                  border: '1px solid var(--glass-surface-border)',
                   textAlign: 'center',
-                  minWidth: 120,
+                  minWidth: 140,
+                  position: 'relative',
+                  overflow: 'hidden',
                 }}
               >
-                <Text strong style={{ fontSize: 24, display: 'block', marginBottom: 4 }}>
+                {/* Type color accent at top */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: '20%',
+                    right: '20%',
+                    height: 2,
+                    borderRadius: '0 0 2px 2px',
+                    background: TYPE_COLORS[type] || 'var(--ios-accent)',
+                    opacity: 0.6,
+                  }}
+                />
+                <div style={{ fontSize: 22, marginBottom: 8, color: TYPE_COLORS[type] || 'var(--ios-accent)', opacity: 0.8 }}>
+                  {TYPE_ICONS[type] || <CodeOutlined />}
+                </div>
+                <Text strong style={{ fontSize: 28, display: 'block', marginBottom: 2, letterSpacing: '-0.02em' }}>
                   {count}
                 </Text>
-                <Text type="secondary" style={{ textTransform: 'capitalize', fontSize: 13 }}>
+                <Text type="secondary" style={{ textTransform: 'capitalize', fontSize: 12, letterSpacing: '0.03em' }}>
                   {type === 'ai-skill' ? 'AI Skill' : type}
                 </Text>
               </div>
@@ -88,11 +122,11 @@ const DashboardPage: React.FC = () => {
 
       {/* Quick Actions */}
       <GlassCard className="" style={{ padding: 24 }}>
-        <Text strong style={{ fontSize: 16, display: 'block', marginBottom: 16 }}>
+        <Text strong style={{ fontSize: 16, display: 'block', marginBottom: 8 }}>
           Quick Actions
         </Text>
-        <Text type="secondary">
-          Use the sidebar to manage users and browse the app store.
+        <Text type="secondary" style={{ lineHeight: 1.6 }}>
+          Use the sidebar to manage users and browse the app store. All changes are reflected in real time across the platform.
         </Text>
       </GlassCard>
     </div>

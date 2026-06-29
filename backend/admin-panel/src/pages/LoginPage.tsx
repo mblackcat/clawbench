@@ -42,9 +42,38 @@ const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="ios-login-container">
-      <div className="ios-glass-elevated ios-login-card">
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+    <div className="ios-login-container" style={{ position: 'relative' }}>
+      {/* Animated floating orbs behind the login card */}
+      <div style={{
+        position: 'fixed',
+        inset: 0,
+        overflow: 'hidden',
+        pointerEvents: 'none',
+      }}>
+        <div style={{
+          position: 'absolute',
+          width: 400,
+          height: 400,
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(0,122,255,0.1), transparent 70%)',
+          top: '20%',
+          left: '10%',
+          animation: 'meshDrift 30s ease-in-out infinite alternate',
+        }} />
+        <div style={{
+          position: 'absolute',
+          width: 350,
+          height: 350,
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(175,82,222,0.08), transparent 70%)',
+          top: '50%',
+          right: '5%',
+          animation: 'meshDrift 35s ease-in-out 5s infinite alternate-reverse',
+        }} />
+      </div>
+
+      <div className="ios-glass-elevated ios-login-card" style={{ position: 'relative', zIndex: 1 }}>
+        <div style={{ textAlign: 'center', marginBottom: 32, position: 'relative', zIndex: 1 }}>
           <div
             style={{
               width: 56,
@@ -58,6 +87,7 @@ const LoginPage: React.FC = () => {
               fontWeight: 700,
               fontSize: 26,
               marginBottom: 16,
+              boxShadow: '0 4px 20px rgba(0, 122, 255, 0.3)',
             }}
           >
             C

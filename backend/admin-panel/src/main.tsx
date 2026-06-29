@@ -3,15 +3,16 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { ConfigProvider, theme as antTheme, App as AntApp } from 'antd';
 import App from './App';
+import { useTheme } from './hooks/useTheme';
 import './styles/liquid-glass.css';
 
-const isAdminRoute = window.location.pathname.startsWith('/admin');
+const Root: React.FC = () => {
+  const { theme: currentTheme } = useTheme();
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
+  return (
     <ConfigProvider
       theme={{
-        algorithm: isAdminRoute ? antTheme.darkAlgorithm : antTheme.darkAlgorithm,
+        algorithm: currentTheme === 'dark' ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
         token: {
           fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
           borderRadius: 12,
@@ -25,5 +26,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         </BrowserRouter>
       </AntApp>
     </ConfigProvider>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <Root />
   </React.StrictMode>
 );
