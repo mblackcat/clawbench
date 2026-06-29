@@ -23,7 +23,8 @@ import {
   ExportOutlined,
   CloseOutlined,
   AppstoreOutlined,
-  ProfileOutlined
+  ProfileOutlined,
+  FileTextOutlined
 } from '@ant-design/icons';
 import {
   DndContext,
@@ -47,8 +48,9 @@ import { useTaskStore } from '../../stores/useTaskStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore';
 import { useChatStore } from '../../stores/useChatStore';
+import { useSkillStore } from '../../stores/useSkillStore';
+import type { ScannedSkill } from '../../types/skill';
 import ParamDrawer from '../../components/ParamDrawer';
-import AICodeButton from '../../components/AICodeButton';
 import CreateTypeModal from '../../components/CreateTypeModal';
 import { openExternalLink } from '../../utils/markdown-links';
 import { useT } from '../../i18n';
@@ -99,6 +101,7 @@ interface SortableCardProps {
   onActivateSkill: (id: string, name: string) => void
   onCopyPrompt: (id: string) => void
   onTryPrompt: (id: string) => void
+  onViewDetail: (id: string) => void
 }
 
 const SortableAppCard: React.FC<SortableCardProps> = ({
@@ -113,7 +116,8 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
   onUninstall,
   onActivateSkill,
   onCopyPrompt,
-  onTryPrompt
+  onTryPrompt,
+  onViewDetail
 }) => {
   const { id, manifest, appType } = appWithType;
   const app = manifest;
@@ -253,23 +257,43 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
 
           {/* 根据类型显示不同操作 */}
           {manifestType === 'ai-skill' ? (
-            <div
-              onClick={() => onActivateSkill(id, app.name)}
-              style={{
-                flex: 1,
-                padding: '8px 0',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-                cursor: 'pointer',
-                color: token.colorWarning,
-                fontWeight: 500,
-                fontSize: 13
-              }}
-            >
-              <ThunderboltOutlined /> {t('workbench.activateSkill')}
-            </div>
+            <>
+              <div
+                onClick={() => onViewDetail(id)}
+                style={{
+                  flex: 1,
+                  padding: '8px 0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  cursor: 'pointer',
+                  color: token.colorPrimary,
+                  fontWeight: 500,
+                  fontSize: 13
+                }}
+              >
+                <FileTextOutlined /> {t('skillDetail.detail')}
+              </div>
+              <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorderSecondary }} />
+              <div
+                onClick={() => onActivateSkill(id, app.name)}
+                style={{
+                  flex: 1,
+                  padding: '8px 0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  cursor: 'pointer',
+                  color: token.colorWarning,
+                  fontWeight: 500,
+                  fontSize: 13
+                }}
+              >
+                <ThunderboltOutlined /> {t('workbench.activateSkill')}
+              </div>
+            </>
           ) : manifestType === 'prompt' ? (
             <>
               <div
@@ -327,8 +351,6 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
               <PlayCircleOutlined /> {t('workbench.run')}
             </div>
           )}
-          <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorderSecondary }} />
-          <AICodeButton appId={id} />
         </div>
       </div>
     </div>
@@ -527,6 +549,12 @@ const InstalledAppsPage: React.FC = () => {
   const updateSetting = useSettingsStore((state) => state.updateSetting);
   const fetchSettings = useSettingsStore((state) => state.fetchSettings);
 
+  // Workspace skills for the AI Skills tab
+  const projectSkills = useSkillStore((s) => s.projectSkills)
+  const fetchProjectSkills = useSkillStore((s) => s.fetchProjectSkills)
+  const activeWorkspace = useWorkspaceStore((s) => s.activeWorkspace)
+  const [workspaceSkills, setWorkspaceSkills] = useState<ScannedSkill[]>([])
+
   // PointerSensor with activation constraint — requires 200ms hold or 5px move
   // so normal clicks on buttons still work
   const sensors = useSensors(
@@ -539,6 +567,18 @@ const InstalledAppsPage: React.FC = () => {
     loadApps();
     fetchSettings();
   }, [fetchApps]);
+
+  // Load workspace skills for the AI Skills tab
+  useEffect(() => {
+    if (activeWorkspace?.path) {
+      fetchProjectSkills(activeWorkspace.path)
+    }
+  }, [activeWorkspace?.path, fetchProjectSkills])
+
+  // Sync workspace skills from store
+  useEffect(() => {
+    setWorkspaceSkills(projectSkills)
+  }, [projectSkills])
 
   // 监听 appInfos 变化，分类应用
   useEffect(() => {
@@ -610,7 +650,9 @@ const InstalledAppsPage: React.FC = () => {
         groupMap.get('app')!.items.push(app);
       }
     }
-    return groups.filter(g => g.items.length > 0);
+    // Always include the ai-skill group (it shows workspace skills even when
+    // there are no installed/bookmarked ai-skill items).
+    return groups.filter(g => g.items.length > 0 || g.key === 'ai-skill');
   }, [apps, t]);
 
   // Keep the tabbed-view active key pointing at an existing group.
@@ -723,6 +765,82 @@ const InstalledAppsPage: React.FC = () => {
       message.error(t('workbench.skillActivateFailed'));
     }
   }, [message]);
+
+  const handleViewDetail = useCallback((appId: string) => {
+    navigate(`/workbench/skill-detail/${appId}`);
+  }, [navigate]);
+
+  /** Navigate to skill detail view for a workspace skill (by path). */
+  const handleOpenWorkspaceSkill = useCallback((skillPath: string) => {
+    // Use a dummy appId with the path as query param
+    navigate(`/workbench/skill-detail/_ws?path=${encodeURIComponent(skillPath)}`);
+  }, [navigate]);
+
+  /** Render a card for a workspace (project/global) skill. */
+  const renderWorkspaceSkillCard = (skill: ScannedSkill) => {
+    return (
+      <div key={skill.path} className="cb-glass-card">
+        <div style={{ padding: '12px 16px', minHeight: 72, flex: 1 }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 8,
+            marginBottom: 8,
+            minHeight: 44
+          }}>
+            <Tooltip title={skill.displayName || skill.name}>
+              <Text
+                strong
+                style={{
+                  flex: 1,
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                  wordBreak: 'break-word',
+                  lineHeight: '22px',
+                  minHeight: 44
+                }}
+              >
+                {skill.displayName || skill.name}
+              </Text>
+            </Tooltip>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <Tag style={{ margin: 0 }}>v{skill.version}</Tag>
+            <Tag color="purple" style={{ margin: 0 }}>{t('workbench.tagSkill')}</Tag>
+            <Tag color={skill.scope === 'global' ? 'blue' : 'green'} style={{ margin: 0 }}>
+              {skill.scope === 'global' ? t('skill.badge.global') : t('skill.badge.project')}
+            </Tag>
+          </div>
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            borderTop: `1px solid ${token.colorBorderSecondary}`
+          }}
+        >
+          <div
+            onClick={() => handleOpenWorkspaceSkill(skill.path)}
+            style={{
+              flex: 1,
+              padding: '8px 0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              cursor: 'pointer',
+              color: token.colorPrimary,
+              fontWeight: 500,
+              fontSize: 13
+            }}
+          >
+            <FileTextOutlined /> {t('skillDetail.detail')}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const handleCopyPrompt = useCallback(async (appId: string) => {
     try {
@@ -857,6 +975,7 @@ const InstalledAppsPage: React.FC = () => {
               onActivateSkill={handleActivateSkill}
               onCopyPrompt={handleCopyPrompt}
               onTryPrompt={handleTryPrompt}
+              onViewDetail={handleViewDetail}
             />
           );
         })}
@@ -896,7 +1015,7 @@ const InstalledAppsPage: React.FC = () => {
         </div>
       </div>
 
-      {!hasApps ? (
+      {!hasApps && workspaceSkills.length === 0 ? (
         <Empty description={t('workbench.noFavorites')} />
       ) : (
         <DndContext
@@ -911,7 +1030,26 @@ const InstalledAppsPage: React.FC = () => {
               items={groupedApps.map((group) => ({
                 key: group.key,
                 label: group.label,
-                children: renderGroupGrid(group)
+                children: group.key === 'ai-skill' ? (
+                  <div>
+                    {group.items.length > 0 && renderGroupGrid(group)}
+                    {workspaceSkills.length > 0 && (
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                        gap: 16,
+                        marginTop: group.items.length > 0 ? 24 : 0
+                      }}>
+                        {workspaceSkills.map(renderWorkspaceSkillCard)}
+                      </div>
+                    )}
+                    {group.items.length === 0 && workspaceSkills.length === 0 && (
+                      <Empty description={t('skill.empty')} />
+                    )}
+                  </div>
+                ) : (
+                  renderGroupGrid(group)
+                )
               }))}
             />
           ) : (
@@ -928,7 +1066,26 @@ const InstalledAppsPage: React.FC = () => {
                 >
                   {group.label}
                 </Text>
-                {renderGroupGrid(group)}
+                {group.key === 'ai-skill' ? (
+                  <div>
+                    {group.items.length > 0 && renderGroupGrid(group)}
+                    {workspaceSkills.length > 0 && (
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                        gap: 16,
+                        marginTop: group.items.length > 0 ? 24 : 0
+                      }}>
+                        {workspaceSkills.map(renderWorkspaceSkillCard)}
+                      </div>
+                    )}
+                    {group.items.length === 0 && workspaceSkills.length === 0 && (
+                      <Empty description={t('skill.empty')} />
+                    )}
+                  </div>
+                ) : (
+                  renderGroupGrid(group)
+                )}
               </div>
             ))
           )}

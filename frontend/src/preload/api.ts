@@ -98,7 +98,20 @@ export const api = {
     openFileInEditor: (filePath: string) => ipcRenderer.invoke('developer:open-file-in-editor', filePath),
     openSSHConfig: () => ipcRenderer.invoke('developer:open-ssh-config'),
     openAppDirectory: (appPath: string) =>
-      ipcRenderer.invoke('developer:open-app-directory', appPath)
+      ipcRenderer.invoke('developer:open-app-directory', appPath),
+
+    // Path-based operations (relaxed guard — for workspace skill directories)
+    listDir: (dirPath: string) => ipcRenderer.invoke('developer:list-dir', dirPath),
+    readPathFile: (filePath: string) => ipcRenderer.invoke('developer:read-path-file', filePath),
+    writePathFile: (filePath: string, content: string) =>
+      ipcRenderer.invoke('developer:write-path-file', filePath, content),
+    createPathFile: (filePath: string) => ipcRenderer.invoke('developer:create-path-file', filePath),
+    createPathDir: (dirPath: string) => ipcRenderer.invoke('developer:create-path-dir', dirPath),
+    renamePath: (oldPath: string, newPath: string) =>
+      ipcRenderer.invoke('developer:rename-path', oldPath, newPath),
+    deletePath: (filePath: string) => ipcRenderer.invoke('developer:delete-path', filePath),
+    movePath: (oldPath: string, newPath: string) =>
+      ipcRenderer.invoke('developer:move-path', oldPath, newPath)
   },
 
   settings: {
