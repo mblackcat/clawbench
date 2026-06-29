@@ -119,23 +119,14 @@ const Layout: React.FC<Props> = ({ admin, children }) => {
         }}
       >
         <div style={{ padding: '24px 20px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--glass-surface-border)' }}>
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 9,
-              background: 'linear-gradient(135deg, #007AFF, #AF52DE)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'white',
-              fontWeight: 700,
-              fontSize: 16,
-              boxShadow: '0 2px 8px rgba(0, 122, 255, 0.3)',
-            }}
-          >
-            C
-          </div>
+          <img
+              src="/admin/icon.svg"
+              alt="ClawBench"
+              style={{
+                width: 32,
+                height: 32,
+              }}
+            />
           <div>
             <Text strong style={{ fontSize: 15, letterSpacing: '-0.01em', color: token.colorText, display: 'block', lineHeight: 1.2 }}>
               ClawBench
