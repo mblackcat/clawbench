@@ -18,6 +18,34 @@ import type { SubAppManifest, ParamDef } from '../types/subapp'
 
 const { Text } = Typography
 
+/**
+ * Coerce a default value from JSON (which may encode booleans/numbers as strings)
+ * to the proper JS type expected by Ant Design form controls.
+ *
+ * Without this coercion, a boolean default of "false" (string) is treated as a
+ * truthy value by Switch (with valuePropName="checked"), so the switch appears
+ * checked while the actual form value remains the string "false".
+ */
+function coerceDefault(value: unknown, type: string): unknown {
+  if (value === null || value === undefined) return value
+
+  switch (type) {
+    case 'boolean':
+      if (typeof value === 'boolean') return value
+      if (typeof value === 'string') return value.trim().toLowerCase() === 'true'
+      return Boolean(value)
+    case 'number':
+      if (typeof value === 'number') return value
+      const n = Number(value)
+      return Number.isNaN(n) ? value : n
+    case 'enum':
+      return typeof value === 'string' ? value : String(value)
+    default:
+      // string, text, path — keep as-is
+      return value
+  }
+}
+
 interface ParamDrawerProps {
   open: boolean
   onClose: () => void
@@ -35,7 +63,7 @@ const ParamDrawer: React.FC<ParamDrawerProps> = ({ open, onClose, manifest, onSu
       const defaults: Record<string, unknown> = {}
       for (const param of manifest.params) {
         if (param.default !== undefined) {
-          defaults[param.name] = param.default
+          defaults[param.name] = coerceDefault(param.default, param.type)
         }
       }
       form.resetFields()
@@ -129,7 +157,7 @@ const ParamDrawer: React.FC<ParamDrawerProps> = ({ open, onClose, manifest, onSu
 
   return (
     <Drawer
-      title={manifest ? `${manifest.name} - 参数配置` : '参数配置'}
+      title={manifest ? manifest.name : ''}
       placement="right"
       width={400}
       open={open}
@@ -138,7 +166,7 @@ const ParamDrawer: React.FC<ParamDrawerProps> = ({ open, onClose, manifest, onSu
       footer={
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <Space>
-            <Button onClick={onClose}>取消</Button>
+            <Button onClick={onClose}>{manifest?.params?.length ? '取消' : '关闭'}</Button>
             <Button type="primary" onClick={handleSubmit}>
               执行
             </Button>

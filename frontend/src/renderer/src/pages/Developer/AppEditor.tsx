@@ -38,6 +38,37 @@ const PARAM_TYPE_VALUES: { label: string; value: ParamType }[] = [
   { label: 'Text', value: 'text' }
 ]
 
+/**
+ * Coerce a param's default value to the proper JS type based on its declared
+ * param type.  The Ant Design form stores EVERYTHING as strings (the default
+ * value field is a plain Input), so a boolean "false" becomes the string
+ * "false" — which is truthy in JS and breaks both the UI Switch display and
+ * the Python app's `_as_bool` parser.
+ */
+function coerceParamDefault(param: Record<string, unknown>): Record<string, unknown> {
+  const d = param.default
+  if (d === undefined || d === null) return param
+  const t = param.type as string
+
+  switch (t) {
+    case 'boolean':
+      if (typeof d === 'boolean') return param
+      if (typeof d === 'string') {
+        const v = d.trim().toLowerCase()
+        return { ...param, default: v === 'true' || v === '1' }
+      }
+      return { ...param, default: Boolean(d) }
+    case 'number': {
+      if (typeof d === 'number') return param
+      const n = Number(d)
+      return { ...param, default: Number.isNaN(n) ? d : n }
+    }
+    default:
+      // string, text, path, enum — keep as string
+      return param
+  }
+}
+
 const AppEditor: React.FC = () => {
   const navigate = useNavigate()
   const location = useLocation()
@@ -141,7 +172,9 @@ const AppEditor: React.FC = () => {
       author: author,
       entry: 'main.py',
       supported_workspace_types: values.supported_workspace_types ?? [],
-      params: values.params ?? [],
+      params: (values.params ?? []).map((p: Record<string, unknown>) =>
+            coerceParamDefault(p)
+          ),
       confirm_before_run: false,
       min_sdk_version: '1.0.0',
       published: false
