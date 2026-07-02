@@ -190,7 +190,13 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
           </div>
         </div>
 
-        <div style={{ padding: '12px 16px', minHeight: 72, flex: 1 }}>
+        <div
+          style={{ padding: '12px 16px', minHeight: 72, flex: 1, cursor: 'pointer' }}
+          onClick={(e) => {
+            e.stopPropagation()
+            onRun(id, app.name, manifest)
+          }}
+        >
           <div style={{
             display: 'flex',
             alignItems: 'flex-start',

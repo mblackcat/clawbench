@@ -87,6 +87,105 @@ function detectLocalTerminal(): string | null {
 }
 
 export function registerDeveloperIpc(): void {
+  // ── .clawbenchignore support ──────────────────────────────────────────────
+
+  /**
+   * Read ignore rules from a directory. Supports both `.clawbenchignore` and
+   * `.ignore` files. Format: one glob per line (same as .gitignore). Lines
+   * starting with '#' are comments; blank lines are ignored.
+   */
+  const readIgnorePatterns = (dir: string): string[] => {
+    const candidateNames = ['.clawbenchignore', '.ignore']
+    let content: string | null = null
+
+    for (const name of candidateNames) {
+      const ignorePath = join(dir, name)
+      if (fs.existsSync(ignorePath)) {
+        try {
+          content = fs.readFileSync(ignorePath, 'utf-8')
+          break
+        } catch {
+          // try next candidate
+        }
+      }
+    }
+
+    if (!content) return []
+
+    return content
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0 && !line.startsWith('#'))
+  }
+
+  /**
+   * Check whether a relative path matches any glob pattern.
+   * Simple implementation supporting * wildcards (single-segment) and
+   * ** (multi-segment). Also supports leading / for root-anchored patterns.
+   */
+  const matchesPattern = (relPath: string, pattern: string): boolean => {
+    // Strip leading / for matching (patterns like /node_modules)
+    const p = pattern.replace(/^\//, '')
+
+    // Build regex from glob pattern
+    const regexStr = p
+      .replace(/[.+^${}()|[\]\\]/g, '\\$&') // escape regex specials
+      .replace(/\*\*(?=$|\/)/g, '__DEEP__')   // preserve ** followed by / or end
+      .replace(/\*\*/g, '.*')                   // ** matches anything including /
+      .replace(/__DEEP__/g, '.*')               // restore preserved (already replaced)
+      .replace(/\*/g, '[^/]*')                  // * matches within a single segment
+      .replace(/\?/g, '[^/]')                   // ? matches a single non-/ char
+
+    // Pattern without slash matches anywhere in the path
+    // Pattern with slash is matched against the full relative path
+    if (p.includes('/')) {
+      return new RegExp(`^${regexStr}$`).test(relPath)
+    } else {
+      // Match at any depth
+      return new RegExp(`(^|/)${regexStr}($|/)`).test(relPath)
+    }
+  }
+
+  /**
+   * Check if a relative path should be excluded by any ignore pattern.
+   */
+  const isIgnored = (relPath: string, patterns: string[]): boolean => {
+    for (const pattern of patterns) {
+      if (matchesPattern(relPath, pattern)) return true
+    }
+    return false
+  }
+
+  /**
+   * Recursively copy a directory tree, skipping files/dirs matched by ignore patterns.
+   */
+  const copyFiltered = (src: string, dest: string, ignorePatterns: string[], appRoot?: string): void => {
+    if (!fs.existsSync(dest)) {
+      fs.mkdirSync(dest, { recursive: true })
+    }
+
+    const root = appRoot || src
+    const entries = fs.readdirSync(src, { withFileTypes: true })
+    for (const entry of entries) {
+      const srcPath = join(src, entry.name)
+      const destPath = join(dest, entry.name)
+
+      // Compute path relative to the app root for pattern matching
+      const relPath = relative(root, srcPath).replace(/\\/g, '/') + (entry.isDirectory() ? '/' : '')
+
+      if (isIgnored(relPath, ignorePatterns)) {
+        logger.info(`Skipping ignored: ${relPath}`)
+        continue
+      }
+
+      if (entry.isDirectory()) {
+        copyFiltered(srcPath, destPath, ignorePatterns, root)
+      } else {
+        fs.copyFileSync(srcPath, destPath)
+      }
+    }
+  }
+
   // ── Path-traversal guard ─────────────────────────────────────────────────
   // The file-tree handlers below receive absolute paths straight from the
   // renderer. Every legitimate path is derived from `getAppPath(appId)`, i.e.
@@ -384,6 +483,8 @@ export function registerDeveloperIpc(): void {
       const manifestContent = fs.readFileSync(manifestPath, 'utf-8')
       const manifest = JSON.parse(manifestContent)
 
+      const ignorePatterns = readIgnorePatterns(appPath)
+
       const tmpDir = join(os.tmpdir(), 'clawbench-publish')
       if (!fs.existsSync(tmpDir)) {
         fs.mkdirSync(tmpDir, { recursive: true })
@@ -395,12 +496,28 @@ export function registerDeveloperIpc(): void {
         fs.unlinkSync(zipPath)
       }
 
-      zipDirectory(appPath, zipPath)
+      if (ignorePatterns.length === 0) {
+        // Fast path: no ignore rules, zip directly
+        zipDirectory(appPath, zipPath)
+      } else {
+        // Copy to staging directory, skipping ignored files
+        const stageDir = join(tmpDir, `stage-${Date.now()}`)
+        try {
+          // Recursive copy with ignore filter
+          copyFiltered(appPath, stageDir, ignorePatterns)
+          zipDirectory(stageDir, zipPath)
+        } finally {
+          try {
+            fs.rmSync(stageDir, { recursive: true, force: true })
+          } catch { /* ignore cleanup errors */ }
+        }
+      }
 
       const buffer = fs.readFileSync(zipPath)
       fs.unlinkSync(zipPath)
 
-      logger.info(`App packaged: ${zipFileName}, size: ${buffer.length} bytes`)
+      const excludedCount = ignorePatterns.length > 0 ? ` (${ignorePatterns.length} ignore patterns)` : ''
+      logger.info(`App packaged: ${zipFileName}, size: ${buffer.length} bytes${excludedCount}`)
 
       return {
         buffer: buffer,

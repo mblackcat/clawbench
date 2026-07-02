@@ -30,7 +30,8 @@ import {
   FolderAddOutlined,
   EditOutlined,
   DeleteOutlined,
-  CodeOutlined
+  CodeOutlined,
+  CloudUploadOutlined
 } from '@ant-design/icons'
 import Editor from '@monaco-editor/react'
 import type { DataNode } from 'antd/es/tree'
@@ -721,6 +722,13 @@ const CodeEditor: React.FC = () => {
           </Tooltip>
           <Tooltip title={t('codeEditor.saveAll')}>
             <Button type="text" icon={<SaveOutlined />} onClick={saveAllFiles} />
+          </Tooltip>
+          <Tooltip title={t('codeEditor.publish')}>
+            <Button
+              type="text"
+              icon={<CloudUploadOutlined />}
+              onClick={() => navigate(`/developer/publish`, { state: { appId: appId || undefined } })}
+            />
           </Tooltip>
         </Space>
 

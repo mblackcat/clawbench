@@ -179,7 +179,7 @@ const MyContributionsPage: React.FC = () => {
     } else if (type === 'link') {
       navigate('/developer/new-link', { state: { appId } });
     } else {
-      navigate('/developer/new', { state: { appId } });
+      navigate(`/developer/code/${appId}`);
     }
   };
 
