@@ -310,6 +310,47 @@ if __name__ == "__main__":
       // Write SDK reference so external AI coding tools (Claude Code, Codex, etc.)
       // can understand the SDK capabilities when opening the app in VSCode.
       fs.writeFileSync(join(appDir, 'SDK_REFERENCE.md'), SDK_REFERENCE_MD, 'utf-8')
+
+      // Write .clawbenchignore with sensible Python defaults
+      const clawbenchignore = `# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+*.egg
+dist/
+build/
+*.so
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Dependencies
+node_modules/
+
+# ClawBench
+.clawbenchignore
+SDK_REFERENCE.md
+`
+      fs.writeFileSync(join(appDir, '.clawbenchignore'), clawbenchignore, 'utf-8')
     }
 
     logger.info(`App scaffold created at ${appDir}`)
