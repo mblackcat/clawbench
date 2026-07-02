@@ -90,23 +90,32 @@ export function registerDeveloperIpc(): void {
   // ── .clawbenchignore support ──────────────────────────────────────────────
 
   /**
-   * Read .clawbenchignore from a directory and return a list of exclusion
-   * patterns. Format: one glob per line (same as .gitignore). Lines starting
-   * with '#' are comments; blank lines are ignored.
+   * Read ignore rules from a directory. Supports both `.clawbenchignore` and
+   * `.ignore` files. Format: one glob per line (same as .gitignore). Lines
+   * starting with '#' are comments; blank lines are ignored.
    */
   const readIgnorePatterns = (dir: string): string[] => {
-    const ignorePath = join(dir, '.clawbenchignore')
-    if (!fs.existsSync(ignorePath)) return []
+    const candidateNames = ['.clawbenchignore', '.ignore']
+    let content: string | null = null
 
-    try {
-      const content = fs.readFileSync(ignorePath, 'utf-8')
-      return content
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter((line) => line.length > 0 && !line.startsWith('#'))
-    } catch {
-      return []
+    for (const name of candidateNames) {
+      const ignorePath = join(dir, name)
+      if (fs.existsSync(ignorePath)) {
+        try {
+          content = fs.readFileSync(ignorePath, 'utf-8')
+          break
+        } catch {
+          // try next candidate
+        }
+      }
     }
+
+    if (!content) return []
+
+    return content
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0 && !line.startsWith('#'))
   }
 
   /**
