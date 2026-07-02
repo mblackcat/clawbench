@@ -157,7 +157,7 @@ const ParamDrawer: React.FC<ParamDrawerProps> = ({ open, onClose, manifest, onSu
 
   return (
     <Drawer
-      title={manifest ? `${manifest.name} - 参数配置` : '参数配置'}
+      title={manifest ? manifest.name : ''}
       placement="right"
       width={400}
       open={open}
@@ -166,7 +166,7 @@ const ParamDrawer: React.FC<ParamDrawerProps> = ({ open, onClose, manifest, onSu
       footer={
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <Space>
-            <Button onClick={onClose}>取消</Button>
+            <Button onClick={onClose}>{manifest?.params?.length ? '取消' : '关闭'}</Button>
             <Button type="primary" onClick={handleSubmit}>
               执行
             </Button>

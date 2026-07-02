@@ -102,6 +102,7 @@ interface SortableCardProps {
   onCopyPrompt: (id: string) => void
   onTryPrompt: (id: string) => void
   onViewDetail: (id: string) => void
+  onShowDetail: (id: string, manifest: SubAppManifest) => void
 }
 
 const SortableAppCard: React.FC<SortableCardProps> = ({
@@ -117,7 +118,8 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
   onActivateSkill,
   onCopyPrompt,
   onTryPrompt,
-  onViewDetail
+  onViewDetail,
+  onShowDetail
 }) => {
   const { id, manifest, appType } = appWithType;
   const app = manifest;
@@ -194,7 +196,7 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
           style={{ padding: '12px 16px', minHeight: 72, flex: 1, cursor: 'pointer' }}
           onClick={(e) => {
             e.stopPropagation()
-            onRun(id, app.name, manifest)
+            onShowDetail(id, manifest)
           }}
         >
           <div style={{
@@ -700,14 +702,29 @@ const InstalledAppsPage: React.FC = () => {
   }, [modal, message]);
 
   const handleRun = useCallback(async (appId: string, appName: string, manifest: SubAppManifest) => {
-    const hasParams = manifest.params && manifest.params.length > 0;
-    if (hasParams || manifest.confirm_before_run) {
+    const params = manifest.params || [];
+    const hasRequiredParams = params.some((p) => p.required);
+    if (hasRequiredParams || manifest.confirm_before_run) {
       setDrawerAppId(appId);
       setDrawerManifest(manifest);
       setDrawerOpen(true);
       return;
     }
-    await executeApp(appId, appName, {});
+    // No required params — collect defaults and execute directly
+    const defaults: Record<string, unknown> = {};
+    for (const param of params) {
+      if (param.default !== undefined) {
+        defaults[param.name] = param.default;
+      }
+    }
+    await executeApp(appId, appName, defaults);
+  }, []);
+
+  /** Always open the detail sidebar for the given app. */
+  const handleShowDetail = useCallback((appId: string, manifest: SubAppManifest) => {
+    setDrawerAppId(appId);
+    setDrawerManifest(manifest);
+    setDrawerOpen(true);
   }, []);
 
   const handleDrawerSubmit = async (params: Record<string, unknown>) => {
@@ -986,6 +1003,7 @@ const InstalledAppsPage: React.FC = () => {
               onCopyPrompt={handleCopyPrompt}
               onTryPrompt={handleTryPrompt}
               onViewDetail={handleViewDetail}
+              onShowDetail={handleShowDetail}
             />
           );
         })}
