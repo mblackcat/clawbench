@@ -11,7 +11,7 @@ import {
   Steps,
   App
 } from 'antd'
-import { CloudUploadOutlined } from '@ant-design/icons'
+import { CloudUploadOutlined, ArrowLeftOutlined } from '@ant-design/icons'
 import { useLocation, useNavigate } from 'react-router-dom'
 import type { SubAppManifest } from '../../types/subapp'
 import { applicationManager } from '../../services/applicationManager'
@@ -134,7 +134,7 @@ const AppPublisher: React.FC = () => {
         }
       } catch (error) {
         console.error('Failed to create/update application:', error)
-        throw new Error(t('appPublisher.createOrUpdateFailed'))
+        throw new Error(t('appPublisher.createOrUpdateFailed', error instanceof Error ? error.message : String(error)))
       }
 
       // 步骤3: 打包并上传应用包
@@ -164,9 +164,14 @@ const AppPublisher: React.FC = () => {
 
     } catch (err) {
       console.error('Publish failed:', err)
+      // Extract the most descriptive error message, handling both ApiClientError
+      // (from backend 409/4xx responses) and regular Error instances.
+      const errorMessage = err instanceof Error
+        ? err.message || t('appPublisher.publishFailed')
+        : t('appPublisher.publishFailed')
       setPublishResult({
         status: 'error',
-        message: err instanceof Error ? err.message : t('appPublisher.publishFailed')
+        message: errorMessage
       })
     } finally {
       setPublishing(false)
@@ -192,11 +197,12 @@ const AppPublisher: React.FC = () => {
             <Button key="back" onClick={() => navigate('/workbench/library')}>
               {t('appPublisher.backToDiscover')}
             </Button>,
-            <Button key="reset" type="primary" onClick={() => {
-              setPublishResult(null)
-              setCurrentStep(0)
-            }}>
-              {t('appPublisher.continuePublish')}
+            <Button
+              key="mine"
+              type="primary"
+              onClick={() => navigate('/workbench/my-contributions')}
+            >
+              {t('appPublisher.backToMine')}
             </Button>
           ]}
         />
@@ -206,9 +212,17 @@ const AppPublisher: React.FC = () => {
 
   return (
     <div style={{ maxWidth: 800, margin: '0 auto' }}>
-      <Title level={4} style={{ marginBottom: 24 }}>
-        {t('appPublisher.title', typeLabel)}
-      </Title>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+        <Button
+          icon={<ArrowLeftOutlined />}
+          onClick={() => navigate(-1)}
+        >
+          {t('common.back')}
+        </Button>
+        <Title level={4} style={{ margin: 0 }}>
+          {t('appPublisher.title', typeLabel)}
+        </Title>
+      </div>
 
       {!canPublish && (
         <Card style={{ marginBottom: 16, background: '#fff7e6', borderColor: '#ffa940' }}>
