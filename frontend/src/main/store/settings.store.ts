@@ -4,6 +4,7 @@ import { getUserAppsPath } from '../utils/paths'
 export interface ModuleVisibility {
   aiChat: boolean
   copiper: boolean
+  aiAgents: boolean
   openClaw: boolean
   aiTerminal: boolean
   localEnv: boolean
@@ -150,10 +151,11 @@ export const settingsStore = new Store<SettingsSchema>({
     },
     moduleVisibility: {
       type: 'object',
-      default: { aiChat: true, copiper: false, openClaw: false, aiTerminal: true, localEnv: true, aiCoding: true },
+      default: { aiChat: true, copiper: false, aiAgents: true, openClaw: false, aiTerminal: true, localEnv: true, aiCoding: true },
       properties: {
         aiChat: { type: 'boolean' },
         copiper: { type: 'boolean' },
+        aiAgents: { type: 'boolean' },
         openClaw: { type: 'boolean' },
         aiTerminal: { type: 'boolean' },
         localEnv: { type: 'boolean' },
@@ -280,7 +282,7 @@ export function getSettings(): PublicSettings {
     localTerminalPath: settingsStore.get('localTerminalPath'),
     aiModelConfigs: settingsStore.get('aiModelConfigs'),
     imageGenConfigs: settingsStore.get('imageGenConfigs'),
-    moduleVisibility: settingsStore.get('moduleVisibility') ?? { aiChat: true, copiper: false, openClaw: false, aiTerminal: true, localEnv: false, aiCoding: true },
+    moduleVisibility: settingsStore.get('moduleVisibility') ?? { aiChat: true, copiper: false, aiAgents: true, openClaw: false, aiTerminal: true, localEnv: true, aiCoding: true },
     appShortcutEnabled: settingsStore.get('appShortcutEnabled') ?? true,
     appShortcutModifier: settingsStore.get('appShortcutModifier') ?? 'Control+Shift',
     appOrder: settingsStore.get('appOrder') ?? []

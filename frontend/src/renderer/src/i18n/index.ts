@@ -11,6 +11,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'menu.aiAgents': 'AI 智能体',
     'menu.workbench': '工作台',
     'menu.localEnv': '开发环境',
+    'menu.copiper': 'CoPiper',
     'menu.settings': '设置',
 
     // Workbench 页面
@@ -161,6 +162,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'settings.moduleDescAiTerminal': 'AI 增强终端管理，支持本地/SSH 终端、数据库连接、AI 辅助命令执行。',
     'settings.moduleDescAiAgents': 'AI Agent（OpenClaw） 一键安装和配置管理。',
     'settings.moduleDescLocalEnv': '开发基础环境检测与一键安装（Python、Node.js、Git、Docker），AI Coding CLI 环境检测与一键安装。',
+    'settings.moduleDescCopiper': 'JDB 表格编辑、校验和导出工具，适合结构化配置数据处理。',
     'settings.tabAITools': 'AI 工具',
     'settings.aiTools.webSearchGroup': '网络搜索',
     'settings.aiTools.webSearchGroupDesc': '对应 AI 助理中的「网络搜索」开关，启用后 AI 可联网搜索并浏览网页获取最新信息。',
@@ -198,6 +200,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'modules.aiChat': 'AI 助理',
     'modules.aiAgents': 'AI 智能体',
     'modules.localEnv': '开发环境',
+    'modules.copiper': 'CoPiper',
 
     // TopBar
     'topbar.currentWorkspace': '当前工作区',
@@ -1617,6 +1620,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'menu.aiAgents': 'AI Agents',
     'menu.workbench': 'Workbench',
     'menu.localEnv': 'DevEnv Setup',
+    'menu.copiper': 'CoPiper',
     'menu.settings': 'Settings',
 
     // Workbench page
@@ -1767,6 +1771,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'settings.moduleDescAiTerminal': 'AI-enhanced terminal with local/SSH terminals, DB connections, AI-assisted commands.',
     'settings.moduleDescAiAgents': 'AI Agent (OpenClaw) one-click install and configuration.',
     'settings.moduleDescLocalEnv': 'Dev environment detection & one-click install (Python, Node.js, Git, Docker, AI Coding CLI).',
+    'settings.moduleDescCopiper': 'JDB table editing, validation, and export tooling for structured configuration data.',
     'settings.tabAITools': 'AI Tools',
     'settings.aiTools.webSearchGroup': 'Web Search',
     'settings.aiTools.webSearchGroupDesc': 'Corresponds to the "Web Search" toggle in AI Chat. When enabled, AI can search the web and browse pages for up-to-date information.',
@@ -1804,6 +1809,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'modules.aiChat': 'AI Chat',
     'modules.aiAgents': 'AI Agents',
     'modules.localEnv': 'DevEnv Setup',
+    'modules.copiper': 'CoPiper',
 
     // TopBar
     'topbar.currentWorkspace': 'Workspace',

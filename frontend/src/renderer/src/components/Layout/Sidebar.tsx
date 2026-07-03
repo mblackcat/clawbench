@@ -6,7 +6,8 @@ import {
   RobotOutlined,
   LaptopOutlined,
   CodeOutlined,
-  CodepenOutlined
+  CodepenOutlined,
+  DatabaseOutlined
 } from '@ant-design/icons'
 import Icon from '@ant-design/icons'
 import { useNavigate, useLocation } from 'react-router-dom'
@@ -73,6 +74,12 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
       icon: <LaptopOutlined />,
       label: t('menu.localEnv'),
       moduleKey: 'localEnv'
+    },
+    {
+      key: '/copiper',
+      icon: <DatabaseOutlined />,
+      label: t('menu.copiper'),
+      moduleKey: 'copiper'
     },
     {
       key: '/settings',

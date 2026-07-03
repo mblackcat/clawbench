@@ -19,6 +19,7 @@ const HermesPage = React.lazy(() => import('./pages/Hermes/HermesPage'))
 const LocalEnvPage = React.lazy(() => import('./pages/LocalEnv/LocalEnvPage'))
 const AICodingPage = React.lazy(() => import('./pages/AICoding/AICodingPage'))
 const AITerminalPage = React.lazy(() => import('./pages/AITerminal/AITerminalPage'))
+const CopiperPage = React.lazy(() => import('./pages/Copiper/CopiperPage'))
 const SettingsPage = React.lazy(() => import('./pages/Settings/SettingsPage'))
 const SkillEditor = React.lazy(() => import('./pages/Developer/SkillEditor'))
 const PromptEditor = React.lazy(() => import('./pages/Developer/PromptEditor'))
@@ -51,7 +52,7 @@ const AppRoutes: React.FC = () => {
           <Route path="/workbench/library" element={<AppLibraryPage />} />
           <Route path="/workbench/detail/:appId" element={<AppDetailPage />} />
           <Route path="/workbench/skill-detail/:appId" element={<SkillDetailView />} />
-          <Route path="/copiper" element={<Navigate to="/workbench/installed" replace />} />
+          <Route path="/copiper" element={<CopiperPage />} />
           <Route path="/ai-chat" element={<AIChatPage />} />
           <Route path="/developer/new" element={<AppEditor />} />
           <Route path="/developer/code/:appId" element={<CodeEditor />} />

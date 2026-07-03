@@ -1,21 +1,12 @@
 import { create } from 'zustand'
 import type { AiToolsConfig } from '../types/ipc'
+import {
+  DEFAULT_MODULE_VISIBILITY,
+  normalizeModuleVisibility,
+  type ModuleVisibility
+} from '../constants/module-visibility'
 
-export interface ModuleVisibility {
-  aiChat: boolean
-  aiAgents: boolean
-  aiTerminal: boolean
-  localEnv: boolean
-  aiCoding: boolean
-}
-
-const DEFAULT_MODULE_VISIBILITY: ModuleVisibility = {
-  aiChat: true,
-  aiAgents: true,
-  aiTerminal: true,
-  localEnv: true,
-  aiCoding: true
-}
+export type { ModuleVisibility } from '../constants/module-visibility'
 
 interface SettingsState {
   pythonPath: string
@@ -64,7 +55,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
         autoUpdate: (settings.autoUpdate as boolean) ?? true,
         localIdePath: (settings.localIdePath as string) ?? '',
         localTerminalPath: (settings.localTerminalPath as string) ?? '',
-        moduleVisibility: (settings.moduleVisibility as ModuleVisibility) ?? DEFAULT_MODULE_VISIBILITY,
+        moduleVisibility: normalizeModuleVisibility(settings.moduleVisibility),
         appShortcutEnabled: (settings.appShortcutEnabled as boolean) ?? true,
         appShortcutModifier: (settings.appShortcutModifier as string) ?? 'Control+Shift',
         appOrder: (settings.appOrder as string[]) ?? []
