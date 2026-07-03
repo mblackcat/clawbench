@@ -15,61 +15,30 @@ import {
 } from 'antd'
 import { FolderOpenOutlined, QuestionCircleOutlined } from '@ant-design/icons'
 import type { SubAppManifest, ParamDef } from '../types/subapp'
+import { buildManifestDefaultParams } from '../utils/subapp-params'
 
 const { Text } = Typography
-
-/**
- * Coerce a default value from JSON (which may encode booleans/numbers as strings)
- * to the proper JS type expected by Ant Design form controls.
- *
- * Without this coercion, a boolean default of "false" (string) is treated as a
- * truthy value by Switch (with valuePropName="checked"), so the switch appears
- * checked while the actual form value remains the string "false".
- */
-function coerceDefault(value: unknown, type: string): unknown {
-  if (value === null || value === undefined) return value
-
-  switch (type) {
-    case 'boolean':
-      if (typeof value === 'boolean') return value
-      if (typeof value === 'string') return value.trim().toLowerCase() === 'true'
-      return Boolean(value)
-    case 'number':
-      if (typeof value === 'number') return value
-      const n = Number(value)
-      return Number.isNaN(n) ? value : n
-    case 'enum':
-      return typeof value === 'string' ? value : String(value)
-    default:
-      // string, text, path — keep as-is
-      return value
-  }
-}
 
 interface ParamDrawerProps {
   open: boolean
   onClose: () => void
   manifest: SubAppManifest | null
+  initialValues?: Record<string, unknown>
   onSubmit: (params: Record<string, unknown>) => void
 }
 
-const ParamDrawer: React.FC<ParamDrawerProps> = ({ open, onClose, manifest, onSubmit }) => {
+const ParamDrawer: React.FC<ParamDrawerProps> = ({ open, onClose, manifest, initialValues, onSubmit }) => {
   const [form] = Form.useForm()
   const { token } = theme.useToken()
 
   // Reset and populate default values whenever the drawer opens or manifest changes
   useEffect(() => {
     if (open && manifest?.params) {
-      const defaults: Record<string, unknown> = {}
-      for (const param of manifest.params) {
-        if (param.default !== undefined) {
-          defaults[param.name] = coerceDefault(param.default, param.type)
-        }
-      }
+      const defaults = initialValues ?? buildManifestDefaultParams(manifest.params)
       form.resetFields()
       form.setFieldsValue(defaults)
     }
-  }, [open, manifest, form])
+  }, [open, manifest, initialValues, form])
 
   const handleSubmit = useCallback(async () => {
     try {
