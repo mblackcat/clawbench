@@ -13,86 +13,168 @@ registerLanguageDictionary(zhCN)
 
 // ── Custom multi-select dropdown editor for indices columns ──
 // Handsontable's built-in DropdownEditor only supports single selection, but
-// indices columns store pipe-delimited lists (e.g. "id_1|id_2|id_3"). This
-// editor extends DropdownEditor to inherit its look-and-feel, then overrides
-// the selection logic to toggle items instead of picking one.
-class MultiSelectEditor extends Handsontable.editors.DropdownEditor {
-  // Track which items are checked (set name → true)
-  private checked: Record<string, boolean> = {}
+// indices columns store pipe-delimited lists (e.g. "id_1|id_2|id_3"). Rather
+// than fighting the built-in editor's internals, this is a self-contained
+// BaseEditor that renders its own popup panel with a search filter and a
+// checkbox list. Selection follows native multi-select listbox semantics:
+//   • plain click       → select only this item (replace)
+//   • Ctrl / Cmd+click   → toggle this item
+//   • Shift+click        → select the range from the anchor item
+class MultiSelectEditor extends Handsontable.editors.BaseEditor {
+  private panel!: HTMLDivElement
+  private searchInput!: HTMLInputElement
+  private listEl!: HTMLDivElement
+  // Full option set (canonical order) for this cell
+  private options: string[] = []
+  // Currently selected option names
+  private selected = new Set<string>()
+  // Lower-cased filter text driving the visible list
+  private filterText = ''
+  // Anchor index (into the *visible* list) for Shift+click ranges
+  private anchorIndex = -1
 
-  prepare(row: number, col: number, prop: string | number, td: HTMLTableCellElement, value: unknown, cellProperties: Handsontable.CellProperties) {
-    // Parse current pipe-separated value into checked set
-    this.checked = {}
-    if (value) {
-      for (const v of String(value).split('|').filter(Boolean)) {
-        this.checked[v] = true
+  init() {
+    const doc = this.hot.rootDocument
+
+    this.panel = doc.createElement('div')
+    this.panel.className = 'copiper-multiselect-panel'
+    this.panel.style.display = 'none'
+
+    this.searchInput = doc.createElement('input')
+    this.searchInput.type = 'text'
+    this.searchInput.className = 'copiper-multiselect-search'
+    this.searchInput.setAttribute('placeholder', '输入以筛选…')
+    this.searchInput.addEventListener('input', () => {
+      this.filterText = this.searchInput.value.trim().toLowerCase()
+      this.renderList()
+    })
+    this.searchInput.addEventListener('keydown', (e) => {
+      // Keep typing away from Handsontable's grid key handler
+      e.stopPropagation()
+      if (e.key === 'Escape') {
+        this.finishEditing(true)
+      } else if (e.key === 'Enter') {
+        this.finishEditing(false)
       }
+    })
+
+    this.listEl = doc.createElement('div')
+    this.listEl.className = 'copiper-multiselect-list'
+
+    this.panel.appendChild(this.searchInput)
+    this.panel.appendChild(this.listEl)
+
+    // Stop panel interactions from bubbling to the document, where
+    // Handsontable's outside-click handler would otherwise close the editor.
+    this.panel.addEventListener('mousedown', (e) => e.stopPropagation())
+
+    doc.body.appendChild(this.panel)
+  }
+
+  prepare(
+    row: number,
+    col: number,
+    prop: string | number,
+    td: HTMLTableCellElement,
+    value: unknown,
+    cellProperties: Handsontable.CellProperties
+  ) {
+    super.prepare(row, col, prop, td, value, cellProperties)
+    const src = (cellProperties as any).source
+    this.options = Array.isArray(src) ? [...src] : []
+  }
+
+  getValue(): string {
+    // Emit in canonical option order for stable pipe strings
+    return this.options.filter((o) => this.selected.has(o)).join('|')
+  }
+
+  setValue(value: unknown): void {
+    this.selected = new Set(
+      String(value ?? '')
+        .split('|')
+        .filter(Boolean)
+    )
+  }
+
+  open(): void {
+    this.filterText = ''
+    this.searchInput.value = ''
+    this.anchorIndex = -1
+    this.renderList()
+
+    // Position the panel just below the edited cell
+    const rect = this.TD.getBoundingClientRect()
+    const win = this.hot.rootWindow
+    this.panel.style.display = 'block'
+    this.panel.style.left = `${rect.left + win.scrollX}px`
+    this.panel.style.top = `${rect.bottom + win.scrollY}px`
+    this.panel.style.minWidth = `${rect.width}px`
+
+    this.searchInput.focus()
+  }
+
+  close(): void {
+    this.panel.style.display = 'none'
+  }
+
+  focus(): void {
+    this.searchInput.focus()
+  }
+
+  // Options currently visible under the active filter
+  private visibleOptions(): string[] {
+    if (!this.filterText) return this.options
+    return this.options.filter((o) => o.toLowerCase().includes(this.filterText))
+  }
+
+  private handleItemClick(opt: string, e: MouseEvent): void {
+    const visible = this.visibleOptions()
+    const idx = visible.indexOf(opt)
+    const additive = e.ctrlKey || e.metaKey
+
+    if (e.shiftKey && this.anchorIndex >= 0 && this.anchorIndex < visible.length) {
+      if (!additive) this.selected.clear()
+      const start = Math.min(this.anchorIndex, idx)
+      const end = Math.max(this.anchorIndex, idx)
+      for (let i = start; i <= end; i++) this.selected.add(visible[i])
+    } else if (additive) {
+      if (this.selected.has(opt)) this.selected.delete(opt)
+      else this.selected.add(opt)
+      this.anchorIndex = idx
+    } else {
+      this.selected.clear()
+      this.selected.add(opt)
+      this.anchorIndex = idx
     }
-    // Let DropdownEditor build the list & position it — this populates the
-    // internal .htItemWrapper container with option elements.
-    super.prepare(row, col, prop, td, value, cellProperties as any)
+    this.renderList()
   }
 
-  open() {
-    super.open()
+  private renderList(): void {
+    const doc = this.hot.rootDocument
+    this.listEl.innerHTML = ''
+    const visible = this.visibleOptions()
 
-    // After DropdownEditor renders the option list, mark checked items with
-    // a checkmark and attach toggle-on-click behaviour. The dropdown DOM may
-    // not be ready synchronously after super.open(), so retry with rAF.
-    const decorateItems = () => {
-      const container = (this as any).htContainer as HTMLElement | undefined
-      if (!container) return
-      const items = container.querySelectorAll<HTMLElement>('.htItemWrapper')
-      if (items.length === 0) {
-        requestAnimationFrame(decorateItems)
-        return
-      }
-      for (const item of items) {
-        const text = (item.textContent || '').trim()
-        if (this.checked[text]) {
-          item.style.fontWeight = '600'
-          if (!item.textContent?.startsWith('✓ ')) {
-            item.textContent = `✓ ${text}`
-          }
-        }
-        // Toggle on click instead of the default pick-one-and-close.
-        // Capture phase so it runs before DropdownEditor's own handlers.
-        item.addEventListener('mousedown', (e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          this.checked[text] = !this.checked[text]
-          if (this.checked[text]) {
-            item.style.fontWeight = '600'
-            item.textContent = `✓ ${text}`
-          } else {
-            item.style.fontWeight = ''
-            item.textContent = text
-          }
-        }, true)
-      }
+    if (visible.length === 0) {
+      const empty = doc.createElement('div')
+      empty.className = 'copiper-multiselect-empty'
+      empty.textContent = '无匹配项'
+      this.listEl.appendChild(empty)
+      return
     }
-    requestAnimationFrame(decorateItems)
-  }
 
-  getValue() {
-    return Object.keys(this.checked).filter(k => this.checked[k]).join('|')
-  }
-
-  setValue(value: string) {
-    this.checked = {}
-    if (value) {
-      for (const v of String(value).split('|').filter(Boolean)) {
-        this.checked[v] = true
-      }
+    for (const opt of visible) {
+      const item = doc.createElement('div')
+      item.className = 'copiper-multiselect-item'
+      if (this.selected.has(opt)) item.classList.add('is-selected')
+      item.textContent = opt
+      item.addEventListener('mousedown', (e) => {
+        e.preventDefault() // keep focus in the search input
+        e.stopPropagation() // don't let Handsontable close the editor
+        this.handleItemClick(opt, e)
+      })
+      this.listEl.appendChild(item)
     }
-  }
-
-  close() {
-    // Preserve our checked state before the DropdownEditor destroys the
-    // list DOM and clears its internal state.
-    const currentChecked = { ...this.checked }
-    super.close()
-    this.checked = currentChecked
   }
 }
 
