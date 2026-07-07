@@ -11,124 +11,88 @@ import type { ColDef } from '../../types/copiper'
 registerAllModules()
 registerLanguageDictionary(zhCN)
 
-// ── Custom multi-select editor for indices (pipe-separated multi-reference) ──
+// ── Custom multi-select dropdown editor for indices columns ──
 // Handsontable's built-in DropdownEditor only supports single selection, but
-// indices columns store pipe-delimited lists (e.g. "id_1|id_2|id_3"). Register
-// a checkbox-list editor that appears as a dropdown overlay and produces the
-// same pipe-separated format on save.
-class MultiSelectEditor extends Handsontable.editors.BaseEditor {
-  private overlay: HTMLDivElement | null = null
-  private boundClose: ((e: MouseEvent) => void) | null = null
-
-  /** Create the overlay element. Called lazily on first prepare() since
-   *  Handsontable may call prepare() before init() in some code paths. */
-  private ensureOverlay(): HTMLDivElement {
-    if (this.overlay) return this.overlay
-    const doc = this.hot.rootDocument
-    this.overlay = doc.createElement('div')
-    Object.assign(this.overlay.style, {
-      display: 'none',
-      position: 'fixed',
-      zIndex: '10000',
-      background: 'var(--cb-bg-elevated, #fff)',
-      border: '1px solid var(--cb-border, #d9d9d9)',
-      borderRadius: '6px',
-      padding: '4px 0',
-      maxHeight: '240px',
-      overflowY: 'auto',
-      minWidth: '180px',
-      boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
-      fontFamily: 'inherit',
-    })
-    doc.body.appendChild(this.overlay)
-    return this.overlay
-  }
-
-  init() {
-    this.ensureOverlay()
-  }
+// indices columns store pipe-delimited lists (e.g. "id_1|id_2|id_3"). This
+// editor extends DropdownEditor to inherit its look-and-feel, then overrides
+// the selection logic to toggle items instead of picking one.
+class MultiSelectEditor extends Handsontable.editors.DropdownEditor {
+  // Track which items are checked (set name → true)
+  private checked: Record<string, boolean> = {}
 
   prepare(row: number, col: number, prop: string | number, td: HTMLTableCellElement, value: unknown, cellProperties: Handsontable.CellProperties) {
-    super.prepare(row, col, prop, td, value, cellProperties as any)
-    const overlay = this.ensureOverlay()
-    const doc = this.hot.rootDocument
-    const selected = value ? String(value).split('|').filter(Boolean) : []
-    const source = (cellProperties as any).source as string[] || []
-
-    overlay.innerHTML = ''
-    for (const opt of source) {
-      if (!opt) continue // skip empty sentinel
-      const isChecked = selected.includes(opt)
-      const row = doc.createElement('div')
-      Object.assign(row.style, {
-        display: 'flex', alignItems: 'center', gap: '6px',
-        padding: '3px 10px', cursor: 'pointer', fontSize: '13px',
-        userSelect: 'none',
-      })
-      row.addEventListener('mouseenter', () => { row.style.background = 'var(--cb-fill-quaternary, rgba(0,0,0,0.04))' })
-      row.addEventListener('mouseleave', () => { row.style.background = '' })
-
-      const cb = doc.createElement('input')
-      cb.type = 'checkbox'
-      cb.checked = isChecked
-      cb.style.pointerEvents = 'none' // click handled by row
-
-      const label = doc.createElement('span')
-      label.textContent = opt
-
-      row.appendChild(cb)
-      row.appendChild(label)
-      row.addEventListener('mousedown', (e) => {
-        e.preventDefault() // don't steal focus from Handsontable
-        cb.checked = !cb.checked
-      })
-      overlay.appendChild(row)
+    // Parse current pipe-separated value into checked set
+    this.checked = {}
+    if (value) {
+      for (const v of String(value).split('|').filter(Boolean)) {
+        this.checked[v] = true
+      }
     }
+    // Let DropdownEditor build the list & position it — this populates the
+    // internal .htItemWrapper container with option elements.
+    super.prepare(row, col, prop, td, value, cellProperties as any)
   }
 
   open() {
-    const overlay = this.ensureOverlay()
-    const td = this.TD!
-    const rect = td.getBoundingClientRect()
-    Object.assign(overlay.style, {
-      display: 'block',
-      top: `${rect.bottom + 2}px`,
-      left: `${Math.max(0, rect.left)}px`,
-    })
-    // Close on outside click (deferred so the opening click doesn't close it)
-    this.boundClose = (e: MouseEvent) => {
-      if (!overlay.contains(e.target as Node) && e.target !== td) {
-        this.close()
+    super.open()
+
+    // After DropdownEditor renders the option list, mark checked items with
+    // a checkmark and attach toggle-on-click behaviour. The dropdown DOM may
+    // not be ready synchronously after super.open(), so retry with rAF.
+    const decorateItems = () => {
+      const container = (this as any).htContainer as HTMLElement | undefined
+      if (!container) return
+      const items = container.querySelectorAll<HTMLElement>('.htItemWrapper')
+      if (items.length === 0) {
+        requestAnimationFrame(decorateItems)
+        return
+      }
+      for (const item of items) {
+        const text = (item.textContent || '').trim()
+        if (this.checked[text]) {
+          item.style.fontWeight = '600'
+          if (!item.textContent?.startsWith('✓ ')) {
+            item.textContent = `✓ ${text}`
+          }
+        }
+        // Toggle on click instead of the default pick-one-and-close.
+        // Capture phase so it runs before DropdownEditor's own handlers.
+        item.addEventListener('mousedown', (e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          this.checked[text] = !this.checked[text]
+          if (this.checked[text]) {
+            item.style.fontWeight = '600'
+            item.textContent = `✓ ${text}`
+          } else {
+            item.style.fontWeight = ''
+            item.textContent = text
+          }
+        }, true)
       }
     }
-    setTimeout(() => {
-      if (this.boundClose) this.hot.rootDocument.addEventListener('mousedown', this.boundClose, true)
-    }, 0)
-  }
-
-  close() {
-    if (this.boundClose) {
-      this.hot.rootDocument.removeEventListener('mousedown', this.boundClose, true)
-      this.boundClose = null
-    }
-    this.overlay!.style.display = 'none'
+    requestAnimationFrame(decorateItems)
   }
 
   getValue() {
-    const overlay = this.ensureOverlay()
-    const cbs = overlay.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
-    const selected: string[] = []
-    cbs.forEach((cb) => {
-      if (cb.checked) selected.push(cb.nextSibling?.textContent || '')
-    })
-    return selected.join('|')
+    return Object.keys(this.checked).filter(k => this.checked[k]).join('|')
   }
 
-  setValue() { /* handled in prepare */ }
-  focus() {
-    const overlay = this.ensureOverlay()
-    const first = overlay.querySelector<HTMLInputElement>('input[type="checkbox"]')
-    first?.focus()
+  setValue(value: string) {
+    this.checked = {}
+    if (value) {
+      for (const v of String(value).split('|').filter(Boolean)) {
+        this.checked[v] = true
+      }
+    }
+  }
+
+  close() {
+    // Preserve our checked state before the DropdownEditor destroys the
+    // list DOM and clears its internal state.
+    const currentChecked = { ...this.checked }
+    super.close()
+    this.checked = currentChecked
   }
 }
 
