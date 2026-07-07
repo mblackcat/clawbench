@@ -1,5 +1,6 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { Select, Tooltip } from 'antd'
+import { useCopiperStore } from '../../../stores/useCopiperStore'
 import type { ColDef } from '../../../types/copiper'
 
 interface IndicesEditorProps {
@@ -11,7 +12,25 @@ interface IndicesEditorProps {
 }
 
 const IndicesEditor: React.FC<IndicesEditorProps> = ({ value, colDef, onChange, onBlur, autoFocus }) => {
-  const srcTable = colDef.src || colDef.type.replace(/^indices\//, '')
+  const activeDatabase = useCopiperStore((s) => s.activeDatabase)
+  const referenceData = useCopiperStore((s) => s.referenceData)
+
+  const srcTable = colDef.src ||
+    colDef.type.replace(/^indices\//, '').replace(/^list:index\//, '')
+
+  const selectOptions = useMemo(() => {
+    if (!srcTable) return []
+    let rows: Array<{ id: number | string; idx_name?: string }> = []
+    if (activeDatabase?.[srcTable]) {
+      rows = activeDatabase[srcTable].rows
+    } else if (referenceData[srcTable]) {
+      rows = referenceData[srcTable]
+    }
+    return rows
+      .map((r) => (r.idx_name != null ? String(r.idx_name) : String(r.id)))
+      .filter(Boolean)
+      .map((v) => ({ label: v, value: v }))
+  }, [srcTable, activeDatabase, referenceData])
 
   const parseValue = (): string[] => {
     if (!value) return []
@@ -29,6 +48,7 @@ const IndicesEditor: React.FC<IndicesEditorProps> = ({ value, colDef, onChange, 
         style={{ width: '100%' }}
         placeholder={srcTable}
         tokenSeparators={['|']}
+        options={selectOptions}
         onChange={(vals: string[]) => {
           onChange(vals.join('|'))
         }}

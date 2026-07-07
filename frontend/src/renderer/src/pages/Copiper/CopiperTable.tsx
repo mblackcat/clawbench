@@ -390,7 +390,10 @@ const CopiperTable: React.FC<CopiperTableProps> = ({ onRowDoubleClick }) => {
       }
 
       const type = col.type || col.j_type || 'str'
-      const baseType = type.split('/')[0].split(':')[0]
+      const rawBase = type.split('/')[0].split(':')[0]
+      // list:index is equivalent to indices (multi-reference index dropdown)
+      const isListIndex = type.startsWith('list:index') || (col.j_type || '').startsWith('list:index')
+      const baseType = isListIndex ? 'indices' : rawBase
 
       // Enum or has options → dropdown
       if (col.options) {
@@ -561,6 +564,7 @@ function getColumnWidth(col: ColDef): number {
   if (type === 'int' || type === 'float') return 80
   if (type === 'utc_time') return 160
   if (type.startsWith('kv:') || type.startsWith('ckv:') || type === 'dict') return 150
+  if (type.startsWith('list:index')) return 130
   if (type.startsWith('list:')) return 120
   if (type.startsWith('index/') || type.startsWith('indices/')) return 130
   return 120
