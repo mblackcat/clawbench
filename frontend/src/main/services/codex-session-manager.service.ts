@@ -42,7 +42,8 @@ interface CodexSessionState {
   turnResolve?: () => void
   outputBuffer: string
   textLengths: Record<string, number>
-  toolBlocks: Record<string, string>
+  /** Block ids whose block_start has already been emitted (dedup, per turn). */
+  seenBlocks: Set<string>
   thinkingLengths: Record<string, number>
 }
 
@@ -200,16 +201,52 @@ function buildTurnParams(state: CodexSessionState, input: Array<Record<string, u
   return params
 }
 
-function toAssistantEvent(content: any[]): Record<string, unknown> {
-  return { type: 'assistant', message: { role: 'assistant', content } }
+// ── Block-id event emission (mirrors Claude's CodingStreamEvent alphabet) ──
+// `seenBlocks` dedups block_start per itemId within a turn; textLengths /
+// thinkingLengths track cumulative streamed length so re-sent full text from
+// item/updated|completed doesn't duplicate.
+
+function emitTextDelta(sessionId: string, state: CodexSessionState, itemId: string, delta: string): void {
+  if (!delta) return
+  if (!state.seenBlocks.has(itemId)) {
+    state.seenBlocks.add(itemId)
+    emitEvent(sessionId, state, { type: 'block_start', blockId: itemId, blockType: 'text' })
+  }
+  appendOutput(state, delta)
+  emitEvent(sessionId, state, { type: 'text_delta', blockId: itemId, text: delta })
 }
 
-function toolUse(id: string, name: string, input: Record<string, unknown>): any {
-  return { type: 'tool_use', id, name, input }
+function emitThinkingDelta(sessionId: string, state: CodexSessionState, itemId: string, delta: string): void {
+  if (!state.seenBlocks.has(itemId)) {
+    state.seenBlocks.add(itemId)
+    emitEvent(sessionId, state, { type: 'block_start', blockId: itemId, blockType: 'thinking' })
+  }
+  if (delta) emitEvent(sessionId, state, { type: 'thinking_delta', blockId: itemId, text: delta })
 }
 
-function toolResult(id: string, content: string, isError?: boolean): any {
-  return { type: 'tool_result', tool_use_id: id, content, is_error: !!isError }
+function emitToolStart(
+  sessionId: string,
+  state: CodexSessionState,
+  itemId: string,
+  name: string,
+  input: Record<string, unknown>
+): void {
+  if (state.seenBlocks.has(itemId)) return
+  state.seenBlocks.add(itemId)
+  emitEvent(sessionId, state, { type: 'block_start', blockId: itemId, blockType: 'tool_use', toolName: name })
+  emitEvent(sessionId, state, { type: 'block_stop', blockId: itemId, input })
+  appendOutput(state, `\n[${name}] ${JSON.stringify(input)}\n`)
+}
+
+function emitToolResult(
+  sessionId: string,
+  state: CodexSessionState,
+  itemId: string,
+  content: string,
+  isError?: boolean
+): void {
+  if (content) appendOutput(state, `\n${content}\n`)
+  emitEvent(sessionId, state, { type: 'tool_result', toolUseId: itemId, content, isError: !!isError })
 }
 
 function extractToolResult(item: any): string {
@@ -273,19 +310,6 @@ function notify(state: CodexSessionState, method: string, params?: unknown): voi
   state.process.stdin.write(JSON.stringify(msg) + '\n')
 }
 
-function ensureToolBlock(
-  sessionId: string,
-  state: CodexSessionState,
-  itemId: string,
-  name: string,
-  input: Record<string, unknown>
-): void {
-  if (state.toolBlocks[itemId]) return
-  state.toolBlocks[itemId] = itemId
-  emitEvent(sessionId, state, toAssistantEvent([toolUse(itemId, name, input)]))
-  appendOutput(state, `\n[${name}] ${JSON.stringify(input)}\n`)
-}
-
 function handleItemEvent(sessionId: string, state: CodexSessionState, method: string, item: any): void {
   const phase = method.split('/')[1]
   const itemId = item?.id || `${item?.type || 'item'}-${Date.now()}`
@@ -293,36 +317,31 @@ function handleItemEvent(sessionId: string, state: CodexSessionState, method: st
 
   if (itemType === 'agentMessage' || itemType === 'agent_message') {
     const fullText = String(item.text || '')
-    const previous = state.textLengths[itemId] || 0
+    const previous = state.textLengths[itemId] ?? 0
     if (fullText.length > previous) {
-      const delta = fullText.slice(previous)
       state.textLengths[itemId] = fullText.length
-      appendOutput(state, delta)
-      emitEvent(sessionId, state, toAssistantEvent([{ type: 'text', text: delta }]))
+      emitTextDelta(sessionId, state, itemId, fullText.slice(previous))
     }
     return
   }
 
   if (itemType === 'reasoning') {
     const text = String(item.text || item.summary || '')
-    const previous = state.thinkingLengths[itemId] || 0
+    const previous = state.thinkingLengths[itemId] ?? 0
     if (text.length > previous) {
-      const delta = text.slice(previous)
       state.thinkingLengths[itemId] = text.length
-      emitEvent(sessionId, state, toAssistantEvent([{ type: 'thinking', thinking: delta }]))
+      emitThinkingDelta(sessionId, state, itemId, text.slice(previous))
     } else if (phase === 'started') {
-      emitEvent(sessionId, state, toAssistantEvent([{ type: 'thinking', thinking: '' }]))
+      emitThinkingDelta(sessionId, state, itemId, '')
     }
     return
   }
 
   if (itemType === 'commandExecution' || itemType === 'command_execution') {
     const command = String(item.command || '')
-    ensureToolBlock(sessionId, state, itemId, 'Bash', { command })
+    emitToolStart(sessionId, state, itemId, 'Bash', { command })
     if (phase === 'completed') {
-      const content = extractToolResult(item)
-      emitEvent(sessionId, state, toAssistantEvent([toolResult(itemId, content, item.status === 'failed')]))
-      appendOutput(state, content ? `\n${content}\n` : '')
+      emitToolResult(sessionId, state, itemId, extractToolResult(item), item.status === 'failed')
     }
     return
   }
@@ -331,35 +350,35 @@ function handleItemEvent(sessionId: string, state: CodexSessionState, method: st
     const changes = Array.isArray(item.changes) ? item.changes : []
     const changeText = changes.map((c: any) => `${c.kind || 'change'} ${c.path || ''}`).join(', ')
     const primaryPath = changes.length === 1 ? String(changes[0]?.path || '') : ''
-    ensureToolBlock(sessionId, state, itemId, 'Edit', { changes: changeText, file_path: primaryPath })
+    emitToolStart(sessionId, state, itemId, 'Edit', { changes: changeText, file_path: primaryPath })
     if (phase === 'completed') {
       const diff = changes.map((c: any) => c.diff || '').filter(Boolean).join('\n\n')
-      emitEvent(sessionId, state, toAssistantEvent([toolResult(itemId, diff || 'Changes applied', item.status === 'failed')]))
+      emitToolResult(sessionId, state, itemId, diff || 'Changes applied', item.status === 'failed')
     }
     return
   }
 
   if (itemType === 'mcpToolCall' || itemType === 'mcp_tool_call') {
     const name = String(item.tool || item.name || 'mcp_tool')
-    ensureToolBlock(sessionId, state, itemId, name, item.arguments || item.input || {})
+    emitToolStart(sessionId, state, itemId, name, item.arguments || item.input || {})
     if (phase === 'completed') {
-      emitEvent(sessionId, state, toAssistantEvent([toolResult(itemId, extractToolResult(item), !!item.error)]))
+      emitToolResult(sessionId, state, itemId, extractToolResult(item), !!item.error)
     }
     return
   }
 
   if (itemType === 'webSearch' || itemType === 'web_search') {
-    ensureToolBlock(sessionId, state, itemId, 'WebSearch', { query: item.query || item.searchQuery || '' })
+    emitToolStart(sessionId, state, itemId, 'WebSearch', { query: item.query || item.searchQuery || '' })
     return
   }
 
   if (itemType === 'plan' && typeof item.text === 'string') {
-    emitEvent(sessionId, state, toAssistantEvent([{ type: 'text', text: item.text }]))
+    emitTextDelta(sessionId, state, `plan-${itemId}`, item.text)
     return
   }
 
   if (itemType === 'error') {
-    emitEvent(sessionId, state, { type: 'error', message: item.message || 'Codex error' })
+    emitEvent(sessionId, state, { type: 'error', error: { message: item.message || 'Codex error' } })
   }
 }
 
@@ -371,12 +390,19 @@ function handleNotification(sessionId: string, state: CodexSessionState, msg: Js
 
   if (method === 'item/commandExecution/requestApproval') {
     const accepted = state.mode !== 'plan'
+    // Per product decision: auto-accept by mode, with a non-blocking transparency note.
+    if (accepted) {
+      emitEvent(sessionId, state, { type: 'system', subtype: 'local', message: '⚙ 已按当前模式自动允许执行命令' })
+    }
     respond(state, msg.id, { decision: accepted ? 'accept' : 'decline' })
     return
   }
 
   if (method === 'item/fileChange/requestApproval') {
     const accepted = state.mode !== 'plan'
+    if (accepted) {
+      emitEvent(sessionId, state, { type: 'system', subtype: 'local', message: '⚙ 已按当前模式自动允许修改文件' })
+    }
     respond(state, msg.id, { decision: accepted ? 'accept' : 'decline' })
     return
   }
@@ -406,7 +432,7 @@ function handleNotification(sessionId: string, state: CodexSessionState, msg: Js
 
   if (method === 'turn/started') {
     state.textLengths = {}
-    state.toolBlocks = {}
+    state.seenBlocks = new Set()
     state.thinkingLengths = {}
     emitEvent(sessionId, state, { type: 'turn_started' })
     return
@@ -417,8 +443,7 @@ function handleNotification(sessionId: string, state: CodexSessionState, msg: Js
     const delta = String(params.delta || '')
     if (delta) {
       state.textLengths[itemId] = (state.textLengths[itemId] || 0) + delta.length
-      appendOutput(state, delta)
-      emitEvent(sessionId, state, toAssistantEvent([{ type: 'text', text: delta }]))
+      emitTextDelta(sessionId, state, itemId, delta)
     }
     return
   }
@@ -447,7 +472,7 @@ function handleNotification(sessionId: string, state: CodexSessionState, msg: Js
   }
 
   if (method === 'turn/failed') {
-    emitEvent(sessionId, state, { type: 'error', message: params.error?.message || 'Codex turn failed' })
+    emitEvent(sessionId, state, { type: 'error', error: { message: params.error?.message || 'Codex turn failed' } })
     if (state.turnResolve) {
       const resolve = state.turnResolve
       state.turnResolve = undefined
@@ -507,7 +532,7 @@ export async function launchCodexSession(
       onError,
       outputBuffer: '',
       textLengths: {},
-      toolBlocks: {},
+      seenBlocks: new Set(),
       thinkingLengths: {}
     }
 
@@ -530,7 +555,7 @@ export async function launchCodexSession(
     child.on('error', (err) => {
       logger.error(`[codex] Process error for ${sessionId}:`, err)
       if (state.onError) state.onError(sessionId, err)
-      emitEvent(sessionId, state, { type: 'error', message: err.message })
+      emitEvent(sessionId, state, { type: 'error', error: { message: err.message } })
     })
 
     child.on('exit', (code, signal) => {
@@ -588,7 +613,7 @@ export async function writeToCodexSession(
     await turnPromise
     return { success: true }
   } catch (err: any) {
-    emitEvent(sessionId, state, { type: 'error', message: err?.message || String(err) })
+    emitEvent(sessionId, state, { type: 'error', error: { message: err?.message || String(err) } })
     return { success: false, error: err?.message || String(err) }
   } finally {
     state.isProcessing = false
