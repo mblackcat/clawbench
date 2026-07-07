@@ -20,7 +20,10 @@ class MultiSelectEditor extends Handsontable.editors.BaseEditor {
   private overlay: HTMLDivElement | null = null
   private boundClose: ((e: MouseEvent) => void) | null = null
 
-  init() {
+  /** Create the overlay element. Called lazily on first prepare() since
+   *  Handsontable may call prepare() before init() in some code paths. */
+  private ensureOverlay(): HTMLDivElement {
+    if (this.overlay) return this.overlay
     const doc = this.hot.rootDocument
     this.overlay = doc.createElement('div')
     Object.assign(this.overlay.style, {
@@ -38,15 +41,21 @@ class MultiSelectEditor extends Handsontable.editors.BaseEditor {
       fontFamily: 'inherit',
     })
     doc.body.appendChild(this.overlay)
+    return this.overlay
+  }
+
+  init() {
+    this.ensureOverlay()
   }
 
   prepare(row: number, col: number, prop: string | number, td: HTMLTableCellElement, value: unknown, cellProperties: Handsontable.CellProperties) {
     super.prepare(row, col, prop, td, value, cellProperties as any)
+    const overlay = this.ensureOverlay()
     const doc = this.hot.rootDocument
     const selected = value ? String(value).split('|').filter(Boolean) : []
     const source = (cellProperties as any).source as string[] || []
 
-    this.overlay!.innerHTML = ''
+    overlay.innerHTML = ''
     for (const opt of source) {
       if (!opt) continue // skip empty sentinel
       const isChecked = selected.includes(opt)
@@ -73,21 +82,22 @@ class MultiSelectEditor extends Handsontable.editors.BaseEditor {
         e.preventDefault() // don't steal focus from Handsontable
         cb.checked = !cb.checked
       })
-      this.overlay!.appendChild(row)
+      overlay.appendChild(row)
     }
   }
 
   open() {
+    const overlay = this.ensureOverlay()
     const td = this.TD!
     const rect = td.getBoundingClientRect()
-    Object.assign(this.overlay!.style, {
+    Object.assign(overlay.style, {
       display: 'block',
       top: `${rect.bottom + 2}px`,
       left: `${Math.max(0, rect.left)}px`,
     })
     // Close on outside click (deferred so the opening click doesn't close it)
     this.boundClose = (e: MouseEvent) => {
-      if (!this.overlay!.contains(e.target as Node) && e.target !== td) {
+      if (!overlay.contains(e.target as Node) && e.target !== td) {
         this.close()
       }
     }
@@ -105,7 +115,8 @@ class MultiSelectEditor extends Handsontable.editors.BaseEditor {
   }
 
   getValue() {
-    const cbs = this.overlay!.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
+    const overlay = this.ensureOverlay()
+    const cbs = overlay.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
     const selected: string[] = []
     cbs.forEach((cb) => {
       if (cb.checked) selected.push(cb.nextSibling?.textContent || '')
@@ -115,7 +126,8 @@ class MultiSelectEditor extends Handsontable.editors.BaseEditor {
 
   setValue() { /* handled in prepare */ }
   focus() {
-    const first = this.overlay!.querySelector<HTMLInputElement>('input[type="checkbox"]')
+    const overlay = this.ensureOverlay()
+    const first = overlay.querySelector<HTMLInputElement>('input[type="checkbox"]')
     first?.focus()
   }
 }
