@@ -147,6 +147,15 @@ export function getRawSessionOutput(sessionId: string): string {
 
 // ── SDK session event handler (for IM mode) ──
 
+function activityFromToolName(name: string | undefined): AICodingSession['lastActivity'] {
+  if (!name) return 'tool_call'
+  const writers = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'CreateFolder'])
+  const readers = new Set(['Read', 'Glob', 'Grep', 'ListFiles', 'LS'])
+  if (writers.has(name)) return 'writing'
+  if (readers.has(name)) return 'reading'
+  return 'tool_call'
+}
+
 function handleSDKEvent(sessionId: string, data: Record<string, unknown>): void {
   const msgType = (data.type as string) ?? ''
 
@@ -157,7 +166,18 @@ function handleSDKEvent(sessionId: string, data: Record<string, unknown>): void 
         updateSession(sessionId, { toolSessionId: sid })
       }
     }
-  } else if (msgType === 'assistant') {
+  } else if (msgType === 'turn_start' || msgType === 'turn_started') {
+    updateSession(sessionId, { status: 'running', lastActivity: 'thinking' })
+    notifyDataChanged()
+  } else if (msgType === 'block_start') {
+    // New block-id streaming: text/thinking → thinking, tool_use → by tool name.
+    if (data.blockType === 'tool_use') {
+      updateSession(sessionId, { status: 'running', lastActivity: activityFromToolName(data.toolName as string) })
+    } else {
+      updateSession(sessionId, { status: 'running', lastActivity: 'thinking' })
+    }
+    notifyDataChanged()
+  } else if (msgType === 'text_delta' || msgType === 'thinking_delta' || msgType === 'assistant') {
     updateSession(sessionId, { status: 'running', lastActivity: 'thinking' })
     notifyDataChanged()
   } else if (msgType === 'result') {

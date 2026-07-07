@@ -96,6 +96,36 @@ function parseClaudeEvent(event: Record<string, unknown>): CodingContentBlock[] 
   return blocks
 }
 
+// ── Block-id streaming accumulation helpers ──
+// Transient (non-persisted) maps for accumulating block-id-keyed deltas into one
+// growing assistant message per turn (Claude long-lived query; Codex in Phase 2).
+// One entry per active session; cleared on turn boundaries and finalization.
+const streamBlockIndex = new Map<string, Map<string, number>>()  // sid -> blockId -> block index
+const streamToolInput = new Map<string, Map<string, string>>()   // sid -> tool blockId -> partial JSON
+
+function idxMap(sid: string): Map<string, number> {
+  let m = streamBlockIndex.get(sid); if (!m) { m = new Map(); streamBlockIndex.set(sid, m) } return m
+}
+function toolInputMap(sid: string): Map<string, string> {
+  let m = streamToolInput.get(sid); if (!m) { m = new Map(); streamToolInput.set(sid, m) } return m
+}
+function resetStreamAccum(sid: string): void {
+  streamBlockIndex.delete(sid); streamToolInput.delete(sid)
+}
+
+/** Best-effort parse of partial tool-input JSON for live tool summaries. */
+function tryParsePartial(raw: string): Record<string, unknown> | null {
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null
+  } catch {
+    return null
+  }
+}
+
 interface AICodingState {
   workspaces: AICodingWorkspace[]; sessions: AICodingSession[]; groups: AICodingGroup[]
   imConfig: AICodingIMConfig; imStatus: AICodingIMConnectionStatus; loading: boolean
@@ -223,6 +253,7 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
       const st = get(); const session = st.sessions.find(s => s.id === sessionId); if (!session) return
       const et = (event as any).type as string
       if (et === 'pipe_exit' || et === 'pipe_error' || et === 'slash_command_done') {
+        resetStreamAccum(sessionId)
         const cb = st.sessionStreamingBlocks[sessionId] || []
         if (cb.length > 0) { const m: CodingMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: cb, timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] }, sessionPendingQuestions: { ...s.sessionPendingQuestions, [sessionId]: null } })) }
         else set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionPendingQuestions: { ...s.sessionPendingQuestions, [sessionId]: null } }))
@@ -236,6 +267,84 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
         return
       }
       if (session.toolType === 'claude' || session.toolType === 'codex') {
+        // ── Block-id streaming accumulation (Claude long-lived query; Codex in Phase 2) ──
+        if (et === 'turn_start' || et === 'turn_started') {
+          resetStreamAccum(sessionId)
+          set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: true }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } }))
+          return
+        }
+        if (et === 'block_start') {
+          const blockId = String((event as any).blockId ?? '')
+          const blockType = (event as any).blockType as 'text' | 'thinking' | 'tool_use'
+          set(s => {
+            const blocks = [...(s.sessionStreamingBlocks[sessionId] || [])]
+            let block: CodingContentBlock
+            if (blockType === 'tool_use') block = { type: 'tool_use', id: blockId, name: String((event as any).toolName ?? ''), input: {} }
+            else if (blockType === 'thinking') block = { type: 'thinking', text: '', blockId }
+            else block = { type: 'text', text: '', blockId }
+            idxMap(sessionId).set(blockId, blocks.length)
+            blocks.push(block)
+            return { sessionStreaming: { ...s.sessionStreaming, [sessionId]: true }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: blocks } }
+          })
+          return
+        }
+        if (et === 'text_delta' || et === 'thinking_delta') {
+          const blockId = String((event as any).blockId ?? '')
+          const text = String((event as any).text ?? '')
+          if (!text) return
+          set(s => {
+            const blocks = [...(s.sessionStreamingBlocks[sessionId] || [])]
+            const idx = idxMap(sessionId).get(blockId)
+            if (idx === undefined) return {}
+            const b = blocks[idx]
+            if (!b || (b.type !== 'text' && b.type !== 'thinking')) return {}
+            blocks[idx] = { ...b, text: (b.text || '') + text }
+            return { sessionStreaming: { ...s.sessionStreaming, [sessionId]: true }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: blocks } }
+          })
+          return
+        }
+        if (et === 'tool_input_delta') {
+          const blockId = String((event as any).blockId ?? '')
+          const partial = String((event as any).partialJson ?? '')
+          const acc = (toolInputMap(sessionId).get(blockId) || '') + partial
+          toolInputMap(sessionId).set(blockId, acc)
+          // Live best-effort parse so the tool summary streams in while args arrive.
+          const parsed = tryParsePartial(acc)
+          if (!parsed) return
+          set(s => {
+            const blocks = [...(s.sessionStreamingBlocks[sessionId] || [])]
+            const idx = idxMap(sessionId).get(blockId)
+            if (idx === undefined) return {}
+            const b = blocks[idx]
+            if (b && b.type === 'tool_use') blocks[idx] = { ...b, input: parsed }
+            return { sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: blocks } }
+          })
+          return
+        }
+        if (et === 'block_stop') {
+          const blockId = String((event as any).blockId ?? '')
+          const input = (event as any).input as Record<string, unknown> | undefined
+          set(s => {
+            const blocks = [...(s.sessionStreamingBlocks[sessionId] || [])]
+            const idx = idxMap(sessionId).get(blockId)
+            if (idx !== undefined) {
+              const b = blocks[idx]
+              if (b && b.type === 'tool_use' && input) blocks[idx] = { ...b, input }
+            }
+            return { sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: blocks } }
+          })
+          toolInputMap(sessionId).delete(blockId)
+          return
+        }
+        if (et === 'tool_result') {
+          const toolUseId = String((event as any).toolUseId ?? '')
+          const content = String((event as any).content ?? '')
+          const isError = !!(event as any).isError
+          set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: true }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [...(s.sessionStreamingBlocks[sessionId] || []), { type: 'tool_result' as const, toolUseId, content, isError }] } }))
+          return
+        }
+
+        // ── Structured side-channel events ──
         if (et === 'context_usage') {
           const pb = parseClaudeEvent(event as Record<string, unknown>)
           const usageBlock = pb.find((b): b is Extract<CodingContentBlock, { type: 'context_usage' }> => b.type === 'context_usage')
@@ -266,6 +375,7 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
           const existingBlocks = cur.sessionStreamingBlocks[sessionId] || []
           const allBlocks = [...existingBlocks, questionBlock]
           const m: CodingMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: allBlocks, timestamp: Date.now() }
+          resetStreamAccum(sessionId)
           set(s => ({
             sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] },
             sessionStreaming: { ...s.sessionStreaming, [sessionId]: false },
@@ -286,6 +396,8 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
           }))
           return
         }
+
+        // ── Legacy / lifecycle events (codex still uses 'assistant' until Phase 2) ──
         const pb = parseClaudeEvent(event as Record<string, unknown>)
         if (et === 'system') {
           // Only skip init events; forward other system events (e.g. slash command responses) as text
@@ -297,8 +409,33 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
           return
         }
         if (et === 'assistant') { set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: true }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [...(s.sessionStreamingBlocks[sessionId] || []), ...pb] } })); return }
-        if (et === 'result') { const existing = get().sessionStreamingBlocks[sessionId] || []; let ab = [...existing]; if (ab.length === 0) { const resultText = typeof (event as any).result === 'string' ? (event as any).result : ''; if (resultText) ab.push({ type: 'text', text: resultText }) }; const usage = (event as any).usage; if (usage && !ab.some(b => b.type === 'context_usage')) ab.push({ type: 'context_usage', inputTokens: usage.inputTokens, cachedInputTokens: usage.cachedInputTokens, outputTokens: usage.outputTokens, usedTokens: usage.usedTokens, contextWindow: usage.contextWindow }); const cost = typeof (event as any).cost_usd === 'number' ? (event as any).cost_usd : undefined; if (ab.length > 0) { const m: CodingMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: ab, timestamp: Date.now(), costUsd: cost }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } })) } else set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } })); return }
-        if (et === 'error') { const ab = [...(get().sessionStreamingBlocks[sessionId] || []), ...pb]; if (ab.length > 0) { const m: CodingMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: ab, timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } })) } }
+        if (et === 'result') {
+          const existing = get().sessionStreamingBlocks[sessionId] || []
+          let ab = [...existing]
+          if (ab.length === 0) {
+            const resultText = typeof (event as any).result === 'string' ? (event as any).result : ''
+            if (resultText) ab.push({ type: 'text', text: resultText })
+          }
+          const usage = (event as any).usage
+          if (usage && !ab.some(b => b.type === 'context_usage')) ab.push({ type: 'context_usage', inputTokens: usage.inputTokens, cachedInputTokens: usage.cachedInputTokens, outputTokens: usage.outputTokens, usedTokens: usage.usedTokens, contextWindow: usage.contextWindow })
+          const cost = typeof (event as any).cost_usd === 'number' ? (event as any).cost_usd : undefined
+          resetStreamAccum(sessionId)
+          if (ab.length > 0) {
+            const m: CodingMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: ab, timestamp: Date.now(), costUsd: cost }
+            set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } }))
+          } else {
+            set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } }))
+          }
+          return
+        }
+        if (et === 'error') {
+          const ab = [...(get().sessionStreamingBlocks[sessionId] || []), ...pb]
+          resetStreamAccum(sessionId)
+          if (ab.length > 0) {
+            const m: CodingMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: ab, timestamp: Date.now() }
+            set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } }))
+          }
+        }
       }
     })
     return () => { u1(); u2(); u3(); u4() }

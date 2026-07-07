@@ -68,8 +68,8 @@ export interface AICodingSession {
 // ── AI Coding Chat Message Types ──
 
 export type CodingContentBlock =
-  | { type: 'text'; text: string }
-  | { type: 'thinking'; text: string }
+  | { type: 'text'; text: string; blockId?: string }
+  | { type: 'thinking'; text: string; blockId?: string }
   | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
   | { type: 'tool_result'; toolUseId: string; content: string; isError?: boolean }
   | { type: 'raw_output'; text: string }
