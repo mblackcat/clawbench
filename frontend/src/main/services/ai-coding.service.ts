@@ -210,7 +210,7 @@ function handleSDKError(sessionId: string, _err: Error): void {
   logger.error(`[AICoding] SDK session error: ${sessionId}`)
   const session = getSessionById(sessionId)
   if (session && session.status !== 'closed') {
-    updateSession(sessionId, { status: 'error' as any, lastActivity: 'none' })
+    updateSession(sessionId, { status: 'error', lastActivity: 'none' })
     notifyDataChanged()
   }
 }
@@ -227,7 +227,7 @@ function handlePtyExit(sessionId: string, exitCode: number): void {
   }
   const session = getSessionById(sessionId)
   if (session && session.status !== 'closed') {
-    const status = exitCode === 0 ? 'completed' : ('error' as any)
+    const status = exitCode === 0 ? 'completed' : 'error'
     updateSession(sessionId, { status, lastActivity: 'none' })
     notifyDataChanged()
   }
