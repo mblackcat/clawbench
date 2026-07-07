@@ -85,12 +85,17 @@
 /* === Code Blocks === */
 .markdown-body {
   overflow-x: auto;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .markdown-body pre {
   padding: 12px;
   border-radius: 6px;
   overflow-x: auto;
+  white-space: pre;
+  word-break: normal;
+  overflow-wrap: normal;
 }
 
 [data-theme="light"] .markdown-body pre {

@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useCallback } from 'react'
+import React, { useRef, useEffect, useCallback, useState } from 'react'
 import { theme, Spin, Typography } from 'antd'
 import { RobotOutlined, MessageOutlined, CheckCircleFilled, CloseCircleFilled, ToolOutlined, DashboardOutlined } from '@ant-design/icons'
 import ReactMarkdown from 'react-markdown'
@@ -40,6 +40,19 @@ const CodingMessageList: React.FC<CodingMessageListProps> = ({
   const stickToBottomRef = useRef(true)
   const lastMessageIdRef = useRef<string | null>(null)
   const lastSessionIdRef = useRef<string | undefined>(sessionId)
+
+  // Track container width to force ReactMarkdown re-render on resize
+  const [containerWidth, setContainerWidth] = useState(0)
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const ro = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width
+      if (width !== undefined) setContainerWidth(width)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   const handleScroll = useCallback(() => {
     const el = containerRef.current
@@ -155,7 +168,7 @@ const CodingMessageList: React.FC<CodingMessageListProps> = ({
       style={{ flex: 1, overflow: 'auto', paddingTop: 8, paddingBottom: 8, overflowAnchor: 'none' }}
     >
       {messages.map((msg) => (
-        <CodingChatMessage key={msg.id} message={msg} onToolToggle={handleToolToggle} />
+        <CodingChatMessage key={msg.id} message={msg} onToolToggle={handleToolToggle} containerWidth={containerWidth} />
       ))}
 
       {/* Streaming message preview */}
@@ -176,6 +189,7 @@ const CodingMessageList: React.FC<CodingMessageListProps> = ({
                 return (
                   <div key={i} className="markdown-body" style={{ fontSize: 13, lineHeight: 1.7 }}>
                     <ReactMarkdown
+                      key={containerWidth}
                       rehypePlugins={[rehypeHighlightPlugin]}
                       remarkPlugins={[remarkGfm]}
                       urlTransform={(url) => url}

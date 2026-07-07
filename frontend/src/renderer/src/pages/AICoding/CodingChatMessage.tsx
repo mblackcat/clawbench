@@ -319,7 +319,7 @@ const ContextUsageBlock: React.FC<Extract<CodingContentBlock, { type: 'context_u
 
 // ── Content Block Renderer (for text/thinking/raw_output) ──
 
-const ContentBlockRenderer: React.FC<{ block: CodingContentBlock }> = ({ block }) => {
+const ContentBlockRenderer: React.FC<{ block: CodingContentBlock; containerWidth?: number }> = ({ block, containerWidth }) => {
   const { token } = theme.useToken()
 
   switch (block.type) {
@@ -327,6 +327,7 @@ const ContentBlockRenderer: React.FC<{ block: CodingContentBlock }> = ({ block }
       return (
         <div className="markdown-body" style={{ fontSize: 13, lineHeight: 1.7 }}>
           <ReactMarkdown
+            key={containerWidth}
             rehypePlugins={[rehypeHighlightPlugin]}
             remarkPlugins={[remarkGfm]}
             urlTransform={(url) => url}
@@ -357,7 +358,7 @@ const ContentBlockRenderer: React.FC<{ block: CodingContentBlock }> = ({ block }
 
 // ── Render blocks with tool_use + tool_result pairing ──
 
-function renderAssistantBlocks(blocks: CodingContentBlock[], sessionId: string, onToolToggle?: ToolToggleHandler): React.ReactNode[] {
+function renderAssistantBlocks(blocks: CodingContentBlock[], sessionId: string, onToolToggle?: ToolToggleHandler, containerWidth?: number): React.ReactNode[] {
   // Build a map: tool_use.id → tool_result
   const resultMap = new Map<string, { content: string; isError?: boolean }>()
   for (const b of blocks) {
@@ -392,7 +393,7 @@ function renderAssistantBlocks(blocks: CodingContentBlock[], sessionId: string, 
     } else if (b.type === 'todo_update') {
       nodes.push(<TodoUpdateBlock key={i} todos={b.todos} />)
     } else {
-      nodes.push(<ContentBlockRenderer key={i} block={b} />)
+      nodes.push(<ContentBlockRenderer key={i} block={b} containerWidth={containerWidth} />)
     }
   }
 
@@ -404,9 +405,10 @@ function renderAssistantBlocks(blocks: CodingContentBlock[], sessionId: string, 
 interface CodingChatMessageProps {
   message: CodingMessage
   onToolToggle?: ToolToggleHandler
+  containerWidth?: number
 }
 
-const CodingChatMessage: React.FC<CodingChatMessageProps> = ({ message, onToolToggle }) => {
+const CodingChatMessage: React.FC<CodingChatMessageProps> = ({ message, onToolToggle, containerWidth }) => {
   const { token } = theme.useToken()
   const user = useAuthStore((s) => s.user)
 
@@ -459,7 +461,7 @@ const CodingChatMessage: React.FC<CodingChatMessageProps> = ({ message, onToolTo
         ) : (
           // Assistant message: paired tool blocks + content
           <div style={{ maxWidth: '100%' }}>
-            {renderAssistantBlocks(message.blocks, message.sessionId, onToolToggle)}
+            {renderAssistantBlocks(message.blocks, message.sessionId, onToolToggle, containerWidth)}
             {message.costUsd !== undefined && message.costUsd > 0 && (
               <Text style={{ fontSize: 11, color: token.colorTextQuaternary }}>
                 Cost: ${message.costUsd.toFixed(4)}

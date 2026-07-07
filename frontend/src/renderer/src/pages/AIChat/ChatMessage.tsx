@@ -164,6 +164,7 @@ function MessageActionBar({ message }: { message: Message }) {
 interface ChatMessageProps {
   message: Message
   isStreaming?: boolean
+  containerWidth?: number
 }
 
 function getFileIcon(mimeType: string) {
@@ -231,7 +232,7 @@ function AttachmentPreview({ att }: { att: ChatAttachment }) {
   )
 }
 
-const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming }) => {
+const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming, containerWidth }) => {
   const isUser = message.role === 'user'
   const { token } = theme.useToken()
   const t = useT()
@@ -411,6 +412,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming }) => {
               ) : (
                 <>
                   <ReactMarkdown
+                    key={containerWidth}
                     remarkPlugins={[remarkGfm]}
                     rehypePlugins={[rehypeHighlightPlugin]}
                     urlTransform={(url) => {
