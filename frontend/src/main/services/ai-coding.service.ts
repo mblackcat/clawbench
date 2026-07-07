@@ -304,6 +304,46 @@ export function createWorkspace(
   return workspace
 }
 
+/**
+ * Normalize a directory path for comparison: forward slashes, no trailing slash.
+ * Matches the normalization used by the AI Code bridges (AICodeButton /
+ * EmbeddedCodingPanel) so find-or-create behaves consistently across every
+ * entry point that links a directory to an AI Coding workspace.
+ */
+function normalizeWorkingDir(p: string): string {
+  return p.replace(/\\/g, '/').replace(/\/$/, '')
+}
+
+/**
+ * Find an existing AI Coding workspace whose workingDir matches `workingDir`
+ * (compared after normalization). Returns undefined when none matches.
+ */
+export function findWorkspaceByWorkingDir(
+  workingDir: string
+): AICodingWorkspace | undefined {
+  const normalized = normalizeWorkingDir(workingDir)
+  return getAICodingConfig().workspaces.find(
+    (w) => normalizeWorkingDir(w.workingDir) === normalized
+  )
+}
+
+/**
+ * Ensure an AI Coding workspace exists for `workingDir`, creating one in the
+ * default group if none matches. If a workspace for that directory already
+ * exists (e.g. the user created it manually from the AI Coding page or via the
+ * workbench "AI Code" button), the existing entry is returned as-is — this
+ * never duplicates and never throws on an existing entry.
+ */
+export function ensureWorkspaceForWorkingDir(workingDir: string): AICodingWorkspace {
+  const existing = findWorkspaceByWorkingDir(workingDir)
+  if (existing) {
+    logger.info(`[AICoding] Workspace for dir already exists, skipping: ${workingDir}`)
+    return existing
+  }
+  const groupId = getAICodingConfig().groups.find((g) => g.isDefault)?.id || 'default'
+  return createWorkspace(workingDir, groupId)
+}
+
 export function updateWorkspace(
   id: string,
   updates: Partial<Omit<AICodingWorkspace, 'id' | 'createdAt'>>

@@ -11,6 +11,7 @@ import {
   Workspace
 } from '../store/workspace.store'
 import * as logger from '../utils/logger'
+import { ensureWorkspaceForWorkingDir } from './ai-coding.service'
 
 export type VcsType = 'git' | 'svn' | 'perforce' | 'none'
 
@@ -56,6 +57,17 @@ export function createWorkspace(
   const finalVcsType = (vcsType as VcsType) || detectVcsType(path)
   const workspace = addWorkspace({ name, path, vcsType: finalVcsType })
   logger.info(`Workspace created: ${name} (${finalVcsType}) at ${path}`)
+
+  // Auto-provision a matching AI Coding workspace for this directory. If one
+  // already exists (e.g. the user created it manually), it is skipped — no
+  // duplicate, no error. Failures here must never break global workspace
+  // creation, so they are logged and swallowed.
+  try {
+    ensureWorkspaceForWorkingDir(path)
+  } catch (err) {
+    logger.warn('Failed to auto-create AI Coding workspace:', err)
+  }
+
   return { success: true, workspace }
 }
 

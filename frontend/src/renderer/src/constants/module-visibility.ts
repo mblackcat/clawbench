@@ -41,3 +41,55 @@ export function normalizeModuleVisibility(value: unknown): ModuleVisibility {
     ...(value as Partial<ModuleVisibility>)
   }
 }
+
+/** Role-based module visibility templates for the setup wizard */
+export type SetupRole = 'general' | 'design' | 'tech' | 'art'
+
+export const ROLE_MODULE_TEMPLATES: Record<SetupRole, ModuleVisibility> = {
+  general: {
+    aiChat: true,
+    aiCoding: false,
+    aiTerminal: false,
+    aiAgents: false,
+    localEnv: false,
+    copiper: false
+  },
+  design: {
+    aiChat: true,
+    aiCoding: false,
+    aiTerminal: false,
+    aiAgents: false,
+    localEnv: false,
+    copiper: true
+  },
+  tech: {
+    aiChat: true,
+    aiCoding: true,
+    aiTerminal: true,
+    aiAgents: false,
+    localEnv: true,
+    copiper: false
+  },
+  art: {
+    aiChat: true,
+    aiCoding: false,
+    aiTerminal: false,
+    aiAgents: false,
+    localEnv: false,
+    copiper: false
+  }
+}
+
+export const ROLE_LABELS: Record<SetupRole, string> = {
+  general: '通用',
+  design: '设计',
+  tech: '技术',
+  art: '艺术'
+}
+
+export const ROLE_LABELS_EN: Record<SetupRole, string> = {
+  general: 'General',
+  design: 'Design',
+  tech: 'Tech',
+  art: 'Art'
+}

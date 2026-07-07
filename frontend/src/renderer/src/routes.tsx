@@ -7,6 +7,7 @@ import LoginPage from './pages/Login/LoginPage'
 import InstalledAppsPage from './pages/Workbench/InstalledAppsPage'
 import AppLibraryPage from './pages/Workbench/AppLibraryPage'
 import AppDetailPage from './pages/Workbench/AppDetailPage'
+import { useSettingsStore } from './stores/useSettingsStore'
 
 // Lazy-loaded pages: deferred until the user navigates to them
 const AIChatPage = React.lazy(() => import('./pages/AIChat/AIChatPage'))
@@ -26,6 +27,7 @@ const PromptEditor = React.lazy(() => import('./pages/Developer/PromptEditor'))
 const LinkEditor = React.lazy(() => import('./pages/Developer/LinkEditor'))
 const SkillDetailView = React.lazy(() => import('./pages/Developer/SkillDetailView'))
 const MyContributionsPage = React.lazy(() => import('./pages/Workbench/MyContributionsPage'))
+const SetupWizard = React.lazy(() => import('./pages/Setup/SetupWizard'))
 
 const LazyFallback: React.FC = () => (
   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
@@ -41,12 +43,21 @@ const AppsRedirect: React.FC = () => {
   return <Navigate to={to} replace />
 }
 
+// Root redirect that checks setup status
+const RootRedirect: React.FC = () => {
+  const { hasCompletedSetup, loading } = useSettingsStore()
+  if (loading) return <LazyFallback />
+  if (!hasCompletedSetup) return <Navigate to="/setup" replace />
+  return <Navigate to={localStorage.getItem('lastRoute') || '/ai-chat'} replace />
+}
+
 const AppRoutes: React.FC = () => {
   return (
     <Suspense fallback={<LazyFallback />}>
       <Routes>
-        <Route path="/" element={<Navigate to={localStorage.getItem('lastRoute') || '/ai-chat'} replace />} />
+        <Route path="/" element={<RootRedirect />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/setup" element={<RequireAuth><SetupWizard /></RequireAuth>} />
         <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
           <Route path="/workbench/installed" element={<InstalledAppsPage />} />
           <Route path="/workbench/library" element={<AppLibraryPage />} />
