@@ -485,6 +485,64 @@ const CopiperTable: React.FC<CopiperTableProps> = ({ onRowDoubleClick }) => {
         background-color: ${token.colorPrimaryBg} !important;
       }
 
+      /* Custom multi-select editor panel (indices columns) */
+      .copiper-multiselect-panel {
+        position: absolute;
+        z-index: 10000;
+        max-height: 280px;
+        display: flex;
+        flex-direction: column;
+        background-color: ${token.colorBgElevated};
+        border: 1px solid ${token.colorBorderSecondary};
+        border-radius: 8px;
+        box-shadow: ${token.boxShadow};
+        overflow: hidden;
+      }
+      .copiper-multiselect-search {
+        margin: 6px;
+        padding: 4px 8px;
+        background-color: ${token.colorBgContainer};
+        color: ${token.colorText};
+        border: 1px solid ${token.colorBorder};
+        border-radius: 6px;
+        outline: none;
+        font-size: ${token.fontSize}px;
+      }
+      .copiper-multiselect-search:focus {
+        border-color: ${token.colorPrimary};
+      }
+      .copiper-multiselect-list {
+        overflow-y: auto;
+        padding: 0 4px 6px;
+      }
+      .copiper-multiselect-item {
+        padding: 4px 24px 4px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        color: ${token.colorText};
+        white-space: nowrap;
+        position: relative;
+        user-select: none;
+      }
+      .copiper-multiselect-item:hover {
+        background-color: ${token.colorPrimaryBg};
+      }
+      .copiper-multiselect-item.is-selected {
+        background-color: ${token.colorPrimaryBgHover};
+        font-weight: 600;
+      }
+      .copiper-multiselect-item.is-selected::after {
+        content: '✓';
+        position: absolute;
+        right: 8px;
+        color: ${token.colorPrimary};
+      }
+      .copiper-multiselect-empty {
+        padding: 8px;
+        color: ${token.colorTextSecondary};
+        font-size: ${token.fontSize}px;
+        text-align: center;
+      }
       /* Re-pin main data table cells (container has data-copiper-main) */
       [data-copiper-main] .ht_master td {
         background-color: ${token.colorBgContainer} !important;
