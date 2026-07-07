@@ -41,6 +41,28 @@ const CodingMessageList: React.FC<CodingMessageListProps> = ({
   const lastMessageIdRef = useRef<string | null>(null)
   const lastSessionIdRef = useRef<string | undefined>(sessionId)
 
+  // rAF-coalesced streaming display: the store updates per token, but we only
+  // re-render the (expensive) markdown streaming preview once per animation
+  // frame at most, coalescing bursts of deltas into one paint. Mirrors Clay's
+  // appendDelta/drainStreamTick approach for a smooth native feel.
+  const latestBlocksRef = useRef<CodingContentBlock[]>(streamingBlocks)
+  latestBlocksRef.current = streamingBlocks
+  const [displayedBlocks, setDisplayedBlocks] = useState<CodingContentBlock[]>(streamingBlocks)
+  const rafRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (!isStreaming) {
+      if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
+      setDisplayedBlocks(streamingBlocks)
+      return
+    }
+    if (rafRef.current != null) return  // a coalescing frame is already scheduled
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null
+      setDisplayedBlocks(latestBlocksRef.current)
+    })
+  }, [streamingBlocks, isStreaming])
+  useEffect(() => () => { if (rafRef.current != null) cancelAnimationFrame(rafRef.current) }, [])
+
   // Track container width to force ReactMarkdown re-render on resize.
   // Debounce the key update so streaming content growth (which can cause
   // scrollbar appear/disappear → width change → ReactMarkdown remount loops)
@@ -166,7 +188,7 @@ const CodingMessageList: React.FC<CodingMessageListProps> = ({
 
   // Build tool_result map for streaming blocks
   const streamResultMap = new Map<string, { content: string; isError?: boolean }>()
-  for (const b of streamingBlocks) {
+  for (const b of displayedBlocks) {
     if (b.type === 'tool_result') {
       streamResultMap.set(b.toolUseId, { content: b.content, isError: b.isError })
     }
@@ -184,7 +206,7 @@ const CodingMessageList: React.FC<CodingMessageListProps> = ({
       ))}
 
       {/* Streaming message preview */}
-      {isStreaming && streamingBlocks.length > 0 && (
+      {isStreaming && displayedBlocks.length > 0 && (
         <div style={{ padding: '8px 16px', display: 'flex', gap: 10 }}>
           <div style={{
             width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
@@ -195,9 +217,9 @@ const CodingMessageList: React.FC<CodingMessageListProps> = ({
             <RobotOutlined />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            {streamingBlocks.map((block, i) => {
+            {displayedBlocks.map((block, i) => {
               if (block.type === 'text') {
-                const isLastText = streamingBlocks.slice(i + 1).every(b => b.type !== 'text')
+                const isLastText = displayedBlocks.slice(i + 1).every(b => b.type !== 'text')
                 return (
                   <div key={i} className="markdown-body" style={{ fontSize: 13, lineHeight: 1.7 }}>
                     <ReactMarkdown

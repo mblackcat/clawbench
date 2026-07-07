@@ -6,7 +6,7 @@ import {
   FolderOutlined, BranchesOutlined, DollarOutlined, MessageOutlined, DashboardOutlined, UnlockOutlined
 } from '@ant-design/icons'
 import { useT } from '../../i18n'
-import type { AIToolType, CodingContentBlock, CodingMode, CodingPendingFile } from '../../types/ai-coding'
+import type { AIToolType, CodingContentBlock, CodingImage, CodingMode, CodingPendingFile } from '../../types/ai-coding'
 
 const { TextArea } = Input
 
@@ -54,7 +54,7 @@ interface CodingInputProps {
   costUsd?: number
   messageCount?: number
   contextUsage?: Extract<CodingContentBlock, { type: 'context_usage' }>
-  onSend: (text: string) => void
+  onSend: (text: string, images?: CodingImage[]) => void
   onModeChange: (mode: CodingMode) => void
   onInterrupt: () => void
   onStop: () => void
@@ -154,21 +154,34 @@ const CodingInput: React.FC<CodingInputProps> = ({
     }
   }, [modeIndex, modeOptions])
 
-  const handleSend = useCallback(() => {
+  const handleSend = useCallback(async () => {
     const text = inputValue.trim()
     if (!text && pendingFiles.length === 0) return
 
-    let finalText = text
-    if (pendingFiles.length > 0) {
-      const paths = pendingFiles.map(f => f.filePath).join(', ')
-      finalText = `[附件: ${paths}]\n\n${text}`
+    const imageFiles = pendingFiles.filter(f => f.isImage)
+    const otherFiles = pendingFiles.filter(f => !f.isImage)
+
+    // Image attachments: read as base64 so Claude receives real multimodal input.
+    const images: CodingImage[] = []
+    for (const f of imageFiles) {
+      try {
+        const res = await window.api.aiCoding.readFileBase64(f.filePath)
+        if (res) images.push(res)
+      } catch { /* skip unreadable file */ }
     }
 
-    onSend(finalText)
+    // Non-image files: reference by path so the agent can Read them itself.
+    let finalText = text
+    if (otherFiles.length > 0) {
+      const paths = otherFiles.map(f => f.filePath).join('\n- ')
+      finalText = `${text ? text + '\n\n' : ''}${t('coding.refFiles')}\n- ${paths}`
+    }
+
+    onSend(finalText, images.length > 0 ? images : undefined)
     setInputValue('')
     setPendingFiles([])
     setTimeout(() => textAreaRef.current?.focus(), 0)
-  }, [inputValue, pendingFiles, onSend])
+  }, [inputValue, pendingFiles, onSend, t])
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
     // Inline slash autocomplete navigation

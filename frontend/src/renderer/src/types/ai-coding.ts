@@ -128,6 +128,12 @@ export interface CodingPendingFile {
   isImage: boolean
 }
 
+/** An image attached to a chat message (base64, sent to the model as a real image block). */
+export interface CodingImage {
+  data: string       // base64-encoded image bytes (no data: prefix)
+  mediaType: string  // e.g. 'image/png'
+}
+
 export interface DetectedCLI {
   toolType: AIToolType
   name: string

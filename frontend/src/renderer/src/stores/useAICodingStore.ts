@@ -151,7 +151,7 @@ interface AICodingState {
   initListeners: () => () => void; setActiveSession: (sid: string | null) => void
   hydrateSessionTranscript: (sid: string) => Promise<void>
   createAndOpenSession: (wid: string, tt: AIToolType) => Promise<void>; detectTools: () => Promise<DetectedCLI[]>
-  sendUserMessage: (sid: string, text: string) => Promise<void>; clearSessionMessages: (sid: string) => void
+  sendUserMessage: (sid: string, text: string, images?: { data: string; mediaType: string }[]) => Promise<void>; clearSessionMessages: (sid: string) => void
   executeSlashCommand: (sid: string, command: string) => Promise<void>
   setSessionMode: (sid: string, m: CodingMode) => void; interruptSession: (sid: string) => Promise<void>
   claudeViewModes: Record<string, ClaudeViewMode>
@@ -493,9 +493,14 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
   createAndOpenSession: async (wid, tt) => { const s = await get().createSession(wid, tt, 'local'); set({ activeSessionId: s.id }) },
   detectTools: async () => window.api.aiCoding.detectTools(),
 
-  sendUserMessage: async (sessionId, text) => {
+  sendUserMessage: async (sessionId, text, images) => {
     const { sessions } = get(); const session = sessions.find(s => s.id === sessionId); if (!session) return
-    const userMsg: CodingMessage = { id: genMsgId(), sessionId, role: 'user', blocks: [{ type: 'text', text }], timestamp: Date.now() }
+    const userBlocks: CodingContentBlock[] = []
+    if (images && images.length > 0) {
+      for (const img of images) userBlocks.push({ type: 'text', text: `📎 ${img.mediaType} image (${Math.round(img.data.length * 0.75 / 1024)} KB)` })
+    }
+    if (text) userBlocks.push({ type: 'text', text })
+    const userMsg: CodingMessage = { id: genMsgId(), sessionId, role: 'user', blocks: userBlocks.length > 0 ? userBlocks : [{ type: 'text', text: '' }], timestamp: Date.now() }
     set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), userMsg] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: true }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } }))
     if (!session.title) { const t = text.slice(0, 50) + (text.length > 50 ? '…' : ''); try { await get().updateSession(sessionId, { title: t }) } catch { /* */ } }
     if (session.status === 'closed' || session.status === 'completed' || session.status === 'error') {
@@ -505,7 +510,7 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
       await window.api.aiCoding.setPermissionMode(sessionId, toRuntimePermissionMode(session.toolType, activeMode)).catch(() => {})
       await new Promise(r => setTimeout(r, 500))
     }
-    try { await window.api.aiCoding.writeToSession(sessionId, text) } catch (err: any) { const em: CodingMessage = { id: genMsgId(), sessionId, role: 'system', blocks: [{ type: 'text', text: `发送失败: ${err?.message || String(err)}` }], timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), em] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false } })) }
+    try { await window.api.aiCoding.writeToSession(sessionId, text, images) } catch (err: any) { const em: CodingMessage = { id: genMsgId(), sessionId, role: 'system', blocks: [{ type: 'text', text: `发送失败: ${err?.message || String(err)}` }], timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), em] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false } })) }
   },
   clearSessionMessages: (sid) => set(s => ({ sessionMessages: { ...s.sessionMessages, [sid]: [] }, sessionStreaming: { ...s.sessionStreaming, [sid]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sid]: [] } })),
   executeSlashCommand: async (sessionId, command) => {

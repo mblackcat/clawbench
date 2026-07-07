@@ -265,14 +265,38 @@ export function resetActiveSessionsOnStart(): void {
   setAICodingSessions(updated)
 }
 
+const IMAGE_MEDIA_BY_EXT: Record<string, string> = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+  webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml', ico: 'image/x-icon',
+}
+
+/** Read an image file as base64 (for multimodal chat attachments). Returns null on failure. */
+export function readImageBase64(filePath: string): { data: string; mediaType: string } | null {
+  try {
+    if (!filePath || !fs.existsSync(filePath)) return null
+    const ext = path.extname(filePath).slice(1).toLowerCase()
+    const mediaType = IMAGE_MEDIA_BY_EXT[ext] || 'application/octet-stream'
+    const buf = fs.readFileSync(filePath)
+    return { data: buf.toString('base64'), mediaType }
+  } catch (err) {
+    logger.warn(`[AICoding] readImageBase64 failed: ${filePath}: ${err}`)
+    return null
+  }
+}
+
 /**
- * Write text to a running session.
- * - Claude SDK: starts a new query() call with the prompt.
- * - PTY sessions: writes raw text + carriage-return (Enter key equivalent).
+ * Write text (and optional images) to a running session.
+ * - Claude SDK: pushes a user turn into the long-lived message queue (images
+ *   become real image content blocks).
+ * - Codex / PTY sessions: text only (no multimodal support); images ignored.
  */
-export async function writeToSession(sessionId: string, text: string): Promise<{ success: boolean; error?: string }> {
+export async function writeToSession(
+  sessionId: string,
+  text: string,
+  images?: { data: string; mediaType: string }[]
+): Promise<{ success: boolean; error?: string }> {
   if (hasSDKSession(sessionId)) {
-    return writeToSDKSession(sessionId, text)
+    return writeToSDKSession(sessionId, text, images)
   }
 
   if (hasCodexSession(sessionId)) {

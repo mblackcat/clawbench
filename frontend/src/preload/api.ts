@@ -459,8 +459,10 @@ export const api = {
     deleteSession: (id: string) => ipcRenderer.invoke('ai-coding:delete-session', id),
     stopSession: (id: string) => ipcRenderer.invoke('ai-coding:stop-session', id),
     launchSession: (id: string, opts?: { forcePty?: boolean; cols?: number; rows?: number }) => ipcRenderer.invoke('ai-coding:launch-session', id, opts),
-    writeToSession: (sessionId: string, text: string) =>
-      ipcRenderer.invoke('ai-coding:write-to-session', sessionId, text),
+    writeToSession: (sessionId: string, text: string, images?: { data: string; mediaType: string }[]) =>
+      ipcRenderer.invoke('ai-coding:write-to-session', sessionId, text, images),
+    readFileBase64: (filePath: string) =>
+      ipcRenderer.invoke('ai-coding:read-file-base64', filePath),
     interruptSession: (sessionId: string) =>
       ipcRenderer.invoke('ai-coding:interrupt-session', sessionId),
     executeSlashCommand: (sessionId: string, command: string) =>

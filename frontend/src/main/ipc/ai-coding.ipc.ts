@@ -17,6 +17,7 @@ import {
   deleteWorkspace,
   getSessionsForWorkspace,
   writeToSession,
+  readImageBase64,
   getSessionOutput,
   getRawSessionOutput,
   interruptSession,
@@ -135,8 +136,12 @@ export function registerAICodingIpc(): void {
     return launchSession(id, opts)
   })
 
-  ipcMain.handle('ai-coding:write-to-session', async (_event, sessionId: string, text: string) => {
-    return writeToSession(sessionId, text)
+  ipcMain.handle('ai-coding:write-to-session', async (_event, sessionId: string, text: string, images?: { data: string; mediaType: string }[]) => {
+    return writeToSession(sessionId, text, images)
+  })
+
+  ipcMain.handle('ai-coding:read-file-base64', async (_event, filePath: string) => {
+    return readImageBase64(filePath)
   })
 
   ipcMain.handle('ai-coding:interrupt-session', async (_event, sessionId: string) => {

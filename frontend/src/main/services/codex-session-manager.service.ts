@@ -4,6 +4,7 @@ import * as readline from 'readline'
 import * as path from 'path'
 import * as fs from 'fs'
 import * as logger from '../utils/logger'
+import { scanAndMergeInstructions } from './coding-adapters/instructions'
 
 type CodingMode = 'plan' | 'ask-first' | 'auto-edit' | 'full-access'
 type CodexSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
@@ -594,6 +595,7 @@ export async function writeToCodexSession(
   state.isProcessing = true
   try {
     const opts = modeToCodexOptions(state.mode)
+    const creatingThread = !state.threadId
     let prompt = text
     if (opts.prefix) prompt = `${opts.prefix}\n\n${text}`
 
@@ -606,6 +608,13 @@ export async function writeToCodexSession(
         state.threadId = threadId
         emitEvent(sessionId, state, { type: 'system', subtype: 'init', session_id: threadId })
       }
+    }
+
+    // On the first turn of a new thread, inject non-native project instructions
+    // (CLAUDE.md, .cursorrules, ...). Codex reads AGENTS.md natively.
+    if (creatingThread) {
+      const merged = scanAndMergeInstructions(state.cwd, 'codex')
+      if (merged) prompt = `${merged}\n\n${prompt}`
     }
 
     const turnPromise = new Promise<void>((resolve) => { state.turnResolve = resolve })

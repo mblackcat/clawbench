@@ -22,6 +22,7 @@ import * as logger from '../utils/logger'
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { createMessageQueue, type MessageQueue } from './coding-adapters/message-queue'
 import { flattenClaudeEvent, createFlattenCtx, type FlattenCtx } from './coding-adapters/claude-stream'
+import { scanAndMergeInstructions } from './coding-adapters/instructions'
 import type { CodingStreamEvent } from './coding-adapters/stream-events'
 
 // Lazy-import the SDK to avoid issues if it's not installed
@@ -357,6 +358,11 @@ async function startQuery(sessionId: string, state: SDKSessionState): Promise<vo
   if (state.env) options.env = state.env
   if (state.toolSessionId) options.resume = state.toolSessionId
 
+  // Inject non-native project instructions (AGENTS.md, .cursorrules, ...) as
+  // extra system context. CLAUDE.md is read natively via settingSources.
+  const mergedInstructions = scanAndMergeInstructions(state.cwd, 'claude')
+  if (mergedInstructions) options.systemPrompt = mergedInstructions
+
   const q = queryFn({ prompt: state.messageQueue, options })
   state.activeQuery = q
 
@@ -376,7 +382,8 @@ async function startQuery(sessionId: string, state: SDKSessionState): Promise<vo
  */
 export async function writeToSDKSession(
   sessionId: string,
-  text: string
+  text: string,
+  images?: { data: string; mediaType: string }[]
 ): Promise<{ success: boolean; error?: string }> {
   const state = sdkSessions.get(sessionId)
   if (!state) return { success: false, error: 'Session not running' }
@@ -386,9 +393,17 @@ export async function writeToSDKSession(
   if (localResult) return localResult
 
   state.isProcessing = true
+  // Build content blocks: images first (real multimodal input), then text.
+  const content: any[] = []
+  if (images && images.length > 0) {
+    for (const img of images) {
+      content.push({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.data } })
+    }
+  }
+  if (text) content.push({ type: 'text', text })
   state.messageQueue.push({
     type: 'user',
-    message: { role: 'user', content: [{ type: 'text', text }] },
+    message: { role: 'user', content },
     parent_tool_use_id: null,
   })
   return { success: true }
