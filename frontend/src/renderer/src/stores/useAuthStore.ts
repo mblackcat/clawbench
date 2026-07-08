@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { User } from '../types/auth'
-import apiClient from '../services/apiClient'
+import apiClient, { ApiClientError } from '../services/apiClient'
 import { localStorageManager } from '../services/localStorageManager'
 
 interface AuthState {
@@ -18,6 +18,8 @@ interface AuthState {
   registerAndLogin: (username: string, password: string) => Promise<void>
   loginWithLocalMode: () => void
   logout: () => Promise<void>
+  /** 登录态失效（运行期 401）时强制登出：清 token + 跳登录页，不调用后端 logout。 */
+  expireSession: () => void
   clearError: () => void
 }
 
@@ -33,7 +35,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   checkAuth: async () => {
     set({ loading: true, error: null })
     try {
-      // 0. 检查本地模式（持久化在 localStorage）
+      // 0. 检查本地模式（持久化在 localStorage）—— 本地模式无需校验 token
       if (localStorage.getItem('clawbench_local_mode') === 'true') {
         set({
           loggedIn: true,
@@ -44,21 +46,28 @@ export const useAuthStore = create<AuthState>((set) => ({
         return
       }
 
-      // 1. 检查飞书 auth（通过 IPC 获取 main process 存储的状态）
+      // 1. 找到候选登录态：飞书（main process）优先，其次密码（localStorage）
+      //    注意：main process 的 getAuthStatus() 只判断 token 是否“存在”，
+      //    不校验是否过期，因此这里必须再用 token 调一次 /users/me 验证有效性。
+      let candidateToken: string | null = null
+      let candidateMethod: 'feishu' | 'password' | null = null
+
       const status = await window.api.auth.getStatus()
       if (status.loggedIn && status.user && status.token) {
-        // 飞书登录：将 JWT 设置到 apiClient
-        apiClient.setToken(status.token)
-        set({
-          loggedIn: true,
-          user: status.user,
-          authMethod: 'feishu',
-        })
-        return
+        candidateToken = status.token
+        candidateMethod = 'feishu'
+      } else if (apiClient.isLoggedIn()) {
+        candidateToken = apiClient.getToken()
+        candidateMethod = 'password'
       }
 
-      // 2. 检查密码 auth（JWT token 在 localStorage 中）
-      if (apiClient.isLoggedIn()) {
+      // 2. 用候选 token 实际请求后端校验。
+      //    - 校验通过：进入应用。
+      //    - 401：明确登录态失效 → 清除凭证，由 RequireAuth 跳转登录页。
+      //    - 其它错误（网络不可达/5xx）：不清凭证。飞书有缓存 user 时乐观进入，
+      //      密码模式无缓存 user 无法构造，则保持未登录态。
+      if (candidateToken && candidateMethod) {
+        apiClient.setToken(candidateToken)
         try {
           const apiUser = await apiClient.getCurrentUser()
           set({
@@ -70,12 +79,23 @@ export const useAuthStore = create<AuthState>((set) => ({
               avatarUrl: (apiUser as any).avatarUrl || '',
               email: apiUser.email,
             },
-            authMethod: 'password',
+            authMethod: candidateMethod,
           })
           return
-        } catch {
-          // Token invalid, clear it
-          apiClient.clearToken()
+        } catch (e) {
+          const isAuthError = e instanceof ApiClientError && e.isAuthError()
+          if (isAuthError) {
+            // token 已失效：清除本地与主进程凭证
+            apiClient.clearToken()
+            if (candidateMethod === 'feishu') {
+              try { await window.api.auth.logout() } catch { /* ignore */ }
+            }
+          } else if (candidateMethod === 'feishu' && status.user) {
+            // 后端暂时不可达：保留飞书凭证，乐观进入（API 调用会按需报错）
+            set({ loggedIn: true, user: status.user, authMethod: 'feishu' })
+            return
+          }
+          // 密码模式网络错误 / 无缓存用户：落入未登录态
         }
       }
 
@@ -198,4 +218,19 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   clearError: () => set({ error: null }),
+
+  expireSession: () => {
+    // 幂等：未登录或本地模式下直接忽略，避免重复弹窗/跳转
+    const { loggedIn, isLocalMode, authMethod } = useAuthStore.getState()
+    if (!loggedIn || isLocalMode) return
+
+    // 清除 renderer 侧 token（不调用后端 logout，因为 token 已失效）
+    apiClient.clearToken()
+    // 飞书登录还需清除主进程存储的凭证，避免下次启动又拿到过期 token
+    if (authMethod === 'feishu') {
+      try { window.api.auth.logout() } catch { /* ignore */ }
+    }
+    // 置为未登录 → RequireAuth 会把当前页重定向到 /login
+    set({ loggedIn: false, isLocalMode: false, user: null, authMethod: null })
+  },
 }))

@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Spin } from 'antd'
 import AppLayout from './components/Layout/AppLayout'
 import RequireAuth from './components/RequireAuth'
+import SessionGuard from './components/SessionGuard'
 import LoginPage from './pages/Login/LoginPage'
 import InstalledAppsPage from './pages/Workbench/InstalledAppsPage'
 import AppLibraryPage from './pages/Workbench/AppLibraryPage'
@@ -53,8 +54,9 @@ const RootRedirect: React.FC = () => {
 
 const AppRoutes: React.FC = () => {
   return (
-    <Suspense fallback={<LazyFallback />}>
-      <Routes>
+    <SessionGuard>
+      <Suspense fallback={<LazyFallback />}>
+        <Routes>
         <Route path="/" element={<RootRedirect />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/setup" element={<RequireAuth><SetupWizard /></RequireAuth>} />
@@ -84,8 +86,9 @@ const AppRoutes: React.FC = () => {
           <Route path="/apps" element={<Navigate to="/workbench/installed" replace />} />
           <Route path="/apps/*" element={<AppsRedirect />} />
         </Route>
-      </Routes>
-    </Suspense>
+        </Routes>
+      </Suspense>
+    </SessionGuard>
   )
 }
 

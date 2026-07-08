@@ -208,6 +208,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'topbar.switchLang': '切换语言',
     'topbar.notLoggedIn': '未登录',
     'topbar.login': '登录',
+
+    // 登录态失效
+    'auth.sessionExpired': '登录已失效，请重新登录',
     'topbar.imNotConfigured': '远程 IM 控制：未配置',
     'topbar.imConnected': '远程 IM 控制：已连接',
     'topbar.imConnecting': '远程 IM 控制：连接中…',
@@ -1860,6 +1863,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'topbar.switchLang': 'Switch Language',
     'topbar.notLoggedIn': 'Not logged in',
     'topbar.login': 'Log In',
+
+    // Session expired
+    'auth.sessionExpired': 'Session expired, please log in again',
     'topbar.imNotConfigured': 'Remote IM: Not configured',
     'topbar.imConnected': 'Remote IM: Connected',
     'topbar.imConnecting': 'Remote IM: Connecting…',
