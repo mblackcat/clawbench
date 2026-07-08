@@ -53,6 +53,7 @@ import type { ScannedSkill } from '../../types/skill';
 import ParamDrawer from '../../components/ParamDrawer';
 import CreateTypeModal from '../../components/CreateTypeModal';
 import { openExternalLink } from '../../utils/markdown-links';
+import { buildInitialAppParams, saveAppParams } from '../../utils/subapp-params';
 import { useT } from '../../i18n';
 
 const { Title, Text } = Typography;
@@ -530,6 +531,7 @@ const InstalledAppsPage: React.FC = () => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerManifest, setDrawerManifest] = useState<SubAppManifest | null>(null);
   const [drawerAppId, setDrawerAppId] = useState<string>('');
+  const [drawerInitialValues, setDrawerInitialValues] = useState<Record<string, unknown>>({});
   const [createModalOpen, setCreateModalOpen] = useState(false);
 
   // View mode (平铺 / tab 页签), persisted across sessions.
@@ -707,42 +709,51 @@ const InstalledAppsPage: React.FC = () => {
     if (hasRequiredParams || manifest.confirm_before_run) {
       setDrawerAppId(appId);
       setDrawerManifest(manifest);
+      setDrawerInitialValues(buildInitialAppParams(appId, params));
       setDrawerOpen(true);
       return;
     }
-    // No required params — collect defaults and execute directly
-    const defaults: Record<string, unknown> = {};
-    for (const param of params) {
-      if (param.default !== undefined) {
-        defaults[param.name] = param.default;
-      }
-    }
-    await executeApp(appId, appName, defaults);
+    await executeApp(appId, appName, buildInitialAppParams(appId, params));
   }, []);
 
   /** Always open the detail sidebar for the given app. */
   const handleShowDetail = useCallback((appId: string, manifest: SubAppManifest) => {
     setDrawerAppId(appId);
     setDrawerManifest(manifest);
+    setDrawerInitialValues(buildInitialAppParams(appId, manifest.params || []));
     setDrawerOpen(true);
   }, []);
 
   const handleDrawerSubmit = async (params: Record<string, unknown>) => {
     setDrawerOpen(false);
     if (drawerAppId && drawerManifest) {
+      saveAppParams(drawerAppId, params);
       await executeApp(drawerAppId, drawerManifest.name, params);
     }
   };
 
   const executeApp = async (appId: string, appName: string, params: Record<string, unknown>) => {
     try {
+      // Sub-apps run against the active workspace — its path/vcs is passed to
+      // the Python SDK. A fresh install has no workspace yet, so fail-fast here
+      // with an actionable hint instead of letting the main process throw an
+      // opaque "No active workspace selected" error the user never sees.
+      const activeWorkspace = useWorkspaceStore.getState().activeWorkspace;
+      if (!activeWorkspace) {
+        message.warning(t('workbench.selectWorkspaceFirst'));
+        return;
+      }
+
       const taskId = await window.api.subapp.execute(appId, params);
       startTask(taskId, appId, appName);
       setActiveTask(taskId);
       message.success(t('workbench.appStarted', appName));
     } catch (error) {
       console.error('Failed to run app:', error);
-      message.error(t('workbench.runFailed'));
+      // Surface the real reason (e.g. "Sub-app not found") so a launch failure
+      // is never a silent generic toast with nothing in the output panel.
+      const reason = error instanceof Error ? error.message : String(error);
+      message.error(reason ? t('workbench.runFailedReason', reason) : t('workbench.runFailed'));
     }
   };
 
@@ -1124,6 +1135,7 @@ const InstalledAppsPage: React.FC = () => {
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         manifest={drawerManifest}
+        initialValues={drawerInitialValues}
         onSubmit={handleDrawerSubmit}
       />
 

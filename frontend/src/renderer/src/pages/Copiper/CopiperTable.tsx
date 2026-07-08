@@ -3,13 +3,183 @@ import { Typography, theme } from 'antd'
 import { HotTable } from '@handsontable/react'
 import { registerAllModules } from 'handsontable/registry'
 import { registerLanguageDictionary, zhCN } from 'handsontable/i18n'
-import type Handsontable from 'handsontable'
+import Handsontable from 'handsontable'
 import 'handsontable/dist/handsontable.full.min.css'
 import { useCopiperStore } from '../../stores/useCopiperStore'
 import type { ColDef } from '../../types/copiper'
 
 registerAllModules()
 registerLanguageDictionary(zhCN)
+
+// ── Custom multi-select dropdown editor for indices columns ──
+// Handsontable's built-in DropdownEditor only supports single selection, but
+// indices columns store pipe-delimited lists (e.g. "id_1|id_2|id_3"). Rather
+// than fighting the built-in editor's internals, this is a self-contained
+// BaseEditor that renders its own popup panel with a search filter and a
+// checkbox list. Selection follows native multi-select listbox semantics:
+//   • plain click       → select only this item (replace)
+//   • Ctrl / Cmd+click   → toggle this item
+//   • Shift+click        → select the range from the anchor item
+class MultiSelectEditor extends Handsontable.editors.BaseEditor {
+  private panel!: HTMLDivElement
+  private searchInput!: HTMLInputElement
+  private listEl!: HTMLDivElement
+  // Full option set (canonical order) for this cell
+  private options: string[] = []
+  // Currently selected option names
+  private selected = new Set<string>()
+  // Lower-cased filter text driving the visible list
+  private filterText = ''
+  // Anchor index (into the *visible* list) for Shift+click ranges
+  private anchorIndex = -1
+
+  init() {
+    const doc = this.hot.rootDocument
+
+    this.panel = doc.createElement('div')
+    this.panel.className = 'copiper-multiselect-panel'
+    this.panel.style.display = 'none'
+
+    this.searchInput = doc.createElement('input')
+    this.searchInput.type = 'text'
+    this.searchInput.className = 'copiper-multiselect-search'
+    this.searchInput.setAttribute('placeholder', '输入以筛选…')
+    this.searchInput.addEventListener('input', () => {
+      this.filterText = this.searchInput.value.trim().toLowerCase()
+      this.renderList()
+    })
+    this.searchInput.addEventListener('keydown', (e) => {
+      // Keep typing away from Handsontable's grid key handler
+      e.stopPropagation()
+      if (e.key === 'Escape') {
+        this.finishEditing(true)
+      } else if (e.key === 'Enter') {
+        this.finishEditing(false)
+      }
+    })
+
+    this.listEl = doc.createElement('div')
+    this.listEl.className = 'copiper-multiselect-list'
+
+    this.panel.appendChild(this.searchInput)
+    this.panel.appendChild(this.listEl)
+
+    // Stop panel interactions from bubbling to the document, where
+    // Handsontable's outside-click handler would otherwise close the editor.
+    this.panel.addEventListener('mousedown', (e) => e.stopPropagation())
+
+    doc.body.appendChild(this.panel)
+  }
+
+  prepare(
+    row: number,
+    col: number,
+    prop: string | number,
+    td: HTMLTableCellElement,
+    value: unknown,
+    cellProperties: Handsontable.CellProperties
+  ) {
+    super.prepare(row, col, prop, td, value, cellProperties)
+    const src = (cellProperties as any).source
+    this.options = Array.isArray(src) ? [...src] : []
+  }
+
+  getValue(): string {
+    // Emit in canonical option order for stable pipe strings
+    return this.options.filter((o) => this.selected.has(o)).join('|')
+  }
+
+  setValue(value: unknown): void {
+    this.selected = new Set(
+      String(value ?? '')
+        .split('|')
+        .filter(Boolean)
+    )
+  }
+
+  open(): void {
+    this.filterText = ''
+    this.searchInput.value = ''
+    this.anchorIndex = -1
+    this.renderList()
+
+    // Position the panel just below the edited cell
+    const rect = this.TD.getBoundingClientRect()
+    const win = this.hot.rootWindow
+    this.panel.style.display = 'block'
+    this.panel.style.left = `${rect.left + win.scrollX}px`
+    this.panel.style.top = `${rect.bottom + win.scrollY}px`
+    this.panel.style.minWidth = `${rect.width}px`
+
+    this.searchInput.focus()
+  }
+
+  close(): void {
+    this.panel.style.display = 'none'
+  }
+
+  focus(): void {
+    this.searchInput.focus()
+  }
+
+  // Options currently visible under the active filter
+  private visibleOptions(): string[] {
+    if (!this.filterText) return this.options
+    return this.options.filter((o) => o.toLowerCase().includes(this.filterText))
+  }
+
+  private handleItemClick(opt: string, e: MouseEvent): void {
+    const visible = this.visibleOptions()
+    const idx = visible.indexOf(opt)
+    const additive = e.ctrlKey || e.metaKey
+
+    if (e.shiftKey && this.anchorIndex >= 0 && this.anchorIndex < visible.length) {
+      if (!additive) this.selected.clear()
+      const start = Math.min(this.anchorIndex, idx)
+      const end = Math.max(this.anchorIndex, idx)
+      for (let i = start; i <= end; i++) this.selected.add(visible[i])
+    } else if (additive) {
+      if (this.selected.has(opt)) this.selected.delete(opt)
+      else this.selected.add(opt)
+      this.anchorIndex = idx
+    } else {
+      this.selected.clear()
+      this.selected.add(opt)
+      this.anchorIndex = idx
+    }
+    this.renderList()
+  }
+
+  private renderList(): void {
+    const doc = this.hot.rootDocument
+    this.listEl.innerHTML = ''
+    const visible = this.visibleOptions()
+
+    if (visible.length === 0) {
+      const empty = doc.createElement('div')
+      empty.className = 'copiper-multiselect-empty'
+      empty.textContent = '无匹配项'
+      this.listEl.appendChild(empty)
+      return
+    }
+
+    for (const opt of visible) {
+      const item = doc.createElement('div')
+      item.className = 'copiper-multiselect-item'
+      if (this.selected.has(opt)) item.classList.add('is-selected')
+      item.textContent = opt
+      item.addEventListener('mousedown', (e) => {
+        e.preventDefault() // keep focus in the search input
+        e.stopPropagation() // don't let Handsontable close the editor
+        this.handleItemClick(opt, e)
+      })
+      this.listEl.appendChild(item)
+    }
+  }
+}
+
+Handsontable.editors.registerEditor('multi-select', MultiSelectEditor)
+// ─────────────────────────────────────────────────────────────────
 
 // `afterOnCellDoubleClick` is passed through to Handsontable settings but is not part of
 // the published HotTableProps typings — declare it via module augmentation (type-only).
@@ -315,6 +485,64 @@ const CopiperTable: React.FC<CopiperTableProps> = ({ onRowDoubleClick }) => {
         background-color: ${token.colorPrimaryBg} !important;
       }
 
+      /* Custom multi-select editor panel (indices columns) */
+      .copiper-multiselect-panel {
+        position: absolute;
+        z-index: 10000;
+        max-height: 280px;
+        display: flex;
+        flex-direction: column;
+        background-color: ${token.colorBgElevated};
+        border: 1px solid ${token.colorBorderSecondary};
+        border-radius: 8px;
+        box-shadow: ${token.boxShadow};
+        overflow: hidden;
+      }
+      .copiper-multiselect-search {
+        margin: 6px;
+        padding: 4px 8px;
+        background-color: ${token.colorBgContainer};
+        color: ${token.colorText};
+        border: 1px solid ${token.colorBorder};
+        border-radius: 6px;
+        outline: none;
+        font-size: ${token.fontSize}px;
+      }
+      .copiper-multiselect-search:focus {
+        border-color: ${token.colorPrimary};
+      }
+      .copiper-multiselect-list {
+        overflow-y: auto;
+        padding: 0 4px 6px;
+      }
+      .copiper-multiselect-item {
+        padding: 4px 24px 4px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        color: ${token.colorText};
+        white-space: nowrap;
+        position: relative;
+        user-select: none;
+      }
+      .copiper-multiselect-item:hover {
+        background-color: ${token.colorPrimaryBg};
+      }
+      .copiper-multiselect-item.is-selected {
+        background-color: ${token.colorPrimaryBgHover};
+        font-weight: 600;
+      }
+      .copiper-multiselect-item.is-selected::after {
+        content: '✓';
+        position: absolute;
+        right: 8px;
+        color: ${token.colorPrimary};
+      }
+      .copiper-multiselect-empty {
+        padding: 8px;
+        color: ${token.colorTextSecondary};
+        font-size: ${token.fontSize}px;
+        text-align: center;
+      }
       /* Re-pin main data table cells (container has data-copiper-main) */
       [data-copiper-main] .ht_master td {
         background-color: ${token.colorBgContainer} !important;
@@ -390,7 +618,10 @@ const CopiperTable: React.FC<CopiperTableProps> = ({ onRowDoubleClick }) => {
       }
 
       const type = col.type || col.j_type || 'str'
-      const baseType = type.split('/')[0].split(':')[0]
+      const rawBase = type.split('/')[0].split(':')[0]
+      // list:index is equivalent to indices (multi-reference index dropdown)
+      const isListIndex = type.startsWith('list:index') || (col.j_type || '').startsWith('list:index')
+      const baseType = isListIndex ? 'indices' : rawBase
 
       // Enum or has options → dropdown
       if (col.options) {
@@ -412,20 +643,17 @@ const CopiperTable: React.FC<CopiperTableProps> = ({ onRowDoubleClick }) => {
         case 'float':
           config.type = 'numeric'
           break
-        case 'index':
-        case 'indices': {
-          // Dropdown populated from source table's idx_name/id values
+        case 'index': {
+          // Single-reference dropdown (Handsontable built-in)
           const srcTable = col.src || type.split('/')[1]
           if (srcTable) {
             let options: string[] = []
             if (activeDatabase?.[srcTable]) {
-              // Source table is in the current JDB file
               const srcRows = activeDatabase[srcTable].rows
               options = srcRows
                 .map((r) => (r.idx_name != null ? String(r.idx_name) : String(r.id)))
                 .filter(Boolean)
             } else if (referenceData[srcTable]) {
-              // Source table is in another JDB file (cross-file reference)
               options = referenceData[srcTable]
                 .map((r) => (r.idx_name != null ? String(r.idx_name) : String(r.id)))
                 .filter(Boolean)
@@ -434,6 +662,29 @@ const CopiperTable: React.FC<CopiperTableProps> = ({ onRowDoubleClick }) => {
               config.type = 'dropdown'
               config.source = ['', ...options]
               config.strict = false
+            }
+          }
+          break
+        }
+        case 'indices': {
+          // Multi-reference: use custom multi-select checkbox editor because
+          // Handsontable's built-in dropdown only supports single selection
+          const srcTable = col.src || type.split('/')[1]
+          if (srcTable) {
+            let options: string[] = []
+            if (activeDatabase?.[srcTable]) {
+              const srcRows = activeDatabase[srcTable].rows
+              options = srcRows
+                .map((r) => (r.idx_name != null ? String(r.idx_name) : String(r.id)))
+                .filter(Boolean)
+            } else if (referenceData[srcTable]) {
+              options = referenceData[srcTable]
+                .map((r) => (r.idx_name != null ? String(r.idx_name) : String(r.id)))
+                .filter(Boolean)
+            }
+            if (options.length > 0) {
+              config.editor = 'multi-select' as any
+              (config as any).source = options
             }
           }
           break
@@ -561,6 +812,7 @@ function getColumnWidth(col: ColDef): number {
   if (type === 'int' || type === 'float') return 80
   if (type === 'utc_time') return 160
   if (type.startsWith('kv:') || type.startsWith('ckv:') || type === 'dict') return 150
+  if (type.startsWith('list:index')) return 130
   if (type.startsWith('list:')) return 120
   if (type.startsWith('index/') || type.startsWith('indices/')) return 130
   return 120

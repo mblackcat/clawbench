@@ -1,9 +1,9 @@
 import React, { useMemo, useCallback } from 'react'
-import { useAICodingStore } from '../../stores/useAICodingStore'
+import { useAICodingStore, defaultMode, defaultEffort } from '../../stores/useAICodingStore'
 import CodingMessageList from './CodingMessageList'
 import CodingInput from './CodingInput'
 import { useT } from '../../i18n'
-import type { CodingMode, CodingMessage } from '../../types/ai-coding'
+import type { CodingMode, CodingEffort, CodingImage, CodingMessage } from '../../types/ai-coding'
 
 let localMsgCounter = 0
 function genLocalMsgId(): string { return `wm-local-${Date.now()}-${++localMsgCounter}` }
@@ -25,20 +25,6 @@ function genLocalMsgId(): string { return `wm-local-${Date.now()}-${++localMsgCo
 /** Commands that require interactive terminal and cannot work via SDK query() */
 const UNSUPPORTED_COMMANDS = new Set(['/memory', '/mcp', '/doctor'])
 
-const HELP_TEXT = `可用命令:
-/clear    清空对话记录
-/cost     查看累计费用
-/plan     切换到 Plan 模式
-/compact  压缩对话上下文
-/review   代码审查
-/init     初始化 CLAUDE.md
-/model    查看/切换模型 (如 /model claude-sonnet-4-5-20250514)
-/permissions  查看/切换权限模式
-/help     查看帮助
-
-以下命令请在 CLI 模式下使用:
-/memory, /mcp, /doctor`
-
 interface CodingChatPanelProps {
   sessionId: string
   onNewSession: () => void
@@ -49,9 +35,9 @@ const CodingChatPanel: React.FC<CodingChatPanelProps> = ({ sessionId, onNewSessi
   const t = useT()
   const {
     sessions, workspaces,
-    sessionMessages, sessionStreaming, sessionStreamingBlocks, sessionModes, sessionContextUsage,
+    sessionMessages, sessionStreaming, sessionStreamingBlocks, sessionModes, sessionEffort, sessionContextUsage,
     sessionPendingQuestions,
-    sendUserMessage, setSessionMode, interruptSession, stopSession,
+    sendUserMessage, setSessionMode, setSessionEffort, interruptSession, stopSession,
     clearSessionMessages,
   } = useAICodingStore()
 
@@ -61,7 +47,8 @@ const CodingChatPanel: React.FC<CodingChatPanelProps> = ({ sessionId, onNewSessi
   const messages = sessionMessages[sessionId] || []
   const isStreaming = sessionStreaming[sessionId] || false
   const streamingBlocks = sessionStreamingBlocks[sessionId] || []
-  const mode: CodingMode = sessionModes[sessionId] || 'ask-first'
+  const mode: CodingMode = sessionModes[sessionId] || (session ? defaultMode(session.toolType) : 'manual')
+  const effort: CodingEffort = sessionEffort[sessionId] || (session ? defaultEffort(session.toolType) : 'high')
   const hasPendingQuestion = !!sessionPendingQuestions[sessionId]
   const contextUsage = sessionContextUsage[sessionId] || undefined
 
@@ -80,14 +67,14 @@ const CodingChatPanel: React.FC<CodingChatPanelProps> = ({ sessionId, onNewSessi
     }))
   }, [sessionId])
 
-  const handleSend = useCallback((text: string) => {
+  const handleSend = useCallback((text: string, images?: CodingImage[]) => {
     if (text === '/clear') { clearSessionMessages(sessionId); return }
     if (text === '/help' && session?.toolType === 'codex') { addLocalMessage(t('coding.codexHelp')); return }
-    if (session?.toolType === 'codex' && text === '/ask') { setSessionMode(sessionId, 'ask-first'); addLocalMessage(t('coding.codexSwitchedAsk')); return }
-    if (session?.toolType === 'codex' && text === '/auto') { setSessionMode(sessionId, 'auto-edit'); addLocalMessage(t('coding.codexSwitchedAuto')); return }
+    if (session?.toolType === 'codex' && text === '/ask') { setSessionMode(sessionId, 'ask'); addLocalMessage(t('coding.codexSwitchedAsk')); return }
+    if (session?.toolType === 'codex' && text === '/auto') { setSessionMode(sessionId, 'approve-for-me'); addLocalMessage(t('coding.codexSwitchedApproveForMe')); return }
     if (session?.toolType === 'codex' && text === '/full') { setSessionMode(sessionId, 'full-access'); addLocalMessage(t('coding.codexSwitchedFull')); return }
-    if (session?.toolType !== 'codex' && text === '/ask') { setSessionMode(sessionId, 'ask-first'); addLocalMessage(t('coding.switchedAskFirst')); return }
-    if (session?.toolType !== 'codex' && text === '/auto') { setSessionMode(sessionId, 'auto-edit'); addLocalMessage(t('coding.switchedAutoEdit')); return }
+    if (session?.toolType !== 'codex' && text === '/ask') { setSessionMode(sessionId, 'manual'); addLocalMessage(t('coding.switchedManual')); return }
+    if (session?.toolType !== 'codex' && text === '/auto') { setSessionMode(sessionId, 'auto'); addLocalMessage(t('coding.switchedAuto')); return }
     if (text === '/context') {
       if (!contextUsage) { addLocalMessage(t('coding.codexNoContextUsage')); return }
       const used = contextUsage.usedTokens ?? ((contextUsage.inputTokens || 0) + (contextUsage.cachedInputTokens || 0))
@@ -113,12 +100,16 @@ const CodingChatPanel: React.FC<CodingChatPanelProps> = ({ sessionId, onNewSessi
     if (text === '/plan' && session?.toolType === 'codex') { addLocalMessage(t('coding.codexPlanUnavailable')); return }
     if (text === '/plan') { setSessionMode(sessionId, 'plan'); addLocalMessage(t('coding.switchedPlan')); return }
     if (UNSUPPORTED_COMMANDS.has(text)) { addLocalMessage(t('coding.commandNeedsCli', text)); return }
-    sendUserMessage(sessionId, text)
+    sendUserMessage(sessionId, text, images)
   }, [sessionId, session?.toolType, sendUserMessage, clearSessionMessages, setSessionMode, addLocalMessage, messages, contextUsage, t])
 
   const handleModeChange = useCallback((m: CodingMode) => {
     setSessionMode(sessionId, m)
   }, [sessionId, setSessionMode])
+
+  const handleEffortChange = useCallback((e: CodingEffort) => {
+    setSessionEffort(sessionId, e)
+  }, [sessionId, setSessionEffort])
 
   const handleInterrupt = useCallback(() => { interruptSession(sessionId) }, [sessionId, interruptSession])
   const handleStop = useCallback(() => { stopSession(sessionId) }, [sessionId, stopSession])
@@ -133,12 +124,14 @@ const CodingChatPanel: React.FC<CodingChatPanelProps> = ({ sessionId, onNewSessi
         streamingBlocks={streamingBlocks}
         hasExistingSession={!!session?.toolSessionId && messages.length === 0}
         sessionId={sessionId}
+        toolType={session.toolType}
       />
       <CodingInput
         sessionId={sessionId}
         toolType={session.toolType}
         isStreaming={isStreaming}
         mode={mode}
+        effort={effort}
         hasPendingQuestion={hasPendingQuestion}
         workingDir={workspace?.workingDir}
         costUsd={session.costUsd}
@@ -146,6 +139,7 @@ const CodingChatPanel: React.FC<CodingChatPanelProps> = ({ sessionId, onNewSessi
         contextUsage={contextUsage}
         onSend={handleSend}
         onModeChange={handleModeChange}
+        onEffortChange={handleEffortChange}
         onInterrupt={handleInterrupt}
         onStop={handleStop}
       />

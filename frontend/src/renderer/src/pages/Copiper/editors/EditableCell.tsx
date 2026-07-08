@@ -38,6 +38,7 @@ const getEditorType = (colDef: ColDef): string => {
   if (type === 'float' || jType === 'float') return 'number'
   if (type.startsWith('index/') || jType === 'index') return 'index'
   if (type.startsWith('indices/') || jType === 'indices') return 'indices'
+  if (type.startsWith('list:index') || jType === 'list:index') return 'indices'
   if (type.startsWith('ckv:') || jType.startsWith('ckv')) return 'ckv'
   if (type.startsWith('kv:') || jType.startsWith('kv')) return 'kv'
   if (type.startsWith('list:') || jType.startsWith('list')) return 'list'

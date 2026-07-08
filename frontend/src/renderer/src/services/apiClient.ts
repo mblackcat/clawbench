@@ -112,6 +112,14 @@ class TokenManager {
 class HttpClient {
   private tokenManager: TokenManager;
 
+  /**
+   * Optional callback invoked once when an authenticated request receives a 401.
+   * Registered by the auth layer to force a redirect to the login screen
+   * (session expired at runtime). Only fires for requireAuth requests so that
+   * a 401 from login/register (wrong credentials) is not mistaken for expiry.
+   */
+  onUnauthorized?: () => void;
+
   constructor(tokenManager: TokenManager) {
     this.tokenManager = tokenManager;
   }
@@ -137,11 +145,15 @@ class HttpClient {
   /**
    * 处理响应
    */
-  private async handleResponse<T>(response: Response): Promise<T> {
+  private async handleResponse<T>(response: Response, requireAuth: boolean = false): Promise<T> {
     const contentType = response.headers.get('content-type');
     const isJson = contentType?.includes('application/json');
 
     if (!response.ok) {
+      // 认证态请求收到 401：登录态已失效，触发全局处理（跳转登录页）
+      if (requireAuth && response.status === 401 && this.onUnauthorized) {
+        this.onUnauthorized();
+      }
       if (isJson) {
         const errorData: ApiError = await response.json();
         throw new ApiClientError(
@@ -177,7 +189,7 @@ class HttpClient {
         method: 'GET',
         headers: this.buildHeaders(requireAuth),
       });
-      return this.handleResponse<T>(response);
+      return this.handleResponse<T>(response, requireAuth);
     } catch (error) {
       if (error instanceof ApiClientError) {
         throw error;
@@ -205,7 +217,7 @@ class HttpClient {
         headers: this.buildHeaders(requireAuth),
         body: JSON.stringify(body),
       });
-      return this.handleResponse<T>(response);
+      return this.handleResponse<T>(response, requireAuth);
     } catch (error) {
       if (error instanceof ApiClientError) {
         throw error;
@@ -233,7 +245,7 @@ class HttpClient {
         headers: this.buildHeaders(requireAuth),
         body: JSON.stringify(body),
       });
-      return this.handleResponse<T>(response);
+      return this.handleResponse<T>(response, requireAuth);
     } catch (error) {
       if (error instanceof ApiClientError) {
         throw error;
@@ -256,7 +268,7 @@ class HttpClient {
         method: 'DELETE',
         headers: this.buildHeaders(requireAuth),
       });
-      return this.handleResponse<T>(response);
+      return this.handleResponse<T>(response, requireAuth);
     } catch (error) {
       if (error instanceof ApiClientError) {
         throw error;
@@ -292,7 +304,7 @@ class HttpClient {
         headers,
         body: formData,
       });
-      return this.handleResponse<T>(response);
+      return this.handleResponse<T>(response, requireAuth);
     } catch (error) {
       if (error instanceof ApiClientError) {
         throw error;
@@ -317,6 +329,10 @@ class HttpClient {
       });
 
       if (!response.ok) {
+        // 认证态下载收到 401：同样触发全局登录态失效处理
+        if (requireAuth && response.status === 401 && this.onUnauthorized) {
+          this.onUnauthorized();
+        }
         const contentType = response.headers.get('content-type');
         if (contentType?.includes('application/json')) {
           const errorData: ApiError = await response.json();
@@ -474,6 +490,14 @@ class ApiClient {
    */
   clearToken(): void {
     this.tokenManager.clearToken();
+  }
+
+  /**
+   * 注册全局 401 处理回调（登录态失效时由 auth 层用于跳转登录页）。
+   * 仅对 requireAuth 请求的 401 触发，避免登录接口的 401 误判。
+   */
+  onUnauthorized(handler: () => void): void {
+    this.httpClient.onUnauthorized = handler;
   }
 
   // ============ 应用 API ============

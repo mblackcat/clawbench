@@ -285,54 +285,6 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
     return `${Math.floor(hours / 24)}d`
   }
 
-  /** Build history dropdown items for a workspace */
-  const buildHistoryItems = useCallback((wsId: string): MenuProps['items'] => {
-    const state = nativeSessionsMap[wsId]
-    if (!state || state.loading) return [{ key: 'loading', label: <Spin size="small" />, disabled: true }]
-    const availableSessions = state.sessions
-    if (state.sessions.length === 0) return [{ key: 'empty', label: t('workbench.noHistorySessions'), disabled: true }]
-    const visibleCount = nativeSessionVisibleCounts[wsId] || NATIVE_HISTORY_PAGE_SIZE
-    const visibleSessions = availableSessions.slice(0, visibleCount)
-    if (visibleSessions.length === 0) return [{ key: 'empty', label: t('workbench.noHistorySessions'), disabled: true }]
-    const items: NonNullable<MenuProps['items']> = visibleSessions.map(ns => {
-      const timePart = formatRelativeTime(ns.modifiedAt)
-      return {
-        key: ns.sessionId,
-        label: (
-          <span
-            title={ns.title}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              maxWidth: 320,
-            }}
-          >
-            <Tag color={AI_TOOL_TAG_COLORS[ns.toolType]} style={{ ...AI_TOOL_TAG_STYLE, margin: 0, flexShrink: 0, fontSize: 11, lineHeight: '18px', paddingInline: 4 }}>
-              {renderAIToolTagLabel(ns.toolType, AI_TOOL_SHORT_NAMES[ns.toolType], 12)}
-            </Tag>
-            <span style={{
-              flex: 1,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap'
-            }}>
-              {ns.title}
-            </span>
-            <span style={{ flexShrink: 0, fontSize: 11, color: token.colorTextTertiary }}>{timePart}</span>
-          </span>
-        )
-      }
-    })
-    if (availableSessions.length > visibleCount) {
-      items.push({
-        key: `load-more:${wsId}`,
-        label: <span style={{ color: token.colorPrimary }}>{t('coding.loadMore')}</span>
-      })
-    }
-    return items
-  }, [nativeSessionsMap, nativeSessionVisibleCounts, t, token.colorPrimary])
-
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
       isResizing.current = true
@@ -749,41 +701,6 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
                               )}
                             </span>
                           )}
-                          {/* History sessions */}
-                          <Dropdown
-                            menu={{
-                              items: buildHistoryItems(ws.id),
-                              onClick: ({ key }) => {
-                                if (String(key).startsWith('load-more:')) {
-                                  setNativeSessionVisibleCounts(prev => ({
-                                    ...prev,
-                                    [ws.id]: (prev[ws.id] || NATIVE_HISTORY_PAGE_SIZE) + NATIVE_HISTORY_PAGE_SIZE
-                                  }))
-                                  return
-                                }
-                                const state = nativeSessionsMap[ws.id]
-                                const ns = state?.sessions.find(s => s.sessionId === key)
-                                if (ns) handleResumeNativeSession(ws.id, ns.toolType, key, ns.title)
-                              },
-                              style: { maxHeight: 'min(360px, 60vh)', overflowY: 'auto' }
-                            }}
-                            overlayStyle={{ maxWidth: 380 }}
-                            placement="bottomLeft"
-                            autoAdjustOverflow
-                            trigger={['click']}
-                            onOpenChange={(open) => open && ensureNativeSessions(ws.id)}
-                          >
-                            <HistoryOutlined
-                              style={{
-                                fontSize: 12,
-                                color: token.colorTextTertiary,
-                                flexShrink: 0,
-                                padding: '2px'
-                              }}
-                              title="历史会话"
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                          </Dropdown>
                           {/* Add new session */}
                           <PlusOutlined
                             style={{

@@ -1,14 +1,16 @@
-import React, { useRef, useEffect, useCallback } from 'react'
+import React, { useRef, useEffect, useCallback, useState } from 'react'
 import { theme, Spin, Typography } from 'antd'
-import { RobotOutlined, MessageOutlined, CheckCircleFilled, CloseCircleFilled, ToolOutlined, DashboardOutlined } from '@ant-design/icons'
-import ReactMarkdown from 'react-markdown'
+import { MessageOutlined, CheckCircleFilled, CloseCircleFilled, ToolOutlined, DashboardOutlined } from '@ant-design/icons'
 import remarkGfm from 'remark-gfm'
-import { rehypeHighlightPlugin } from '../../utils/markdown-plugins'
+import ReactMarkdown from 'react-markdown'
 import CodingChatMessage, { getToolSummary } from './CodingChatMessage'
 import AskUserQuestionBlock from './AskUserQuestionBlock'
 import TodoUpdateBlock from './TodoUpdateBlock'
+import ThinkingBlock from '../../components/ThinkingBlock'
+import { ModelAvatar, toolTypeToProvider } from '../../components/ProviderIcons'
+import { MONO_FONT_STACK } from '../../utils/mono-font'
 import { useT } from '../../i18n'
-import type { CodingMessage, CodingContentBlock } from '../../types/ai-coding'
+import type { CodingMessage, CodingContentBlock, AIToolType } from '../../types/ai-coding'
 import { externalLinkMarkdownComponents } from '../../utils/markdown-links'
 import '../AIChat/chat-styles.css'
 
@@ -19,16 +21,47 @@ function isNearBottom(el: HTMLElement): boolean {
   return el.scrollHeight - el.scrollTop - el.clientHeight <= AUTO_SCROLL_THRESHOLD
 }
 
+/**
+ * Streaming text block.
+ *
+ * Memoized on its text content so that, in a multi-step turn
+ * (text → tool → text → tool …), already-complete text segments are NOT
+ * re-parsed on every token — only the currently-growing last segment is.
+ *
+ * Syntax highlighting is intentionally omitted here: rehype-highlight
+ * re-tokenizes every code block on each re-render, and during streaming that
+ * cost grows with the message until the main thread stalls. Highlighting is
+ * applied once when the turn finalizes (see CodingChatMessage). While
+ * streaming, code still renders as styled monospace blocks — just without
+ * token colors.
+ */
+const StreamingTextBlock: React.FC<{ text: string; renderKey: number }> = React.memo(
+  ({ text, renderKey }) => (
+    <div className="markdown-body" style={{ fontSize: 13, lineHeight: 1.7 }}>
+      <ReactMarkdown
+        key={renderKey}
+        remarkPlugins={[remarkGfm]}
+        urlTransform={(url) => url}
+        components={externalLinkMarkdownComponents}
+      >
+        {text}
+      </ReactMarkdown>
+    </div>
+  ),
+  (prev, next) => prev.text === next.text && prev.renderKey === next.renderKey
+)
+
 interface CodingMessageListProps {
   messages: CodingMessage[]
   isStreaming: boolean
   streamingBlocks: CodingContentBlock[]
   hasExistingSession?: boolean
   sessionId?: string
+  toolType?: AIToolType
 }
 
 const CodingMessageList: React.FC<CodingMessageListProps> = ({
-  messages, isStreaming, streamingBlocks, hasExistingSession, sessionId
+  messages, isStreaming, streamingBlocks, hasExistingSession, sessionId, toolType
 }) => {
   const { token } = theme.useToken()
   const t = useT()
@@ -40,6 +73,53 @@ const CodingMessageList: React.FC<CodingMessageListProps> = ({
   const stickToBottomRef = useRef(true)
   const lastMessageIdRef = useRef<string | null>(null)
   const lastSessionIdRef = useRef<string | undefined>(sessionId)
+  const provider = toolTypeToProvider(toolType || 'claude')
+
+  // rAF-coalesced streaming display: the store flushes deltas on a timer, and
+  // we additionally coalesce into one paint per frame so a burst of flushes
+  // never triggers more than one expensive re-render per tick.
+  const latestBlocksRef = useRef<CodingContentBlock[]>(streamingBlocks)
+  latestBlocksRef.current = streamingBlocks
+  const [displayedBlocks, setDisplayedBlocks] = useState<CodingContentBlock[]>(streamingBlocks)
+  const rafRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (!isStreaming) {
+      if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
+      setDisplayedBlocks(streamingBlocks)
+      return
+    }
+    if (rafRef.current != null) return  // a coalescing frame is already scheduled
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null
+      setDisplayedBlocks(latestBlocksRef.current)
+    })
+  }, [streamingBlocks, isStreaming])
+  useEffect(() => () => { if (rafRef.current != null) cancelAnimationFrame(rafRef.current) }, [])
+
+  // Track container width to force ReactMarkdown re-render on resize.
+  // Debounce the key update so streaming content growth (which can cause
+  // scrollbar appear/disappear → width change → ReactMarkdown remount loops)
+  // does NOT trigger constant expensive remounts. Only update after resize
+  // settles for 200ms, which covers genuine window/pane resize events.
+  const [containerWidth, setContainerWidth] = useState(0)
+  const [renderKey, setRenderKey] = useState(0)
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const ro = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width
+      if (width !== undefined && width > 0) setContainerWidth(width)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  useEffect(() => {
+    if (containerWidth <= 0) return
+    const timer = setTimeout(() => {
+      setRenderKey(prev => prev + 1)
+    }, 200)
+    return () => clearTimeout(timer)
+  }, [containerWidth])
 
   const handleScroll = useCallback(() => {
     const el = containerRef.current
@@ -141,12 +221,25 @@ const CodingMessageList: React.FC<CodingMessageListProps> = ({
 
   // Build tool_result map for streaming blocks
   const streamResultMap = new Map<string, { content: string; isError?: boolean }>()
-  for (const b of streamingBlocks) {
+  for (const b of displayedBlocks) {
     if (b.type === 'tool_result') {
       streamResultMap.set(b.toolUseId, { content: b.content, isError: b.isError })
     }
   }
   const streamPairedIds = new Set<string>()
+
+  // Index of the last text block — used to show the blinking caret only on the
+  // segment that is still growing.
+  let lastTextIdx = -1
+  for (let k = displayedBlocks.length - 1; k >= 0; k--) {
+    if (displayedBlocks[k].type === 'text') { lastTextIdx = k; break }
+  }
+
+  const streamingAvatar = (
+    <div style={{ flexShrink: 0, marginTop: 2 }}>
+      <ModelAvatar provider={provider} size={28} />
+    </div>
+  )
 
   return (
     <div
@@ -155,70 +248,38 @@ const CodingMessageList: React.FC<CodingMessageListProps> = ({
       style={{ flex: 1, overflow: 'auto', paddingTop: 8, paddingBottom: 8, overflowAnchor: 'none' }}
     >
       {messages.map((msg) => (
-        <CodingChatMessage key={msg.id} message={msg} onToolToggle={handleToolToggle} />
+        <CodingChatMessage key={msg.id} message={msg} onToolToggle={handleToolToggle} markdownRenderKey={renderKey} toolType={toolType} />
       ))}
 
       {/* Streaming message preview */}
-      {isStreaming && streamingBlocks.length > 0 && (
+      {isStreaming && displayedBlocks.length > 0 && (
         <div style={{ padding: '8px 16px', display: 'flex', gap: 10 }}>
-          <div style={{
-            width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: token.colorFillSecondary, color: token.colorTextSecondary,
-            fontSize: 14, marginTop: 2
-          }}>
-            <RobotOutlined />
-          </div>
+          {streamingAvatar}
           <div style={{ flex: 1, minWidth: 0 }}>
-            {streamingBlocks.map((block, i) => {
+            {displayedBlocks.map((block, i) => {
               if (block.type === 'text') {
-                const isLastText = streamingBlocks.slice(i + 1).every(b => b.type !== 'text')
                 return (
-                  <div key={i} className="markdown-body" style={{ fontSize: 13, lineHeight: 1.7 }}>
-                    <ReactMarkdown
-                      rehypePlugins={[rehypeHighlightPlugin]}
-                      remarkPlugins={[remarkGfm]}
-                      urlTransform={(url) => url}
-                      components={externalLinkMarkdownComponents}
-                    >
-                      {block.text}
-                    </ReactMarkdown>
-                    {isLastText && <span className="cursor-blink">|</span>}
+                  <div key={i}>
+                    <StreamingTextBlock text={block.text} renderKey={renderKey} />
+                    {i === lastTextIdx && <span className="cursor-blink">|</span>}
                   </div>
                 )
               }
               if (block.type === 'raw_output') {
                 return (
-                  <div key={i} style={{ fontFamily: 'monospace', fontSize: 12, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                  <div key={i} style={{ fontFamily: MONO_FONT_STACK, fontSize: 12, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
                     {block.text}
                   </div>
                 )
               }
               if (block.type === 'thinking') {
+                // Spinner only while this is the active (last) block still
+                // receiving deltas; once a later block arrives, thinking is
+                // done and the block collapses to its static state.
+                const isThinkingActive = isStreaming && i === displayedBlocks.length - 1
                 return (
-                  <div key={i} style={{
-                    background: token.colorFillQuaternary, borderRadius: 6,
-                    padding: '8px 12px', marginBottom: 8
-                  }}>
-                    <div style={{
-                      fontSize: 12, color: token.colorTextSecondary,
-                      display: 'flex', alignItems: 'center', gap: 6, marginBottom: block.text ? 4 : 0
-                    }}>
-                      <Spin size="small" />
-                      <span>{t('coding.thinking')}</span>
-                    </div>
-                    {block.text && (
-                      <div
-                        ref={thinkingRef}
-                        style={{
-                          fontSize: 12, color: token.colorTextSecondary,
-                          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                          maxHeight: 200, overflowY: 'auto', lineHeight: 1.5
-                        }}
-                      >
-                        {block.text}
-                      </div>
-                    )}
+                  <div key={i}>
+                    <ThinkingBlock content={block.text} isStreaming={isThinkingActive} />
                   </div>
                 )
               }
@@ -315,14 +376,7 @@ const CodingMessageList: React.FC<CodingMessageListProps> = ({
       {/* Streaming indicator with no blocks yet */}
       {isStreaming && streamingBlocks.length === 0 && (
         <div style={{ padding: '8px 16px', display: 'flex', gap: 10 }}>
-          <div style={{
-            width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: token.colorFillSecondary, color: token.colorTextSecondary,
-            fontSize: 14, marginTop: 2
-          }}>
-            <RobotOutlined />
-          </div>
+          {streamingAvatar}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 6 }}>
             <Spin size="small" />
             <Text style={{ color: token.colorTextSecondary, fontSize: 12 }}>{t('coding.waitingResponse')}</Text>

@@ -1,21 +1,12 @@
 import { create } from 'zustand'
 import type { AiToolsConfig } from '../types/ipc'
+import {
+  DEFAULT_MODULE_VISIBILITY,
+  normalizeModuleVisibility,
+  type ModuleVisibility
+} from '../constants/module-visibility'
 
-export interface ModuleVisibility {
-  aiChat: boolean
-  aiAgents: boolean
-  aiTerminal: boolean
-  localEnv: boolean
-  aiCoding: boolean
-}
-
-const DEFAULT_MODULE_VISIBILITY: ModuleVisibility = {
-  aiChat: true,
-  aiAgents: true,
-  aiTerminal: true,
-  localEnv: true,
-  aiCoding: true
-}
+export type { ModuleVisibility } from '../constants/module-visibility'
 
 interface SettingsState {
   pythonPath: string
@@ -25,6 +16,7 @@ interface SettingsState {
   autoUpdate: boolean
   localIdePath: string
   localTerminalPath: string
+  hasCompletedSetup: boolean
   moduleVisibility: ModuleVisibility
   appShortcutEnabled: boolean
   appShortcutModifier: string
@@ -35,6 +27,7 @@ interface SettingsState {
   updateSetting: (key: string, value: unknown) => Promise<void>
   fetchAiToolsConfig: () => Promise<void>
   updateAiToolsConfig: (config: AiToolsConfig) => Promise<void>
+  completeSetup: () => Promise<void>
 }
 
 export const useSettingsStore = create<SettingsState>((set) => ({
@@ -45,6 +38,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   autoUpdate: true,
   localIdePath: '',
   localTerminalPath: '',
+  hasCompletedSetup: false,
   moduleVisibility: DEFAULT_MODULE_VISIBILITY,
   appShortcutEnabled: true,
   appShortcutModifier: 'Control+Shift',
@@ -64,7 +58,8 @@ export const useSettingsStore = create<SettingsState>((set) => ({
         autoUpdate: (settings.autoUpdate as boolean) ?? true,
         localIdePath: (settings.localIdePath as string) ?? '',
         localTerminalPath: (settings.localTerminalPath as string) ?? '',
-        moduleVisibility: (settings.moduleVisibility as ModuleVisibility) ?? DEFAULT_MODULE_VISIBILITY,
+        hasCompletedSetup: (settings.hasCompletedSetup as boolean) ?? false,
+        moduleVisibility: normalizeModuleVisibility(settings.moduleVisibility),
         appShortcutEnabled: (settings.appShortcutEnabled as boolean) ?? true,
         appShortcutModifier: (settings.appShortcutModifier as string) ?? 'Control+Shift',
         appOrder: (settings.appOrder as string[]) ?? []
@@ -77,6 +72,11 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   updateSetting: async (key: string, value: unknown) => {
     await window.api.settings.set(key, value)
     set((state) => ({ ...state, [key]: value }))
+  },
+
+  completeSetup: async () => {
+    await window.api.settings.set('hasCompletedSetup', true)
+    set({ hasCompletedSetup: true })
   },
 
   fetchAiToolsConfig: async () => {

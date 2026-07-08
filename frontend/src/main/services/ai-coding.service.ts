@@ -31,12 +31,12 @@ import {
 } from './pty-manager.service'
 import {
   launchSDKSession, writeToSDKSession, closeSDKSession, hasSDKSession,
-  getSDKSessionOutput, interruptSDKSession, setSDKPermissionMode,
+  getSDKSessionOutput, interruptSDKSession, setSDKPermissionMode, setSDKEffort,
   detectManagedInteractiveState
 } from './sdk-session-manager.service'
 import {
   launchCodexSession, writeToCodexSession, closeCodexSession, hasCodexSession,
-  getCodexSessionOutput, interruptCodexSession, setCodexSessionMode, resolveBundledCodexPath
+  getCodexSessionOutput, interruptCodexSession, setCodexSessionMode, setCodexSessionEffort, resolveBundledCodexPath
 } from './codex-session-manager.service'
 import { detectAvailableCLIs, getAugmentedEnv, loadShellEnv } from './cli-detect.service'
 import { settingsStore } from '../store/settings.store'
@@ -147,6 +147,15 @@ export function getRawSessionOutput(sessionId: string): string {
 
 // ── SDK session event handler (for IM mode) ──
 
+function activityFromToolName(name: string | undefined): AICodingSession['lastActivity'] {
+  if (!name) return 'tool_call'
+  const writers = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'CreateFolder'])
+  const readers = new Set(['Read', 'Glob', 'Grep', 'ListFiles', 'LS'])
+  if (writers.has(name)) return 'writing'
+  if (readers.has(name)) return 'reading'
+  return 'tool_call'
+}
+
 function handleSDKEvent(sessionId: string, data: Record<string, unknown>): void {
   const msgType = (data.type as string) ?? ''
 
@@ -157,23 +166,40 @@ function handleSDKEvent(sessionId: string, data: Record<string, unknown>): void 
         updateSession(sessionId, { toolSessionId: sid })
       }
     }
-  } else if (msgType === 'assistant') {
+    return
+  }
+
+  // High-frequency streaming events must NOT update session status or ping the
+  // renderer here. `updateSession` calls `notifyDataChanged()`, and the
+  // renderer's data-changed handler re-fetches workspaces + sessions + groups
+  // — firing that on every text/thinking delta (hundreds per second) is what
+  // froze the UI mid-reply. The turn's status is already 'running' from the
+  // turn_start event; the streamed content itself travels over the separate
+  // pipe-event channel, which the renderer coalesces.
+  if (msgType === 'delta' || msgType === 'thinking_delta') {
+    return
+  }
+
+  // State transitions only — a handful per turn. updateSession already pings
+  // the renderer, so no extra notifyDataChanged() is needed here.
+  if (msgType === 'turn_start' || msgType === 'turn_started' || msgType === 'thinking_start') {
     updateSession(sessionId, { status: 'running', lastActivity: 'thinking' })
-    notifyDataChanged()
+  } else if (msgType === 'tool_start' || msgType === 'tool_executing') {
+    updateSession(sessionId, { status: 'running', lastActivity: activityFromToolName(data.name as string) })
+  } else if (msgType === 'tool_result') {
+    updateSession(sessionId, { status: 'running', lastActivity: 'tool_call' })
   } else if (msgType === 'result') {
     const sid = (data.session_id as string) ?? ''
     const costUsd = typeof data.cost_usd === 'number' ? data.cost_usd : undefined
-    // After Claude finishes a turn, check if it's waiting for interactive input
+    // After a turn finishes, check if it's waiting for interactive input
     const currentOutput = getSDKSessionOutput(sessionId)
     const interactiveState = detectManagedInteractiveState(currentOutput)
     const updates: Partial<AICodingSession> = { status: 'idle', lastActivity: interactiveState || 'none' }
     if (sid) updates.toolSessionId = sid
     if (costUsd !== undefined) updates.costUsd = costUsd
     updateSession(sessionId, updates)
-    notifyDataChanged()
   } else if (msgType === 'error') {
     updateSession(sessionId, { status: 'idle', lastActivity: 'none' })
-    notifyDataChanged()
   }
 }
 
@@ -190,7 +216,7 @@ function handleSDKError(sessionId: string, _err: Error): void {
   logger.error(`[AICoding] SDK session error: ${sessionId}`)
   const session = getSessionById(sessionId)
   if (session && session.status !== 'closed') {
-    updateSession(sessionId, { status: 'error' as any, lastActivity: 'none' })
+    updateSession(sessionId, { status: 'error', lastActivity: 'none' })
     notifyDataChanged()
   }
 }
@@ -207,7 +233,7 @@ function handlePtyExit(sessionId: string, exitCode: number): void {
   }
   const session = getSessionById(sessionId)
   if (session && session.status !== 'closed') {
-    const status = exitCode === 0 ? 'completed' : ('error' as any)
+    const status = exitCode === 0 ? 'completed' : 'error'
     updateSession(sessionId, { status, lastActivity: 'none' })
     notifyDataChanged()
   }
@@ -245,14 +271,38 @@ export function resetActiveSessionsOnStart(): void {
   setAICodingSessions(updated)
 }
 
+const IMAGE_MEDIA_BY_EXT: Record<string, string> = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+  webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml', ico: 'image/x-icon',
+}
+
+/** Read an image file as base64 (for multimodal chat attachments). Returns null on failure. */
+export function readImageBase64(filePath: string): { data: string; mediaType: string } | null {
+  try {
+    if (!filePath || !fs.existsSync(filePath)) return null
+    const ext = path.extname(filePath).slice(1).toLowerCase()
+    const mediaType = IMAGE_MEDIA_BY_EXT[ext] || 'application/octet-stream'
+    const buf = fs.readFileSync(filePath)
+    return { data: buf.toString('base64'), mediaType }
+  } catch (err) {
+    logger.warn(`[AICoding] readImageBase64 failed: ${filePath}: ${err}`)
+    return null
+  }
+}
+
 /**
- * Write text to a running session.
- * - Claude SDK: starts a new query() call with the prompt.
- * - PTY sessions: writes raw text + carriage-return (Enter key equivalent).
+ * Write text (and optional images) to a running session.
+ * - Claude SDK: pushes a user turn into the long-lived message queue (images
+ *   become real image content blocks).
+ * - Codex / PTY sessions: text only (no multimodal support); images ignored.
  */
-export async function writeToSession(sessionId: string, text: string): Promise<{ success: boolean; error?: string }> {
+export async function writeToSession(
+  sessionId: string,
+  text: string,
+  images?: { data: string; mediaType: string }[]
+): Promise<{ success: boolean; error?: string }> {
   if (hasSDKSession(sessionId)) {
-    return writeToSDKSession(sessionId, text)
+    return writeToSDKSession(sessionId, text, images)
   }
 
   if (hasCodexSession(sessionId)) {
@@ -302,6 +352,46 @@ export function createWorkspace(
   setAICodingWorkspaces(workspaces)
   logger.info(`[AICoding] Workspace created: ${workspace.id} dir=${workingDir}`)
   return workspace
+}
+
+/**
+ * Normalize a directory path for comparison: forward slashes, no trailing slash.
+ * Matches the normalization used by the AI Code bridges (AICodeButton /
+ * EmbeddedCodingPanel) so find-or-create behaves consistently across every
+ * entry point that links a directory to an AI Coding workspace.
+ */
+function normalizeWorkingDir(p: string): string {
+  return p.replace(/\\/g, '/').replace(/\/$/, '')
+}
+
+/**
+ * Find an existing AI Coding workspace whose workingDir matches `workingDir`
+ * (compared after normalization). Returns undefined when none matches.
+ */
+export function findWorkspaceByWorkingDir(
+  workingDir: string
+): AICodingWorkspace | undefined {
+  const normalized = normalizeWorkingDir(workingDir)
+  return getAICodingConfig().workspaces.find(
+    (w) => normalizeWorkingDir(w.workingDir) === normalized
+  )
+}
+
+/**
+ * Ensure an AI Coding workspace exists for `workingDir`, creating one in the
+ * default group if none matches. If a workspace for that directory already
+ * exists (e.g. the user created it manually from the AI Coding page or via the
+ * workbench "AI Code" button), the existing entry is returned as-is — this
+ * never duplicates and never throws on an existing entry.
+ */
+export function ensureWorkspaceForWorkingDir(workingDir: string): AICodingWorkspace {
+  const existing = findWorkspaceByWorkingDir(workingDir)
+  if (existing) {
+    logger.info(`[AICoding] Workspace for dir already exists, skipping: ${workingDir}`)
+    return existing
+  }
+  const groupId = getAICodingConfig().groups.find((g) => g.isDefault)?.id || 'default'
+  return createWorkspace(workingDir, groupId)
 }
 
 export function updateWorkspace(
@@ -440,7 +530,7 @@ export function deleteSession(id: string): void {
  */
 export async function launchSession(
   id: string,
-  opts?: { forcePty?: boolean; cols?: number; rows?: number }
+  opts?: { forcePty?: boolean; cols?: number; rows?: number; effort?: string }
 ): Promise<{ success: boolean; error?: string }> {
   const config = getAICodingConfig()
   const session = getSessionById(id)
@@ -462,7 +552,8 @@ export async function launchSession(
         handleSDKEvent,
         handleSDKClose,
         handleSDKError,
-        toolEnv
+        toolEnv,
+        opts?.effort
       )
       if (!result.success) return result
     } else if (session.toolType === 'codex' && !opts?.forcePty) {
@@ -476,7 +567,8 @@ export async function launchSession(
         handleSDKEvent,
         handleSDKClose,
         handleSDKError,
-        toolEnv
+        toolEnv,
+        opts?.effort
       )
       if (!result.success) return result
     } else {
@@ -629,5 +721,22 @@ export async function setSessionPermissionMode(
   }
   if (!hasSDKSession(id)) return { success: false, error: '会话未运行或非 Claude 会话' }
   await setSDKPermissionMode(id, mode as any)
+  return { success: true }
+}
+
+/**
+ * Set the reasoning effort for a running session. Claude applies it live via
+ * applyFlagSettings; Codex stores it for the next turn/start. No restart.
+ */
+export async function setSessionEffort(
+  id: string,
+  effort: string
+): Promise<{ success: boolean; error?: string }> {
+  if (hasCodexSession(id)) {
+    setCodexSessionEffort(id, effort)
+    return { success: true }
+  }
+  if (!hasSDKSession(id)) return { success: false, error: '会话未运行' }
+  await setSDKEffort(id, effort)
   return { success: true }
 }

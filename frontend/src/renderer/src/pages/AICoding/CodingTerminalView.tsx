@@ -208,11 +208,28 @@ const CodingTerminalView: React.FC<CodingTerminalViewProps> = ({ sessionId }) =>
 
       if (needsForcedPty) {
         if (!needsLaunch) {
-          try { await window.api.aiCoding.stopSession(sessionId) } catch { /* */ }
-        }
-        const result = await launchSession(sessionId, { forcePty: true, cols: term.cols, rows: term.rows })
-        if (!result.success) {
-          term.writeln(`\x1b[31mFailed to start session: ${result.error ?? 'Unknown error'}\x1b[0m`)
+          // Session exists and is not in a terminal state. Check if it already
+          // has PTY output (meaning it's already running in PTY mode, e.g. we
+          // are reconnecting after a tab switch). If so, just re-attach instead
+          // of stopping and relaunching — which would kill the working session.
+          const buffered = await window.api.aiCoding.getRawSessionOutput(sessionId)
+          if (!buffered) {
+            // No PTY output — session was launched in SDK (chat) mode and needs
+            // migration to PTY mode for the terminal view.
+            try { await window.api.aiCoding.stopSession(sessionId) } catch { /* */ }
+            const result = await launchSession(sessionId, { forcePty: true, cols: term.cols, rows: term.rows })
+            if (!result.success) {
+              term.writeln(`\x1b[31mFailed to start session: ${result.error ?? 'Unknown error'}\x1b[0m`)
+            }
+          } else {
+            // Session is already running in PTY mode — just replay buffered output
+            term.write(buffered)
+          }
+        } else {
+          const result = await launchSession(sessionId, { forcePty: true, cols: term.cols, rows: term.rows })
+          if (!result.success) {
+            term.writeln(`\x1b[31mFailed to start session: ${result.error ?? 'Unknown error'}\x1b[0m`)
+          }
         }
       } else if (needsLaunch) {
         const result = await launchSession(sessionId, { cols: term.cols, rows: term.rows })

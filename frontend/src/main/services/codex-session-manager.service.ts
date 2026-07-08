@@ -4,11 +4,46 @@ import * as readline from 'readline'
 import * as path from 'path'
 import * as fs from 'fs'
 import * as logger from '../utils/logger'
+import { scanAndMergeInstructions } from './coding-adapters/instructions'
 
-type CodingMode = 'plan' | 'ask-first' | 'auto-edit' | 'full-access'
+// Canonical Codex permission modes (new native vocabulary). The renderer sends
+// these; older aliases (ask-first/auto-edit) and SDK strings are normalized by
+// normalizeCodexMode() so persisted/legacy values keep working.
+type CodexMode = 'plan' | 'ask' | 'approve-for-me' | 'full-access'
 type CodexSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
 type CodexApprovalPolicy = 'untrusted' | 'on-failure' | 'on-request' | 'never'
 type CodexApprovalsReviewer = 'user' | 'auto_review'
+
+/** Map any incoming mode string (new native, legacy, or SDK) to a canonical CodexMode. */
+function normalizeCodexMode(mode: string): CodexMode {
+  switch (mode) {
+    case 'plan': return 'plan'
+    case 'full-access':
+    case 'danger-full-access':
+    case 'bypassPermissions':
+      return 'full-access'
+    case 'approve-for-me':
+    case 'auto-edit':
+    case 'auto-review':
+    case 'acceptEdits':
+      return 'approve-for-me'
+    case 'ask':
+    case 'ask-first':
+    case 'default':
+    default:
+      return 'ask'
+  }
+}
+
+/**
+ * Map an abstract reasoning-effort level to Codex's `modelReasoningEffort`.
+ * Codex only exposes low|medium|high|xhigh, so 'max'/'ultracode' cap at xhigh.
+ */
+function toCodexReasoningEffort(effort?: string): 'low' | 'medium' | 'high' | 'xhigh' | undefined {
+  if (!effort) return undefined
+  if (effort === 'low' || effort === 'medium' || effort === 'high' || effort === 'xhigh') return effort
+  return 'xhigh'
+}
 
 interface JsonRpcMessage {
   jsonrpc?: '2.0'
@@ -34,7 +69,9 @@ interface CodexSessionState {
   threadId: string | null
   resumeThreadId: string | null
   isProcessing: boolean
-  mode: CodingMode
+  mode: CodexMode
+  /** Per-turn reasoning effort (low|medium|high|xhigh); sent on every turn/start. */
+  modelReasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh'
   env?: Record<string, string | undefined>
   onEvent?: (sessionId: string, data: Record<string, unknown>) => void
   onClose?: (sessionId: string) => void
@@ -42,7 +79,8 @@ interface CodexSessionState {
   turnResolve?: () => void
   outputBuffer: string
   textLengths: Record<string, number>
-  toolBlocks: Record<string, string>
+  /** Block ids whose block_start has already been emitted (dedup, per turn). */
+  seenBlocks: Set<string>
   thinkingLengths: Record<string, number>
 }
 
@@ -142,7 +180,7 @@ function appendOutput(state: CodexSessionState, text: string): void {
     : combined
 }
 
-function modeToCodexOptions(mode: CodingMode): {
+function modeToCodexOptions(mode: CodexMode): {
   sandbox: CodexSandboxMode
   approvalPolicy: CodexApprovalPolicy
   approvalsReviewer?: CodexApprovalsReviewer
@@ -156,12 +194,13 @@ function modeToCodexOptions(mode: CodingMode): {
       prefix: 'You are in Plan mode. Do not edit files or run mutating commands. First produce a clear implementation plan and ask before making changes.'
     }
   }
-  if (mode === 'auto-edit') {
+  if (mode === 'approve-for-me') {
     return { sandbox: 'workspace-write', approvalPolicy: 'on-request', approvalsReviewer: 'auto_review' }
   }
   if (mode === 'full-access') {
     return { sandbox: 'danger-full-access', approvalPolicy: 'never' }
   }
+  // 'ask' — request user approval for each action.
   return { sandbox: 'workspace-write', approvalPolicy: 'on-request', approvalsReviewer: 'user' }
 }
 
@@ -182,6 +221,7 @@ function buildThreadParams(state: CodexSessionState): Record<string, unknown> {
   if (opts.approvalsReviewer) params.approvalsReviewer = opts.approvalsReviewer
   const model = state.env?.CODEX_MODEL || process.env.CODEX_MODEL
   if (model) params.model = model
+  if (state.modelReasoningEffort) params.modelReasoningEffort = state.modelReasoningEffort
   return params
 }
 
@@ -197,19 +237,52 @@ function buildTurnParams(state: CodexSessionState, input: Array<Record<string, u
   if (opts.approvalsReviewer) params.approvalsReviewer = opts.approvalsReviewer
   const model = state.env?.CODEX_MODEL || process.env.CODEX_MODEL
   if (model) params.model = model
+  if (state.modelReasoningEffort) params.modelReasoningEffort = state.modelReasoningEffort
   return params
 }
 
-function toAssistantEvent(content: any[]): Record<string, unknown> {
-  return { type: 'assistant', message: { role: 'assistant', content } }
+// ── Client streaming protocol emission (delta / tool_* / thinking_*) ──
+// `seenBlocks` dedups thinking_start / tool_start per itemId within a turn;
+// textLengths / thinkingLengths track cumulative streamed length so re-sent full
+// text from item/updated|completed doesn't duplicate.
+
+function emitTextDelta(sessionId: string, state: CodexSessionState, _itemId: string, delta: string): void {
+  if (!delta) return
+  appendOutput(state, delta)
+  emitEvent(sessionId, state, { type: 'delta', text: delta })
 }
 
-function toolUse(id: string, name: string, input: Record<string, unknown>): any {
-  return { type: 'tool_use', id, name, input }
+function emitThinkingDelta(sessionId: string, state: CodexSessionState, itemId: string, delta: string): void {
+  if (!state.seenBlocks.has(itemId)) {
+    state.seenBlocks.add(itemId)
+    emitEvent(sessionId, state, { type: 'thinking_start' })
+  }
+  if (delta) emitEvent(sessionId, state, { type: 'thinking_delta', text: delta })
 }
 
-function toolResult(id: string, content: string, isError?: boolean): any {
-  return { type: 'tool_result', tool_use_id: id, content, is_error: !!isError }
+function emitToolStart(
+  sessionId: string,
+  state: CodexSessionState,
+  itemId: string,
+  name: string,
+  input: Record<string, unknown>
+): void {
+  if (state.seenBlocks.has(itemId)) return
+  state.seenBlocks.add(itemId)
+  emitEvent(sessionId, state, { type: 'tool_start', id: itemId, name })
+  emitEvent(sessionId, state, { type: 'tool_executing', id: itemId, name, input })
+  appendOutput(state, `\n[${name}] ${JSON.stringify(input)}\n`)
+}
+
+function emitToolResult(
+  sessionId: string,
+  state: CodexSessionState,
+  itemId: string,
+  content: string,
+  isError?: boolean
+): void {
+  if (content) appendOutput(state, `\n${content}\n`)
+  emitEvent(sessionId, state, { type: 'tool_result', id: itemId, content, isError: !!isError })
 }
 
 function extractToolResult(item: any): string {
@@ -273,19 +346,6 @@ function notify(state: CodexSessionState, method: string, params?: unknown): voi
   state.process.stdin.write(JSON.stringify(msg) + '\n')
 }
 
-function ensureToolBlock(
-  sessionId: string,
-  state: CodexSessionState,
-  itemId: string,
-  name: string,
-  input: Record<string, unknown>
-): void {
-  if (state.toolBlocks[itemId]) return
-  state.toolBlocks[itemId] = itemId
-  emitEvent(sessionId, state, toAssistantEvent([toolUse(itemId, name, input)]))
-  appendOutput(state, `\n[${name}] ${JSON.stringify(input)}\n`)
-}
-
 function handleItemEvent(sessionId: string, state: CodexSessionState, method: string, item: any): void {
   const phase = method.split('/')[1]
   const itemId = item?.id || `${item?.type || 'item'}-${Date.now()}`
@@ -293,36 +353,31 @@ function handleItemEvent(sessionId: string, state: CodexSessionState, method: st
 
   if (itemType === 'agentMessage' || itemType === 'agent_message') {
     const fullText = String(item.text || '')
-    const previous = state.textLengths[itemId] || 0
+    const previous = state.textLengths[itemId] ?? 0
     if (fullText.length > previous) {
-      const delta = fullText.slice(previous)
       state.textLengths[itemId] = fullText.length
-      appendOutput(state, delta)
-      emitEvent(sessionId, state, toAssistantEvent([{ type: 'text', text: delta }]))
+      emitTextDelta(sessionId, state, itemId, fullText.slice(previous))
     }
     return
   }
 
   if (itemType === 'reasoning') {
     const text = String(item.text || item.summary || '')
-    const previous = state.thinkingLengths[itemId] || 0
+    const previous = state.thinkingLengths[itemId] ?? 0
     if (text.length > previous) {
-      const delta = text.slice(previous)
       state.thinkingLengths[itemId] = text.length
-      emitEvent(sessionId, state, toAssistantEvent([{ type: 'thinking', thinking: delta }]))
+      emitThinkingDelta(sessionId, state, itemId, text.slice(previous))
     } else if (phase === 'started') {
-      emitEvent(sessionId, state, toAssistantEvent([{ type: 'thinking', thinking: '' }]))
+      emitThinkingDelta(sessionId, state, itemId, '')
     }
     return
   }
 
   if (itemType === 'commandExecution' || itemType === 'command_execution') {
     const command = String(item.command || '')
-    ensureToolBlock(sessionId, state, itemId, 'Bash', { command })
+    emitToolStart(sessionId, state, itemId, 'Bash', { command })
     if (phase === 'completed') {
-      const content = extractToolResult(item)
-      emitEvent(sessionId, state, toAssistantEvent([toolResult(itemId, content, item.status === 'failed')]))
-      appendOutput(state, content ? `\n${content}\n` : '')
+      emitToolResult(sessionId, state, itemId, extractToolResult(item), item.status === 'failed')
     }
     return
   }
@@ -331,35 +386,35 @@ function handleItemEvent(sessionId: string, state: CodexSessionState, method: st
     const changes = Array.isArray(item.changes) ? item.changes : []
     const changeText = changes.map((c: any) => `${c.kind || 'change'} ${c.path || ''}`).join(', ')
     const primaryPath = changes.length === 1 ? String(changes[0]?.path || '') : ''
-    ensureToolBlock(sessionId, state, itemId, 'Edit', { changes: changeText, file_path: primaryPath })
+    emitToolStart(sessionId, state, itemId, 'Edit', { changes: changeText, file_path: primaryPath })
     if (phase === 'completed') {
       const diff = changes.map((c: any) => c.diff || '').filter(Boolean).join('\n\n')
-      emitEvent(sessionId, state, toAssistantEvent([toolResult(itemId, diff || 'Changes applied', item.status === 'failed')]))
+      emitToolResult(sessionId, state, itemId, diff || 'Changes applied', item.status === 'failed')
     }
     return
   }
 
   if (itemType === 'mcpToolCall' || itemType === 'mcp_tool_call') {
     const name = String(item.tool || item.name || 'mcp_tool')
-    ensureToolBlock(sessionId, state, itemId, name, item.arguments || item.input || {})
+    emitToolStart(sessionId, state, itemId, name, item.arguments || item.input || {})
     if (phase === 'completed') {
-      emitEvent(sessionId, state, toAssistantEvent([toolResult(itemId, extractToolResult(item), !!item.error)]))
+      emitToolResult(sessionId, state, itemId, extractToolResult(item), !!item.error)
     }
     return
   }
 
   if (itemType === 'webSearch' || itemType === 'web_search') {
-    ensureToolBlock(sessionId, state, itemId, 'WebSearch', { query: item.query || item.searchQuery || '' })
+    emitToolStart(sessionId, state, itemId, 'WebSearch', { query: item.query || item.searchQuery || '' })
     return
   }
 
   if (itemType === 'plan' && typeof item.text === 'string') {
-    emitEvent(sessionId, state, toAssistantEvent([{ type: 'text', text: item.text }]))
+    emitTextDelta(sessionId, state, `plan-${itemId}`, item.text)
     return
   }
 
   if (itemType === 'error') {
-    emitEvent(sessionId, state, { type: 'error', message: item.message || 'Codex error' })
+    emitEvent(sessionId, state, { type: 'error', error: { message: item.message || 'Codex error' } })
   }
 }
 
@@ -371,12 +426,19 @@ function handleNotification(sessionId: string, state: CodexSessionState, msg: Js
 
   if (method === 'item/commandExecution/requestApproval') {
     const accepted = state.mode !== 'plan'
+    // Per product decision: auto-accept by mode, with a non-blocking transparency note.
+    if (accepted) {
+      emitEvent(sessionId, state, { type: 'system', subtype: 'local', message: '⚙ 已按当前模式自动允许执行命令' })
+    }
     respond(state, msg.id, { decision: accepted ? 'accept' : 'decline' })
     return
   }
 
   if (method === 'item/fileChange/requestApproval') {
     const accepted = state.mode !== 'plan'
+    if (accepted) {
+      emitEvent(sessionId, state, { type: 'system', subtype: 'local', message: '⚙ 已按当前模式自动允许修改文件' })
+    }
     respond(state, msg.id, { decision: accepted ? 'accept' : 'decline' })
     return
   }
@@ -406,7 +468,7 @@ function handleNotification(sessionId: string, state: CodexSessionState, msg: Js
 
   if (method === 'turn/started') {
     state.textLengths = {}
-    state.toolBlocks = {}
+    state.seenBlocks = new Set()
     state.thinkingLengths = {}
     emitEvent(sessionId, state, { type: 'turn_started' })
     return
@@ -417,8 +479,7 @@ function handleNotification(sessionId: string, state: CodexSessionState, msg: Js
     const delta = String(params.delta || '')
     if (delta) {
       state.textLengths[itemId] = (state.textLengths[itemId] || 0) + delta.length
-      appendOutput(state, delta)
-      emitEvent(sessionId, state, toAssistantEvent([{ type: 'text', text: delta }]))
+      emitTextDelta(sessionId, state, itemId, delta)
     }
     return
   }
@@ -447,7 +508,7 @@ function handleNotification(sessionId: string, state: CodexSessionState, msg: Js
   }
 
   if (method === 'turn/failed') {
-    emitEvent(sessionId, state, { type: 'error', message: params.error?.message || 'Codex turn failed' })
+    emitEvent(sessionId, state, { type: 'error', error: { message: params.error?.message || 'Codex turn failed' } })
     if (state.turnResolve) {
       const resolve = state.turnResolve
       state.turnResolve = undefined
@@ -478,7 +539,8 @@ export async function launchCodexSession(
   onEvent?: (sessionId: string, data: Record<string, unknown>) => void,
   onClose?: (sessionId: string) => void,
   onError?: (sessionId: string, err: Error) => void,
-  env?: Record<string, string | undefined>
+  env?: Record<string, string | undefined>,
+  effort?: string
 ): Promise<{ success: boolean; error?: string }> {
   closeCodexSession(sessionId)
 
@@ -500,14 +562,15 @@ export async function launchCodexSession(
       threadId: null,
       resumeThreadId: resumeThreadId || null,
       isProcessing: false,
-      mode: 'ask-first',
+      mode: 'ask',
+      modelReasoningEffort: toCodexReasoningEffort(effort),
       env,
       onEvent,
       onClose,
       onError,
       outputBuffer: '',
       textLengths: {},
-      toolBlocks: {},
+      seenBlocks: new Set(),
       thinkingLengths: {}
     }
 
@@ -530,7 +593,7 @@ export async function launchCodexSession(
     child.on('error', (err) => {
       logger.error(`[codex] Process error for ${sessionId}:`, err)
       if (state.onError) state.onError(sessionId, err)
-      emitEvent(sessionId, state, { type: 'error', message: err.message })
+      emitEvent(sessionId, state, { type: 'error', error: { message: err.message } })
     })
 
     child.on('exit', (code, signal) => {
@@ -569,6 +632,7 @@ export async function writeToCodexSession(
   state.isProcessing = true
   try {
     const opts = modeToCodexOptions(state.mode)
+    const creatingThread = !state.threadId
     let prompt = text
     if (opts.prefix) prompt = `${opts.prefix}\n\n${text}`
 
@@ -583,12 +647,19 @@ export async function writeToCodexSession(
       }
     }
 
+    // On the first turn of a new thread, inject non-native project instructions
+    // (CLAUDE.md, .cursorrules, ...). Codex reads AGENTS.md natively.
+    if (creatingThread) {
+      const merged = scanAndMergeInstructions(state.cwd, 'codex')
+      if (merged) prompt = `${merged}\n\n${prompt}`
+    }
+
     const turnPromise = new Promise<void>((resolve) => { state.turnResolve = resolve })
     await send(state, 'turn/start', buildTurnParams(state, [{ type: 'text', text: prompt }]), 60000)
     await turnPromise
     return { success: true }
   } catch (err: any) {
-    emitEvent(sessionId, state, { type: 'error', message: err?.message || String(err) })
+    emitEvent(sessionId, state, { type: 'error', error: { message: err?.message || String(err) } })
     return { success: false, error: err?.message || String(err) }
   } finally {
     state.isProcessing = false
@@ -621,9 +692,18 @@ export function getCodexSessionOutput(sessionId: string): string {
 export function setCodexSessionMode(sessionId: string, mode: string): boolean {
   const state = codexSessions.get(sessionId)
   if (!state) return false
-  if (mode === 'plan') state.mode = 'plan'
-  else if (mode === 'full-access' || mode === 'danger-full-access' || mode === 'bypassPermissions') state.mode = 'full-access'
-  else if (mode === 'auto-edit' || mode === 'auto-review') state.mode = 'auto-edit'
-  else state.mode = 'ask-first'
+  state.mode = normalizeCodexMode(mode)
+  return true
+}
+
+/**
+ * Live-update the reasoning effort; takes effect on the next turn/start
+ * (buildTurnParams/buildThreadParams read state.modelReasoningEffort). No restart.
+ */
+export function setCodexSessionEffort(sessionId: string, effort: string): boolean {
+  const state = codexSessions.get(sessionId)
+  if (!state) return false
+  const mapped = toCodexReasoningEffort(effort)
+  if (mapped) state.modelReasoningEffort = mapped
   return true
 }

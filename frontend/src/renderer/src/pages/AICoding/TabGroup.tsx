@@ -1,6 +1,6 @@
 import React, { useMemo, useCallback, useRef, useState } from 'react'
 import { Allotment } from 'allotment'
-import { Button, Tooltip, Typography, theme } from 'antd'
+import { App, Button, Tooltip, Typography, theme } from 'antd'
 import { CloseOutlined, MessageOutlined, PlusOutlined } from '@ant-design/icons'
 import PaneTabBar from './PaneTabBar'
 import CodingChatPanel from './CodingChatPanel'
@@ -33,6 +33,7 @@ const TabGroup: React.FC<TabGroupProps> = ({
   isFocused,
 }) => {
   const t = useT()
+  const { modal } = App.useApp()
   const { token } = theme.useToken()
   const {
     sessions, workspaces,
@@ -63,11 +64,29 @@ const TabGroup: React.FC<TabGroupProps> = ({
   const handleClaudeViewModeChange = useCallback(async (mode: ClaudeViewMode) => {
     if (!activeTabId) return
     const session = sessions.find(s => s.id === activeTabId)
-    if (session && session.status !== 'closed' && session.status !== 'completed' && session.status !== 'error') {
+    const isRunning = !!session && session.status !== 'closed' && session.status !== 'completed' && session.status !== 'error'
+    if (isRunning) {
+      // Chat (SDK/app-server) and CLI (PTY) are different backends and can't
+      // coexist, so switching requires stopping the current one. If a turn is
+      // in flight, confirm first so the user doesn't lose work unexpectedly.
+      const inFlight = !!useAICodingStore.getState().sessionStreaming[activeTabId]
+      if (inFlight) {
+        const confirmed = await new Promise<boolean>((resolve) => {
+          modal.confirm({
+            title: t('coding.switchModeTitle'),
+            content: t('coding.switchModeContent'),
+            okText: t('coding.switchModeOk'),
+            cancelText: t('coding.cancel'),
+            onOk: () => resolve(true),
+            onCancel: () => resolve(false),
+          })
+        })
+        if (!confirmed) return
+      }
       try { await window.api.aiCoding.stopSession(activeTabId) } catch { /* */ }
     }
     setClaudeViewMode(activeTabId, mode)
-  }, [activeTabId, sessions, setClaudeViewMode])
+  }, [activeTabId, sessions, setClaudeViewMode, modal, t])
 
   const handleSelectTab = useCallback((sessionId: string) => {
     setPaneActiveTab(paneId, sessionId)

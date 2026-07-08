@@ -4,6 +4,7 @@ import { getUserAppsPath } from '../utils/paths'
 export interface ModuleVisibility {
   aiChat: boolean
   copiper: boolean
+  aiAgents: boolean
   openClaw: boolean
   aiTerminal: boolean
   localEnv: boolean
@@ -41,6 +42,7 @@ interface SettingsSchema {
   autoUpdate: boolean
   localIdePath: string
   localTerminalPath: string
+  hasCompletedSetup: boolean
   aiModelConfigs: AIModelConfig[]
   imageGenConfigs: ImageGenConfig[]
   moduleVisibility: ModuleVisibility
@@ -74,6 +76,7 @@ interface PublicSettings {
   autoUpdate: boolean
   localIdePath: string
   localTerminalPath: string
+  hasCompletedSetup: boolean
   aiModelConfigs: AIModelConfig[]
   imageGenConfigs: ImageGenConfig[]
   moduleVisibility: ModuleVisibility
@@ -85,6 +88,10 @@ interface PublicSettings {
 export const settingsStore = new Store<SettingsSchema>({
   name: 'settings',
   schema: {
+    hasCompletedSetup: {
+      type: 'boolean',
+      default: false
+    },
     pythonPath: {
       type: 'string',
       default: ''
@@ -150,10 +157,11 @@ export const settingsStore = new Store<SettingsSchema>({
     },
     moduleVisibility: {
       type: 'object',
-      default: { aiChat: true, copiper: false, openClaw: false, aiTerminal: true, localEnv: true, aiCoding: true },
+      default: { aiChat: true, copiper: false, aiAgents: true, openClaw: false, aiTerminal: true, localEnv: true, aiCoding: true },
       properties: {
         aiChat: { type: 'boolean' },
         copiper: { type: 'boolean' },
+        aiAgents: { type: 'boolean' },
         openClaw: { type: 'boolean' },
         aiTerminal: { type: 'boolean' },
         localEnv: { type: 'boolean' },
@@ -278,9 +286,10 @@ export function getSettings(): PublicSettings {
     autoUpdate: settingsStore.get('autoUpdate'),
     localIdePath: settingsStore.get('localIdePath'),
     localTerminalPath: settingsStore.get('localTerminalPath'),
+    hasCompletedSetup: settingsStore.get('hasCompletedSetup') ?? false,
     aiModelConfigs: settingsStore.get('aiModelConfigs'),
     imageGenConfigs: settingsStore.get('imageGenConfigs'),
-    moduleVisibility: settingsStore.get('moduleVisibility') ?? { aiChat: true, copiper: false, openClaw: false, aiTerminal: true, localEnv: false, aiCoding: true },
+    moduleVisibility: settingsStore.get('moduleVisibility') ?? { aiChat: true, copiper: false, aiAgents: true, openClaw: false, aiTerminal: true, localEnv: true, aiCoding: true },
     appShortcutEnabled: settingsStore.get('appShortcutEnabled') ?? true,
     appShortcutModifier: settingsStore.get('appShortcutModifier') ?? 'Control+Shift',
     appOrder: settingsStore.get('appOrder') ?? []

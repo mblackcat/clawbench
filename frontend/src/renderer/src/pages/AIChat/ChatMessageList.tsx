@@ -21,6 +21,19 @@ const ChatMessageList: React.FC = () => {
   const lastMessageIdRef = useRef<string | null>(null)
   const [activeAnchorId, setActiveAnchorId] = useState<string | null>(null)
 
+  // Track container width to force ReactMarkdown re-render on resize
+  const [containerWidth, setContainerWidth] = useState(0)
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const ro = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width
+      if (width !== undefined) setContainerWidth(width)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
   const anchorItems = useMemo(() => {
     const items = messages.map((msg) => ({
       id: msg.messageId,
@@ -103,7 +116,7 @@ const ChatMessageList: React.FC = () => {
         onScroll={handleScroll}
       >
         {messages.map(msg => (
-          <ChatMessage key={msg.messageId} message={msg} />
+          <ChatMessage key={msg.messageId} message={msg} containerWidth={containerWidth} />
         ))}
         {streaming && (
           <ChatMessage
@@ -117,6 +130,7 @@ const ChatMessageList: React.FC = () => {
               createdAt: Date.now(),
             }}
             isStreaming
+            containerWidth={containerWidth}
           />
         )}
         <AgentStatusBar />

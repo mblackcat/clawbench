@@ -23,7 +23,7 @@ import {
 } from '@ant-design/icons'
 import { useLocation } from 'react-router-dom'
 import { useSettingsStore } from '../../stores/useSettingsStore'
-import type { ModuleVisibility } from '../../stores/useSettingsStore'
+import { SETTINGS_MODULE_CARDS } from '../../constants/module-visibility'
 import AIModelSettings from './AIModelSettings'
 import MCPServerSettings from './MCPServerSettings'
 import AIToolsSettings from './AIToolsSettings'
@@ -31,20 +31,6 @@ import AIAssistantSettings from './AIAssistantSettings'
 import { useT } from '../../i18n'
 
 const { Title, Text } = Typography
-
-interface ModuleCardConfig {
-  key: keyof ModuleVisibility
-  titleKey: string
-  descKey: string
-}
-
-const MODULE_CARDS: ModuleCardConfig[] = [
-  { key: 'aiChat', titleKey: 'modules.aiChat', descKey: 'settings.moduleDescAiChat' },
-  { key: 'aiCoding', titleKey: 'modules.aiCoding', descKey: 'settings.moduleDescAiCoding' },
-  { key: 'aiTerminal', titleKey: 'modules.aiTerminal', descKey: 'settings.moduleDescAiTerminal' },
-  { key: 'aiAgents', titleKey: 'modules.aiAgents', descKey: 'settings.moduleDescAiAgents' },
-  { key: 'localEnv', titleKey: 'modules.localEnv', descKey: 'settings.moduleDescLocalEnv' },
-]
 
 const ModuleSettings: React.FC = () => {
   const { moduleVisibility, updateSetting } = useSettingsStore()
@@ -57,7 +43,7 @@ const ModuleSettings: React.FC = () => {
         {t('settings.moduleDesc')}
       </Text>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {MODULE_CARDS.map((mod) => (
+        {SETTINGS_MODULE_CARDS.map((mod) => (
           <Card
             key={mod.key}
             size="small"

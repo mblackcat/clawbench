@@ -56,6 +56,7 @@ const getEditorForColumn = (
     return <NumberEditor {...props} />
   if (type.startsWith('index/') || jType === 'index') return <IndexEditor {...props} />
   if (type.startsWith('indices/') || jType === 'indices') return <IndicesEditor {...props} />
+  if (type.startsWith('list:index') || jType === 'list:index') return <IndicesEditor {...props} />
   if (type.startsWith('ckv:') || jType.startsWith('ckv')) return <CKVEditor {...props} />
   if (type.startsWith('kv:') || jType.startsWith('kv') || type === 'dict' || jType === 'dict')
     return <KVEditor {...props} />

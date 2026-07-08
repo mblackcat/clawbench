@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type {
   AICodingWorkspace, AICodingSession, AICodingGroup, AICodingIMConfig,
   AICodingIMConnectionStatus, AIToolType, DetectedCLI,
-  CodingMessage, CodingContentBlock, CodingMode, ClaudeViewMode,
+  CodingMessage, CodingContentBlock, CodingMode, CodingEffort, ClaudeViewMode,
   AskUserQuestionItem
 } from '../types/ai-coding'
 import type { LayoutNode, LeafNode, SplitDirection } from '../types/split-layout'
@@ -15,6 +15,16 @@ let msgCounter = 0
 function genMsgId(): string { return `wm-${Date.now()}-${++msgCounter}` }
 const transcriptHydrationInFlight = new Set<string>()
 
+// Text deltas can arrive far faster than the renderer can cheaply re-parse
+// markdown, so we buffer them per session and flush on a short timer. This
+// bounds store updates (and therefore re-renders / markdown re-parses) to a
+// steady ~12fps regardless of the upstream token rate, which keeps long
+// streaming replies from freezing the UI. Non-delta events flush the pending
+// text first so block ordering is preserved.
+const deltaBuffer = new Map<string, string>()
+let deltaFlushTimer: ReturnType<typeof setTimeout> | null = null
+const DELTA_FLUSH_MS = 80
+
 function upsertSessionList(
   sessions: AICodingSession[],
   session: AICodingSession
@@ -26,15 +36,37 @@ function upsertSessionList(
   return next
 }
 
-function toRuntimePermissionMode(toolType: AIToolType, mode: CodingMode): string {
-  if (toolType === 'codex') return mode
-  const modeMap: Record<CodingMode, string> = {
+function toRuntimePermissionMode(toolType: AIToolType, mode: string): string {
+  if (toolType === 'codex') {
+    // Normalize to the native Codex vocabulary passed to the app-server.
+    if (mode === 'ask-first') return 'ask'
+    if (mode === 'auto-edit') return 'approve-for-me'
+    if (mode === 'plan') return 'ask' // Codex has no plan mode
+    return mode // 'ask' | 'approve-for-me' | 'full-access'
+  }
+  // Claude: map to the SDK PermissionMode. Legacy values (ask-first/auto-edit/
+  // full-access) are tolerated so persisted localStorage modes keep working
+  // until the user re-selects a native mode.
+  const modeMap: Record<string, string> = {
+    'manual': 'default',
+    'edit-automatically': 'acceptEdits',
     'plan': 'plan',
+    'auto': 'bypassPermissions',
     'ask-first': 'default',
     'auto-edit': 'bypassPermissions',
     'full-access': 'bypassPermissions'
   }
   return modeMap[mode] || 'default'
+}
+
+/** Default effort per tool, used when the user hasn't picked one. */
+export function defaultEffort(toolType: AIToolType): CodingEffort {
+  return toolType === 'codex' ? 'medium' : 'high'
+}
+
+/** Default mode per tool, used when the user hasn't picked one. */
+export function defaultMode(toolType: AIToolType): CodingMode {
+  return toolType === 'codex' ? 'ask' : 'manual'
 }
 
 // ── sessionMessages persistence (localStorage) ──
@@ -96,12 +128,16 @@ function parseClaudeEvent(event: Record<string, unknown>): CodingContentBlock[] 
   return blocks
 }
 
+// (Streaming accumulation is stateless on the client — see onPipeEvent.
+// The server sends a simple event protocol: delta / tool_* / thinking_* / result.)
+
 interface AICodingState {
   workspaces: AICodingWorkspace[]; sessions: AICodingSession[]; groups: AICodingGroup[]
   imConfig: AICodingIMConfig; imStatus: AICodingIMConnectionStatus; loading: boolean
   activeSessionId: string | null
   sessionMessages: Record<string, CodingMessage[]>; sessionStreaming: Record<string, boolean>
   sessionStreamingBlocks: Record<string, CodingContentBlock[]>; sessionModes: Record<string, CodingMode>
+  sessionEffort: Record<string, CodingEffort>
   sessionContextUsage: Record<string, Extract<CodingContentBlock, { type: 'context_usage' }> | null>
   fetchWorkspaces: () => Promise<void>; fetchSessions: () => Promise<void>; fetchGroups: () => Promise<void>
   fetchIMConfig: () => Promise<void>; fetchAll: () => Promise<void>
@@ -111,7 +147,7 @@ interface AICodingState {
   createSession: (wid: string, tt: AIToolType, src?: 'local' | 'im') => Promise<AICodingSession>
   updateSession: (id: string, u: Partial<AICodingSession>) => Promise<void>
   deleteSession: (id: string) => Promise<void>; stopSession: (id: string) => Promise<void>
-  launchSession: (id: string, opts?: { forcePty?: boolean; cols?: number; rows?: number }) => Promise<{ success: boolean; error?: string }>
+  launchSession: (id: string, opts?: { forcePty?: boolean; cols?: number; rows?: number; effort?: string }) => Promise<{ success: boolean; error?: string }>
   createGroup: (n: string) => Promise<AICodingGroup>; renameGroup: (id: string, n: string) => Promise<void>
   deleteGroup: (id: string) => Promise<{ success: boolean; error?: string }>
   saveIMConfig: (c: AICodingIMConfig) => Promise<void>
@@ -121,9 +157,9 @@ interface AICodingState {
   initListeners: () => () => void; setActiveSession: (sid: string | null) => void
   hydrateSessionTranscript: (sid: string) => Promise<void>
   createAndOpenSession: (wid: string, tt: AIToolType) => Promise<void>; detectTools: () => Promise<DetectedCLI[]>
-  sendUserMessage: (sid: string, text: string) => Promise<void>; clearSessionMessages: (sid: string) => void
+  sendUserMessage: (sid: string, text: string, images?: { data: string; mediaType: string }[]) => Promise<void>; clearSessionMessages: (sid: string) => void
   executeSlashCommand: (sid: string, command: string) => Promise<void>
-  setSessionMode: (sid: string, m: CodingMode) => void; interruptSession: (sid: string) => Promise<void>
+  setSessionMode: (sid: string, m: CodingMode) => void; setSessionEffort: (sid: string, e: CodingEffort) => void; interruptSession: (sid: string) => Promise<void>
   claudeViewModes: Record<string, ClaudeViewMode>
   setClaudeViewMode: (sid: string, m: ClaudeViewMode) => void
   sessionPendingQuestions: Record<string, { id: string; questions: AskUserQuestionItem[] } | null>
@@ -145,7 +181,7 @@ interface AICodingState {
 export const useAICodingStore = create<AICodingState>((set, get) => ({
   workspaces: [], sessions: [], groups: [],
   imConfig: { feishu: { appId: '', appSecret: '' } }, imStatus: { state: 'disconnected' }, loading: false,
-  activeSessionId: null, sessionMessages: loadPersistedMessages(), sessionStreaming: {}, sessionStreamingBlocks: {}, sessionModes: {}, sessionContextUsage: {},
+  activeSessionId: null, sessionMessages: loadPersistedMessages(), sessionStreaming: {}, sessionStreamingBlocks: {}, sessionModes: {}, sessionEffort: {}, sessionContextUsage: {},
   claudeViewModes: {},
   sessionPendingQuestions: {},
   globalLayout: null,
@@ -197,7 +233,15 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
     set({ sessions, activeSessionId: aid === id ? null : aid, sessionMessages: nm, sessionStreaming: ns, sessionStreamingBlocks: nb, sessionModes: nmo, sessionContextUsage: ncu })
   },
   stopSession: async (id) => { await window.api.aiCoding.stopSession(id); const sessions = await window.api.aiCoding.getSessions(); set(s => ({ sessions, sessionStreaming: { ...s.sessionStreaming, [id]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [id]: [] } })) },
-  launchSession: async (id, opts) => { const r = await window.api.aiCoding.launchSession(id, opts); if (r.success) set({ sessions: await window.api.aiCoding.getSessions() }); return r },
+  launchSession: async (id, opts) => {
+    // Always seed the reasoning effort so the first turn (and any relaunch)
+    // honors the user's choice; main process maps it per tool.
+    const session = get().sessions.find(s => s.id === id)
+    const effort = opts?.effort ?? get().sessionEffort[id] ?? (session ? defaultEffort(session.toolType) : 'high')
+    const r = await window.api.aiCoding.launchSession(id, { ...opts, effort })
+    if (r.success) set({ sessions: await window.api.aiCoding.getSessions() })
+    return r
+  },
   createGroup: async (n) => { const g = await window.api.aiCoding.createGroup(n); set({ groups: await window.api.aiCoding.getGroups() }); return g },
   renameGroup: async (id, n) => { await window.api.aiCoding.renameGroup(id, n); set({ groups: await window.api.aiCoding.getGroups() }) },
   deleteGroup: async (id) => {
@@ -219,11 +263,44 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
       set(st => ({ sessions: st.sessions.map(s => s.id === sessionId ? { ...s, status: 'closed' as const, lastActivity: 'none' as const, updatedAt: Date.now() } : s) }))
       get().fetchSessions()
     })
+    // Flush a session's buffered text deltas into the streaming blocks now.
+    const flushPendingDelta = (sessionId: string): void => {
+      const pending = deltaBuffer.get(sessionId)
+      if (!pending) return
+      deltaBuffer.delete(sessionId)
+      set(s => {
+        const blocks = [...(s.sessionStreamingBlocks[sessionId] || [])]
+        const last = blocks[blocks.length - 1]
+        if (last && last.type === 'text') blocks[blocks.length - 1] = { ...last, text: (last.text || '') + pending }
+        else blocks.push({ type: 'text' as const, text: pending })
+        return { sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: blocks } }
+      })
+    }
+    // Coalesce deltas: one timer tick commits every buffered session at once.
+    const scheduleDeltaFlush = (): void => {
+      if (deltaFlushTimer) return
+      deltaFlushTimer = setTimeout(() => {
+        deltaFlushTimer = null
+        for (const sid of [...deltaBuffer.keys()]) {
+          const pending = deltaBuffer.get(sid)
+          if (!pending) continue
+          deltaBuffer.delete(sid)
+          set(s => {
+            const blocks = [...(s.sessionStreamingBlocks[sid] || [])]
+            const last = blocks[blocks.length - 1]
+            if (last && last.type === 'text') blocks[blocks.length - 1] = { ...last, text: (last.text || '') + pending }
+            else blocks.push({ type: 'text' as const, text: pending })
+            return { sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sid]: blocks } }
+          })
+        }
+      }, DELTA_FLUSH_MS)
+    }
     const u4 = window.api.aiCoding.onPipeEvent(({ sessionId, event }) => {
       const st = get(); const session = st.sessions.find(s => s.id === sessionId); if (!session) return
       const et = (event as any).type as string
       if (et === 'pipe_exit' || et === 'pipe_error' || et === 'slash_command_done') {
-        const cb = st.sessionStreamingBlocks[sessionId] || []
+        flushPendingDelta(sessionId)
+        const cb = get().sessionStreamingBlocks[sessionId] || []
         if (cb.length > 0) { const m: CodingMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: cb, timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] }, sessionPendingQuestions: { ...s.sessionPendingQuestions, [sessionId]: null } })) }
         else set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionPendingQuestions: { ...s.sessionPendingQuestions, [sessionId]: null } }))
         return
@@ -236,6 +313,80 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
         return
       }
       if (session.toolType === 'claude' || session.toolType === 'codex') {
+        // ── Streaming accumulation for Claude (long-lived query) and Codex ──
+        if (et === 'turn_start' || et === 'turn_started') {
+          // Mark streaming, but do NOT clear blocks: an agentic turn has many
+          // assistant messages (text → tool → text → tool …) and we want all of
+          // them to accumulate. Block ids are unique per message, so no collisions.
+          // Finalization + clear happens on `result`.
+          set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: true } }))
+          return
+        }
+        // Streaming text is coalesced into deltaBuffer and flushed on a timer
+        // (scheduleDeltaFlush) to bound re-render frequency. Other event types
+        // flush any buffered text first via flushPendingDelta() below.
+        if (et === 'delta') {
+          const text = String((event as any).text ?? '')
+          if (!text) return
+          deltaBuffer.set(sessionId, (deltaBuffer.get(sessionId) || '') + text)
+          if (!get().sessionStreaming[sessionId]) {
+            set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: true } }))
+          }
+          scheduleDeltaFlush()
+          return
+        }
+        // Commit buffered text before pushing any other block type, so the
+        // streamed content stays in the right order.
+        flushPendingDelta(sessionId)
+        // ── Thinking block ──
+        if (et === 'thinking_start') {
+          set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: true }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [...(s.sessionStreamingBlocks[sessionId] || []), { type: 'thinking' as const, text: '' }] } }))
+          return
+        }
+        if (et === 'thinking_delta') {
+          const text = String((event as any).text ?? '')
+          if (!text) return
+          set(s => {
+            const blocks = [...(s.sessionStreamingBlocks[sessionId] || [])]
+            const last = blocks[blocks.length - 1]
+            if (last && last.type === 'thinking') blocks[blocks.length - 1] = { ...last, text: (last.text || '') + text }
+            else blocks.push({ type: 'thinking', text })
+            return { sessionStreaming: { ...s.sessionStreaming, [sessionId]: true }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: blocks } }
+          })
+          return
+        }
+        if (et === 'thinking_stop') return  // visual only; the block already holds the text
+        // ── Tool card lifecycle, keyed by tool id ──
+        if (et === 'tool_start') {
+          const id = String((event as any).id ?? '')
+          const name = String((event as any).name ?? '')
+          set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: true }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [...(s.sessionStreamingBlocks[sessionId] || []), { type: 'tool_use' as const, id, name, input: {} }] } }))
+          return
+        }
+        if (et === 'tool_executing') {
+          const id = String((event as any).id ?? '')
+          const name = String((event as any).name ?? '')
+          const input = ((event as any).input || {}) as Record<string, unknown>
+          set(s => {
+            const blocks = [...(s.sessionStreamingBlocks[sessionId] || [])]
+            const idx = blocks.findIndex(b => b.type === 'tool_use' && b.id === id)
+            if (idx !== -1) {
+              const tu = blocks[idx] as Extract<CodingContentBlock, { type: 'tool_use' }>
+              blocks[idx] = { ...tu, name: name || tu.name, input }
+            }
+            return { sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: blocks } }
+          })
+          return
+        }
+        if (et === 'tool_result') {
+          const id = String((event as any).id ?? '')
+          const content = String((event as any).content ?? '')
+          const isError = !!(event as any).isError
+          set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: true }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [...(s.sessionStreamingBlocks[sessionId] || []), { type: 'tool_result' as const, toolUseId: id, content, isError }] } }))
+          return
+        }
+
+        // ── Structured side-channel events ──
         if (et === 'context_usage') {
           const pb = parseClaudeEvent(event as Record<string, unknown>)
           const usageBlock = pb.find((b): b is Extract<CodingContentBlock, { type: 'context_usage' }> => b.type === 'context_usage')
@@ -286,9 +437,10 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
           }))
           return
         }
-        const pb = parseClaudeEvent(event as Record<string, unknown>)
+
+        // ── Lifecycle events ──
         if (et === 'system') {
-          // Only skip init events; forward other system events (e.g. slash command responses) as text
+          // Skip init events; forward other system events (slash-command feedback) as text.
           if ((event as any).subtype === 'init') return
           const sysText = (event as any).message || (event as any).content || ''
           if (sysText) {
@@ -296,12 +448,37 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
           }
           return
         }
-        if (et === 'assistant') { set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: true }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [...(s.sessionStreamingBlocks[sessionId] || []), ...pb] } })); return }
-        if (et === 'result') { const existing = get().sessionStreamingBlocks[sessionId] || []; let ab = [...existing]; if (ab.length === 0) { const resultText = typeof (event as any).result === 'string' ? (event as any).result : ''; if (resultText) ab.push({ type: 'text', text: resultText }) }; const usage = (event as any).usage; if (usage && !ab.some(b => b.type === 'context_usage')) ab.push({ type: 'context_usage', inputTokens: usage.inputTokens, cachedInputTokens: usage.cachedInputTokens, outputTokens: usage.outputTokens, usedTokens: usage.usedTokens, contextWindow: usage.contextWindow }); const cost = typeof (event as any).cost_usd === 'number' ? (event as any).cost_usd : undefined; if (ab.length > 0) { const m: CodingMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: ab, timestamp: Date.now(), costUsd: cost }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } })) } else set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } })); return }
-        if (et === 'error') { const ab = [...(get().sessionStreamingBlocks[sessionId] || []), ...pb]; if (ab.length > 0) { const m: CodingMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: ab, timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } })) } }
+        if (et === 'result') {
+          const existing = get().sessionStreamingBlocks[sessionId] || []
+          let ab = [...existing]
+          if (ab.length === 0) {
+            const resultText = typeof (event as any).result === 'string' ? (event as any).result : ''
+            if (resultText) ab.push({ type: 'text', text: resultText })
+          }
+          const usage = (event as any).usage
+          if (usage && !ab.some(b => b.type === 'context_usage')) ab.push({ type: 'context_usage', inputTokens: usage.inputTokens, cachedInputTokens: usage.cachedInputTokens, outputTokens: usage.outputTokens, usedTokens: usage.usedTokens, contextWindow: usage.contextWindow })
+          const cost = typeof (event as any).cost_usd === 'number' ? (event as any).cost_usd : undefined
+          if (ab.length > 0) {
+            const m: CodingMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: ab, timestamp: Date.now(), costUsd: cost }
+            set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } }))
+          } else {
+            set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } }))
+          }
+          return
+        }
+        if (et === 'error') {
+          const msg = (event as any)?.error?.message || (event as any)?.message || 'Unknown error'
+          const ab: CodingContentBlock[] = [...(get().sessionStreamingBlocks[sessionId] || []), { type: 'text', text: `Error: ${msg}` }]
+          const m: CodingMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: ab, timestamp: Date.now() }
+          set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } }))
+        }
       }
     })
-    return () => { u1(); u2(); u3(); u4() }
+    return () => {
+      u1(); u2(); u3(); u4()
+      if (deltaFlushTimer) { clearTimeout(deltaFlushTimer); deltaFlushTimer = null }
+      deltaBuffer.clear()
+    }
   },
 
   setActiveSession: (sid) => {
@@ -356,19 +533,24 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
   createAndOpenSession: async (wid, tt) => { const s = await get().createSession(wid, tt, 'local'); set({ activeSessionId: s.id }) },
   detectTools: async () => window.api.aiCoding.detectTools(),
 
-  sendUserMessage: async (sessionId, text) => {
+  sendUserMessage: async (sessionId, text, images) => {
     const { sessions } = get(); const session = sessions.find(s => s.id === sessionId); if (!session) return
-    const userMsg: CodingMessage = { id: genMsgId(), sessionId, role: 'user', blocks: [{ type: 'text', text }], timestamp: Date.now() }
+    const userBlocks: CodingContentBlock[] = []
+    if (images && images.length > 0) {
+      for (const img of images) userBlocks.push({ type: 'text', text: `📎 ${img.mediaType} image (${Math.round(img.data.length * 0.75 / 1024)} KB)` })
+    }
+    if (text) userBlocks.push({ type: 'text', text })
+    const userMsg: CodingMessage = { id: genMsgId(), sessionId, role: 'user', blocks: userBlocks.length > 0 ? userBlocks : [{ type: 'text', text: '' }], timestamp: Date.now() }
     set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), userMsg] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: true }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } }))
     if (!session.title) { const t = text.slice(0, 50) + (text.length > 50 ? '…' : ''); try { await get().updateSession(sessionId, { title: t }) } catch { /* */ } }
     if (session.status === 'closed' || session.status === 'completed' || session.status === 'error') {
       const r = await get().launchSession(sessionId)
       if (!r.success) { const em: CodingMessage = { id: genMsgId(), sessionId, role: 'system', blocks: [{ type: 'text', text: `启动失败: ${r.error}` }], timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), em] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false } })); return }
-      const activeMode = get().sessionModes[sessionId] || 'ask-first'
+      const activeMode = get().sessionModes[sessionId] || defaultMode(session.toolType)
       await window.api.aiCoding.setPermissionMode(sessionId, toRuntimePermissionMode(session.toolType, activeMode)).catch(() => {})
       await new Promise(r => setTimeout(r, 500))
     }
-    try { await window.api.aiCoding.writeToSession(sessionId, text) } catch (err: any) { const em: CodingMessage = { id: genMsgId(), sessionId, role: 'system', blocks: [{ type: 'text', text: `发送失败: ${err?.message || String(err)}` }], timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), em] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false } })) }
+    try { await window.api.aiCoding.writeToSession(sessionId, text, images) } catch (err: any) { const em: CodingMessage = { id: genMsgId(), sessionId, role: 'system', blocks: [{ type: 'text', text: `发送失败: ${err?.message || String(err)}` }], timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), em] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false } })) }
   },
   clearSessionMessages: (sid) => set(s => ({ sessionMessages: { ...s.sessionMessages, [sid]: [] }, sessionStreaming: { ...s.sessionStreaming, [sid]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sid]: [] } })),
   executeSlashCommand: async (sessionId, command) => {
@@ -393,6 +575,12 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
     const session = get().sessions.find(s => s.id === sid)
     const runtimeMode = toRuntimePermissionMode(session?.toolType || 'claude', m)
     window.api.aiCoding.setPermissionMode(sid, runtimeMode).catch(() => { /* session may not be running yet */ })
+  },
+  setSessionEffort: (sid, effort) => {
+    set(s => ({ sessionEffort: { ...s.sessionEffort, [sid]: effort } }))
+    // Apply live to a running session (best-effort — ignored if not running yet,
+    // and re-seeded from sessionEffort on the next launch).
+    window.api.aiCoding.setEffort(sid, effort).catch(() => { /* session may not be running yet */ })
   },
   setClaudeViewMode: (sid, m) => { localStorage.setItem('cb-claude-view-mode', m); set(s => ({ claudeViewModes: { ...s.claudeViewModes, [sid]: m } })) },
   interruptSession: async (sid) => { try { await window.api.aiCoding.interruptSession(sid) } catch { /* */ } },

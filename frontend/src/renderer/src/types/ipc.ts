@@ -466,11 +466,13 @@ export interface ClawBenchAPI {
     ) => Promise<import('./ai-coding').AICodingSession | null>
     deleteSession: (id: string) => Promise<void>
     stopSession: (id: string) => Promise<import('./ai-coding').AICodingSession | null>
-    launchSession: (id: string, opts?: { forcePty?: boolean; cols?: number; rows?: number }) => Promise<{ success: boolean; error?: string }>
-    writeToSession: (sessionId: string, text: string) => Promise<{ success: boolean; error?: string }>
+    launchSession: (id: string, opts?: { forcePty?: boolean; cols?: number; rows?: number; effort?: string }) => Promise<{ success: boolean; error?: string }>
+    writeToSession: (sessionId: string, text: string, images?: { data: string; mediaType: string }[]) => Promise<{ success: boolean; error?: string }>
+    readFileBase64: (filePath: string) => Promise<{ data: string; mediaType: string } | null>
     interruptSession: (sessionId: string) => Promise<{ success: boolean }>
     executeSlashCommand: (sessionId: string, command: string) => Promise<{ success: boolean; error?: string }>
     setPermissionMode: (sessionId: string, mode: string) => Promise<{ success: boolean; error?: string }>
+    setEffort: (sessionId: string, effort: string) => Promise<{ success: boolean; error?: string }>
     onPipeEvent: (callback: (data: { sessionId: string; event: any }) => void) => () => void
     createPty: (sessionId: string) => Promise<{ success: boolean; error?: string }>
     writePty: (sessionId: string, data: string) => Promise<void>

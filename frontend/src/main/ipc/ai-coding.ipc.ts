@@ -17,11 +17,13 @@ import {
   deleteWorkspace,
   getSessionsForWorkspace,
   writeToSession,
+  readImageBase64,
   getSessionOutput,
   getRawSessionOutput,
   interruptSession,
   executeSessionSlashCommand,
   setSessionPermissionMode,
+  setSessionEffort,
   getGroups,
   createGroup,
   renameGroup,
@@ -131,12 +133,16 @@ export function registerAICodingIpc(): void {
     return stopSession(id)
   })
 
-  ipcMain.handle('ai-coding:launch-session', async (_event, id: string, opts?: { forcePty?: boolean; cols?: number; rows?: number }) => {
+  ipcMain.handle('ai-coding:launch-session', async (_event, id: string, opts?: { forcePty?: boolean; cols?: number; rows?: number; effort?: string }) => {
     return launchSession(id, opts)
   })
 
-  ipcMain.handle('ai-coding:write-to-session', async (_event, sessionId: string, text: string) => {
-    return writeToSession(sessionId, text)
+  ipcMain.handle('ai-coding:write-to-session', async (_event, sessionId: string, text: string, images?: { data: string; mediaType: string }[]) => {
+    return writeToSession(sessionId, text, images)
+  })
+
+  ipcMain.handle('ai-coding:read-file-base64', async (_event, filePath: string) => {
+    return readImageBase64(filePath)
   })
 
   ipcMain.handle('ai-coding:interrupt-session', async (_event, sessionId: string) => {
@@ -150,6 +156,10 @@ export function registerAICodingIpc(): void {
 
   ipcMain.handle('ai-coding:set-permission-mode', async (_event, sessionId: string, mode: string) => {
     return setSessionPermissionMode(sessionId, mode)
+  })
+
+  ipcMain.handle('ai-coding:set-effort', async (_event, sessionId: string, effort: string) => {
+    return setSessionEffort(sessionId, effort)
   })
 
   // ── PTY management ──

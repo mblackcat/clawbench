@@ -32,6 +32,7 @@ export type NativeTranscriptBlock =
   | { type: 'thinking'; text: string }
   | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
   | { type: 'tool_result'; toolUseId: string; content: string; isError?: boolean }
+  | { type: 'todo_update'; todos: Array<{ content: string; status: 'pending' | 'in_progress' | 'completed'; activeForm: string }> }
   | { type: 'context_usage'; inputTokens?: number; cachedInputTokens?: number; outputTokens?: number; usedTokens?: number; contextWindow?: number }
 
 export interface NativeTranscriptMessage {
@@ -333,12 +334,27 @@ function readClaudeTranscript(workingDir: string, sessionId: string): NativeTran
         } else if (block?.type === 'thinking' && block.thinking) {
           blocks.push({ type: 'thinking', text: String(block.thinking) })
         } else if (block?.type === 'tool_use') {
-          blocks.push({
-            type: 'tool_use',
-            id: String(block.id || `claude-tool-${messages.length}-${blocks.length}`),
-            name: String(block.name || 'Tool'),
-            input: block.input && typeof block.input === 'object' ? block.input : {}
-          })
+          const toolName = String(block.name || '')
+          const toolInput = block.input && typeof block.input === 'object' ? block.input as Record<string, unknown> : {}
+          // TodoWrite carries the full todo list — render it as a dedicated
+          // todo_update block (matching the live stream) so the checklist
+          // survives session reload instead of degrading to a raw JSON card.
+          if (toolName === 'TodoWrite' && Array.isArray(toolInput.todos) && toolInput.todos.length > 0) {
+            const todos = (toolInput.todos as any[])
+              .map((td: any) => ({
+                content: String(td?.content ?? ''),
+                status: td?.status === 'in_progress' || td?.status === 'completed' ? td.status : 'pending',
+                activeForm: String(td?.activeForm ?? td?.content ?? ''),
+              }))
+            blocks.push({ type: 'todo_update', todos })
+          } else {
+            blocks.push({
+              type: 'tool_use',
+              id: String(block.id || `claude-tool-${messages.length}-${blocks.length}`),
+              name: toolName || 'Tool',
+              input: toolInput,
+            })
+          }
         }
       }
       pushTranscriptMessage(messages, 'assistant', blocks, ts)
