@@ -14,6 +14,7 @@ import {
   setApplicationFeatured,
   setApplicationPublished,
 } from '../repositories/applicationRepository';
+import { getLatestVersionsByApplicationIds } from '../repositories/applicationVersionRepository';
 import { userToResponse } from '../models/user';
 import { applicationToResponse } from '../models/application';
 import { logger } from '../utils/logger';
@@ -187,10 +188,17 @@ export async function listAllApplicationsHandler(
       countAllApplications(search, type),
     ]);
 
+    // 批量获取最新版本号
+    const latestVersionMap = await getLatestVersionsByApplicationIds(
+      applications.map((a) => a.applicationId)
+    );
+
     res.json({
       success: true,
       data: {
-        applications: applications.map((a) => applicationToResponse(a)),
+        applications: applications.map((a) =>
+          applicationToResponse(a, undefined, latestVersionMap.get(a.applicationId))
+        ),
         total,
         limit,
         offset,

@@ -232,6 +232,11 @@ const AppStorePage: React.FC = () => {
                     <Text type="secondary" style={{ fontSize: 12 }}>
                       {app.downloadCount || 0}
                     </Text>
+                    {app.version && (
+                      <Text type="secondary" style={{ fontSize: 12, marginLeft: 4 }}>
+                        v{app.version}
+                      </Text>
+                    )}
                   </div>
                   {app.category && (
                     <Tag style={{ margin: 0, borderRadius: 6, fontSize: 11 }}>

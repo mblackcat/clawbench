@@ -421,8 +421,14 @@ const AppLibraryPage: React.FC = () => {
               </Text>
             </Tooltip>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {app.version && <Tag style={{ margin: 0 }}>v{app.version}</Tag>}
             {app.category && app.category !== 'general' && <Tag style={{ margin: 0 }}>{app.category}</Tag>}
+            {status === 'update' && updateInfoMap.get(app.applicationId)?.latestVersion && (
+              <Tag color="processing" icon={<SyncOutlined spin />} style={{ margin: 0, fontWeight: 600 }}>
+                {t('workbench.updateAvailableVersion', updateInfoMap.get(app.applicationId)!.latestVersion)}
+              </Tag>
+            )}
           </div>
         </div>
         <div

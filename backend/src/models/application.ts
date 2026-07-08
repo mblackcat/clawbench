@@ -57,6 +57,8 @@ export interface ApplicationResponse {
   category: string | null;
   published: boolean;
   featured: boolean;
+  /** 最新版本号（取自 application_versions 中 published_at 最新的一条） */
+  version?: string;
   downloadCount: number;
   metadata: Record<string, any> | null;
   createdAt: number;
@@ -103,8 +105,15 @@ export function applicationRowToApplication(row: ApplicationRow): Application {
 
 /**
  * 将应用对象转换为响应对象
+ * @param app 应用对象
+ * @param ownerName 所有者名称（可选）
+ * @param latestVersion 最新版本号（可选，来自 application_versions）
  */
-export function applicationToResponse(app: Application, ownerName?: string): ApplicationResponse {
+export function applicationToResponse(
+  app: Application,
+  ownerName?: string,
+  latestVersion?: string
+): ApplicationResponse {
   return {
     applicationId: app.applicationId,
     name: app.name,
@@ -115,6 +124,7 @@ export function applicationToResponse(app: Application, ownerName?: string): App
     category: app.category,
     published: app.published,
     featured: app.featured,
+    version: latestVersion,
     downloadCount: app.downloadCount,
     metadata: app.metadata,
     createdAt: app.createdAt,

@@ -116,6 +116,33 @@ export async function getLatestVersion(
 }
 
 /**
+ * 批量查询多个应用的最新版本号（单次查询，避免 N+1）。
+ * 返回 Map<applicationId, version字符串>；没有版本记录的应用不会出现在 Map 中。
+ * @param applicationIds 应用ID列表
+ */
+export async function getLatestVersionsByApplicationIds(
+  applicationIds: string[]
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  if (applicationIds.length === 0) return result;
+
+  const placeholders = applicationIds.map(() => '?').join(',');
+  // ORDER BY published_at DESC 保证同一应用多版本时，最新版本先被遍历到
+  const rows = await database.all<ApplicationVersionRow>(
+    `SELECT * FROM application_versions WHERE application_id IN (${placeholders}) ORDER BY published_at DESC`,
+    applicationIds
+  );
+
+  for (const row of rows) {
+    if (!result.has(row.application_id)) {
+      result.set(row.application_id, row.version);
+    }
+  }
+
+  return result;
+}
+
+/**
  * 检查版本是否存在
  * @param applicationId 应用ID
  * @param version 版本号
