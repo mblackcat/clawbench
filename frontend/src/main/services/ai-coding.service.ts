@@ -166,32 +166,40 @@ function handleSDKEvent(sessionId: string, data: Record<string, unknown>): void 
         updateSession(sessionId, { toolSessionId: sid })
       }
     }
-  } else if (msgType === 'turn_start' || msgType === 'turn_started') {
+    return
+  }
+
+  // High-frequency streaming events must NOT update session status or ping the
+  // renderer here. `updateSession` calls `notifyDataChanged()`, and the
+  // renderer's data-changed handler re-fetches workspaces + sessions + groups
+  // — firing that on every text/thinking delta (hundreds per second) is what
+  // froze the UI mid-reply. The turn's status is already 'running' from the
+  // turn_start event; the streamed content itself travels over the separate
+  // pipe-event channel, which the renderer coalesces.
+  if (msgType === 'delta' || msgType === 'thinking_delta') {
+    return
+  }
+
+  // State transitions only — a handful per turn. updateSession already pings
+  // the renderer, so no extra notifyDataChanged() is needed here.
+  if (msgType === 'turn_start' || msgType === 'turn_started' || msgType === 'thinking_start') {
     updateSession(sessionId, { status: 'running', lastActivity: 'thinking' })
-    notifyDataChanged()
-  } else if (msgType === 'delta' || msgType === 'thinking_start' || msgType === 'thinking_delta') {
-    updateSession(sessionId, { status: 'running', lastActivity: 'thinking' })
-    notifyDataChanged()
   } else if (msgType === 'tool_start' || msgType === 'tool_executing') {
     updateSession(sessionId, { status: 'running', lastActivity: activityFromToolName(data.name as string) })
-    notifyDataChanged()
   } else if (msgType === 'tool_result') {
     updateSession(sessionId, { status: 'running', lastActivity: 'tool_call' })
-    notifyDataChanged()
   } else if (msgType === 'result') {
     const sid = (data.session_id as string) ?? ''
     const costUsd = typeof data.cost_usd === 'number' ? data.cost_usd : undefined
-    // After Claude finishes a turn, check if it's waiting for interactive input
+    // After a turn finishes, check if it's waiting for interactive input
     const currentOutput = getSDKSessionOutput(sessionId)
     const interactiveState = detectManagedInteractiveState(currentOutput)
     const updates: Partial<AICodingSession> = { status: 'idle', lastActivity: interactiveState || 'none' }
     if (sid) updates.toolSessionId = sid
     if (costUsd !== undefined) updates.costUsd = costUsd
     updateSession(sessionId, updates)
-    notifyDataChanged()
   } else if (msgType === 'error') {
     updateSession(sessionId, { status: 'idle', lastActivity: 'none' })
-    notifyDataChanged()
   }
 }
 
