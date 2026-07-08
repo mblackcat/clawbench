@@ -2,8 +2,8 @@
  * 应用数据模型
  */
 
-/** 资源类型：应用 / AI 技能 / 提示词 */
-export type ApplicationType = 'app' | 'ai-skill' | 'prompt';
+/** 资源类型：应用 / AI 技能 / 提示词 / 链接 */
+export type ApplicationType = 'app' | 'ai-skill' | 'prompt' | 'link';
 
 /**
  * 应用接口

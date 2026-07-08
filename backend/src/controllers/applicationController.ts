@@ -91,7 +91,7 @@ export async function createApplicationHandler(
     }
 
     // 验证 type
-    const validTypes = ['app', 'ai-skill', 'prompt'];
+    const validTypes = ['app', 'ai-skill', 'prompt', 'link'];
     if (type !== undefined && !validTypes.includes(type)) {
       res.status(400).json({
         success: false,
