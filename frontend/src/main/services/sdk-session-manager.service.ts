@@ -39,6 +39,24 @@ async function ensureSDK(): Promise<typeof import('@anthropic-ai/claude-agent-sd
 
 type SDKPermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'
 
+// Abstract reasoning-effort choice (mirrors the renderer's CodingEffort). Claude's
+// SDK surfaces it two ways: Options.effort at spawn (low..max) and a live
+// applyFlagSettings({effortLevel, ultracode}) control request (no respawn).
+type SDKEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultracode'
+
+/** Per-spawn EffortLevel (Options.effort). ultracode → xhigh (the flag itself is live-only). */
+function spawnEffortLevel(e: SDKEffort): 'low' | 'medium' | 'high' | 'xhigh' | 'max' {
+  return e === 'ultracode' ? 'xhigh' : e
+}
+
+/** Live applyFlagSettings payload. The live Settings layer caps at xhigh, so 'max'
+ *  degrades to xhigh when toggled mid-session (full 'max' applies on (re)spawn). */
+function effortToFlagSettings(e: SDKEffort): Record<string, unknown> {
+  if (e === 'ultracode') return { ultracode: true }
+  if (e === 'max') return { ultracode: false, effortLevel: 'xhigh' }
+  return { ultracode: false, effortLevel: e }
+}
+
 interface SDKSessionState {
   /** Claude native session ID (for resume after restart). */
   toolSessionId: string | null
@@ -52,6 +70,8 @@ interface SDKSessionState {
   /** True while a turn is in flight (between push and result/error). */
   isProcessing: boolean
   permissionMode: SDKPermissionMode
+  /** Current reasoning-effort choice; seeded at spawn and live-toggled via applyFlagSettings. */
+  effort: SDKEffort
   env?: Record<string, string | undefined>
   /** Server-side streaming accumulation state. */
   streamState: ClaudeStreamState
@@ -309,7 +329,8 @@ export function launchSDKSession(
   onEvent?: (sessionId: string, data: Record<string, unknown>) => void,
   onClose?: (sessionId: string) => void,
   onError?: (sessionId: string, err: Error) => void,
-  env?: Record<string, string | undefined>
+  env?: Record<string, string | undefined>,
+  effort?: string
 ): { success: boolean; error?: string } {
   closeSDKSession(sessionId)
 
@@ -321,6 +342,7 @@ export function launchSDKSession(
     activeQuery: null,
     isProcessing: false,
     permissionMode: 'bypassPermissions',  // default — matches old pipe mode behavior
+    effort: (effort as SDKEffort) || 'high',
     env,
     streamState: createClaudeStreamState(),
     onEvent,
@@ -352,6 +374,7 @@ async function startQuery(sessionId: string, state: SDKSessionState): Promise<vo
     includePartialMessages: true,
     permissionMode: state.permissionMode,
     allowDangerouslySkipPermissions: state.permissionMode === 'bypassPermissions',
+    effort: spawnEffortLevel(state.effort),
     settingSources: ['user', 'project', 'local'],
   }
   if (claudePath) options.pathToClaudeCodeExecutable = claudePath
@@ -485,6 +508,23 @@ export async function setSDKPermissionMode(
       await state.activeQuery.setPermissionMode(mode)
     } catch {
       // Ignore — will be applied on the next turn.
+    }
+  }
+}
+
+/**
+ * Set the reasoning effort for an SDK session. Stored for (re)spawn and applied
+ * live via applyFlagSettings (no respawn) when a query is already running.
+ */
+export async function setSDKEffort(sessionId: string, effort: string): Promise<void> {
+  const state = sdkSessions.get(sessionId)
+  if (!state) return
+  state.effort = effort as SDKEffort
+  if (state.activeQuery) {
+    try {
+      await state.activeQuery.applyFlagSettings(effortToFlagSettings(effort as SDKEffort))
+    } catch {
+      // Ignore — control request may be unsupported; effort still applies on next (re)spawn.
     }
   }
 }

@@ -3,10 +3,11 @@ import { Input, Button, Dropdown, Tooltip, theme } from 'antd'
 import {
   SendOutlined, StopOutlined, PauseCircleOutlined, PaperClipOutlined,
   CloseCircleFilled, BulbOutlined, QuestionCircleOutlined, EditOutlined,
-  FolderOutlined, BranchesOutlined, DollarOutlined, MessageOutlined, DashboardOutlined, UnlockOutlined
+  FolderOutlined, BranchesOutlined, DollarOutlined, MessageOutlined, DashboardOutlined, UnlockOutlined,
+  ThunderboltOutlined, HighlightOutlined, RocketOutlined, CheckOutlined
 } from '@ant-design/icons'
 import { useT } from '../../i18n'
-import type { AIToolType, CodingContentBlock, CodingImage, CodingMode, CodingPendingFile } from '../../types/ai-coding'
+import type { AIToolType, CodingContentBlock, CodingImage, CodingMode, CodingEffort, CodingPendingFile } from '../../types/ai-coding'
 
 const { TextArea } = Input
 
@@ -38,7 +39,7 @@ const CODEX_SLASH_COMMANDS = [
   { key: '/context', label: '/context', descKey: 'coding.slashContext' },
   { key: '/help', label: '/help', descKey: 'coding.slashHelp' },
   { key: '/ask', label: '/ask', descKey: 'coding.codexModeAsk' },
-  { key: '/auto', label: '/auto', descKey: 'coding.codexModeAuto' },
+  { key: '/auto', label: '/auto', descKey: 'coding.codexModeApproveForMe' },
   { key: '/full', label: '/full', descKey: 'coding.codexModeFull' },
   { key: '/compact', label: '/compact', descKey: 'coding.slashCompact' },
   { key: '/review', label: '/review', descKey: 'coding.slashReview' },
@@ -49,6 +50,7 @@ interface CodingInputProps {
   toolType: AIToolType
   isStreaming: boolean
   mode: CodingMode
+  effort: CodingEffort
   hasPendingQuestion?: boolean
   workingDir?: string
   costUsd?: number
@@ -56,24 +58,43 @@ interface CodingInputProps {
   contextUsage?: Extract<CodingContentBlock, { type: 'context_usage' }>
   onSend: (text: string, images?: CodingImage[]) => void
   onModeChange: (mode: CodingMode) => void
+  onEffortChange: (effort: CodingEffort) => void
   onInterrupt: () => void
   onStop: () => void
 }
 
 const CLAUDE_MODES: { key: CodingMode; labelKey: string; icon: React.ReactNode }[] = [
+  { key: 'manual', labelKey: 'coding.modeManual', icon: <EditOutlined /> },
+  { key: 'edit-automatically', labelKey: 'coding.modeEditAutomatically', icon: <HighlightOutlined /> },
   { key: 'plan', labelKey: 'coding.modePlan', icon: <BulbOutlined /> },
-  { key: 'ask-first', labelKey: 'coding.modeAskFirst', icon: <QuestionCircleOutlined /> },
-  { key: 'auto-edit', labelKey: 'coding.modeAutoEdit', icon: <EditOutlined /> },
+  { key: 'auto', labelKey: 'coding.modeAuto', icon: <RocketOutlined /> },
 ]
 
 const CODEX_MODES: { key: CodingMode; labelKey: string; icon: React.ReactNode }[] = [
-  { key: 'ask-first', labelKey: 'coding.codexModeAsk', icon: <QuestionCircleOutlined /> },
-  { key: 'auto-edit', labelKey: 'coding.codexModeAuto', icon: <EditOutlined /> },
+  { key: 'ask', labelKey: 'coding.codexModeAsk', icon: <QuestionCircleOutlined /> },
+  { key: 'approve-for-me', labelKey: 'coding.codexModeApproveForMe', icon: <CheckOutlined /> },
   { key: 'full-access', labelKey: 'coding.codexModeFull', icon: <UnlockOutlined /> },
 ]
 
+// Reasoning-effort presets per tool. Claude exposes low..max plus an ultracode
+// preset; Codex caps at xhigh (modelReasoningEffort: low..xhigh).
+const CLAUDE_EFFORTS: { key: CodingEffort; labelKey: string }[] = [
+  { key: 'low', labelKey: 'coding.effortLow' },
+  { key: 'medium', labelKey: 'coding.effortMedium' },
+  { key: 'high', labelKey: 'coding.effortHigh' },
+  { key: 'xhigh', labelKey: 'coding.effortXhigh' },
+  { key: 'max', labelKey: 'coding.effortMax' },
+  { key: 'ultracode', labelKey: 'coding.effortUltracode' },
+]
+const CODEX_EFFORTS: { key: CodingEffort; labelKey: string }[] = [
+  { key: 'low', labelKey: 'coding.effortLight' },
+  { key: 'medium', labelKey: 'coding.effortMedium' },
+  { key: 'high', labelKey: 'coding.effortHigh' },
+  { key: 'xhigh', labelKey: 'coding.effortXhigh' },
+]
+
 const CodingInput: React.FC<CodingInputProps> = ({
-  sessionId: _sessionId, toolType, isStreaming, mode, hasPendingQuestion, workingDir, costUsd, messageCount, contextUsage, onSend, onModeChange, onInterrupt, onStop
+  sessionId: _sessionId, toolType, isStreaming, mode, effort, hasPendingQuestion, workingDir, costUsd, messageCount, contextUsage, onSend, onModeChange, onEffortChange, onInterrupt, onStop
 }) => {
   const [inputValue, setInputValue] = useState('')
   const [isComposing, setIsComposing] = useState(false)
@@ -137,6 +158,25 @@ const CodingInput: React.FC<CodingInputProps> = ({
   )
   const activeMode = modeOptions.some(m => m.key === mode) ? mode : modeOptions[0].key
   const modeIndex = modeOptions.findIndex(m => m.key === activeMode)
+
+  // Effort selector (reasoning depth). Falls back to the first option if the
+  // current value isn't offered for this tool (e.g. codex can't do max/ultracode).
+  const effortOptions = useMemo(
+    () => (toolType === 'codex' ? CODEX_EFFORTS : CLAUDE_EFFORTS).map(e => ({ ...e, label: t(e.labelKey) })),
+    [toolType, t]
+  )
+  const activeEffort = effortOptions.some(e => e.key === effort) ? effort : effortOptions[0].key
+  const activeEffortLabel = effortOptions.find(e => e.key === activeEffort)?.label || effortOptions[0].label
+  const effortMenuItems = effortOptions.map(e => ({
+    key: e.key,
+    label: (
+      <span style={{ fontWeight: activeEffort === e.key ? 600 : 400, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        {activeEffort === e.key && <CheckOutlined style={{ fontSize: 11 }} />}
+        {e.label}
+      </span>
+    ),
+    onClick: () => onEffortChange(e.key),
+  }))
 
   useLayoutEffect(() => {
     const btn = btnRefs.current[modeIndex]
@@ -318,6 +358,26 @@ const CodingInput: React.FC<CodingInputProps> = ({
               </button>
             ))}
           </div>
+        )}
+
+        {/* Effort selector (reasoning depth) */}
+        {(toolType === 'claude' || toolType === 'codex') && (
+          <Dropdown menu={{ items: effortMenuItems }} trigger={['click']} placement="topLeft">
+            <Button
+              type="text"
+              size="small"
+              icon={<ThunderboltOutlined style={{ color: token.colorPrimary }} />}
+              style={{
+                fontSize: 12,
+                color: token.colorTextSecondary,
+                padding: '0 8px',
+                display: 'inline-flex',
+                alignItems: 'center',
+              }}
+            >
+              {activeEffortLabel}
+            </Button>
+          </Dropdown>
         )}
 
         {/* Slash commands (claude only) */}

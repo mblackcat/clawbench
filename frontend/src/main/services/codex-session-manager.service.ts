@@ -6,10 +6,44 @@ import * as fs from 'fs'
 import * as logger from '../utils/logger'
 import { scanAndMergeInstructions } from './coding-adapters/instructions'
 
-type CodingMode = 'plan' | 'ask-first' | 'auto-edit' | 'full-access'
+// Canonical Codex permission modes (new native vocabulary). The renderer sends
+// these; older aliases (ask-first/auto-edit) and SDK strings are normalized by
+// normalizeCodexMode() so persisted/legacy values keep working.
+type CodexMode = 'plan' | 'ask' | 'approve-for-me' | 'full-access'
 type CodexSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
 type CodexApprovalPolicy = 'untrusted' | 'on-failure' | 'on-request' | 'never'
 type CodexApprovalsReviewer = 'user' | 'auto_review'
+
+/** Map any incoming mode string (new native, legacy, or SDK) to a canonical CodexMode. */
+function normalizeCodexMode(mode: string): CodexMode {
+  switch (mode) {
+    case 'plan': return 'plan'
+    case 'full-access':
+    case 'danger-full-access':
+    case 'bypassPermissions':
+      return 'full-access'
+    case 'approve-for-me':
+    case 'auto-edit':
+    case 'auto-review':
+    case 'acceptEdits':
+      return 'approve-for-me'
+    case 'ask':
+    case 'ask-first':
+    case 'default':
+    default:
+      return 'ask'
+  }
+}
+
+/**
+ * Map an abstract reasoning-effort level to Codex's `modelReasoningEffort`.
+ * Codex only exposes low|medium|high|xhigh, so 'max'/'ultracode' cap at xhigh.
+ */
+function toCodexReasoningEffort(effort?: string): 'low' | 'medium' | 'high' | 'xhigh' | undefined {
+  if (!effort) return undefined
+  if (effort === 'low' || effort === 'medium' || effort === 'high' || effort === 'xhigh') return effort
+  return 'xhigh'
+}
 
 interface JsonRpcMessage {
   jsonrpc?: '2.0'
@@ -35,7 +69,9 @@ interface CodexSessionState {
   threadId: string | null
   resumeThreadId: string | null
   isProcessing: boolean
-  mode: CodingMode
+  mode: CodexMode
+  /** Per-turn reasoning effort (low|medium|high|xhigh); sent on every turn/start. */
+  modelReasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh'
   env?: Record<string, string | undefined>
   onEvent?: (sessionId: string, data: Record<string, unknown>) => void
   onClose?: (sessionId: string) => void
@@ -144,7 +180,7 @@ function appendOutput(state: CodexSessionState, text: string): void {
     : combined
 }
 
-function modeToCodexOptions(mode: CodingMode): {
+function modeToCodexOptions(mode: CodexMode): {
   sandbox: CodexSandboxMode
   approvalPolicy: CodexApprovalPolicy
   approvalsReviewer?: CodexApprovalsReviewer
@@ -158,12 +194,13 @@ function modeToCodexOptions(mode: CodingMode): {
       prefix: 'You are in Plan mode. Do not edit files or run mutating commands. First produce a clear implementation plan and ask before making changes.'
     }
   }
-  if (mode === 'auto-edit') {
+  if (mode === 'approve-for-me') {
     return { sandbox: 'workspace-write', approvalPolicy: 'on-request', approvalsReviewer: 'auto_review' }
   }
   if (mode === 'full-access') {
     return { sandbox: 'danger-full-access', approvalPolicy: 'never' }
   }
+  // 'ask' — request user approval for each action.
   return { sandbox: 'workspace-write', approvalPolicy: 'on-request', approvalsReviewer: 'user' }
 }
 
@@ -184,6 +221,7 @@ function buildThreadParams(state: CodexSessionState): Record<string, unknown> {
   if (opts.approvalsReviewer) params.approvalsReviewer = opts.approvalsReviewer
   const model = state.env?.CODEX_MODEL || process.env.CODEX_MODEL
   if (model) params.model = model
+  if (state.modelReasoningEffort) params.modelReasoningEffort = state.modelReasoningEffort
   return params
 }
 
@@ -199,6 +237,7 @@ function buildTurnParams(state: CodexSessionState, input: Array<Record<string, u
   if (opts.approvalsReviewer) params.approvalsReviewer = opts.approvalsReviewer
   const model = state.env?.CODEX_MODEL || process.env.CODEX_MODEL
   if (model) params.model = model
+  if (state.modelReasoningEffort) params.modelReasoningEffort = state.modelReasoningEffort
   return params
 }
 
@@ -500,7 +539,8 @@ export async function launchCodexSession(
   onEvent?: (sessionId: string, data: Record<string, unknown>) => void,
   onClose?: (sessionId: string) => void,
   onError?: (sessionId: string, err: Error) => void,
-  env?: Record<string, string | undefined>
+  env?: Record<string, string | undefined>,
+  effort?: string
 ): Promise<{ success: boolean; error?: string }> {
   closeCodexSession(sessionId)
 
@@ -522,7 +562,8 @@ export async function launchCodexSession(
       threadId: null,
       resumeThreadId: resumeThreadId || null,
       isProcessing: false,
-      mode: 'ask-first',
+      mode: 'ask',
+      modelReasoningEffort: toCodexReasoningEffort(effort),
       env,
       onEvent,
       onClose,
@@ -651,9 +692,18 @@ export function getCodexSessionOutput(sessionId: string): string {
 export function setCodexSessionMode(sessionId: string, mode: string): boolean {
   const state = codexSessions.get(sessionId)
   if (!state) return false
-  if (mode === 'plan') state.mode = 'plan'
-  else if (mode === 'full-access' || mode === 'danger-full-access' || mode === 'bypassPermissions') state.mode = 'full-access'
-  else if (mode === 'auto-edit' || mode === 'auto-review') state.mode = 'auto-edit'
-  else state.mode = 'ask-first'
+  state.mode = normalizeCodexMode(mode)
+  return true
+}
+
+/**
+ * Live-update the reasoning effort; takes effect on the next turn/start
+ * (buildTurnParams/buildThreadParams read state.modelReasoningEffort). No restart.
+ */
+export function setCodexSessionEffort(sessionId: string, effort: string): boolean {
+  const state = codexSessions.get(sessionId)
+  if (!state) return false
+  const mapped = toCodexReasoningEffort(effort)
+  if (mapped) state.modelReasoningEffort = mapped
   return true
 }

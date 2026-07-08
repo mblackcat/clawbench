@@ -31,12 +31,12 @@ import {
 } from './pty-manager.service'
 import {
   launchSDKSession, writeToSDKSession, closeSDKSession, hasSDKSession,
-  getSDKSessionOutput, interruptSDKSession, setSDKPermissionMode,
+  getSDKSessionOutput, interruptSDKSession, setSDKPermissionMode, setSDKEffort,
   detectManagedInteractiveState
 } from './sdk-session-manager.service'
 import {
   launchCodexSession, writeToCodexSession, closeCodexSession, hasCodexSession,
-  getCodexSessionOutput, interruptCodexSession, setCodexSessionMode, resolveBundledCodexPath
+  getCodexSessionOutput, interruptCodexSession, setCodexSessionMode, setCodexSessionEffort, resolveBundledCodexPath
 } from './codex-session-manager.service'
 import { detectAvailableCLIs, getAugmentedEnv, loadShellEnv } from './cli-detect.service'
 import { settingsStore } from '../store/settings.store'
@@ -530,7 +530,7 @@ export function deleteSession(id: string): void {
  */
 export async function launchSession(
   id: string,
-  opts?: { forcePty?: boolean; cols?: number; rows?: number }
+  opts?: { forcePty?: boolean; cols?: number; rows?: number; effort?: string }
 ): Promise<{ success: boolean; error?: string }> {
   const config = getAICodingConfig()
   const session = getSessionById(id)
@@ -552,7 +552,8 @@ export async function launchSession(
         handleSDKEvent,
         handleSDKClose,
         handleSDKError,
-        toolEnv
+        toolEnv,
+        opts?.effort
       )
       if (!result.success) return result
     } else if (session.toolType === 'codex' && !opts?.forcePty) {
@@ -566,7 +567,8 @@ export async function launchSession(
         handleSDKEvent,
         handleSDKClose,
         handleSDKError,
-        toolEnv
+        toolEnv,
+        opts?.effort
       )
       if (!result.success) return result
     } else {
@@ -719,5 +721,22 @@ export async function setSessionPermissionMode(
   }
   if (!hasSDKSession(id)) return { success: false, error: '会话未运行或非 Claude 会话' }
   await setSDKPermissionMode(id, mode as any)
+  return { success: true }
+}
+
+/**
+ * Set the reasoning effort for a running session. Claude applies it live via
+ * applyFlagSettings; Codex stores it for the next turn/start. No restart.
+ */
+export async function setSessionEffort(
+  id: string,
+  effort: string
+): Promise<{ success: boolean; error?: string }> {
+  if (hasCodexSession(id)) {
+    setCodexSessionEffort(id, effort)
+    return { success: true }
+  }
+  if (!hasSDKSession(id)) return { success: false, error: '会话未运行' }
+  await setSDKEffort(id, effort)
   return { success: true }
 }

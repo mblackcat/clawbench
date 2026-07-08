@@ -458,7 +458,7 @@ export const api = {
       ipcRenderer.invoke('ai-coding:update-session', id, updates),
     deleteSession: (id: string) => ipcRenderer.invoke('ai-coding:delete-session', id),
     stopSession: (id: string) => ipcRenderer.invoke('ai-coding:stop-session', id),
-    launchSession: (id: string, opts?: { forcePty?: boolean; cols?: number; rows?: number }) => ipcRenderer.invoke('ai-coding:launch-session', id, opts),
+    launchSession: (id: string, opts?: { forcePty?: boolean; cols?: number; rows?: number; effort?: string }) => ipcRenderer.invoke('ai-coding:launch-session', id, opts),
     writeToSession: (sessionId: string, text: string, images?: { data: string; mediaType: string }[]) =>
       ipcRenderer.invoke('ai-coding:write-to-session', sessionId, text, images),
     readFileBase64: (filePath: string) =>
@@ -469,6 +469,8 @@ export const api = {
       ipcRenderer.invoke('ai-coding:execute-slash-command', sessionId, command),
     setPermissionMode: (sessionId: string, mode: string) =>
       ipcRenderer.invoke('ai-coding:set-permission-mode', sessionId, mode),
+    setEffort: (sessionId: string, effort: string) =>
+      ipcRenderer.invoke('ai-coding:set-effort', sessionId, effort),
 
     // Pipe event stream (structured events from CLI tools)
     onPipeEvent: (callback: (data: { sessionId: string; event: any }) => void) => {

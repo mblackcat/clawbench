@@ -23,6 +23,7 @@ import {
   interruptSession,
   executeSessionSlashCommand,
   setSessionPermissionMode,
+  setSessionEffort,
   getGroups,
   createGroup,
   renameGroup,
@@ -132,7 +133,7 @@ export function registerAICodingIpc(): void {
     return stopSession(id)
   })
 
-  ipcMain.handle('ai-coding:launch-session', async (_event, id: string, opts?: { forcePty?: boolean; cols?: number; rows?: number }) => {
+  ipcMain.handle('ai-coding:launch-session', async (_event, id: string, opts?: { forcePty?: boolean; cols?: number; rows?: number; effort?: string }) => {
     return launchSession(id, opts)
   })
 
@@ -155,6 +156,10 @@ export function registerAICodingIpc(): void {
 
   ipcMain.handle('ai-coding:set-permission-mode', async (_event, sessionId: string, mode: string) => {
     return setSessionPermissionMode(sessionId, mode)
+  })
+
+  ipcMain.handle('ai-coding:set-effort', async (_event, sessionId: string, effort: string) => {
+    return setSessionEffort(sessionId, effort)
   })
 
   // ── PTY management ──

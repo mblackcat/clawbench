@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type {
   AICodingWorkspace, AICodingSession, AICodingGroup, AICodingIMConfig,
   AICodingIMConnectionStatus, AIToolType, DetectedCLI,
-  CodingMessage, CodingContentBlock, CodingMode, ClaudeViewMode,
+  CodingMessage, CodingContentBlock, CodingMode, CodingEffort, ClaudeViewMode,
   AskUserQuestionItem
 } from '../types/ai-coding'
 import type { LayoutNode, LeafNode, SplitDirection } from '../types/split-layout'
@@ -36,15 +36,37 @@ function upsertSessionList(
   return next
 }
 
-function toRuntimePermissionMode(toolType: AIToolType, mode: CodingMode): string {
-  if (toolType === 'codex') return mode
-  const modeMap: Record<CodingMode, string> = {
+function toRuntimePermissionMode(toolType: AIToolType, mode: string): string {
+  if (toolType === 'codex') {
+    // Normalize to the native Codex vocabulary passed to the app-server.
+    if (mode === 'ask-first') return 'ask'
+    if (mode === 'auto-edit') return 'approve-for-me'
+    if (mode === 'plan') return 'ask' // Codex has no plan mode
+    return mode // 'ask' | 'approve-for-me' | 'full-access'
+  }
+  // Claude: map to the SDK PermissionMode. Legacy values (ask-first/auto-edit/
+  // full-access) are tolerated so persisted localStorage modes keep working
+  // until the user re-selects a native mode.
+  const modeMap: Record<string, string> = {
+    'manual': 'default',
+    'edit-automatically': 'acceptEdits',
     'plan': 'plan',
+    'auto': 'bypassPermissions',
     'ask-first': 'default',
     'auto-edit': 'bypassPermissions',
     'full-access': 'bypassPermissions'
   }
   return modeMap[mode] || 'default'
+}
+
+/** Default effort per tool, used when the user hasn't picked one. */
+export function defaultEffort(toolType: AIToolType): CodingEffort {
+  return toolType === 'codex' ? 'medium' : 'high'
+}
+
+/** Default mode per tool, used when the user hasn't picked one. */
+export function defaultMode(toolType: AIToolType): CodingMode {
+  return toolType === 'codex' ? 'ask' : 'manual'
 }
 
 // ── sessionMessages persistence (localStorage) ──
@@ -115,6 +137,7 @@ interface AICodingState {
   activeSessionId: string | null
   sessionMessages: Record<string, CodingMessage[]>; sessionStreaming: Record<string, boolean>
   sessionStreamingBlocks: Record<string, CodingContentBlock[]>; sessionModes: Record<string, CodingMode>
+  sessionEffort: Record<string, CodingEffort>
   sessionContextUsage: Record<string, Extract<CodingContentBlock, { type: 'context_usage' }> | null>
   fetchWorkspaces: () => Promise<void>; fetchSessions: () => Promise<void>; fetchGroups: () => Promise<void>
   fetchIMConfig: () => Promise<void>; fetchAll: () => Promise<void>
@@ -124,7 +147,7 @@ interface AICodingState {
   createSession: (wid: string, tt: AIToolType, src?: 'local' | 'im') => Promise<AICodingSession>
   updateSession: (id: string, u: Partial<AICodingSession>) => Promise<void>
   deleteSession: (id: string) => Promise<void>; stopSession: (id: string) => Promise<void>
-  launchSession: (id: string, opts?: { forcePty?: boolean; cols?: number; rows?: number }) => Promise<{ success: boolean; error?: string }>
+  launchSession: (id: string, opts?: { forcePty?: boolean; cols?: number; rows?: number; effort?: string }) => Promise<{ success: boolean; error?: string }>
   createGroup: (n: string) => Promise<AICodingGroup>; renameGroup: (id: string, n: string) => Promise<void>
   deleteGroup: (id: string) => Promise<{ success: boolean; error?: string }>
   saveIMConfig: (c: AICodingIMConfig) => Promise<void>
@@ -136,7 +159,7 @@ interface AICodingState {
   createAndOpenSession: (wid: string, tt: AIToolType) => Promise<void>; detectTools: () => Promise<DetectedCLI[]>
   sendUserMessage: (sid: string, text: string, images?: { data: string; mediaType: string }[]) => Promise<void>; clearSessionMessages: (sid: string) => void
   executeSlashCommand: (sid: string, command: string) => Promise<void>
-  setSessionMode: (sid: string, m: CodingMode) => void; interruptSession: (sid: string) => Promise<void>
+  setSessionMode: (sid: string, m: CodingMode) => void; setSessionEffort: (sid: string, e: CodingEffort) => void; interruptSession: (sid: string) => Promise<void>
   claudeViewModes: Record<string, ClaudeViewMode>
   setClaudeViewMode: (sid: string, m: ClaudeViewMode) => void
   sessionPendingQuestions: Record<string, { id: string; questions: AskUserQuestionItem[] } | null>
@@ -158,7 +181,7 @@ interface AICodingState {
 export const useAICodingStore = create<AICodingState>((set, get) => ({
   workspaces: [], sessions: [], groups: [],
   imConfig: { feishu: { appId: '', appSecret: '' } }, imStatus: { state: 'disconnected' }, loading: false,
-  activeSessionId: null, sessionMessages: loadPersistedMessages(), sessionStreaming: {}, sessionStreamingBlocks: {}, sessionModes: {}, sessionContextUsage: {},
+  activeSessionId: null, sessionMessages: loadPersistedMessages(), sessionStreaming: {}, sessionStreamingBlocks: {}, sessionModes: {}, sessionEffort: {}, sessionContextUsage: {},
   claudeViewModes: {},
   sessionPendingQuestions: {},
   globalLayout: null,
@@ -210,7 +233,15 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
     set({ sessions, activeSessionId: aid === id ? null : aid, sessionMessages: nm, sessionStreaming: ns, sessionStreamingBlocks: nb, sessionModes: nmo, sessionContextUsage: ncu })
   },
   stopSession: async (id) => { await window.api.aiCoding.stopSession(id); const sessions = await window.api.aiCoding.getSessions(); set(s => ({ sessions, sessionStreaming: { ...s.sessionStreaming, [id]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [id]: [] } })) },
-  launchSession: async (id, opts) => { const r = await window.api.aiCoding.launchSession(id, opts); if (r.success) set({ sessions: await window.api.aiCoding.getSessions() }); return r },
+  launchSession: async (id, opts) => {
+    // Always seed the reasoning effort so the first turn (and any relaunch)
+    // honors the user's choice; main process maps it per tool.
+    const session = get().sessions.find(s => s.id === id)
+    const effort = opts?.effort ?? get().sessionEffort[id] ?? (session ? defaultEffort(session.toolType) : 'high')
+    const r = await window.api.aiCoding.launchSession(id, { ...opts, effort })
+    if (r.success) set({ sessions: await window.api.aiCoding.getSessions() })
+    return r
+  },
   createGroup: async (n) => { const g = await window.api.aiCoding.createGroup(n); set({ groups: await window.api.aiCoding.getGroups() }); return g },
   renameGroup: async (id, n) => { await window.api.aiCoding.renameGroup(id, n); set({ groups: await window.api.aiCoding.getGroups() }) },
   deleteGroup: async (id) => {
@@ -515,7 +546,7 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
     if (session.status === 'closed' || session.status === 'completed' || session.status === 'error') {
       const r = await get().launchSession(sessionId)
       if (!r.success) { const em: CodingMessage = { id: genMsgId(), sessionId, role: 'system', blocks: [{ type: 'text', text: `启动失败: ${r.error}` }], timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), em] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false } })); return }
-      const activeMode = get().sessionModes[sessionId] || 'ask-first'
+      const activeMode = get().sessionModes[sessionId] || defaultMode(session.toolType)
       await window.api.aiCoding.setPermissionMode(sessionId, toRuntimePermissionMode(session.toolType, activeMode)).catch(() => {})
       await new Promise(r => setTimeout(r, 500))
     }
@@ -544,6 +575,12 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
     const session = get().sessions.find(s => s.id === sid)
     const runtimeMode = toRuntimePermissionMode(session?.toolType || 'claude', m)
     window.api.aiCoding.setPermissionMode(sid, runtimeMode).catch(() => { /* session may not be running yet */ })
+  },
+  setSessionEffort: (sid, effort) => {
+    set(s => ({ sessionEffort: { ...s.sessionEffort, [sid]: effort } }))
+    // Apply live to a running session (best-effort — ignored if not running yet,
+    // and re-seeded from sessionEffort on the next launch).
+    window.api.aiCoding.setEffort(sid, effort).catch(() => { /* session may not be running yet */ })
   },
   setClaudeViewMode: (sid, m) => { localStorage.setItem('cb-claude-view-mode', m); set(s => ({ claudeViewModes: { ...s.claudeViewModes, [sid]: m } })) },
   interruptSession: async (sid) => { try { await window.api.aiCoding.interruptSession(sid) } catch { /* */ } },

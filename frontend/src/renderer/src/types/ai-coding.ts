@@ -86,7 +86,17 @@ export interface CodingMessage {
   costUsd?: number
 }
 
-export type CodingMode = 'plan' | 'ask-first' | 'auto-edit' | 'full-access'
+// Permission modes, aligned with each tool's native vocabulary.
+// Claude: manual (ask), edit-automatically (accept edits), plan, auto (bypass).
+// Codex:  ask (request approval), approve-for-me, full-access.
+export type CodingMode =
+  | 'manual' | 'edit-automatically' | 'plan' | 'auto'
+  | 'ask' | 'approve-for-me' | 'full-access'
+
+// Reasoning effort / thinking depth. Claude uses the SDK `effort` field
+// (low|medium|high|xhigh|max) plus an `ultracode` preset (xhigh + ultracode
+// flag). Codex uses `modelReasoningEffort` (low|medium|high|xhigh).
+export type CodingEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultracode'
 
 /** Claude session view mode: chat UI vs raw CLI terminal */
 export type ClaudeViewMode = 'chat' | 'cli'
