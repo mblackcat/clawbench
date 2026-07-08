@@ -295,6 +295,7 @@ const AppLibraryPage: React.FC = () => {
       case 'app': return t('discover.tabApp');
       case 'ai-skill': return t('discover.tabSkill');
       case 'prompt': return t('discover.tabPrompt');
+      case 'link': return t('discover.tabLink');
       default: return t('discover.tabApp');
     }
   };
@@ -442,6 +443,7 @@ const AppLibraryPage: React.FC = () => {
     { key: 'app', label: t('discover.tabApp') },
     { key: 'ai-skill', label: t('discover.tabSkill') },
     { key: 'prompt', label: t('discover.tabPrompt') },
+    { key: 'link', label: t('discover.tabLink') },
   ];
 
   return (
