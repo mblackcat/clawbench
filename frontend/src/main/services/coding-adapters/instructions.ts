@@ -5,7 +5,7 @@
  * CLAUDE.md, Codex reads AGENTS.md). This scans the project directory for the
  * instruction files the current vendor does NOT read and returns their merged
  * content, so the agent gets project context regardless of which tool wrote the
- * file. Ported from Clay's lib/yoke/instructions.js.
+ * file.
  *
  * The returned string is injected as `systemPrompt` (Claude SDK) or prepended to
  * the first turn (Codex app-server, which has no system-prompt field).

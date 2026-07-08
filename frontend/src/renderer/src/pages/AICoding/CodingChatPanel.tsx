@@ -119,6 +119,7 @@ const CodingChatPanel: React.FC<CodingChatPanelProps> = ({ sessionId, onNewSessi
         streamingBlocks={streamingBlocks}
         hasExistingSession={!!session?.toolSessionId && messages.length === 0}
         sessionId={sessionId}
+        toolType={session.toolType}
       />
       <CodingInput
         sessionId={sessionId}

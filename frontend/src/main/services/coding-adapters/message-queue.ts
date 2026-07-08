@@ -4,9 +4,8 @@
  *
  * Instead of starting a fresh `query()` per user turn (the old, fragile design),
  * the SDK session manager creates ONE long-lived query with `prompt: <queue>` and
- * pushes each user message into the queue. The same query keeps consuming turns —
- * true multi-turn streaming, exactly like Clay (see
- * D:\repos\vx-tools\clay\lib\sdk-message-queue.js and yoke/adapters/claude.js).
+ * pushes each user message into the queue. The same query keeps consuming turns,
+ * giving true multi-turn streaming.
  *
  * The queue ends only when the session is closed; until then the query blocks on
  * `next()` waiting for the next user message.

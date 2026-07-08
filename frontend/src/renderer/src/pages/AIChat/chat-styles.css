@@ -89,6 +89,14 @@
   word-break: break-word;
 }
 
+/* Consolas on Windows, Monaco on macOS (first installed family wins). */
+.markdown-body pre,
+.markdown-body code,
+.markdown-body kbd,
+.markdown-body samp {
+  font-family: 'Consolas', 'Monaco', 'Menlo', 'Courier New', monospace;
+}
+
 .markdown-body pre {
   padding: 12px;
   border-radius: 6px;
@@ -106,15 +114,37 @@
   background: rgba(201, 193, 177, 0.06);
 }
 
+/* Inline code: warm orange text on a dark chip. Code BLOCKS (pre code) keep
+   their hljs token colors and a transparent background. */
 .markdown-body code {
-  padding: 2px 4px;
+  padding: 2px 5px;
   border-radius: 3px;
-  font-size: 0.9em;
+  font-size: 0.88em;
+  color: #d6a576;
+  background: #2c313c;
 }
 
 .markdown-body pre code {
   background: transparent;
+  color: inherit;
   padding: 0;
+  font-size: inherit;
+}
+
+/* === Links === */
+.markdown-body a {
+  color: #2563eb;
+  text-decoration: none;
+}
+.markdown-body a:hover {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+[data-theme="dark"] .markdown-body a {
+  color: #6BA8FF;
+}
+[data-theme="dark"] .markdown-body a:hover {
+  color: #8FBEFF;
 }
 
 /* === Tables === */

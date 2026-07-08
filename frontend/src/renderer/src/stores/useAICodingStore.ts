@@ -15,6 +15,16 @@ let msgCounter = 0
 function genMsgId(): string { return `wm-${Date.now()}-${++msgCounter}` }
 const transcriptHydrationInFlight = new Set<string>()
 
+// Text deltas can arrive far faster than the renderer can cheaply re-parse
+// markdown, so we buffer them per session and flush on a short timer. This
+// bounds store updates (and therefore re-renders / markdown re-parses) to a
+// steady ~12fps regardless of the upstream token rate, which keeps long
+// streaming replies from freezing the UI. Non-delta events flush the pending
+// text first so block ordering is preserved.
+const deltaBuffer = new Map<string, string>()
+let deltaFlushTimer: ReturnType<typeof setTimeout> | null = null
+const DELTA_FLUSH_MS = 80
+
 function upsertSessionList(
   sessions: AICodingSession[],
   session: AICodingSession
@@ -96,8 +106,8 @@ function parseClaudeEvent(event: Record<string, unknown>): CodingContentBlock[] 
   return blocks
 }
 
-// (Streaming accumulation is now stateless on the client — see onPipeEvent.
-// The server sends the Clay client protocol: delta / tool_* / thinking_* / result.)
+// (Streaming accumulation is stateless on the client — see onPipeEvent.
+// The server sends a simple event protocol: delta / tool_* / thinking_* / result.)
 
 interface AICodingState {
   workspaces: AICodingWorkspace[]; sessions: AICodingSession[]; groups: AICodingGroup[]
@@ -222,11 +232,44 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
       set(st => ({ sessions: st.sessions.map(s => s.id === sessionId ? { ...s, status: 'closed' as const, lastActivity: 'none' as const, updatedAt: Date.now() } : s) }))
       get().fetchSessions()
     })
+    // Flush a session's buffered text deltas into the streaming blocks now.
+    const flushPendingDelta = (sessionId: string): void => {
+      const pending = deltaBuffer.get(sessionId)
+      if (!pending) return
+      deltaBuffer.delete(sessionId)
+      set(s => {
+        const blocks = [...(s.sessionStreamingBlocks[sessionId] || [])]
+        const last = blocks[blocks.length - 1]
+        if (last && last.type === 'text') blocks[blocks.length - 1] = { ...last, text: (last.text || '') + pending }
+        else blocks.push({ type: 'text' as const, text: pending })
+        return { sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: blocks } }
+      })
+    }
+    // Coalesce deltas: one timer tick commits every buffered session at once.
+    const scheduleDeltaFlush = (): void => {
+      if (deltaFlushTimer) return
+      deltaFlushTimer = setTimeout(() => {
+        deltaFlushTimer = null
+        for (const sid of [...deltaBuffer.keys()]) {
+          const pending = deltaBuffer.get(sid)
+          if (!pending) continue
+          deltaBuffer.delete(sid)
+          set(s => {
+            const blocks = [...(s.sessionStreamingBlocks[sid] || [])]
+            const last = blocks[blocks.length - 1]
+            if (last && last.type === 'text') blocks[blocks.length - 1] = { ...last, text: (last.text || '') + pending }
+            else blocks.push({ type: 'text' as const, text: pending })
+            return { sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sid]: blocks } }
+          })
+        }
+      }, DELTA_FLUSH_MS)
+    }
     const u4 = window.api.aiCoding.onPipeEvent(({ sessionId, event }) => {
       const st = get(); const session = st.sessions.find(s => s.id === sessionId); if (!session) return
       const et = (event as any).type as string
       if (et === 'pipe_exit' || et === 'pipe_error' || et === 'slash_command_done') {
-        const cb = st.sessionStreamingBlocks[sessionId] || []
+        flushPendingDelta(sessionId)
+        const cb = get().sessionStreamingBlocks[sessionId] || []
         if (cb.length > 0) { const m: CodingMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: cb, timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] }, sessionPendingQuestions: { ...s.sessionPendingQuestions, [sessionId]: null } })) }
         else set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionPendingQuestions: { ...s.sessionPendingQuestions, [sessionId]: null } }))
         return
@@ -239,7 +282,7 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
         return
       }
       if (session.toolType === 'claude' || session.toolType === 'codex') {
-        // ── Block-id streaming accumulation (Claude long-lived query; Codex in Phase 2) ──
+        // ── Streaming accumulation for Claude (long-lived query) and Codex ──
         if (et === 'turn_start' || et === 'turn_started') {
           // Mark streaming, but do NOT clear blocks: an agentic turn has many
           // assistant messages (text → tool → text → tool …) and we want all of
@@ -248,19 +291,22 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
           set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: true } }))
           return
         }
-        // ── Streaming text: append to the current text segment (Clay `delta`) ──
+        // Streaming text is coalesced into deltaBuffer and flushed on a timer
+        // (scheduleDeltaFlush) to bound re-render frequency. Other event types
+        // flush any buffered text first via flushPendingDelta() below.
         if (et === 'delta') {
           const text = String((event as any).text ?? '')
           if (!text) return
-          set(s => {
-            const blocks = [...(s.sessionStreamingBlocks[sessionId] || [])]
-            const last = blocks[blocks.length - 1]
-            if (last && last.type === 'text') blocks[blocks.length - 1] = { ...last, text: (last.text || '') + text }
-            else blocks.push({ type: 'text', text })
-            return { sessionStreaming: { ...s.sessionStreaming, [sessionId]: true }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: blocks } }
-          })
+          deltaBuffer.set(sessionId, (deltaBuffer.get(sessionId) || '') + text)
+          if (!get().sessionStreaming[sessionId]) {
+            set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: true } }))
+          }
+          scheduleDeltaFlush()
           return
         }
+        // Commit buffered text before pushing any other block type, so the
+        // streamed content stays in the right order.
+        flushPendingDelta(sessionId)
         // ── Thinking block ──
         if (et === 'thinking_start') {
           set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: true }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [...(s.sessionStreamingBlocks[sessionId] || []), { type: 'thinking' as const, text: '' }] } }))
@@ -397,7 +443,11 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
         }
       }
     })
-    return () => { u1(); u2(); u3(); u4() }
+    return () => {
+      u1(); u2(); u3(); u4()
+      if (deltaFlushTimer) { clearTimeout(deltaFlushTimer); deltaFlushTimer = null }
+      deltaBuffer.clear()
+    }
   },
 
   setActiveSession: (sid) => {

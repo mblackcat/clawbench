@@ -1,9 +1,7 @@
 /**
  * Normalized CLIENT streaming protocol for AI Coding chat mode.
  *
- * This is Clay's client protocol (see D:\repos\vx-tools\clay\lib\
- * sdk-message-processor.js `processSDKMessage` → `sendAndRecord`). The
- * vendor-specific accumulation (parsing tool input on block_stop, deduping
+ * The vendor-specific accumulation (parsing tool input on block_stop, deduping
  * tool results, falling back to the authoritative assistant message for text)
  * all happens SERVER-SIDE. The renderer only has to:
  *   - append `delta` text to the current text segment,

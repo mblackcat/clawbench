@@ -185,6 +185,18 @@ export function guessProviderFromModelId(modelId: string): string {
   return ''
 }
 
+/** Map an AI Coding session tool type to its brand provider key (for avatars). */
+export function toolTypeToProvider(toolType: string): string {
+  switch (toolType) {
+    case 'claude': return 'claude'
+    case 'codex': return 'codex'
+    case 'gemini': return 'gemini'
+    case 'qwen': return 'qwen'
+    case 'opencode': return 'openai'
+    default: return 'openai'
+  }
+}
+
 export function ProviderIcon({ provider, size = 16, style }: { provider: string; size?: number; style?: React.CSSProperties }) {
   const IconComponent = getProviderIcon(provider)
   return <IconComponent style={{ width: size, height: size, verticalAlign: 'middle', ...style }} />

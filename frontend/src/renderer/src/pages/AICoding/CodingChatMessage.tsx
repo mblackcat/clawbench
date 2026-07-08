@@ -1,18 +1,20 @@
-import React, { useState } from 'react'
-import { theme, Typography } from 'antd'
+import React, { useState, useMemo } from 'react'
+import { theme, Typography, Modal, Button } from 'antd'
 import {
   InfoCircleOutlined,
   ToolOutlined,
   CaretRightOutlined, CaretDownOutlined,
-  CheckCircleFilled, CloseCircleFilled, DashboardOutlined
+  CheckCircleFilled, CloseCircleFilled, DashboardOutlined,
+  EyeOutlined
 } from '@ant-design/icons'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { rehypeHighlightPlugin } from '../../utils/markdown-plugins'
-import { ModelAvatar, UserAvatar } from '../../components/ProviderIcons'
+import { ModelAvatar, UserAvatar, toolTypeToProvider } from '../../components/ProviderIcons'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useT } from '../../i18n'
-import type { CodingMessage, CodingContentBlock } from '../../types/ai-coding'
+import { MONO_FONT_STACK } from '../../utils/mono-font'
+import type { CodingMessage, CodingContentBlock, AIToolType } from '../../types/ai-coding'
 import AskUserQuestionBlock from './AskUserQuestionBlock'
 import TodoUpdateBlock from './TodoUpdateBlock'
 import ThinkingBlock from '../../components/ThinkingBlock'
@@ -42,39 +44,108 @@ function getToolSummary(name: string, input: Record<string, unknown>): string {
   return ''
 }
 
-// ── Inline Diff View for Edit tool ──
+// ── Line diff (LCS) for the Edit tool ──
 
-const InlineDiffView: React.FC<{ filePath: string; oldText: string; newText: string }> = ({ filePath, oldText, newText }) => {
+type DiffLine = { type: 'context' | 'add' | 'del'; text: string }
+
+/** Compute a line-level diff between two strings via longest common subsequence. */
+function computeLineDiff(a: string[], b: string[]): DiffLine[] {
+  const n = a.length, m = b.length
+  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0))
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1])
+    }
+  }
+  const out: DiffLine[] = []
+  let i = 0, j = 0
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { out.push({ type: 'context', text: a[i] }); i++; j++ }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push({ type: 'del', text: a[i] }); i++ }
+    else { out.push({ type: 'add', text: b[j] }); j++ }
+  }
+  while (i < n) { out.push({ type: 'del', text: a[i] }); i++ }
+  while (j < m) { out.push({ type: 'add', text: b[j] }); j++ }
+  return out
+}
+
+const DiffView: React.FC<{ filePath: string; oldText: string; newText: string; maxHeight?: number }> = ({ filePath, oldText, newText, maxHeight }) => {
   const { token } = theme.useToken()
-  const oldLines = oldText.split('\n')
-  const newLines = newText.split('\n')
+  const lines = useMemo(() => computeLineDiff(oldText.split('\n'), newText.split('\n')), [oldText, newText])
+  return (
+    <div style={{ borderRadius: 4, overflow: 'hidden', border: `1px solid ${token.colorBorderSecondary}` }}>
+      {filePath && (
+        <div style={{
+          padding: '4px 10px', fontSize: 11, color: token.colorTextSecondary,
+          background: token.colorFillQuaternary, borderBottom: `1px solid ${token.colorBorderSecondary}`,
+          fontFamily: MONO_FONT_STACK, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+        }}>
+          {filePath}
+        </div>
+      )}
+      <div style={{
+        maxHeight, overflowY: maxHeight ? 'auto' : undefined,
+        background: token.colorBgLayout, fontFamily: MONO_FONT_STACK, fontSize: 12, lineHeight: 1.5
+      }}>
+        {lines.map((l, i) => (
+          <div key={i} style={{
+            padding: '0 10px', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+            background: l.type === 'del' ? 'rgba(255, 99, 71, 0.10)' : l.type === 'add' ? 'rgba(46, 160, 67, 0.10)' : 'transparent',
+            color: l.type === 'del' ? token.colorError : l.type === 'add' ? token.colorSuccess : token.colorText
+          }}>
+            <span style={{ display: 'inline-block', width: 14, opacity: 0.6, userSelect: 'none' }}>
+              {l.type === 'del' ? '-' : l.type === 'add' ? '+' : ' '}
+            </span>
+            {l.text}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/** Compact diff preview with a button to open the full diff in a modal. */
+const EditDiffPreview: React.FC<{ filePath: string; oldText: string; newText: string }> = ({ filePath, oldText, newText }) => {
+  const { token } = theme.useToken()
+  const t = useT()
+  const [open, setOpen] = useState(false)
+  const stats = useMemo(() => {
+    let add = 0, del = 0
+    for (const l of computeLineDiff(oldText.split('\n'), newText.split('\n'))) {
+      if (l.type === 'add') add++
+      else if (l.type === 'del') del++
+    }
+    return { add, del }
+  }, [oldText, newText])
 
   return (
-    <div style={{ fontSize: 12, fontFamily: 'monospace', borderRadius: 4, overflow: 'hidden' }}>
-      <div style={{
-        padding: '4px 8px', fontSize: 11, color: token.colorTextSecondary,
-        background: token.colorFillQuaternary, borderBottom: `1px solid ${token.colorBorderSecondary}`
-      }}>
-        {filePath}
+    <div>
+      <div style={{ marginBottom: 6, display: 'flex', alignItems: 'center', gap: 10, fontSize: 11 }}>
+        <span style={{ color: token.colorSuccess, fontWeight: 500 }}>+{stats.add}</span>
+        <span style={{ color: token.colorError, fontWeight: 580 }}>-{stats.del}</span>
+        <Button
+          type="link"
+          size="small"
+          style={{ fontSize: 11, padding: 0, height: 'auto' }}
+          icon={<EyeOutlined />}
+          onClick={() => setOpen(true)}
+        >
+          {t('coding.viewFullDiff')}
+        </Button>
       </div>
-      <div style={{ maxHeight: 300, overflowY: 'auto' }}>
-        {oldLines.map((line, i) => (
-          <div key={`old-${i}`} style={{
-            padding: '1px 8px', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
-            background: 'rgba(255, 99, 71, 0.1)', color: token.colorError
-          }}>
-            - {line}
-          </div>
-        ))}
-        {newLines.map((line, i) => (
-          <div key={`new-${i}`} style={{
-            padding: '1px 8px', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
-            background: 'rgba(46, 160, 67, 0.1)', color: token.colorSuccess
-          }}>
-            + {line}
-          </div>
-        ))}
-      </div>
+      <DiffView filePath={filePath} oldText={oldText} newText={newText} maxHeight={200} />
+      <Modal
+        title={t('coding.diffTitle')}
+        open={open}
+        onCancel={() => setOpen(false)}
+        footer={null}
+        width="min(900px, 90vw)"
+        destroyOnClose
+      >
+        <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
+          <DiffView filePath={filePath} oldText={oldText} newText={newText} />
+        </div>
+      </Modal>
     </div>
   )
 }
@@ -90,7 +161,7 @@ function renderToolInput(name: string, input: Record<string, unknown>, token: an
     return (
       <div>
         <pre style={{
-          margin: 0, padding: '8px 10px', fontSize: 11, fontFamily: 'monospace',
+          margin: 0, padding: '8px 10px', fontSize: 11, fontFamily: MONO_FONT_STACK,
           background: token.colorFillQuaternary, borderRadius: 4,
           whiteSpace: 'pre-wrap', wordBreak: 'break-all'
         }}>
@@ -100,13 +171,13 @@ function renderToolInput(name: string, input: Record<string, unknown>, token: an
     )
   }
 
-  // Edit — show inline diff
+  // Edit — real line diff + full-diff modal
   if (lowerName === 'edit') {
     const filePath = String(input.file_path || '')
     const oldStr = String(input.old_string || '')
     const newStr = String(input.new_string || '')
     if (oldStr || newStr) {
-      return <InlineDiffView filePath={filePath} oldText={oldStr} newText={newStr} />
+      return <EditDiffPreview filePath={filePath} oldText={oldStr} newText={newStr} />
     }
   }
 
@@ -134,7 +205,7 @@ function renderToolInput(name: string, input: Record<string, unknown>, token: an
           Writing <code style={{ fontSize: 11, padding: '1px 4px', background: token.colorFillQuaternary, borderRadius: 3 }}>{filePath}</code>
         </div>
         <pre style={{
-          margin: 0, padding: '6px 8px', fontSize: 11, fontFamily: 'monospace',
+          margin: 0, padding: '6px 8px', fontSize: 11, fontFamily: MONO_FONT_STACK,
           background: token.colorFillQuaternary, borderRadius: 4,
           whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 200, overflow: 'auto'
         }}>
@@ -184,6 +255,7 @@ const ToolCallBlock: React.FC<{
 }> = ({ name, input, result, onToggle }) => {
   const [expanded, setExpanded] = useState(false)
   const { token } = theme.useToken()
+  const t = useT()
   const summary = getToolSummary(name, input)
 
   return (
@@ -224,7 +296,7 @@ const ToolCallBlock: React.FC<{
       </div>
       <AnimatedToolBody expanded={expanded}>
         <div style={{
-          padding: '6px 10px', fontSize: 11, fontFamily: 'monospace',
+          padding: '6px 10px', fontSize: 11, fontFamily: MONO_FONT_STACK,
           background: token.colorBgLayout, whiteSpace: 'pre-wrap',
           wordBreak: 'break-all', maxHeight: 300, overflow: 'auto'
         }}>
@@ -232,10 +304,14 @@ const ToolCallBlock: React.FC<{
           {result && (
             <div style={{
               borderTop: `1px solid ${token.colorBorderSecondary}`,
-              marginTop: 6, paddingTop: 6,
-              color: result.isError ? token.colorError : undefined
+              marginTop: 6, paddingTop: 6
             }}>
-              {result.content}
+              <div style={{ fontSize: 10, color: token.colorTextTertiary, marginBottom: 4 }}>
+                {t('coding.toolResultLabel', name)}
+              </div>
+              <div style={{ color: result.isError ? token.colorError : undefined }}>
+                {result.content}
+              </div>
             </div>
           )}
         </div>
@@ -280,7 +356,7 @@ const ToolResultBlock: React.FC<{ content: string; isError?: boolean; onToggle?:
       </div>
       <AnimatedToolBody expanded={expanded}>
         <div style={{
-          padding: '6px 10px', fontSize: 11, fontFamily: 'monospace',
+          padding: '6px 10px', fontSize: 11, fontFamily: MONO_FONT_STACK,
           background: token.colorBgLayout, whiteSpace: 'pre-wrap',
           wordBreak: 'break-all', maxHeight: 300, overflow: 'auto'
         }}>
@@ -342,7 +418,7 @@ const ContentBlockRenderer: React.FC<{ block: CodingContentBlock; markdownRender
     case 'raw_output':
       return (
         <div style={{
-          fontFamily: 'monospace', fontSize: 12, lineHeight: 1.5,
+          fontFamily: MONO_FONT_STACK, fontSize: 12, lineHeight: 1.5,
           whiteSpace: 'pre-wrap', wordBreak: 'break-all',
           color: token.colorText, padding: '4px 0'
         }}>
@@ -406,9 +482,10 @@ interface CodingChatMessageProps {
   message: CodingMessage
   onToolToggle?: ToolToggleHandler
   markdownRenderKey?: number
+  toolType?: AIToolType
 }
 
-const CodingChatMessage: React.FC<CodingChatMessageProps> = ({ message, onToolToggle, markdownRenderKey }) => {
+const CodingChatMessage: React.FC<CodingChatMessageProps> = ({ message, onToolToggle, markdownRenderKey, toolType }) => {
   const { token } = theme.useToken()
   const user = useAuthStore((s) => s.user)
 
@@ -438,7 +515,7 @@ const CodingChatMessage: React.FC<CodingChatMessageProps> = ({ message, onToolTo
             userId={user?.id}
           />
         )
-        : <ModelAvatar provider="openai" size={28} />
+        : <ModelAvatar provider={toolTypeToProvider(toolType || 'claude')} size={28} />
       }
 
       {/* Content */}

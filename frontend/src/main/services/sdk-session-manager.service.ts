@@ -4,7 +4,7 @@
  * Drives Claude Code via `@anthropic-ai/claude-agent-sdk`. This is the chat-mode
  * backend (the TUI/CLI mode is handled by pty-manager.service.ts).
  *
- * Design (ported from Clay — D:\repos\vx-tools\clay\lib\yoke\adapters\claude.js):
+ * Design:
  * - ONE long-lived `query()` per session, with `prompt: <MessageQueue>`. Each
  *   user turn is pushed into the queue; the same query keeps consuming turns.
  *   This gives true multi-turn streaming, reliable tool flow, and a live
@@ -53,7 +53,7 @@ interface SDKSessionState {
   isProcessing: boolean
   permissionMode: SDKPermissionMode
   env?: Record<string, string | undefined>
-  /** Server-side streaming accumulation state (Clay-style). */
+  /** Server-side streaming accumulation state. */
   streamState: ClaudeStreamState
   /** Callbacks registered by ai-coding.service.ts. */
   onEvent?: (sessionId: string, data: Record<string, unknown>) => void

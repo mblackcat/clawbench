@@ -1,10 +1,7 @@
 /**
  * Claude Agent SDK → client streaming protocol.
  *
- * Faithful port of Clay's two-stage pipeline
- * (D:\repos\vx-tools\clay\lib\yoke\adapters\claude.js `flattenEvent` +
- * lib\sdk-message-processor.js `processSDKMessage`), collapsed into one
- * function. All vendor-specific accumulation happens here (server-side):
+ * All vendor-specific accumulation happens here (server-side):
  *
  * - Tool input is accumulated from `input_json_delta` and parsed ONCE on
  *   `content_block_stop` → emits a single `tool_executing` (no per-token JSON
@@ -27,7 +24,7 @@ interface BlockAccum {
   inputJson: string
 }
 
-/** Per-session accumulation state (mirrors Clay's `session` fields). */
+/** Per-session accumulation state. */
 export interface ClaudeStreamState {
   /** Per-turn message counter; namespaces content-block indices so they never collide across the multiple assistant messages of an agentic turn. */
   messageIndex: number

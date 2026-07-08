@@ -1209,6 +1209,10 @@ const translations: Record<Lang, Record<string, string>> = {
     'coding.codexNoContextUsage': '暂未收到上下文占用数据',
     'coding.codexContextUsage': '上下文占用：{0}{1} tokens{2}',
     'coding.codexPlanUnavailable': 'Codex chat 模式请使用 /ask、/auto 或 /full 切换权限模式',
+    'coding.toolResultLabel': '{0} 结果',
+    'coding.viewFullDiff': '查看完整差异',
+    'coding.diffTitle': '代码差异',
+    'coding.diffNoChanges': '无变更',
 
     // OpenClaw item descriptions (by id)
     'openclaw.desc.openai': 'OpenAI GPT 系列模型（内置服务商，仅需 API Key）',
@@ -2928,6 +2932,10 @@ const translations: Record<Lang, Record<string, string>> = {
     'coding.codexNoContextUsage': 'No context usage has been reported yet.',
     'coding.codexContextUsage': 'Context usage: {0}{1} tokens{2}',
     'coding.codexPlanUnavailable': 'Use /ask, /auto, or /full to switch permission mode in Codex chat',
+    'coding.toolResultLabel': '{0} result',
+    'coding.viewFullDiff': 'View full diff',
+    'coding.diffTitle': 'Code diff',
+    'coding.diffNoChanges': 'No changes',
 
     // OpenClaw item descriptions (by id)
     'openclaw.desc.openai': 'OpenAI GPT series models (built-in provider, API Key only)',

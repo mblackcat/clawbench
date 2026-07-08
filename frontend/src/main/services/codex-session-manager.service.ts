@@ -202,7 +202,7 @@ function buildTurnParams(state: CodexSessionState, input: Array<Record<string, u
   return params
 }
 
-// ── Client streaming protocol emission (Clay-style: delta / tool_* / thinking_*) ──
+// ── Client streaming protocol emission (delta / tool_* / thinking_*) ──
 // `seenBlocks` dedups thinking_start / tool_start per itemId within a turn;
 // textLengths / thinkingLengths track cumulative streamed length so re-sent full
 // text from item/updated|completed doesn't duplicate.
