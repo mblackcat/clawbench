@@ -76,6 +76,7 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
       owner_id VARCHAR(36) NOT NULL,
       category VARCHAR(100),
       published INTEGER DEFAULT 0,
+      featured INTEGER DEFAULT 0,
       download_count INTEGER DEFAULT 0,
       metadata TEXT,
       created_at BIGINT NOT NULL,
@@ -207,6 +208,15 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
     if (!typeExists || typeExists.cnt === 0) {
       await safeDDL(database,`ALTER TABLE applications ADD COLUMN type VARCHAR(50) DEFAULT 'app'`);
     }
+    // 应用表迁移：添加 featured 列（推荐字段，admin 可配置）
+    const featuredExists = await database.get<{ cnt: number }>(
+      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'applications' AND COLUMN_NAME = 'featured'`,
+      [currentDb]
+    );
+    if (!featuredExists || featuredExists.cnt === 0) {
+      await safeDDL(database,`ALTER TABLE applications ADD COLUMN featured INTEGER DEFAULT 0`);
+    }
   }
 
   // 创建索引
@@ -225,6 +235,7 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
     await ensureIndex('applications', 'idx_applications_owner', 'CREATE INDEX idx_applications_owner ON applications(owner_id)');
     await ensureIndex('applications', 'idx_applications_published', 'CREATE INDEX idx_applications_published ON applications(published)');
     await ensureIndex('applications', 'idx_applications_type', 'CREATE INDEX idx_applications_type ON applications(type)');
+    await ensureIndex('applications', 'idx_applications_featured', 'CREATE INDEX idx_applications_featured ON applications(featured)');
     await ensureIndex('application_versions', 'idx_versions_application', 'CREATE INDEX idx_versions_application ON application_versions(application_id)');
     await ensureIndex('auth_tokens', 'idx_tokens_user', 'CREATE INDEX idx_tokens_user ON auth_tokens(user_id)');
     await ensureIndex('auth_tokens', 'idx_tokens_token', 'CREATE INDEX idx_tokens_token ON auth_tokens(token)');

@@ -25,6 +25,8 @@ export const api = {
     uninstall: (appId: string) => ipcRenderer.invoke('subapp:uninstall', appId),
     installFromMarket: (appId: string, downloadUrl: string, token?: string) =>
       ipcRenderer.invoke('subapp:install-from-market', appId, downloadUrl, token),
+    updateFromMarket: (appId: string, downloadUrl: string, token?: string) =>
+      ipcRenderer.invoke('subapp:update-from-market', appId, downloadUrl, token),
     installSkillFromMarket: (
       appId: string,
       downloadUrl: string,

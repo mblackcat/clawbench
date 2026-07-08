@@ -37,7 +37,7 @@ type AppStatus = 'owner' | 'installed' | 'update' | 'not_installed';
 const AppLibraryPage: React.FC = () => {
   const navigate = useNavigate();
   const { token } = theme.useToken();
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const t = useT();
   const [loading, setLoading] = useState(true);
   const [allApps, setAllApps] = useState<Application[]>([]);
@@ -79,18 +79,19 @@ const AppLibraryPage: React.FC = () => {
       await fetchApps();
 
       if (!isLocalMode) {
+        // forceRefresh=true bypasses the 5-min cache, so switching to the
+        // discovery page always re-fetches the latest marketplace list.
         const publishedApps = await applicationManager.fetchApplications(true, activeTab);
         setAllApps(publishedApps);
         setFilteredApps(publishedApps);
 
-        // Check for updates
+        // Check for updates — use the real on-disk manifests (read fresh from
+        // the store after fetchApps), NOT localStorage which market installs
+        // never populate.
         try {
-          const updates = await applicationManager.checkForUpdates();
-          const map = new Map<string, UpdateInfo>();
-          for (const u of updates) {
-            map.set(u.applicationId, u);
-          }
-          setUpdateInfoMap(map);
+          const diskAppInfos = useSubAppStore.getState().appInfos;
+          const updates = await applicationManager.checkInstalledAppUpdates(diskAppInfos);
+          setUpdateInfoMap(updates);
         } catch {
           // non-critical
         }
@@ -177,7 +178,16 @@ const AppLibraryPage: React.FC = () => {
             size="small"
             icon={<SyncOutlined />}
             style={{ color: token.colorPrimary }}
-            onClick={(e) => { e.stopPropagation(); openDrawer(app); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              modal.confirm({
+                title: t('workbench.updateConfirmTitle'),
+                content: t('workbench.updateConfirmContent', app.name),
+                okText: t('workbench.update'),
+                cancelText: t('workbench.cancel'),
+                onOk: () => handleUpdate(app.applicationId)
+              });
+            }}
           >
             {t('discover.update')}
           </Button>

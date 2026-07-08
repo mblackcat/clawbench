@@ -9,6 +9,11 @@ import {
   listAllApplications,
   countAllApplications,
 } from '../repositories/adminRepository';
+import {
+  getApplicationById,
+  setApplicationFeatured,
+  setApplicationPublished,
+} from '../repositories/applicationRepository';
 import { userToResponse } from '../models/user';
 import { applicationToResponse } from '../models/application';
 import { logger } from '../utils/logger';
@@ -193,6 +198,70 @@ export async function listAllApplicationsHandler(
     });
   } catch (error) {
     logger.error('Error listing all applications:', error);
+    res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: 'Internal server error' },
+    });
+  }
+}
+
+/**
+ * PUT /api/v1/admin/applications/:applicationId
+ * Admin-only update of application flags. Currently supports:
+ *   - featured (boolean): 推荐/精选标记
+ *   - published (boolean): 发布状态
+ *
+ * Body: { featured?: boolean, published?: boolean }
+ * Only the provided fields are updated; the rest are left unchanged.
+ */
+export async function updateApplicationAdminHandler(
+  req: AuthRequest,
+  res: Response
+): Promise<void> {
+  try {
+    const { applicationId } = req.params;
+    const { featured, published } = req.body as { featured?: unknown; published?: unknown };
+
+    const application = await getApplicationById(applicationId);
+    if (!application) {
+      res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Application not found' },
+      });
+      return;
+    }
+
+    let touched = false;
+    if (typeof featured === 'boolean') {
+      await setApplicationFeatured(applicationId, featured);
+      application.featured = featured;
+      touched = true;
+    }
+    if (typeof published === 'boolean') {
+      await setApplicationPublished(applicationId, published);
+      application.published = published;
+      touched = true;
+    }
+
+    if (!touched) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'NO_FIELDS',
+          message: 'Provide at least one of: featured, published',
+        },
+      });
+      return;
+    }
+
+    // Re-read to reflect the persisted state (incl. updated_at)
+    const refreshed = await getApplicationById(applicationId);
+    res.json({
+      success: true,
+      data: applicationToResponse(refreshed ?? application),
+    });
+  } catch (error) {
+    logger.error('Error updating application (admin):', error);
     res.status(500).json({
       success: false,
       error: { code: 'INTERNAL_ERROR', message: 'Internal server error' },

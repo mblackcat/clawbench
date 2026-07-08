@@ -24,7 +24,8 @@ import {
   CloseOutlined,
   AppstoreOutlined,
   ProfileOutlined,
-  FileTextOutlined
+  FileTextOutlined,
+  CloudDownloadOutlined
 } from '@ant-design/icons';
 import {
   DndContext,
@@ -55,6 +56,7 @@ import CreateTypeModal from '../../components/CreateTypeModal';
 import { openExternalLink } from '../../utils/markdown-links';
 import { buildInitialAppParams, saveAppParams } from '../../utils/subapp-params';
 import { useT } from '../../i18n';
+import { applicationManager } from '../../services/applicationManager';
 
 const { Title, Text } = Typography;
 
@@ -104,6 +106,12 @@ interface SortableCardProps {
   onTryPrompt: (id: string) => void
   onViewDetail: (id: string) => void
   onShowDetail: (id: string, manifest: SubAppManifest) => void
+  /** 是否有新版本（市场版本高于本地版本） */
+  hasUpdate?: boolean
+  /** 市场最新版本号（hasUpdate 为 true 时展示） */
+  latestVersion?: string
+  /** 点击更新按钮 */
+  onUpdate: (id: string, name: string) => void
 }
 
 const SortableAppCard: React.FC<SortableCardProps> = ({
@@ -120,7 +128,10 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
   onCopyPrompt,
   onTryPrompt,
   onViewDetail,
-  onShowDetail
+  onShowDetail,
+  hasUpdate,
+  latestVersion,
+  onUpdate
 }) => {
   const { id, manifest, appType } = appWithType;
   const app = manifest;
@@ -229,6 +240,19 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
             <Tag style={{ margin: 0 }}>v{app.version}</Tag>
             {getManifestTypeTag(app.type)}
             {getAppTypeTag(appType)}
+            {hasUpdate && (
+              <Tag
+                color="processing"
+                icon={<SyncOutlined spin />}
+                style={{
+                  margin: 0,
+                  fontWeight: 600,
+                  animation: 'cb-update-pulse 1.8s ease-in-out infinite'
+                }}
+              >
+                {latestVersion ? t('workbench.updateAvailableVersion', latestVersion) : t('workbench.updateAvailable')}
+              </Tag>
+            )}
           </div>
         </div>
         <div
@@ -342,23 +366,48 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
               </div>
             </>
           ) : (
-            <div
-              onClick={() => onRun(id, app.name, manifest)}
-              style={{
-                flex: 1,
-                padding: '8px 0',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-                cursor: 'pointer',
-                color: token.colorSuccess,
-                fontWeight: 500,
-                fontSize: 13
-              }}
-            >
-              <PlayCircleOutlined /> {t('workbench.run')}
-            </div>
+            <>
+              {/* 更新按钮（仅 app 类型且有新版本时显示，位于 删除 与 运行 之间） */}
+              {manifestType === 'app' && hasUpdate && (
+                <>
+                  <div
+                    onClick={() => onUpdate(id, app.name)}
+                    style={{
+                      flex: 1,
+                      padding: '8px 0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      cursor: 'pointer',
+                      color: token.colorPrimary,
+                      fontWeight: 600,
+                      fontSize: 13
+                    }}
+                  >
+                    <CloudDownloadOutlined /> {t('workbench.update')}
+                  </div>
+                  <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorderSecondary }} />
+                </>
+              )}
+              <div
+                onClick={() => onRun(id, app.name, manifest)}
+                style={{
+                  flex: 1,
+                  padding: '8px 0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  cursor: 'pointer',
+                  color: token.colorSuccess,
+                  fontWeight: 500,
+                  fontSize: 13
+                }}
+              >
+                <PlayCircleOutlined /> {t('workbench.run')}
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -550,6 +599,8 @@ const InstalledAppsPage: React.FC = () => {
 
   const fetchApps = useSubAppStore((state) => state.fetchApps);
   const appInfos = useSubAppStore((state) => state.appInfos);
+  const updateMap = useSubAppStore((state) => state.updateMap);
+  const checkForUpdates = useSubAppStore((state) => state.checkForUpdates);
   const user = useAuthStore((state) => state.user);
   const startTask = useTaskStore((state) => state.startTask);
   const setActiveTask = useTaskStore((state) => state.setActiveTask);
@@ -574,9 +625,18 @@ const InstalledAppsPage: React.FC = () => {
   );
 
   useEffect(() => {
-    loadApps();
-    fetchSettings();
-  }, [fetchApps]);
+    const init = async () => {
+      await loadApps();
+      fetchSettings();
+      // 联网模式下打开收藏栏时检查一次已安装应用的更新（checkForUpdates 内部
+      // 读取 store 中最新的 appInfos，因此必须在 loadApps 完成后调用）
+      if (!isLocalMode) {
+        checkForUpdates().catch(() => { /* 非关键路径 */ });
+      }
+    };
+    init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Load workspace skills for the AI Skills tab
   useEffect(() => {
@@ -702,6 +762,34 @@ const InstalledAppsPage: React.FC = () => {
       }
     });
   }, [modal, message]);
+
+  /**
+   * 更新已安装应用到市场最新版本（非破坏性合并：保留本地生成的文件）。
+   */
+  const handleUpdate = useCallback((appId: string, appName: string) => {
+    modal.confirm({
+      title: t('workbench.updateConfirmTitle'),
+      content: t('workbench.updateConfirmContent', appName),
+      okText: t('workbench.update'),
+      cancelText: t('workbench.cancel'),
+      onOk: async () => {
+        const hide = message.loading(t('workbench.updating', appName), 0);
+        try {
+          await applicationManager.updateInstalledApp(appId);
+          hide();
+          message.success(t('workbench.updateSuccess', appName));
+          await loadApps();
+          // 更新完成后重新检查一次，刷新更新标记
+          checkForUpdates().catch(() => { /* 非关键 */ });
+        } catch (error) {
+          hide();
+          console.error('Failed to update app:', error);
+          const reason = error instanceof Error ? error.message : String(error);
+          message.error(reason ? t('workbench.updateFailedReason', reason) : t('workbench.updateFailed'));
+        }
+      }
+    });
+  }, [modal, message, checkForUpdates]);
 
   const handleRun = useCallback(async (appId: string, appName: string, manifest: SubAppManifest) => {
     const params = manifest.params || [];
@@ -1015,6 +1103,9 @@ const InstalledAppsPage: React.FC = () => {
               onTryPrompt={handleTryPrompt}
               onViewDetail={handleViewDetail}
               onShowDetail={handleShowDetail}
+              hasUpdate={!!updateMap[app.id]?.hasUpdate}
+              latestVersion={updateMap[app.id]?.latestVersion}
+              onUpdate={handleUpdate}
             />
           );
         })}

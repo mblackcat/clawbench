@@ -16,6 +16,7 @@ export interface Application {
   type: ApplicationType;
   category: string | null;
   published: boolean;
+  featured: boolean;
   downloadCount: number;
   metadata: Record<string, any> | null;
   createdAt: number;
@@ -55,6 +56,7 @@ export interface ApplicationResponse {
   type: ApplicationType;
   category: string | null;
   published: boolean;
+  featured: boolean;
   downloadCount: number;
   metadata: Record<string, any> | null;
   createdAt: number;
@@ -72,6 +74,7 @@ export interface ApplicationRow {
   type: string | null;
   category: string | null;
   published: number; // SQLite uses 0/1 for boolean
+  featured: number; // SQLite uses 0/1 for boolean
   download_count: number;
   metadata: string | null; // JSON stored as string
   created_at: number;
@@ -90,6 +93,7 @@ export function applicationRowToApplication(row: ApplicationRow): Application {
     type: (row.type as ApplicationType) || 'app',
     category: row.category,
     published: row.published === 1,
+    featured: row.featured === 1,
     downloadCount: row.download_count,
     metadata: row.metadata ? JSON.parse(row.metadata) : null,
     createdAt: row.created_at,
@@ -110,6 +114,7 @@ export function applicationToResponse(app: Application, ownerName?: string): App
     type: app.type,
     category: app.category,
     published: app.published,
+    featured: app.featured,
     downloadCount: app.downloadCount,
     metadata: app.metadata,
     createdAt: app.createdAt,

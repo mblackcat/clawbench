@@ -85,6 +85,10 @@ export interface ClawBenchAPI {
       success: boolean
       manifest?: Record<string, any>
     }>
+    updateFromMarket: (appId: string, downloadUrl: string, token?: string) => Promise<{
+      success: boolean
+      manifest?: Record<string, any>
+    }>
     installSkillFromMarket: (
       appId: string,
       downloadUrl: string,

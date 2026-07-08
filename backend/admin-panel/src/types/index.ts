@@ -23,6 +23,7 @@ export interface ApplicationResponse {
   type: ApplicationType;
   category: string | null;
   published: boolean;
+  featured: boolean;
   downloadCount: number;
   metadata: Record<string, unknown> | null;
   createdAt: number;

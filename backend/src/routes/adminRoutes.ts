@@ -7,6 +7,7 @@ import {
   updateUserHandler,
   deleteUserHandler,
   listAllApplicationsHandler,
+  updateApplicationAdminHandler,
 } from '../controllers/adminController';
 
 /**
@@ -28,3 +29,4 @@ adminRouter.delete('/users/:userId', deleteUserHandler);
 
 // Application management (admin view — all apps including unpublished)
 adminRouter.get('/applications', listAllApplicationsHandler);
+adminRouter.put('/applications/:applicationId', updateApplicationAdminHandler);

@@ -70,6 +70,8 @@ export interface Application {
   type: ApplicationType;
   category: string;
   published: boolean;
+  /** 推荐/精选标记（admin 配置，前端暂未使用，预留字段） */
+  featured?: boolean;
   downloadCount: number;
   metadata: Record<string, any>;
   createdAt: number;

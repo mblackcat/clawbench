@@ -7,6 +7,16 @@ import { apiClient, API_BASE_URL } from './apiClient';
 import type { Application, ApplicationDetail, ApplicationType } from '../types/api';
 import { localStorageManager } from './localStorageManager';
 
+/**
+ * 已安装应用的最小结构（用于版本检查）。与各处本地定义的 SubAppInfo 结构兼容。
+ */
+export interface InstalledAppInfoLike {
+  manifest: {
+    id?: string
+    version?: string
+  }
+}
+
 export interface InstalledApp extends Application {
   installedAt: number;
   installPath: string;
@@ -167,15 +177,19 @@ class ApplicationManager {
   }
 
   /**
-   * 更新应用
+   * 更新已安装应用（非破坏性合并：新版本文件覆盖同名旧文件，本地生成的文件保留）
+   * 通过 IPC 在 main process 中完成下载、解压、合并安装。
    */
-  async updateApplication2(applicationId: string): Promise<boolean> {
+  async updateInstalledApp(applicationId: string): Promise<boolean> {
     try {
-      // 1. 先卸载旧版本
-      await this.uninstallApplication(applicationId);
+      const downloadUrl = `${API_BASE_URL}/applications/${encodeURIComponent(applicationId)}/download`;
+      const token = apiClient.getToken() || undefined;
 
-      // 2. 安装新版本
-      await this.installApplication(applicationId);
+      const result = await window.api.subapp.updateFromMarket(applicationId, downloadUrl, token);
+
+      if (!result.success) {
+        throw new Error('更新失败');
+      }
 
       return true;
     } catch (error) {
@@ -185,7 +199,19 @@ class ApplicationManager {
   }
 
   /**
+   * 更新应用（遗留入口，等价于 updateInstalledApp）
+   * 保留以兼容现有调用点；行为已改为非破坏性合并。
+   */
+  async updateApplication2(applicationId: string): Promise<boolean> {
+    return this.updateInstalledApp(applicationId);
+  }
+
+  /**
    * 检查所有已安装应用的更新
+   *
+   * 注意：此方法基于 localStorage 中的 InstalledApp 记录。市场安装流程并不会
+   * 写入 localStorage，因此对市场安装的应用通常返回空列表。新代码请改用
+   * {@link checkInstalledAppUpdates}，它直接基于磁盘上扫描到的 manifest。
    */
   async checkForUpdates(): Promise<UpdateInfo[]> {
     const installedApps = localStorageManager.getInstalledApps();
@@ -195,7 +221,7 @@ class ApplicationManager {
       try {
         const appDetail = await this.fetchApplicationDetail(installedApp.applicationId);
         const hasUpdate = this.compareVersions(installedApp.localVersion || '', appDetail.version) < 0;
-        
+
         updateInfos.push({
           applicationId: installedApp.applicationId,
           currentVersion: installedApp.localVersion || '',
@@ -214,6 +240,42 @@ class ApplicationManager {
     }
 
     return updateInfos;
+  }
+
+  /**
+   * 基于磁盘上实际扫描到的已安装应用检查更新。
+   *
+   * 对每个 appInfo，读取 manifest.id 作为市场 applicationId、manifest.version 作为
+   * 本地版本号，拉取市场详情并比对版本。市场不存在的应用（如本地草稿）会 404，
+   * 静默跳过。返回以本地 manifest.id 为 key 的 Map。
+   */
+  async checkInstalledAppUpdates(appInfos: InstalledAppInfoLike[]): Promise<Map<string, UpdateInfo>> {
+    const result = new Map<string, UpdateInfo>();
+
+    for (const info of appInfos) {
+      const appId = info.manifest.id;
+      const localVersion = info.manifest.version || '';
+      if (!appId) continue;
+
+      try {
+        const appDetail = await this.fetchApplicationDetail(appId);
+        const hasUpdate = this.compareVersions(localVersion, appDetail.version) < 0;
+        result.set(appId, {
+          applicationId: appId,
+          currentVersion: localVersion,
+          latestVersion: appDetail.version,
+          hasUpdate,
+        });
+      } catch (error) {
+        // 市场不存在该应用（本地草稿/用户自建）—— 静默跳过，不报错
+        const msg = error instanceof Error ? error.message : String(error);
+        if (!/404|not found/i.test(msg)) {
+          console.error(`Failed to check update for ${appId}:`, error);
+        }
+      }
+    }
+
+    return result;
   }
 
   /**

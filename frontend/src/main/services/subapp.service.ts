@@ -93,9 +93,15 @@ export function getSubAppPath(appId: string): string | undefined {
 
 /**
  * Installs a sub-app by copying it to the user apps directory.
+ *
+ * When `opts.preserveLocal` is true (used for updates), the target directory is
+ * NOT deleted before copying. `fs.cpSync({ recursive: true })` overwrites
+ * same-named files with the new version while leaving locally-generated files
+ * (e.g. Python sub-app `data/`, `output/`, logs, user edits) untouched.
  */
 export function installApp(
-  sourcePath: string
+  sourcePath: string,
+  opts: { preserveLocal?: boolean } = {}
 ): { success: boolean; manifest?: SubAppManifest; error?: string } {
   try {
     if (!fs.existsSync(sourcePath)) {
@@ -116,12 +122,16 @@ export function installApp(
     }
 
     const targetDir = join(userAppsDir, manifest.id || basename(sourcePath))
-    if (fs.existsSync(targetDir)) {
+    if (fs.existsSync(targetDir) && !opts.preserveLocal) {
       fs.rmSync(targetDir, { recursive: true })
     }
 
     fs.cpSync(sourcePath, targetDir, { recursive: true })
-    logger.info(`App installed: ${manifest.name} (${manifest.id}) to ${targetDir}`)
+    if (opts.preserveLocal) {
+      logger.info(`App updated (merged, local files preserved): ${manifest.name} (${manifest.id}) at ${targetDir}`)
+    } else {
+      logger.info(`App installed: ${manifest.name} (${manifest.id}) to ${targetDir}`)
+    }
 
     return { success: true, manifest }
   } catch (err) {

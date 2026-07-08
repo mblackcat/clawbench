@@ -16,6 +16,59 @@ import { getPythonSdkPath, getTempDir } from '../utils/paths'
 import { unzipArchive } from '../utils/zip'
 import * as logger from '../utils/logger'
 
+/**
+ * Shared helper: download a marketplace package, unzip it, and locate the
+ * directory containing manifest.json. Returns the source dir and a cleanup
+ * callback that removes the temp zip + extract dir.
+ */
+async function downloadAndExtractMarketPackage(
+  appId: string,
+  downloadUrl: string,
+  token: string | undefined,
+  filePrefix: string
+): Promise<{ sourceDir: string; cleanup: () => void }> {
+  const headers: Record<string, string> = {}
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+
+  const resp = await fetch(downloadUrl, { headers })
+  if (!resp.ok) {
+    throw new Error(`下载失败: HTTP ${resp.status}`)
+  }
+
+  const buffer = await resp.arrayBuffer()
+  const tmpDir = getTempDir()
+  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true })
+
+  const safeId = appId.replace(/[^a-zA-Z0-9._-]/g, '_')
+  const zipPath = join(tmpDir, `${filePrefix}-${safeId}.zip`)
+  fs.writeFileSync(zipPath, Buffer.from(buffer))
+
+  const extractDir = join(tmpDir, `${filePrefix}-extract-${Date.now()}`)
+  fs.mkdirSync(extractDir, { recursive: true })
+
+  unzipArchive(zipPath, extractDir)
+
+  // Find the app directory (may be nested one level)
+  let sourceDir = extractDir
+  const entries = fs.readdirSync(extractDir, { withFileTypes: true })
+  const subDirs = entries.filter((e) => e.isDirectory())
+  if (subDirs.length === 1 && !fs.existsSync(join(extractDir, 'manifest.json'))) {
+    sourceDir = join(extractDir, subDirs[0].name)
+  }
+
+  return {
+    sourceDir,
+    cleanup: () => {
+      try {
+        fs.rmSync(zipPath, { force: true })
+        fs.rmSync(extractDir, { recursive: true, force: true })
+      } catch { /* ignore cleanup errors */ }
+    }
+  }
+}
+
 export function registerSubAppIpc(): void {
   ipcMain.handle('subapp:list', async () => {
     return listSubApps()
@@ -116,56 +169,57 @@ export function registerSubAppIpc(): void {
   /**
    * Download and install an app from the marketplace.
    * Runs entirely in the main process: download zip → extract → installApp.
+   * Destructive: wipes the existing target dir before copying.
    */
   ipcMain.handle(
     'subapp:install-from-market',
     async (_event, appId: string, downloadUrl: string, token?: string) => {
       logger.info(`[Marketplace] Installing app from market: ${appId}`)
 
-      const headers: Record<string, string> = {}
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`
-      }
+      const { sourceDir, cleanup } = await downloadAndExtractMarketPackage(
+        appId,
+        downloadUrl,
+        token,
+        'market'
+      )
 
-      const resp = await fetch(downloadUrl, { headers })
-      if (!resp.ok) {
-        throw new Error(`下载失败: HTTP ${resp.status}`)
-      }
-
-      const buffer = await resp.arrayBuffer()
-      const tmpDir = getTempDir()
-      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true })
-
-      const safeId = appId.replace(/[^a-zA-Z0-9._-]/g, '_')
-      const zipPath = join(tmpDir, `market-${safeId}.zip`)
-      fs.writeFileSync(zipPath, Buffer.from(buffer))
-
-      const extractDir = join(tmpDir, `market-extract-${Date.now()}`)
-      fs.mkdirSync(extractDir, { recursive: true })
-
-      unzipArchive(zipPath, extractDir)
-
-      // Find the app directory (may be nested one level)
-      let appSourceDir = extractDir
-      const entries = fs.readdirSync(extractDir, { withFileTypes: true })
-      const subDirs = entries.filter((e) => e.isDirectory())
-      if (subDirs.length === 1 && !fs.existsSync(join(extractDir, 'manifest.json'))) {
-        appSourceDir = join(extractDir, subDirs[0].name)
-      }
-
-      const result = installApp(appSourceDir)
-
-      // Cleanup temp files
-      try {
-        fs.rmSync(zipPath, { force: true })
-        fs.rmSync(extractDir, { recursive: true, force: true })
-      } catch { /* ignore cleanup errors */ }
+      const result = installApp(sourceDir)
+      cleanup()
 
       if (!result.success) {
         throw new Error(result.error || '安装失败')
       }
 
       logger.info(`[Marketplace] Installed: ${result.manifest?.name} (${appId})`)
+      return { success: true, manifest: result.manifest }
+    }
+  )
+
+  /**
+   * Download and update an app from the marketplace.
+   * Non-destructive merge: new files overwrite same-named old files, but
+   * locally-generated files (data/, output/, logs, user edits) are preserved.
+   */
+  ipcMain.handle(
+    'subapp:update-from-market',
+    async (_event, appId: string, downloadUrl: string, token?: string) => {
+      logger.info(`[Marketplace] Updating app from market: ${appId}`)
+
+      const { sourceDir, cleanup } = await downloadAndExtractMarketPackage(
+        appId,
+        downloadUrl,
+        token,
+        'market-update'
+      )
+
+      const result = installApp(sourceDir, { preserveLocal: true })
+      cleanup()
+
+      if (!result.success) {
+        throw new Error(result.error || '更新失败')
+      }
+
+      logger.info(`[Marketplace] Updated (merged): ${result.manifest?.name} (${appId})`)
       return { success: true, manifest: result.manifest }
     }
   )
