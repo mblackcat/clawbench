@@ -97,33 +97,16 @@ function parseClaudeEvent(event: Record<string, unknown>): CodingContentBlock[] 
 }
 
 // ── Block-id streaming accumulation helpers ──
-// Transient (non-persisted) maps for accumulating block-id-keyed deltas into one
-// growing assistant message per turn (Claude long-lived query; Codex in Phase 2).
-// One entry per active session; cleared on turn boundaries and finalization.
+// Transient (non-persisted) map for accumulating block-id-keyed deltas into one
+// growing assistant message per turn. One entry per active session; cleared on
+// turn boundaries and finalization.
 const streamBlockIndex = new Map<string, Map<string, number>>()  // sid -> blockId -> block index
-const streamToolInput = new Map<string, Map<string, string>>()   // sid -> tool blockId -> partial JSON
 
 function idxMap(sid: string): Map<string, number> {
   let m = streamBlockIndex.get(sid); if (!m) { m = new Map(); streamBlockIndex.set(sid, m) } return m
 }
-function toolInputMap(sid: string): Map<string, string> {
-  let m = streamToolInput.get(sid); if (!m) { m = new Map(); streamToolInput.set(sid, m) } return m
-}
 function resetStreamAccum(sid: string): void {
-  streamBlockIndex.delete(sid); streamToolInput.delete(sid)
-}
-
-/** Best-effort parse of partial tool-input JSON for live tool summaries. */
-function tryParsePartial(raw: string): Record<string, unknown> | null {
-  if (!raw) return null
-  try {
-    const parsed = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
-      : null
-  } catch {
-    return null
-  }
+  streamBlockIndex.delete(sid)
 }
 
 interface AICodingState {
@@ -269,13 +252,17 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
       if (session.toolType === 'claude' || session.toolType === 'codex') {
         // ── Block-id streaming accumulation (Claude long-lived query; Codex in Phase 2) ──
         if (et === 'turn_start' || et === 'turn_started') {
-          resetStreamAccum(sessionId)
-          set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: true }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } }))
+          // Mark streaming, but do NOT clear blocks: an agentic turn has many
+          // assistant messages (text → tool → text → tool …) and we want all of
+          // them to accumulate. Block ids are unique per message, so no collisions.
+          // Finalization + clear happens on `result`.
+          set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: true } }))
           return
         }
         if (et === 'block_start') {
           const blockId = String((event as any).blockId ?? '')
           const blockType = (event as any).blockType as 'text' | 'thinking' | 'tool_use'
+          if (idxMap(sessionId).has(blockId)) return  // dedup (a tool_use may be finalized after its block_start)
           set(s => {
             const blocks = [...(s.sessionStreamingBlocks[sessionId] || [])]
             let block: CodingContentBlock
@@ -292,10 +279,16 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
           const blockId = String((event as any).blockId ?? '')
           const text = String((event as any).text ?? '')
           if (!text) return
+          const isThinking = et === 'thinking_delta'
           set(s => {
             const blocks = [...(s.sessionStreamingBlocks[sessionId] || [])]
-            const idx = idxMap(sessionId).get(blockId)
-            if (idx === undefined) return {}
+            let idx = idxMap(sessionId).get(blockId)
+            if (idx === undefined) {
+              // Delta-driven: auto-create the block if block_start wasn't seen.
+              idx = blocks.length
+              blocks.push(isThinking ? { type: 'thinking', text: '', blockId } : { type: 'text', text: '', blockId })
+              idxMap(sessionId).set(blockId, idx)
+            }
             const b = blocks[idx]
             if (!b || (b.type !== 'text' && b.type !== 'thinking')) return {}
             blocks[idx] = { ...b, text: (b.text || '') + text }
@@ -303,37 +296,23 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
           })
           return
         }
-        if (et === 'tool_input_delta') {
-          const blockId = String((event as any).blockId ?? '')
-          const partial = String((event as any).partialJson ?? '')
-          const acc = (toolInputMap(sessionId).get(blockId) || '') + partial
-          toolInputMap(sessionId).set(blockId, acc)
-          // Live best-effort parse so the tool summary streams in while args arrive.
-          const parsed = tryParsePartial(acc)
-          if (!parsed) return
-          set(s => {
-            const blocks = [...(s.sessionStreamingBlocks[sessionId] || [])]
-            const idx = idxMap(sessionId).get(blockId)
-            if (idx === undefined) return {}
-            const b = blocks[idx]
-            if (b && b.type === 'tool_use') blocks[idx] = { ...b, input: parsed }
-            return { sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: blocks } }
-          })
-          return
-        }
         if (et === 'block_stop') {
           const blockId = String((event as any).blockId ?? '')
           const input = (event as any).input as Record<string, unknown> | undefined
+          if (!input) return  // only tool_use block_stop carries input
           set(s => {
             const blocks = [...(s.sessionStreamingBlocks[sessionId] || [])]
             const idx = idxMap(sessionId).get(blockId)
-            if (idx !== undefined) {
+            if (idx === undefined) {
+              // Tool block whose block_start wasn't seen — create it now with input.
+              idxMap(sessionId).set(blockId, blocks.length)
+              blocks.push({ type: 'tool_use', id: blockId, name: '', input })
+            } else {
               const b = blocks[idx]
-              if (b && b.type === 'tool_use' && input) blocks[idx] = { ...b, input }
+              if (b && b.type === 'tool_use') blocks[idx] = { ...b, input }
             }
             return { sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: blocks } }
           })
-          toolInputMap(sessionId).delete(blockId)
           return
         }
         if (et === 'tool_result') {
@@ -501,6 +480,7 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
     }
     if (text) userBlocks.push({ type: 'text', text })
     const userMsg: CodingMessage = { id: genMsgId(), sessionId, role: 'user', blocks: userBlocks.length > 0 ? userBlocks : [{ type: 'text', text: '' }], timestamp: Date.now() }
+    resetStreamAccum(sessionId)
     set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), userMsg] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: true }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } }))
     if (!session.title) { const t = text.slice(0, 50) + (text.length > 50 ? '…' : ''); try { await get().updateSession(sessionId, { title: t }) } catch { /* */ } }
     if (session.status === 'closed' || session.status === 'completed' || session.status === 'error') {
@@ -512,7 +492,7 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
     }
     try { await window.api.aiCoding.writeToSession(sessionId, text, images) } catch (err: any) { const em: CodingMessage = { id: genMsgId(), sessionId, role: 'system', blocks: [{ type: 'text', text: `发送失败: ${err?.message || String(err)}` }], timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), em] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false } })) }
   },
-  clearSessionMessages: (sid) => set(s => ({ sessionMessages: { ...s.sessionMessages, [sid]: [] }, sessionStreaming: { ...s.sessionStreaming, [sid]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sid]: [] } })),
+  clearSessionMessages: (sid) => { resetStreamAccum(sid); set(s => ({ sessionMessages: { ...s.sessionMessages, [sid]: [] }, sessionStreaming: { ...s.sessionStreaming, [sid]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sid]: [] } })) },
   executeSlashCommand: async (sessionId, command) => {
     // Add a system message showing the command, then set streaming
     const cmdMsg: CodingMessage = { id: genMsgId(), sessionId, role: 'user', blocks: [{ type: 'text', text: command }], timestamp: Date.now() }

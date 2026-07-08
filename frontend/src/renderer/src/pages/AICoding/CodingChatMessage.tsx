@@ -475,4 +475,7 @@ const CodingChatMessage: React.FC<CodingChatMessageProps> = ({ message, onToolTo
 }
 
 export { getToolSummary }
-export default CodingChatMessage
+// Memoized so a streaming token (which only changes the streaming preview, not
+// finalized messages) doesn't re-render — and re-parse markdown for — every
+// historical message in the list.
+export default React.memo(CodingChatMessage)

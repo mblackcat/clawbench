@@ -53,7 +53,7 @@ interface SDKSessionState {
   isProcessing: boolean
   permissionMode: SDKPermissionMode
   env?: Record<string, string | undefined>
-  /** Per-turn flatten accumulator state. */
+  /** Per-turn flatten state (message counter). */
   flattenCtx: FlattenCtx
   /** Callbacks registered by ai-coding.service.ts. */
   onEvent?: (sessionId: string, data: Record<string, unknown>) => void

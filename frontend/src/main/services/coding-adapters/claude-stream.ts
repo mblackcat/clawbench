@@ -1,37 +1,33 @@
 /**
  * Flatten raw Claude Agent SDK messages into the normalized CodingStreamEvent
- * alphabet. Ported from Clay's `flattenEvent`
- * (D:\repos\vx-tools\clay\lib\yoke\adapters\claude.js:80) and `processSDKMessage`
- * (lib\sdk-message-processor.js:176), adapted to clawbench's CodingStreamEvent.
+ * alphabet. Adapted from Clay's flattenEvent / processSDKMessage
+ * (D:\repos\vx-tools\clay\lib\yoke\adapters\claude.js).
  *
- * Design notes:
- * - Live text/thinking/tool-input are driven ONLY by `stream_event` deltas
- *   (content_block_start → *_delta → content_block_stop). The finalized
- *   `assistant` message is NOT re-emitted for text/tool_use (would duplicate the
- *   deltas). This is the dedup guard Clay uses (`streamedText`).
- * - Tool RESULTS come from `user`-role messages — this is the piece the old
- *   implementation dropped entirely, so tools rendered with empty inputs.
- * - Block ids: text/thinking use `idx<index>`; tool_use uses the real tool id
- *   (so tool_result pairing works). The `index → blockId` map is per-turn.
+ * Robustness model:
+ * - Text & thinking are DELTA-DRIVEN. Each delta's blockId includes the
+ *   per-message index (`t<msg>-<block>`), so it is unique across the multiple
+ *   assistant messages of an agentic turn and never depends on a prior
+ *   content_block_start having been seen. The renderer auto-creates the block
+ *   on the first delta. (Old behavior streamed text regardless of block
+ *   lifecycle events — this preserves that.)
+ * - Tool calls come from the AUTHORITATIVE finalized `assistant` message
+ *   (block_start with the name + block_stop with the full parsed input), not
+ *   from streaming input_json_delta chunks — so tool inputs always render
+ *   correctly without fragile index bookkeeping or O(n²) JSON parsing.
+ * - Tool RESULTS come from `user`-role messages.
+ * - The whole turn accumulates in the renderer until `result` finalizes it
+ *   (turn_start does NOT clear — that would wipe intermediate steps).
  */
 
 import type { CodingStreamEvent } from './stream-events'
 
-/** Per-turn accumulator state (reset on each message_start). */
+/** Per-session flatten state: a message counter, unique within a turn. */
 export interface FlattenCtx {
-  indexToBlockId: Map<number, string>
-  toolInputs: Map<string, string>
-  toolNames: Map<string, string>
+  messageIndex: number
 }
 
 export function createFlattenCtx(): FlattenCtx {
-  return { indexToBlockId: new Map(), toolInputs: new Map(), toolNames: new Map() }
-}
-
-function resetCtx(ctx: FlattenCtx): void {
-  ctx.indexToBlockId.clear()
-  ctx.toolInputs.clear()
-  ctx.toolNames.clear()
+  return { messageIndex: -1 }
 }
 
 function stringifyToolResult(content: unknown): string {
@@ -55,22 +51,9 @@ function stringifyToolResult(content: unknown): string {
   }
 }
 
-/** Best-effort parse of accumulated tool-input JSON. */
-function parseToolInput(raw: string): Record<string, unknown> {
-  if (!raw) return {}
-  try {
-    const parsed = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
-      : { value: parsed }
-  } catch {
-    return { _raw: raw }
-  }
-}
-
 /**
  * Convert one raw SDK message into zero or more normalized events.
- * `ctx` is mutated (and reset per turn); callers must keep one ctx per session.
+ * `ctx` carries a per-turn message counter (reset on `result`).
  */
 export function flattenClaudeEvent(raw: any, ctx: FlattenCtx): CodingStreamEvent[] {
   if (!raw || typeof raw !== 'object') return []
@@ -90,71 +73,65 @@ export function flattenClaudeEvent(raw: any, ctx: FlattenCtx): CodingStreamEvent
     const evType = ev.type as string
 
     if (evType === 'message_start') {
-      resetCtx(ctx)
+      ctx.messageIndex += 1
       out.push({ type: 'turn_start' })
       return out
     }
 
+    const mi = ctx.messageIndex
+
     if (evType === 'content_block_start') {
-      const index: number = typeof ev.index === 'number' ? ev.index : out.length
+      const index = typeof ev.index === 'number' ? ev.index : 0
       const cb = ev.content_block || {}
-      const cbType = cb.type as string
-      if (cbType === 'tool_use') {
-        const id: string = cb.id || `tool-${index}`
-        ctx.indexToBlockId.set(index, id)
-        ctx.toolNames.set(id, cb.name || '')
-        out.push({ type: 'block_start', blockId: id, blockType: 'tool_use', toolName: cb.name || '' })
-      } else {
-        const bid = `idx${index}`
-        ctx.indexToBlockId.set(index, bid)
-        const blockType: 'text' | 'thinking' = cbType === 'thinking' ? 'thinking' : 'text'
-        out.push({ type: 'block_start', blockId: bid, blockType })
+      // Open a thinking block early so its spinner shows before deltas arrive.
+      if (cb.type === 'thinking') {
+        out.push({ type: 'block_start', blockId: `th${mi}-${index}`, blockType: 'thinking' })
       }
+      // text/tool_use blocks are created from deltas / the assistant message.
       return out
     }
 
     if (evType === 'content_block_delta') {
-      const index: number = typeof ev.index === 'number' ? ev.index : -1
-      const bid = ctx.indexToBlockId.get(index)
+      const index = typeof ev.index === 'number' ? ev.index : 0
       const d = ev.delta || {}
-      if (bid && d.type === 'text_delta' && d.text) {
-        out.push({ type: 'text_delta', blockId: bid, text: d.text })
-      } else if (bid && d.type === 'thinking_delta' && d.thinking) {
-        out.push({ type: 'thinking_delta', blockId: bid, text: d.thinking })
-      } else if (bid && d.type === 'input_json_delta' && typeof d.partial_json === 'string') {
-        ctx.toolInputs.set(bid, (ctx.toolInputs.get(bid) || '') + d.partial_json)
-        out.push({ type: 'tool_input_delta', blockId: bid, partialJson: d.partial_json })
+      if (d.type === 'text_delta' && d.text) {
+        out.push({ type: 'text_delta', blockId: `t${mi}-${index}`, text: d.text })
+      } else if (d.type === 'thinking_delta' && d.thinking) {
+        out.push({ type: 'thinking_delta', blockId: `th${mi}-${index}`, text: d.thinking })
       }
+      // input_json_delta intentionally ignored — tool input comes from the
+      // finalized assistant message (see below).
       return out
     }
 
-    if (evType === 'content_block_stop') {
-      const index: number = typeof ev.index === 'number' ? ev.index : -1
-      const bid = ctx.indexToBlockId.get(index)
-      if (bid) {
-        const name = ctx.toolNames.get(bid)
-        if (name) {
-          const input = parseToolInput(ctx.toolInputs.get(bid) || '')
-          if (name === 'AskUserQuestion') {
-            const questions = Array.isArray(input.questions) ? input.questions : []
-            if (questions.length > 0) out.push({ type: 'ask_user_question', id: bid, questions })
-          } else if (name === 'TodoWrite') {
-            const todos = Array.isArray(input.todos) ? input.todos : []
-            if (todos.length > 0) out.push({ type: 'todo_update', todos })
-          } else {
-            out.push({ type: 'block_stop', blockId: bid, input })
-          }
-        } else {
-          out.push({ type: 'block_stop', blockId: bid })
-        }
-        ctx.indexToBlockId.delete(index)
-        ctx.toolInputs.delete(bid)
-        ctx.toolNames.delete(bid)
-      }
-      return out
-    }
+    // content_block_stop / message_delta / message_stop: no event needed.
+    return out
+  }
 
-    // message_delta / message_stop / others: no event needed.
+  if (msgType === 'assistant') {
+    // Authoritative finalized message. Use it for tool_use blocks (full input).
+    // Text/thinking were already streamed via deltas, so skip them here.
+    const content = Array.isArray(raw.message?.content) ? raw.message.content : []
+    for (const block of content) {
+      if (!block || block.type !== 'tool_use') continue
+      const id: string = block.id || `tool-${out.length}`
+      const name: string = block.name || ''
+      const input: Record<string, unknown> =
+        block.input && typeof block.input === 'object' && !Array.isArray(block.input)
+          ? block.input
+          : {}
+
+      if (name === 'AskUserQuestion') {
+        const questions = Array.isArray(input.questions) ? input.questions : []
+        if (questions.length > 0) out.push({ type: 'ask_user_question', id, questions })
+      } else if (name === 'TodoWrite') {
+        const todos = Array.isArray(input.todos) ? input.todos : []
+        if (todos.length > 0) out.push({ type: 'todo_update', todos })
+      } else {
+        out.push({ type: 'block_start', blockId: id, blockType: 'tool_use', toolName: name })
+        out.push({ type: 'block_stop', blockId: id, input })
+      }
+    }
     return out
   }
 
@@ -174,14 +151,8 @@ export function flattenClaudeEvent(raw: any, ctx: FlattenCtx): CodingStreamEvent
     return out
   }
 
-  if (msgType === 'assistant') {
-    // Text/thinking/tool_use were already streamed via deltas. Do not re-emit
-    // (avoids duplicate display). No fallback needed while includePartialMessages
-    // is on.
-    return out
-  }
-
   if (msgType === 'result') {
+    ctx.messageIndex = -1  // reset the per-turn message counter
     const costUsd = typeof raw.total_cost_usd === 'number' ? raw.total_cost_usd : undefined
     const resultText = raw.subtype === 'success' ? (raw.result ?? '') : ''
     out.push({
@@ -191,7 +162,6 @@ export function flattenClaudeEvent(raw: any, ctx: FlattenCtx): CodingStreamEvent
       subtype: raw.subtype,
       result: resultText,
     })
-    // Best-effort token accounting from the result message.
     const u = raw.usage
     if (u && typeof u === 'object') {
       const inputTokens = typeof u.input_tokens === 'number' ? u.input_tokens : undefined
