@@ -1,33 +1,53 @@
 /**
- * Flatten raw Claude Agent SDK messages into the normalized CodingStreamEvent
- * alphabet. Adapted from Clay's flattenEvent / processSDKMessage
- * (D:\repos\vx-tools\clay\lib\yoke\adapters\claude.js).
+ * Claude Agent SDK → client streaming protocol.
  *
- * Robustness model:
- * - Text & thinking are DELTA-DRIVEN. Each delta's blockId includes the
- *   per-message index (`t<msg>-<block>`), so it is unique across the multiple
- *   assistant messages of an agentic turn and never depends on a prior
- *   content_block_start having been seen. The renderer auto-creates the block
- *   on the first delta. (Old behavior streamed text regardless of block
- *   lifecycle events — this preserves that.)
- * - Tool calls come from the AUTHORITATIVE finalized `assistant` message
- *   (block_start with the name + block_stop with the full parsed input), not
- *   from streaming input_json_delta chunks — so tool inputs always render
- *   correctly without fragile index bookkeeping or O(n²) JSON parsing.
- * - Tool RESULTS come from `user`-role messages.
- * - The whole turn accumulates in the renderer until `result` finalizes it
- *   (turn_start does NOT clear — that would wipe intermediate steps).
+ * Faithful port of Clay's two-stage pipeline
+ * (D:\repos\vx-tools\clay\lib\yoke\adapters\claude.js `flattenEvent` +
+ * lib\sdk-message-processor.js `processSDKMessage`), collapsed into one
+ * function. All vendor-specific accumulation happens here (server-side):
+ *
+ * - Tool input is accumulated from `input_json_delta` and parsed ONCE on
+ *   `content_block_stop` → emits a single `tool_executing` (no per-token JSON
+ *   parsing, no fragile client-side block bookkeeping).
+ * - Tool results are extracted from `user`-role messages, deduped by tool id.
+ * - If assistant text was NOT streamed via deltas, the authoritative
+ *   `assistant` message emits a `delta` fallback (guarantees text always shows).
+ * - AskUserQuestion / TodoWrite are detected on block_stop and emitted as
+ *   dedicated events.
+ *
+ * The client (renderer) receives only the simple protocol in stream-events.ts.
  */
 
 import type { CodingStreamEvent } from './stream-events'
 
-/** Per-session flatten state: a message counter, unique within a turn. */
-export interface FlattenCtx {
-  messageIndex: number
+interface BlockAccum {
+  type: 'text' | 'thinking' | 'tool_use'
+  id?: string
+  name?: string
+  inputJson: string
 }
 
-export function createFlattenCtx(): FlattenCtx {
-  return { messageIndex: -1 }
+/** Per-session accumulation state (mirrors Clay's `session` fields). */
+export interface ClaudeStreamState {
+  /** Per-turn message counter; namespaces content-block indices so they never collide across the multiple assistant messages of an agentic turn. */
+  messageIndex: number
+  /** True once any text streamed this turn (gates the assistant-message text fallback). */
+  streamedText: boolean
+  /** Open content blocks for the current message, keyed by `<msg>:<index>`. */
+  blocks: Map<string, BlockAccum>
+  /** Tool-result ids already emitted this turn (dedup; results can arrive via stream + user message). */
+  sentToolResults: Set<string>
+}
+
+export function createClaudeStreamState(): ClaudeStreamState {
+  return { messageIndex: -1, streamedText: false, blocks: new Map(), sentToolResults: new Set() }
+}
+
+function resetForTurn(st: ClaudeStreamState): void {
+  st.messageIndex = -1
+  st.streamedText = false
+  st.blocks.clear()
+  st.sentToolResults.clear()
 }
 
 function stringifyToolResult(content: unknown): string {
@@ -51,11 +71,8 @@ function stringifyToolResult(content: unknown): string {
   }
 }
 
-/**
- * Convert one raw SDK message into zero or more normalized events.
- * `ctx` carries a per-turn message counter (reset on `result`).
- */
-export function flattenClaudeEvent(raw: any, ctx: FlattenCtx): CodingStreamEvent[] {
+/** Convert one raw SDK message into zero or more client events, mutating `st`. */
+export function processClaudeMessage(raw: any, st: ClaudeStreamState): CodingStreamEvent[] {
   if (!raw || typeof raw !== 'object') return []
   const msgType = raw.type as string
   const out: CodingStreamEvent[] = []
@@ -73,86 +90,112 @@ export function flattenClaudeEvent(raw: any, ctx: FlattenCtx): CodingStreamEvent
     const evType = ev.type as string
 
     if (evType === 'message_start') {
-      ctx.messageIndex += 1
+      st.messageIndex += 1
       out.push({ type: 'turn_start' })
       return out
     }
 
-    const mi = ctx.messageIndex
+    const mi = st.messageIndex
+    const key = `${mi}:${typeof ev.index === 'number' ? ev.index : 0}`
 
     if (evType === 'content_block_start') {
-      const index = typeof ev.index === 'number' ? ev.index : 0
       const cb = ev.content_block || {}
-      // Open a thinking block early so its spinner shows before deltas arrive.
-      if (cb.type === 'thinking') {
-        out.push({ type: 'block_start', blockId: `th${mi}-${index}`, blockType: 'thinking' })
+      if (cb.type === 'tool_use') {
+        const id: string = cb.id || `tool-${key}`
+        const name: string = cb.name || ''
+        st.blocks.set(key, { type: 'tool_use', id, name, inputJson: '' })
+        // AskUserQuestion / TodoWrite are emitted as dedicated events on stop.
+        if (name !== 'AskUserQuestion' && name !== 'TodoWrite') {
+          out.push({ type: 'tool_start', id, name })
+        }
+      } else if (cb.type === 'thinking') {
+        st.blocks.set(key, { type: 'thinking', inputJson: '' })
+        out.push({ type: 'thinking_start' })
+      } else {
+        st.blocks.set(key, { type: 'text', inputJson: '' })
       }
-      // text/tool_use blocks are created from deltas / the assistant message.
       return out
     }
 
     if (evType === 'content_block_delta') {
-      const index = typeof ev.index === 'number' ? ev.index : 0
       const d = ev.delta || {}
       if (d.type === 'text_delta' && d.text) {
-        out.push({ type: 'text_delta', blockId: `t${mi}-${index}`, text: d.text })
+        st.streamedText = true
+        out.push({ type: 'delta', text: d.text })
       } else if (d.type === 'thinking_delta' && d.thinking) {
-        out.push({ type: 'thinking_delta', blockId: `th${mi}-${index}`, text: d.thinking })
+        out.push({ type: 'thinking_delta', text: d.thinking })
+      } else if (d.type === 'input_json_delta' && typeof d.partial_json === 'string') {
+        const b = st.blocks.get(key)
+        if (b) b.inputJson += d.partial_json
       }
-      // input_json_delta intentionally ignored — tool input comes from the
-      // finalized assistant message (see below).
       return out
     }
 
-    // content_block_stop / message_delta / message_stop: no event needed.
+    if (evType === 'content_block_stop') {
+      const b = st.blocks.get(key)
+      if (b) {
+        if (b.type === 'tool_use') {
+          let input: Record<string, unknown> = {}
+          try {
+            const parsed = JSON.parse(b.inputJson || '{}')
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) input = parsed
+          } catch {
+            /* keep empty input */
+          }
+          if (b.name === 'AskUserQuestion') {
+            const questions = Array.isArray(input.questions) ? input.questions : []
+            if (questions.length > 0) out.push({ type: 'ask_user_question', id: b.id || '', questions })
+          } else if (b.name === 'TodoWrite') {
+            const todos = Array.isArray(input.todos) ? input.todos : []
+            if (todos.length > 0) out.push({ type: 'todo_update', todos })
+          } else {
+            out.push({ type: 'tool_executing', id: b.id || '', name: b.name || '', input })
+          }
+        } else if (b.type === 'thinking') {
+          out.push({ type: 'thinking_stop' })
+        }
+        st.blocks.delete(key)
+      }
+      return out
+    }
+
+    // message_delta / message_stop / content_block_* variants: nothing to emit.
     return out
   }
 
   if (msgType === 'assistant') {
-    // Authoritative finalized message. Use it for tool_use blocks (full input).
-    // Text/thinking were already streamed via deltas, so skip them here.
+    // Fallback: if no text streamed this turn, emit the authoritative text now.
     const content = Array.isArray(raw.message?.content) ? raw.message.content : []
-    for (const block of content) {
-      if (!block || block.type !== 'tool_use') continue
-      const id: string = block.id || `tool-${out.length}`
-      const name: string = block.name || ''
-      const input: Record<string, unknown> =
-        block.input && typeof block.input === 'object' && !Array.isArray(block.input)
-          ? block.input
-          : {}
-
-      if (name === 'AskUserQuestion') {
-        const questions = Array.isArray(input.questions) ? input.questions : []
-        if (questions.length > 0) out.push({ type: 'ask_user_question', id, questions })
-      } else if (name === 'TodoWrite') {
-        const todos = Array.isArray(input.todos) ? input.todos : []
-        if (todos.length > 0) out.push({ type: 'todo_update', todos })
-      } else {
-        out.push({ type: 'block_start', blockId: id, blockType: 'tool_use', toolName: name })
-        out.push({ type: 'block_stop', blockId: id, input })
-      }
+    if (!st.streamedText) {
+      const text = content
+        .filter((c: any) => c && c.type === 'text' && typeof c.text === 'string')
+        .map((c: any) => c.text)
+        .join('')
+      if (text) out.push({ type: 'delta', text })
     }
+    // tool_use blocks were already emitted via stream events; nothing more here.
     return out
   }
 
   if (msgType === 'user') {
-    // Tool results arrive as user-role messages containing tool_result blocks.
+    // Tool results live in user-role messages. Dedup by tool id.
     const content = Array.isArray(raw.message?.content) ? raw.message.content : []
     for (const block of content) {
-      if (block && block.type === 'tool_result') {
-        out.push({
-          type: 'tool_result',
-          toolUseId: block.tool_use_id || '',
-          content: stringifyToolResult(block.content),
-          isError: !!block.is_error,
-        })
-      }
+      if (!block || block.type !== 'tool_result') continue
+      const id = block.tool_use_id || ''
+      if (!id || st.sentToolResults.has(id)) continue
+      st.sentToolResults.add(id)
+      out.push({
+        type: 'tool_result',
+        id,
+        content: stringifyToolResult(block.content),
+        isError: !!block.is_error,
+      })
     }
     return out
   }
 
   if (msgType === 'result') {
-    ctx.messageIndex = -1  // reset the per-turn message counter
     const costUsd = typeof raw.total_cost_usd === 'number' ? raw.total_cost_usd : undefined
     const resultText = raw.subtype === 'success' ? (raw.result ?? '') : ''
     out.push({
@@ -179,6 +222,7 @@ export function flattenClaudeEvent(raw: any, ctx: FlattenCtx): CodingStreamEvent
         })
       }
     }
+    resetForTurn(st)
     return out
   }
 

@@ -202,27 +202,23 @@ function buildTurnParams(state: CodexSessionState, input: Array<Record<string, u
   return params
 }
 
-// ── Block-id event emission (mirrors Claude's CodingStreamEvent alphabet) ──
-// `seenBlocks` dedups block_start per itemId within a turn; textLengths /
-// thinkingLengths track cumulative streamed length so re-sent full text from
-// item/updated|completed doesn't duplicate.
+// ── Client streaming protocol emission (Clay-style: delta / tool_* / thinking_*) ──
+// `seenBlocks` dedups thinking_start / tool_start per itemId within a turn;
+// textLengths / thinkingLengths track cumulative streamed length so re-sent full
+// text from item/updated|completed doesn't duplicate.
 
-function emitTextDelta(sessionId: string, state: CodexSessionState, itemId: string, delta: string): void {
+function emitTextDelta(sessionId: string, state: CodexSessionState, _itemId: string, delta: string): void {
   if (!delta) return
-  if (!state.seenBlocks.has(itemId)) {
-    state.seenBlocks.add(itemId)
-    emitEvent(sessionId, state, { type: 'block_start', blockId: itemId, blockType: 'text' })
-  }
   appendOutput(state, delta)
-  emitEvent(sessionId, state, { type: 'text_delta', blockId: itemId, text: delta })
+  emitEvent(sessionId, state, { type: 'delta', text: delta })
 }
 
 function emitThinkingDelta(sessionId: string, state: CodexSessionState, itemId: string, delta: string): void {
   if (!state.seenBlocks.has(itemId)) {
     state.seenBlocks.add(itemId)
-    emitEvent(sessionId, state, { type: 'block_start', blockId: itemId, blockType: 'thinking' })
+    emitEvent(sessionId, state, { type: 'thinking_start' })
   }
-  if (delta) emitEvent(sessionId, state, { type: 'thinking_delta', blockId: itemId, text: delta })
+  if (delta) emitEvent(sessionId, state, { type: 'thinking_delta', text: delta })
 }
 
 function emitToolStart(
@@ -234,8 +230,8 @@ function emitToolStart(
 ): void {
   if (state.seenBlocks.has(itemId)) return
   state.seenBlocks.add(itemId)
-  emitEvent(sessionId, state, { type: 'block_start', blockId: itemId, blockType: 'tool_use', toolName: name })
-  emitEvent(sessionId, state, { type: 'block_stop', blockId: itemId, input })
+  emitEvent(sessionId, state, { type: 'tool_start', id: itemId, name })
+  emitEvent(sessionId, state, { type: 'tool_executing', id: itemId, name, input })
   appendOutput(state, `\n[${name}] ${JSON.stringify(input)}\n`)
 }
 
@@ -247,7 +243,7 @@ function emitToolResult(
   isError?: boolean
 ): void {
   if (content) appendOutput(state, `\n${content}\n`)
-  emitEvent(sessionId, state, { type: 'tool_result', toolUseId: itemId, content, isError: !!isError })
+  emitEvent(sessionId, state, { type: 'tool_result', id: itemId, content, isError: !!isError })
 }
 
 function extractToolResult(item: any): string {

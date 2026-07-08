@@ -21,7 +21,7 @@ import * as fs from 'fs'
 import * as logger from '../utils/logger'
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { createMessageQueue, type MessageQueue } from './coding-adapters/message-queue'
-import { flattenClaudeEvent, createFlattenCtx, type FlattenCtx } from './coding-adapters/claude-stream'
+import { processClaudeMessage, createClaudeStreamState, type ClaudeStreamState } from './coding-adapters/claude-stream'
 import { scanAndMergeInstructions } from './coding-adapters/instructions'
 import type { CodingStreamEvent } from './coding-adapters/stream-events'
 
@@ -53,8 +53,8 @@ interface SDKSessionState {
   isProcessing: boolean
   permissionMode: SDKPermissionMode
   env?: Record<string, string | undefined>
-  /** Per-turn flatten state (message counter). */
-  flattenCtx: FlattenCtx
+  /** Server-side streaming accumulation state (Clay-style). */
+  streamState: ClaudeStreamState
   /** Callbacks registered by ai-coding.service.ts. */
   onEvent?: (sessionId: string, data: Record<string, unknown>) => void
   onClose?: (sessionId: string) => void
@@ -192,11 +192,11 @@ export function detectManagedInteractiveState(
 function emit(sessionId: string, state: SDKSessionState, event: CodingStreamEvent): void {
   // Keep the IM ring buffer roughly in sync with streamed content.
   switch (event.type) {
-    case 'text_delta':
+    case 'delta':
       appendOutput(sessionId, event.text)
       break
-    case 'block_start':
-      if (event.blockType === 'tool_use') appendOutput(sessionId, `\n⚙ [${event.toolName || 'tool'}]\n`)
+    case 'tool_start':
+      appendOutput(sessionId, `\n⚙ [${event.name || 'tool'}]\n`)
       break
     case 'tool_result':
       appendOutput(sessionId, `\n${event.content}\n`)
@@ -322,7 +322,7 @@ export function launchSDKSession(
     isProcessing: false,
     permissionMode: 'bypassPermissions',  // default — matches old pipe mode behavior
     env,
-    flattenCtx: createFlattenCtx(),
+    streamState: createClaudeStreamState(),
     onEvent,
     onClose,
     onError,
@@ -417,7 +417,7 @@ async function consumeQuery(
 ): Promise<void> {
   for await (const msg of query) {
     if (!sdkSessions.has(sessionId)) break  // closed mid-stream
-    const events = flattenClaudeEvent(msg, state.flattenCtx)
+    const events = processClaudeMessage(msg, state.streamState)
     for (const ev of events) {
       emit(sessionId, state, ev)
       if (ev.type === 'result' || ev.type === 'error') {

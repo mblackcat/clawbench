@@ -169,16 +169,14 @@ function handleSDKEvent(sessionId: string, data: Record<string, unknown>): void 
   } else if (msgType === 'turn_start' || msgType === 'turn_started') {
     updateSession(sessionId, { status: 'running', lastActivity: 'thinking' })
     notifyDataChanged()
-  } else if (msgType === 'block_start') {
-    // New block-id streaming: text/thinking → thinking, tool_use → by tool name.
-    if (data.blockType === 'tool_use') {
-      updateSession(sessionId, { status: 'running', lastActivity: activityFromToolName(data.toolName as string) })
-    } else {
-      updateSession(sessionId, { status: 'running', lastActivity: 'thinking' })
-    }
-    notifyDataChanged()
-  } else if (msgType === 'text_delta' || msgType === 'thinking_delta' || msgType === 'assistant') {
+  } else if (msgType === 'delta' || msgType === 'thinking_start' || msgType === 'thinking_delta') {
     updateSession(sessionId, { status: 'running', lastActivity: 'thinking' })
+    notifyDataChanged()
+  } else if (msgType === 'tool_start' || msgType === 'tool_executing') {
+    updateSession(sessionId, { status: 'running', lastActivity: activityFromToolName(data.name as string) })
+    notifyDataChanged()
+  } else if (msgType === 'tool_result') {
+    updateSession(sessionId, { status: 'running', lastActivity: 'tool_call' })
     notifyDataChanged()
   } else if (msgType === 'result') {
     const sid = (data.session_id as string) ?? ''
