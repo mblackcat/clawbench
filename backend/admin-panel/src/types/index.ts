@@ -23,6 +23,9 @@ export interface ApplicationResponse {
   type: ApplicationType;
   category: string | null;
   published: boolean;
+  featured: boolean;
+  /** Latest version number (from application_versions) */
+  version?: string;
   downloadCount: number;
   metadata: Record<string, unknown> | null;
   createdAt: number;

@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm'
 import ReactMarkdown from 'react-markdown'
 import CodingChatMessage, { getToolSummary } from './CodingChatMessage'
 import AskUserQuestionBlock from './AskUserQuestionBlock'
+import PermissionRequestBlock from './PermissionRequestBlock'
 import TodoUpdateBlock from './TodoUpdateBlock'
 import ThinkingBlock from '../../components/ThinkingBlock'
 import { ModelAvatar, toolTypeToProvider } from '../../components/ProviderIcons'
@@ -361,6 +362,19 @@ const CodingMessageList: React.FC<CodingMessageListProps> = ({
                     sessionId={sessionId}
                     answered={block.answered}
                     answerText={block.answerText}
+                  />
+                )
+              }
+              if (block.type === 'permission_request' && sessionId) {
+                return (
+                  <PermissionRequestBlock
+                    key={i}
+                    requestId={block.id}
+                    toolName={block.toolName}
+                    input={block.input}
+                    sessionId={sessionId}
+                    resolved={block.resolved}
+                    decision={block.decision}
                   />
                 )
               }

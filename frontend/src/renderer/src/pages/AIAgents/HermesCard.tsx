@@ -11,6 +11,7 @@ import hermesLogoUrl from '../../assets/hermes-logo.svg'
 import { useNavigate } from 'react-router-dom'
 import { useHermesStore } from '../../stores/useHermesStore'
 import { useT } from '../../i18n'
+import { MONO_FONT_STACK } from '../../utils/mono-font'
 
 const { Text } = Typography
 
@@ -293,7 +294,7 @@ const HermesCard: React.FC<HermesCardProps> = ({ isInstalled, installing, servic
                 background: token.colorFillTertiary,
                 borderRadius: token.borderRadius,
                 padding: '8px 12px',
-                fontFamily: 'monospace',
+                fontFamily: MONO_FONT_STACK,
                 fontSize: 11,
                 color: token.colorTextSecondary
               }}

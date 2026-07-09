@@ -535,3 +535,9 @@ h1, h2, h3, h4, h5, h6,
 .code-editor-file-tree .ant-tree .ant-tree-draggable-icon {
   display: none;
 }
+
+/* --- Update-available tag pulse (workbench / library) --- */
+@keyframes cb-update-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}

@@ -2,8 +2,8 @@
  * 应用数据模型
  */
 
-/** 资源类型：应用 / AI 技能 / 提示词 */
-export type ApplicationType = 'app' | 'ai-skill' | 'prompt';
+/** 资源类型：应用 / AI 技能 / 提示词 / 链接 */
+export type ApplicationType = 'app' | 'ai-skill' | 'prompt' | 'link';
 
 /**
  * 应用接口
@@ -16,6 +16,7 @@ export interface Application {
   type: ApplicationType;
   category: string | null;
   published: boolean;
+  featured: boolean;
   downloadCount: number;
   metadata: Record<string, any> | null;
   createdAt: number;
@@ -55,6 +56,9 @@ export interface ApplicationResponse {
   type: ApplicationType;
   category: string | null;
   published: boolean;
+  featured: boolean;
+  /** 最新版本号（取自 application_versions 中 published_at 最新的一条） */
+  version?: string;
   downloadCount: number;
   metadata: Record<string, any> | null;
   createdAt: number;
@@ -72,6 +76,7 @@ export interface ApplicationRow {
   type: string | null;
   category: string | null;
   published: number; // SQLite uses 0/1 for boolean
+  featured: number; // SQLite uses 0/1 for boolean
   download_count: number;
   metadata: string | null; // JSON stored as string
   created_at: number;
@@ -90,6 +95,7 @@ export function applicationRowToApplication(row: ApplicationRow): Application {
     type: (row.type as ApplicationType) || 'app',
     category: row.category,
     published: row.published === 1,
+    featured: row.featured === 1,
     downloadCount: row.download_count,
     metadata: row.metadata ? JSON.parse(row.metadata) : null,
     createdAt: row.created_at,
@@ -99,8 +105,15 @@ export function applicationRowToApplication(row: ApplicationRow): Application {
 
 /**
  * 将应用对象转换为响应对象
+ * @param app 应用对象
+ * @param ownerName 所有者名称（可选）
+ * @param latestVersion 最新版本号（可选，来自 application_versions）
  */
-export function applicationToResponse(app: Application, ownerName?: string): ApplicationResponse {
+export function applicationToResponse(
+  app: Application,
+  ownerName?: string,
+  latestVersion?: string
+): ApplicationResponse {
   return {
     applicationId: app.applicationId,
     name: app.name,
@@ -110,6 +123,8 @@ export function applicationToResponse(app: Application, ownerName?: string): App
     type: app.type,
     category: app.category,
     published: app.published,
+    featured: app.featured,
+    version: latestVersion,
     downloadCount: app.downloadCount,
     metadata: app.metadata,
     createdAt: app.createdAt,

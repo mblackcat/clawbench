@@ -15,6 +15,7 @@ import {
 import type { ToolCall } from '../../types/chat'
 import { useChatStore } from '../../stores/useChatStore'
 import { useT } from '../../i18n'
+import { MONO_FONT_STACK } from '../../utils/mono-font'
 
 interface ToolCallCardProps {
   toolCall: ToolCall
@@ -153,7 +154,7 @@ const ToolCallCard: React.FC<ToolCallCardProps> = ({ toolCall, isPending }) => {
           style={{
             padding: '6px 12px',
             background: token.colorFillTertiary,
-            fontFamily: 'monospace',
+            fontFamily: MONO_FONT_STACK,
             fontSize: 12,
             color: token.colorText,
             whiteSpace: 'pre-wrap',

@@ -28,8 +28,8 @@ export async function createApplication(
   await database.run(
     `INSERT INTO applications (
       application_id, name, description, owner_id, type, category,
-      published, download_count, metadata, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      published, featured, download_count, metadata, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       applicationId,
       input.name,
@@ -38,6 +38,7 @@ export async function createApplication(
       input.type || 'app',
       input.category || null,
       0, // published = false
+      0, // featured = false
       0, // download_count = 0
       input.metadata ? JSON.stringify(input.metadata) : null,
       now,
@@ -53,6 +54,7 @@ export async function createApplication(
     type: input.type || 'app',
     category: input.category || null,
     published: false,
+    featured: false,
     downloadCount: 0,
     metadata: input.metadata || null,
     createdAt: now,
@@ -186,6 +188,24 @@ export async function setApplicationPublished(
   const result = await database.run(
     'UPDATE applications SET published = ?, updated_at = ? WHERE application_id = ?',
     [published ? 1 : 0, Date.now(), applicationId]
+  );
+
+  return result.changes > 0;
+}
+
+/**
+ * 设置应用推荐状态（admin 配置）
+ * @param applicationId 应用ID
+ * @param featured 是否推荐
+ * @returns 是否更新成功
+ */
+export async function setApplicationFeatured(
+  applicationId: string,
+  featured: boolean
+): Promise<boolean> {
+  const result = await database.run(
+    'UPDATE applications SET featured = ?, updated_at = ? WHERE application_id = ?',
+    [featured ? 1 : 0, Date.now(), applicationId]
   );
 
   return result.changes > 0;

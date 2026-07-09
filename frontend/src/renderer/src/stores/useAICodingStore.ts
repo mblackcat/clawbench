@@ -164,6 +164,8 @@ interface AICodingState {
   setClaudeViewMode: (sid: string, m: ClaudeViewMode) => void
   sessionPendingQuestions: Record<string, { id: string; questions: AskUserQuestionItem[] } | null>
   answerQuestion: (sid: string, questionId: string, answerText: string) => Promise<void>
+  sessionPendingPermissions: Record<string, { id: string; toolName: string; input: Record<string, unknown> } | null>
+  resolvePermission: (sid: string, requestId: string, decision: { behavior: 'allow' | 'deny'; message?: string; updatedInput?: Record<string, unknown>; applySuggestions?: boolean }) => Promise<void>
   // Global split layout state (sessions from any workspace can be mixed)
   globalLayout: LayoutNode | null
   focusedPaneId: string | null
@@ -184,6 +186,7 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
   activeSessionId: null, sessionMessages: loadPersistedMessages(), sessionStreaming: {}, sessionStreamingBlocks: {}, sessionModes: {}, sessionEffort: {}, sessionContextUsage: {},
   claudeViewModes: {},
   sessionPendingQuestions: {},
+  sessionPendingPermissions: {},
   globalLayout: null,
   focusedPaneId: null,
 
@@ -425,16 +428,52 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
           }))
           return
         }
-        // Handle TodoWrite dedicated event — append to streaming blocks (non-interactive)
+        // Handle permission_request dedicated event — the SDK's canUseTool
+        // callback is blocked awaiting the user's decision, so no further
+        // events arrive until resolvePermission() is called. Finalize the
+        // accumulated streaming blocks + the permission block into a message
+        // (mirrors ask_user_question) so it renders inline and persists.
+        if (et === 'permission_request') {
+          const permBlock: CodingContentBlock = {
+            type: 'permission_request',
+            id: (event as any).id || '',
+            toolName: (event as any).toolName || '',
+            input: (event as any).input || {},
+            resolved: false,
+          }
+          const cur = get()
+          const existingBlocks = cur.sessionStreamingBlocks[sessionId] || []
+          const allBlocks = [...existingBlocks, permBlock]
+          const m: CodingMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: allBlocks, timestamp: Date.now() }
+          set(s => ({
+            sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] },
+            sessionStreaming: { ...s.sessionStreaming, [sessionId]: false },
+            sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] },
+            sessionPendingPermissions: { ...s.sessionPendingPermissions, [sessionId]: { id: (event as any).id || '', toolName: (event as any).toolName || '', input: (event as any).input || {} } }
+          }))
+          return
+        }
+        // Handle TodoWrite / TaskCreate / TaskUpdate dedicated event.
+        // The incremental Task* tools emit one snapshot per op, so coalesce
+        // consecutive todo_update events into a single checklist card
+        // (replace the trailing todo_update in place) rather than appending
+        // a fresh card for every task mutation.
         if (et === 'todo_update') {
           const todoBlock: CodingContentBlock = {
             type: 'todo_update',
             todos: (event as any).todos || [],
           }
-          set(s => ({
-            sessionStreaming: { ...s.sessionStreaming, [sessionId]: true },
-            sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [...(s.sessionStreamingBlocks[sessionId] || []), todoBlock] }
-          }))
+          set(s => {
+            const prev = s.sessionStreamingBlocks[sessionId] || []
+            const last = prev[prev.length - 1]
+            const next = last && last.type === 'todo_update'
+              ? [...prev.slice(0, -1), todoBlock]
+              : [...prev, todoBlock]
+            return {
+              sessionStreaming: { ...s.sessionStreaming, [sessionId]: true },
+              sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: next }
+            }
+          })
           return
         }
 
@@ -602,6 +641,29 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
     })
     // Send the answer as a user message (creates a new query with resume)
     await get().sendUserMessage(sessionId, answerText)
+  },
+
+  resolvePermission: async (sessionId, requestId, decision) => {
+    // Mark the permission block as resolved so the card stops soliciting input.
+    set(s => {
+      const msgs = (s.sessionMessages[sessionId] || []).map(m => ({
+        ...m,
+        blocks: m.blocks.map(b =>
+          b.type === 'permission_request' && b.id === requestId
+            ? { ...b, resolved: true, decision: decision.behavior } as typeof b
+            : b
+        )
+      }))
+      return {
+        sessionMessages: { ...s.sessionMessages, [sessionId]: msgs },
+        sessionPendingPermissions: { ...s.sessionPendingPermissions, [sessionId]: null }
+      }
+    })
+    // The SDK's canUseTool callback is blocked awaiting this; unblocking it lets
+    // the turn continue (allow → tool runs; deny → SDK reports the denial).
+    try {
+      await window.api.aiCoding.resolvePermission(sessionId, requestId, decision)
+    } catch { /* request may already be gone (interrupt/close) */ }
   },
 
   // ── Global split layout actions ──

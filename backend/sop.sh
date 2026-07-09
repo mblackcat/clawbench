@@ -122,6 +122,11 @@ function stop() {
 }
 
 function restart() {
+    # $1: pass "-f" to force a full rebuild + hard restart (delete + start).
+    # Force mode destroys and recreates workers instead of a rolling reload,
+    # guaranteeing every worker runs freshly compiled code (no stale worker reuse).
+    local force="$1"
+
     log "Building project..."
     npm run build
     if [ $? -ne 0 ]; then
@@ -135,6 +140,22 @@ function restart() {
         rebuild_admin
     else
         log "Admin panel dist/ found. Skipping build (use -rebuild to force)."
+    fi
+
+    if [ "$force" == "-f" ]; then
+        log "Force restart: recompiled and hard-restarting (delete + start)..."
+        if $PM2_CMD describe "$APP_NAME" > /dev/null 2>&1; then
+            $PM2_CMD delete "$APP_NAME"
+        fi
+        $PM2_CMD start ecosystem.config.js --env production
+        if [ $? -eq 0 ]; then
+            $PM2_CMD save
+            log "Service force-restarted."
+        else
+            log "Failed to force-restart service."
+            exit 1
+        fi
+        return
     fi
 
     log "Restarting service..."
@@ -197,7 +218,7 @@ case "$1" in
         start
         ;;
     -restart)
-        restart
+        restart "$2"
         ;;
     -stop)
         stop
@@ -209,14 +230,15 @@ case "$1" in
         rebuild_admin
         ;;
     *)
-        echo "Usage: $0 {-init|-dev|-start|-restart|-stop|-status|-rebuild}"
-        echo "  -init    : Install dependencies and setup .env"
-        echo "  -dev     : Start local debug server (npm run dev)"
-        echo "  -start   : Build and start production server (PM2 Cluster Mode)"
-        echo "  -restart : Reload production server (Zero Downtime)"
-        echo "  -stop    : Stop production server"
-        echo "  -status  : Check PM2 status"
-        echo "  -rebuild : Rebuild admin web panel (admin-panel/dist/)"
+        echo "Usage: $0 {-init|-dev|-start|-restart [-f]|-stop|-status|-rebuild}"
+        echo "  -init       : Install dependencies and setup .env"
+        echo "  -dev        : Start local debug server (npm run dev)"
+        echo "  -start      : Build and start production server (PM2 Cluster Mode)"
+        echo "  -restart    : Rebuild and reload production server (Zero Downtime)"
+        echo "  -restart -f : Rebuild and hard-restart (delete + start; no stale worker reuse)"
+        echo "  -stop       : Stop production server"
+        echo "  -status     : Check PM2 status"
+        echo "  -rebuild    : Rebuild admin web panel (admin-panel/dist/)"
         exit 1
         ;;
 esac

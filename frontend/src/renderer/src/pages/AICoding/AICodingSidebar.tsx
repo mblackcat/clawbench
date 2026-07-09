@@ -13,6 +13,7 @@ import {
 import { AI_TOOL_SHORT_NAMES, AI_TOOL_TAG_COLORS, AI_TOOL_TAG_STYLE, renderAIToolTagLabel } from './aiToolMeta'
 import { useT } from '../../i18n'
 import { useAICodingStore } from '../../stores/useAICodingStore'
+import { MONO_FONT_STACK } from '../../utils/mono-font'
 import type { AIToolType } from '../../types/ai-coding'
 
 interface AICodingSidebarProps {
@@ -689,7 +690,7 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
                           </span>
                           {/* Diff stat badge */}
                           {diffStats[ws.id] && (
-                            <span style={{ fontSize: 11, flexShrink: 0, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                            <span style={{ fontSize: 11, flexShrink: 0, fontFamily: MONO_FONT_STACK, whiteSpace: 'nowrap' }}>
                               {diffStats[ws.id].additions > 0 && (
                                 <span style={{ color: token.colorSuccess }}>+{diffStats[ws.id].additions}</span>
                               )}

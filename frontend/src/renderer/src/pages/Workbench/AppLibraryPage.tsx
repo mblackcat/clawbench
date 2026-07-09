@@ -37,7 +37,7 @@ type AppStatus = 'owner' | 'installed' | 'update' | 'not_installed';
 const AppLibraryPage: React.FC = () => {
   const navigate = useNavigate();
   const { token } = theme.useToken();
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const t = useT();
   const [loading, setLoading] = useState(true);
   const [allApps, setAllApps] = useState<Application[]>([]);
@@ -79,18 +79,19 @@ const AppLibraryPage: React.FC = () => {
       await fetchApps();
 
       if (!isLocalMode) {
+        // forceRefresh=true bypasses the 5-min cache, so switching to the
+        // discovery page always re-fetches the latest marketplace list.
         const publishedApps = await applicationManager.fetchApplications(true, activeTab);
         setAllApps(publishedApps);
         setFilteredApps(publishedApps);
 
-        // Check for updates
+        // Check for updates — use the real on-disk manifests (read fresh from
+        // the store after fetchApps), NOT localStorage which market installs
+        // never populate.
         try {
-          const updates = await applicationManager.checkForUpdates();
-          const map = new Map<string, UpdateInfo>();
-          for (const u of updates) {
-            map.set(u.applicationId, u);
-          }
-          setUpdateInfoMap(map);
+          const diskAppInfos = useSubAppStore.getState().appInfos;
+          const updates = await applicationManager.checkInstalledAppUpdates(diskAppInfos);
+          setUpdateInfoMap(updates);
         } catch {
           // non-critical
         }
@@ -177,7 +178,16 @@ const AppLibraryPage: React.FC = () => {
             size="small"
             icon={<SyncOutlined />}
             style={{ color: token.colorPrimary }}
-            onClick={(e) => { e.stopPropagation(); openDrawer(app); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              modal.confirm({
+                title: t('workbench.updateConfirmTitle'),
+                content: t('workbench.updateConfirmContent', app.name),
+                okText: t('workbench.update'),
+                cancelText: t('workbench.cancel'),
+                onOk: () => handleUpdate(app.applicationId)
+              });
+            }}
           >
             {t('discover.update')}
           </Button>
@@ -285,6 +295,7 @@ const AppLibraryPage: React.FC = () => {
       case 'app': return t('discover.tabApp');
       case 'ai-skill': return t('discover.tabSkill');
       case 'prompt': return t('discover.tabPrompt');
+      case 'link': return t('discover.tabLink');
       default: return t('discover.tabApp');
     }
   };
@@ -410,8 +421,14 @@ const AppLibraryPage: React.FC = () => {
               </Text>
             </Tooltip>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {app.version && <Tag style={{ margin: 0 }}>v{app.version}</Tag>}
             {app.category && app.category !== 'general' && <Tag style={{ margin: 0 }}>{app.category}</Tag>}
+            {status === 'update' && updateInfoMap.get(app.applicationId)?.latestVersion && (
+              <Tag color="processing" icon={<SyncOutlined spin />} style={{ margin: 0, fontWeight: 600 }}>
+                {t('workbench.updateAvailableVersion', updateInfoMap.get(app.applicationId)!.latestVersion)}
+              </Tag>
+            )}
           </div>
         </div>
         <div
@@ -432,6 +449,7 @@ const AppLibraryPage: React.FC = () => {
     { key: 'app', label: t('discover.tabApp') },
     { key: 'ai-skill', label: t('discover.tabSkill') },
     { key: 'prompt', label: t('discover.tabPrompt') },
+    { key: 'link', label: t('discover.tabLink') },
   ];
 
   return (

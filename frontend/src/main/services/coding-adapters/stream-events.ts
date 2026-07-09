@@ -39,3 +39,12 @@ export type CodingStreamEvent =
   | { type: 'context_usage'; usage: StreamContextUsage }
   | { type: 'ask_user_question'; id: string; questions: unknown[] }
   | { type: 'todo_update'; todos: unknown[] }
+  // Tool-permission confirmation — server blocks on canUseTool until the
+  // renderer answers via resolveSDKPermission (ai-coding:resolve-permission).
+  | {
+      type: 'permission_request'
+      id: string
+      toolName: string
+      input: Record<string, unknown>
+      suggestions?: Record<string, unknown>[]
+    }

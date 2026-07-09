@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Modal, Form, Input, Select, App } from 'antd'
 import { useAITerminalStore } from '../../stores/useAITerminalStore'
 import type { QuickCommand } from '../../types/ai-terminal'
+import { MONO_FONT_STACK } from '../../utils/mono-font'
 
 const { TextArea } = Input
 
@@ -81,7 +82,7 @@ const EditQuickCommandModal: React.FC<Props> = ({ open, command, onClose }) => {
           <TextArea
             rows={4}
             placeholder={'git pull origin main\nnpm install\nnpm run build\npm2 restart all'}
-            style={{ fontFamily: 'monospace' }}
+            style={{ fontFamily: MONO_FONT_STACK }}
           />
         </Form.Item>
 

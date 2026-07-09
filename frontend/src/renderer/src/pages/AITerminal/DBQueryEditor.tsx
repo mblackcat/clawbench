@@ -5,6 +5,7 @@ import { HotTable } from '@handsontable/react'
 import { registerAllModules } from 'handsontable/registry'
 import 'handsontable/dist/handsontable.full.min.css'
 import { useAITerminalStore } from '../../stores/useAITerminalStore'
+import { MONO_FONT_STACK } from '../../utils/mono-font'
 import type { DBQueryResult } from '../../types/ai-terminal'
 
 registerAllModules()
@@ -156,7 +157,7 @@ const DBQueryEditor: React.FC<Props> = ({ tabId, connectionId }) => {
           onKeyDown={handleKeyDown}
           placeholder="输入 SQL 查询... (Ctrl+Enter 执行)"
           autoSize={{ minRows: 3, maxRows: 10 }}
-          style={{ fontFamily: 'monospace', fontSize: 13 }}
+          style={{ fontFamily: MONO_FONT_STACK, fontSize: 13 }}
         />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
           <Space size={8}>
@@ -197,7 +198,7 @@ const DBQueryEditor: React.FC<Props> = ({ tabId, connectionId }) => {
         ) : error ? (
           <div style={{
             padding: 16, color: token.colorError, fontSize: 13,
-            fontFamily: 'monospace', whiteSpace: 'pre-wrap'
+            fontFamily: MONO_FONT_STACK, whiteSpace: 'pre-wrap'
           }}>
             {error}
           </div>

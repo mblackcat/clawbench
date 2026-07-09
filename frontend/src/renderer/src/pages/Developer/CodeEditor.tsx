@@ -39,6 +39,7 @@ import type { SubAppOutput } from '../../types/subapp'
 import EmbeddedCodingPanel from '../../components/EmbeddedCodingPanel'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { useT } from '../../i18n'
+import { MONO_FONT_STACK } from '../../utils/mono-font'
 
 const { Sider, Content } = Layout
 const { Title, Text } = Typography
@@ -904,7 +905,7 @@ const CodeEditor: React.FC = () => {
             height: '100%',
             overflow: 'auto',
             background: token.colorBgContainer,
-            fontFamily: 'Monaco, Menlo, "Ubuntu Mono", Consolas, monospace',
+            fontFamily: MONO_FONT_STACK,
             fontSize: 12,
             padding: 12
           }}

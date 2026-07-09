@@ -6,6 +6,7 @@ import {
   CloudDownloadOutlined,
   ReloadOutlined
 } from '@ant-design/icons'
+import { MONO_FONT_STACK } from '../../utils/mono-font'
 
 interface ChangedFile {
   path: string
@@ -305,7 +306,7 @@ const VcsChangesPanel: React.FC<VcsChangesPanelProps> = ({ workingDir, visible }
               </span>
               {/* Additions / deletions */}
               {(file.additions > 0 || file.deletions > 0) && (
-                <span style={{ flexShrink: 0, fontSize: 10, fontFamily: 'monospace' }}>
+                <span style={{ flexShrink: 0, fontSize: 10, fontFamily: MONO_FONT_STACK }}>
                   {file.additions > 0 && (
                     <span style={{ color: token.colorSuccess }}>+{file.additions}</span>
                   )}

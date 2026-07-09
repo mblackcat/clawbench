@@ -44,6 +44,7 @@ export async function initializePostgresSchema(database: DatabaseAdapter): Promi
       owner_id TEXT NOT NULL REFERENCES users(user_id),
       category TEXT,
       published INTEGER DEFAULT 0,
+      featured INTEGER DEFAULT 0,
       download_count INTEGER DEFAULT 0,
       metadata TEXT,
       created_at BIGINT NOT NULL,
@@ -144,11 +145,14 @@ export async function initializePostgresSchema(database: DatabaseAdapter): Promi
 
   // 应用表迁移：添加 type 列
   await database.run(`ALTER TABLE applications ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'app'`);
+  // 应用表迁移：添加 featured 列（推荐字段，admin 可配置）
+  await database.run(`ALTER TABLE applications ADD COLUMN IF NOT EXISTS featured INTEGER DEFAULT 0`);
 
   // 创建索引
   await database.run(`CREATE INDEX IF NOT EXISTS idx_applications_owner ON applications(owner_id)`);
   await database.run(`CREATE INDEX IF NOT EXISTS idx_applications_published ON applications(published)`);
   await database.run(`CREATE INDEX IF NOT EXISTS idx_applications_type ON applications(type)`);
+  await database.run(`CREATE INDEX IF NOT EXISTS idx_applications_featured ON applications(featured)`);
   await database.run(`CREATE INDEX IF NOT EXISTS idx_versions_application ON application_versions(application_id)`);
   await database.run(`CREATE INDEX IF NOT EXISTS idx_tokens_user ON auth_tokens(user_id)`);
   await database.run(`CREATE INDEX IF NOT EXISTS idx_tokens_token ON auth_tokens(token)`);

@@ -7,6 +7,7 @@ import {
   ThunderboltOutlined,
   MessageOutlined,
   DownloadOutlined,
+  StarFilled,
 } from '@ant-design/icons';
 import { useApi } from '../hooks/useApi';
 import SearchBar from '../components/SearchBar';
@@ -189,6 +190,28 @@ const AppStorePage: React.FC = () => {
                 >
                   {app.type === 'ai-skill' ? 'AI Skill' : app.type}
                 </span>
+                {app.featured && (
+                  <span
+                    title="Featured"
+                    style={{
+                      position: 'absolute',
+                      top: 12,
+                      left: 12,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      padding: '2px 8px',
+                      borderRadius: 6,
+                      background: 'linear-gradient(135deg, #FF9500, #FF2D55)',
+                      color: '#fff',
+                      fontSize: 11,
+                      fontWeight: 600,
+                      boxShadow: '0 2px 8px rgba(255,149,0,0.35)',
+                    }}
+                  >
+                    <StarFilled style={{ fontSize: 10 }} /> Featured
+                  </span>
+                )}
               </div>
 
               {/* Card body */}
@@ -209,6 +232,11 @@ const AppStorePage: React.FC = () => {
                     <Text type="secondary" style={{ fontSize: 12 }}>
                       {app.downloadCount || 0}
                     </Text>
+                    {app.version && (
+                      <Text type="secondary" style={{ fontSize: 12, marginLeft: 4 }}>
+                        v{app.version}
+                      </Text>
+                    )}
                   </div>
                   {app.category && (
                     <Tag style={{ margin: 0, borderRadius: 6, fontSize: 11 }}>

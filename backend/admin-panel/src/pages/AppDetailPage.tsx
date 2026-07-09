@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { Typography, Tag, Spin, Button, Descriptions, Timeline, Divider } from 'antd';
+import { Typography, Tag, Spin, Button, Descriptions, Timeline, Divider, Switch, App } from 'antd';
 import {
   ArrowLeftOutlined,
   DownloadOutlined,
@@ -10,6 +10,7 @@ import {
   UserOutlined,
   CalendarOutlined,
   TagOutlined,
+  StarOutlined,
 } from '@ant-design/icons';
 import { useApi } from '../hooks/useApi';
 import InstallButton from '../components/InstallButton';
@@ -34,7 +35,9 @@ const AppDetailPage: React.FC = () => {
   const { appId } = useParams<{ appId: string }>();
   const [app, setApp] = useState<ApplicationResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [togglingFeatured, setTogglingFeatured] = useState(false);
   const { fetchApi } = useApi();
+  const { message } = App.useApp();
   const navigate = useNavigate();
   const location = useLocation();
   const isAdmin = location.pathname.startsWith('/admin');
@@ -55,6 +58,27 @@ const AppDetailPage: React.FC = () => {
       // Handle error
     } finally {
       setLoading(false);
+    }
+  };
+
+  /** Admin: toggle the featured (推荐) flag via the admin PUT endpoint. */
+  const handleToggleFeatured = async (next: boolean) => {
+    if (!app) return;
+    setTogglingFeatured(true);
+    try {
+      const res = await fetchApi<{ success: boolean; data: ApplicationResponse }>(
+        `/api/v1/admin/applications/${app.applicationId}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({ featured: next }),
+        }
+      );
+      setApp(res.data);
+      message.success(next ? 'Marked as featured' : 'Removed featured');
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : 'Failed to update');
+    } finally {
+      setTogglingFeatured(false);
     }
   };
 
@@ -156,6 +180,28 @@ const AppDetailPage: React.FC = () => {
           </div>
         </div>
       </GlassCard>
+
+      {/* Admin controls — featured (推荐) toggle. Surfaced in admin view only. */}
+      {isAdmin && (
+        <GlassCard className="" style={{ padding: 20, marginBottom: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <StarOutlined style={{ fontSize: 18, color: '#FF9500' }} />
+              <div>
+                <Text strong style={{ fontSize: 15 }}>Featured (推荐)</Text>
+                <Text type="secondary" style={{ display: 'block', fontSize: 13 }}>
+                  Mark this app as recommended. Surfaced in future client releases.
+                </Text>
+              </div>
+            </div>
+            <Switch
+              checked={app.featured}
+              loading={togglingFeatured}
+              onChange={handleToggleFeatured}
+            />
+          </div>
+        </GlassCard>
+      )}
 
       {/* Details */}
       <GlassCard className="" style={{ padding: 24, marginBottom: 24 }}>

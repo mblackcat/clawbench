@@ -15,7 +15,7 @@ import { getUserById } from '../repositories/userRepository';
 import { CreateApplicationInput, applicationToResponse, UpdateApplicationInput } from '../models/application';
 import { logger } from '../utils/logger';
 import { storageService } from '../services/storage';
-import { createApplicationVersion, versionExists, getLatestVersion, getVersionByNumber } from '../repositories/applicationVersionRepository';
+import { createApplicationVersion, versionExists, getLatestVersion, getVersionByNumber, getLatestVersionsByApplicationIds } from '../repositories/applicationVersionRepository';
 
 /**
  * 应用控制器
@@ -91,7 +91,7 @@ export async function createApplicationHandler(
     }
 
     // 验证 type
-    const validTypes = ['app', 'ai-skill', 'prompt'];
+    const validTypes = ['app', 'ai-skill', 'prompt', 'link'];
     if (type !== undefined && !validTypes.includes(type)) {
       res.status(400).json({
         success: false,
@@ -188,11 +188,16 @@ export async function getApplicationsHandler(
     // 查询总数
     const total = await countPublishedApplications({ type, category, search });
 
+    // 批量获取每个应用的最新版本号（单次查询，避免 N+1）
+    const latestVersionMap = await getLatestVersionsByApplicationIds(
+      applications.map((a) => a.applicationId)
+    );
+
     // 获取所有者信息
     const applicationsWithOwners = await Promise.all(
       applications.map(async (app) => {
         const owner = await getUserById(app.ownerId);
-        return applicationToResponse(app, owner?.username);
+        return applicationToResponse(app, owner?.username, latestVersionMap.get(app.applicationId));
       })
     );
 
@@ -248,10 +253,13 @@ export async function getApplicationDetailHandler(
     // 获取所有者信息
     const owner = await getUserById(application.ownerId);
 
+    // 获取最新版本号（详情接口附带，供客户端比对更新）
+    const latestVersion = await getLatestVersion(applicationId);
+
     // 返回成功响应
     res.status(200).json({
       success: true,
-      data: applicationToResponse(application, owner?.username),
+      data: applicationToResponse(application, owner?.username, latestVersion?.version),
     });
 
     logger.info(`Application detail queried: ${applicationId}`);
@@ -294,9 +302,14 @@ export async function getUserApplicationsHandler(
     // 获取用户信息
     const owner = await getUserById(req.userId);
 
+    // 批量获取最新版本号
+    const latestVersionMap = await getLatestVersionsByApplicationIds(
+      applications.map((a) => a.applicationId)
+    );
+
     // 转换为响应格式
     const applicationsWithOwner = applications.map((app) =>
-      applicationToResponse(app, owner?.username)
+      applicationToResponse(app, owner?.username, latestVersionMap.get(app.applicationId))
     );
 
     // 返回成功响应
