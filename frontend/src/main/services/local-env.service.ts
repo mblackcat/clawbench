@@ -11,7 +11,7 @@ const execAsync = promisify(exec)
 
 type ToolId =
   | 'python' | 'nodejs' | 'go' | 'java' | 'docker'
-  | 'mysql' | 'postgresql' | 'mongodb'
+  | 'mysql' | 'postgresql' | 'mongodb' | 'redis'
   | 'git' | 'svn' | 'perforce'
   | 'claude-code' | 'gemini-cli' | 'codex-cli' | 'opencode' | 'traecli' | 'qwen-code' | 'qoder-cli'
   | 'homebrew'
@@ -40,6 +40,19 @@ interface ToolInstallResult {
   success: boolean
   error?: string
   openedBrowser?: boolean
+  /** Windows only: a post-install GUI setup wizard (e.g. MySQL Installer) was auto-launched */
+  launchedSetup?: boolean
+}
+
+export interface PackageInfo {
+  name: string
+  version: string
+}
+
+export interface PackageListResult {
+  success: boolean
+  packages?: PackageInfo[]
+  error?: string
 }
 
 interface LocalEnvDetectionResult {
@@ -48,7 +61,69 @@ interface LocalEnvDetectionResult {
   platform: string
 }
 
-function getAugmentedEnv(): NodeJS.ProcessEnv {
+let cachedWinRegistryPath: { value: string; timestamp: number } | null = null
+
+/**
+ * Windows only: read the live Machine + User PATH straight from the environment
+ * (via a fresh PowerShell process), bypassing `process.env.PATH`. The Electron
+ * main process only snapshots its environment at launch, so a tool installed by
+ * winget/an installer wizard *during this session* updates the registry but is
+ * invisible to `process.env` until the app restarts — which made freshly
+ * installed tools (e.g. MySQL) keep showing as "not installed" after a
+ * successful install + refresh. Re-reading the registry directly fixes that
+ * without requiring a restart. Cached briefly to avoid spawning PowerShell on
+ * every detection call.
+ */
+async function getWindowsRegistryPath(): Promise<string> {
+  if (cachedWinRegistryPath && Date.now() - cachedWinRegistryPath.timestamp < 5000) {
+    return cachedWinRegistryPath.value
+  }
+  try {
+    const { stdout } = await execFileAsync(
+      'powershell',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        "[System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')"
+      ],
+      { timeout: 8000 }
+    )
+    const value = stdout.trim()
+    cachedWinRegistryPath = { value, timestamp: Date.now() }
+    return value
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Windows only: scan Program Files / Program Files (x86) for a versioned
+ * install directory matching `dirPattern` (e.g. /^MySQL Server/i) under
+ * `vendorDir`, and return the first path where `binRelPath` exists inside it.
+ * Used as a defense-in-depth fallback when an installer doesn't add itself to
+ * PATH at all (common for DB server installers).
+ */
+function scanProgramFilesForBinary(vendorDir: string, dirPattern: RegExp, binRelPath: string): string | null {
+  if (process.platform !== 'win32') return null
+  const roots = [process.env['ProgramFiles'], process.env['ProgramFiles(x86)']].filter(Boolean) as string[]
+  for (const root of roots) {
+    const vendorPath = path.join(root, vendorDir)
+    try {
+      if (!fs.existsSync(vendorPath)) continue
+      const entries = fs.readdirSync(vendorPath)
+      // Prefer the highest-versioned match if multiple server versions are installed
+      const matches = entries.filter((e) => dirPattern.test(e)).sort().reverse()
+      for (const entry of matches) {
+        const candidate = path.join(vendorPath, entry, binRelPath)
+        if (fs.existsSync(candidate)) return candidate
+      }
+    } catch { /* ignore */ }
+  }
+  return null
+}
+
+async function getAugmentedEnv(): Promise<NodeJS.ProcessEnv> {
   const env = { ...process.env }
   if (process.platform === 'darwin') {
     let p = env.PATH || ''
@@ -90,7 +165,20 @@ function getAugmentedEnv(): NodeJS.ProcessEnv {
     // so read both and write back to whichever key already exists.
     const pathKey = 'PATH' in env ? 'PATH' : 'Path' in env ? 'Path' : 'PATH'
     let p = (env[pathKey] as string | undefined) || ''
-    const parts = p.split(';')
+    let parts = p.split(';')
+
+    // Merge the live Machine+User PATH from the registry — see getWindowsRegistryPath()
+    // for why process.env.PATH alone can be stale during the current app session.
+    const registryPath = await getWindowsRegistryPath()
+    if (registryPath) {
+      for (const rp of registryPath.split(';')) {
+        if (rp && !parts.some((x) => x.toLowerCase() === rp.toLowerCase())) {
+          p = p ? `${p};${rp}` : rp
+          parts.push(rp)
+        }
+      }
+    }
+
     const extras: string[] = []
     if (process.env.APPDATA) {
       extras.push(path.join(process.env.APPDATA, 'npm'))
@@ -98,6 +186,7 @@ function getAugmentedEnv(): NodeJS.ProcessEnv {
     for (const ep of extras) {
       if (ep && !parts.some((x) => x.toLowerCase() === ep.toLowerCase())) {
         p = p ? `${p};${ep}` : ep
+        parts.push(ep)
       }
     }
     env[pathKey] = p
@@ -415,7 +504,54 @@ async function detectMysql(env: NodeJS.ProcessEnv): Promise<ToolDetectionResult>
     const paths = await whichAll('mysql', env)
     result.installations.push({ path: paths[0] || 'mysql', version: versionStr })
     result.installed = true
+    return result
   }
+
+  // Windows fallback: the MySQL Installer wizard doesn't always add the server's
+  // bin directory to PATH, so `mysql --version` above can miss a real install.
+  // Scan the well-known install location directly (e.g. "MySQL Server 8.0").
+  if (process.platform === 'win32') {
+    const found = scanProgramFilesForBinary('MySQL', /^MySQL Server/i, path.join('bin', 'mysql.exe'))
+    if (found) {
+      const foundVersion = await getVersion(found, ['--version'], env)
+      const m = foundVersion ? (foundVersion.match(/Ver\s+([\d.]+)/) || foundVersion.match(/([\d.]+)/)) : null
+      result.installations.push({ path: found, version: m ? m[1] : foundVersion || 'unknown' })
+      result.installed = true
+    }
+  }
+
+  return result
+}
+
+async function detectRedis(env: NodeJS.ProcessEnv): Promise<ToolDetectionResult> {
+  const result: ToolDetectionResult = { toolId: 'redis', name: 'Redis', installed: false, installations: [] }
+  const version = await getVersion('redis-cli', ['--version'], env)
+  if (version) {
+    const m = version.match(/redis-cli\s+([\d.]+)/) || version.match(/([\d.]+)/)
+    const versionStr = m ? m[1] : version
+    const paths = await whichAll('redis-cli', env)
+    result.installations.push({ path: paths[0] || 'redis-cli', version: versionStr })
+    result.installed = true
+    return result
+  }
+
+  // Windows fallback: the unofficial tporadowski/redis port installs flat into
+  // "Program Files\Redis" (no versioned subfolder) without always registering
+  // itself on PATH.
+  if (process.platform === 'win32') {
+    const roots = [process.env['ProgramFiles'], process.env['ProgramFiles(x86)']].filter(Boolean) as string[]
+    for (const root of roots) {
+      const candidate = path.join(root, 'Redis', 'redis-cli.exe')
+      if (fs.existsSync(candidate)) {
+        const foundVersion = await getVersion(candidate, ['--version'], env)
+        const m = foundVersion ? (foundVersion.match(/redis-cli\s+([\d.]+)/) || foundVersion.match(/([\d.]+)/)) : null
+        result.installations.push({ path: candidate, version: m ? m[1] : foundVersion || 'unknown' })
+        result.installed = true
+        break
+      }
+    }
+  }
+
   return result
 }
 
@@ -607,11 +743,11 @@ async function detectPackageManagers(env: NodeJS.ProcessEnv): Promise<PackageMan
 }
 
 export async function detectAll(): Promise<LocalEnvDetectionResult> {
-  const env = getAugmentedEnv()
+  const env = await getAugmentedEnv()
 
   const [
     python, nodejs, go, java, docker,
-    mysql, postgresql, mongodb,
+    mysql, postgresql, mongodb, redis,
     git, svn, perforce,
     claudeCode, geminiCli, codexCli, openCode, traeCli, qwenCode, qoderCli,
     homebrew,
@@ -625,6 +761,7 @@ export async function detectAll(): Promise<LocalEnvDetectionResult> {
     detectMysql(env),
     detectPostgresql(env),
     detectMongodb(env),
+    detectRedis(env),
     detectGit(env),
     detectSvn(env),
     detectPerforce(env),
@@ -641,7 +778,7 @@ export async function detectAll(): Promise<LocalEnvDetectionResult> {
 
   const tools: ToolDetectionResult[] = [
     python, nodejs, go, java, docker,
-    mysql, postgresql, mongodb,
+    mysql, postgresql, mongodb, redis,
     git, svn, perforce,
     claudeCode, geminiCli, codexCli, openCode, traeCli, qwenCode, qoderCli
   ]
@@ -667,6 +804,7 @@ const DETECT_FN_MAP: Partial<Record<ToolId, (env: NodeJS.ProcessEnv) => Promise<
   mysql: detectMysql,
   postgresql: detectPostgresql,
   mongodb: detectMongodb,
+  redis: detectRedis,
   git: detectGit,
   svn: detectSvn,
   perforce: detectPerforce,
@@ -681,7 +819,7 @@ const DETECT_FN_MAP: Partial<Record<ToolId, (env: NodeJS.ProcessEnv) => Promise<
 }
 
 export async function detectOne(toolId: string): Promise<ToolDetectionResult> {
-  const env = getAugmentedEnv()
+  const env = await getAugmentedEnv()
   const fn = DETECT_FN_MAP[toolId as ToolId]
   if (!fn) {
     return { toolId: toolId as ToolId, name: toolId, installed: false, installations: [] }
@@ -698,6 +836,9 @@ const DOWNLOAD_URLS: Partial<Record<ToolId, string>> = {
   mysql: 'https://dev.mysql.com/downloads/',
   postgresql: 'https://www.postgresql.org/download/',
   mongodb: 'https://www.mongodb.com/try/download/community',
+  redis: process.platform === 'win32'
+    ? 'https://github.com/tporadowski/redis/releases'
+    : 'https://redis.io/download',
   git: 'https://git-scm.com/downloads',
   svn: process.platform === 'win32'
     ? 'https://tortoisesvn.net/downloads.html'
@@ -721,6 +862,7 @@ const BREW_PACKAGES: Partial<Record<ToolId, string>> = {
   mysql: 'mysql',
   postgresql: 'postgresql@16',
   mongodb: 'mongodb/brew/mongodb-community',
+  redis: 'redis',
   git: 'git',
   svn: 'subversion'
 }
@@ -733,8 +875,48 @@ const WINGET_PACKAGES: Partial<Record<ToolId, string>> = {
   docker: 'Docker.DockerDesktop',
   mysql: 'Oracle.MySQL',
   postgresql: 'PostgreSQL.PostgreSQL',
+  // Official Redis doesn't publish native Windows binaries; this is the
+  // widely-used unofficial Windows port (tporadowski/redis).
+  redis: 'tporadowski.redis',
   git: 'Git.Git',
   svn: 'TortoiseSVN.TortoiseSVN'
+}
+
+/**
+ * Windows only: some winget packages only install a setup wizard rather than
+ * the finished product (Oracle's "MySQL Installer" is the canonical example —
+ * `winget install Oracle.MySQL` merely stages the interactive installer, which
+ * must still be run to pick & configure the actual MySQL Server). For these,
+ * auto-launch the wizard right after winget succeeds so the user isn't left
+ * wondering why nothing happened.
+ */
+const WINDOWS_POST_INSTALL_LAUNCHERS: Partial<Record<ToolId, string[]>> = {
+  mysql: [
+    'MySQL\\MySQL Installer for Windows\\MySQLInstaller.exe'
+  ]
+}
+
+/** Best-effort: look for and open a post-install setup wizard under Program Files. */
+async function maybeLaunchPostInstallSetup(id: ToolId): Promise<boolean> {
+  if (process.platform !== 'win32') return false
+  const relPaths = WINDOWS_POST_INSTALL_LAUNCHERS[id]
+  if (!relPaths) return false
+  const roots = [process.env['ProgramFiles'], process.env['ProgramFiles(x86)']].filter(Boolean) as string[]
+  for (const root of roots) {
+    for (const rel of relPaths) {
+      const candidate = path.join(root, rel)
+      if (fs.existsSync(candidate)) {
+        try {
+          await shell.openPath(candidate)
+          logger.info(`[local-env] Launched post-install setup for ${id}: ${candidate}`)
+          return true
+        } catch (err) {
+          logger.error(`[local-env] Failed to launch post-install setup for ${id}:`, err)
+        }
+      }
+    }
+  }
+  return false
 }
 
 /** AI coding tools installed via npm install -g */
@@ -755,7 +937,7 @@ const BREW_FALLBACK: Partial<Record<ToolId, string>> = {
 
 export async function installTool(toolId: string): Promise<ToolInstallResult> {
   const id = toolId as ToolId
-  const env = getAugmentedEnv()
+  const env = await getAugmentedEnv()
   logger.info(`[local-env] Installing tool: ${id}`)
 
   // Homebrew — run the official install script in Terminal.app (macOS only)
@@ -850,7 +1032,8 @@ export async function installTool(toolId: string): Promise<ToolInstallResult> {
             { timeout: 600000, env }
           )
           logger.info(`[local-env] Tool installed: ${id}`)
-          return { success: true }
+          const launchedSetup = await maybeLaunchPostInstallSetup(id)
+          return { success: true, launchedSetup }
         } catch (err: any) {
           logger.error(`Failed to install ${id} via winget:`, err)
           return { success: false, error: err.stderr || err.message }
@@ -869,4 +1052,193 @@ export async function installTool(toolId: string): Promise<ToolInstallResult> {
   }
 
   return { success: false, error: '不支持的工具' }
+}
+
+// ── Uninstall ──
+
+export async function uninstallTool(toolId: string): Promise<ToolInstallResult> {
+  const id = toolId as ToolId
+  const env = await getAugmentedEnv()
+  logger.info(`[local-env] Uninstalling tool: ${id}`)
+
+  // Claude Code — native installer, no package manager involved
+  if (id === 'claude-code') {
+    if (process.platform === 'win32') {
+      return { success: false, error: 'Windows 上请通过控制面板卸载 Claude Code' }
+    }
+    try {
+      const claudePath = path.join(os.homedir(), '.local', 'bin', 'claude')
+      if (fs.existsSync(claudePath)) {
+        fs.unlinkSync(claudePath)
+      }
+      logger.info(`[local-env] Tool uninstalled: ${id}`)
+      return { success: true }
+    } catch (err: any) {
+      logger.error(`Failed to uninstall ${id}:`, err)
+      return { success: false, error: err.message }
+    }
+  }
+
+  // npm-managed AI CLI tools
+  const npmPkg = NPM_PACKAGES[id]
+  if (npmPkg) {
+    try {
+      const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+      await execFileAsync(npmCmd, ['uninstall', '-g', npmPkg], { timeout: 300000, env })
+      logger.info(`[local-env] Tool uninstalled: ${id}`)
+      return { success: true }
+    } catch (err: any) {
+      logger.error(`Failed to uninstall ${id} via npm:`, err)
+      return { success: false, error: err.stderr || err.message }
+    }
+  }
+
+  if (process.platform === 'darwin' || process.platform === 'linux') {
+    const pkg = BREW_PACKAGES[id]
+    if (pkg) {
+      try {
+        await execFileAsync('which', ['brew'], { timeout: 5000, env })
+        await execAsync(`brew uninstall ${pkg}`, { timeout: 300000, env })
+        logger.info(`[local-env] Tool uninstalled: ${id}`)
+        return { success: true }
+      } catch (err: any) {
+        logger.error(`Failed to uninstall ${id} via brew:`, err)
+        return { success: false, error: err.stderr || err.message }
+      }
+    }
+  } else if (process.platform === 'win32') {
+    const pkg = WINGET_PACKAGES[id]
+    if (pkg) {
+      try {
+        await execFileAsync('where', ['winget'], { timeout: 5000, env })
+        await execAsync(`winget uninstall ${pkg} --accept-source-agreements`, { timeout: 300000, env })
+        logger.info(`[local-env] Tool uninstalled: ${id}`)
+        return { success: true }
+      } catch (err: any) {
+        logger.error(`Failed to uninstall ${id} via winget:`, err)
+        return { success: false, error: err.stderr || err.message }
+      }
+    }
+  }
+
+  return { success: false, error: '该工具暂不支持一键卸载，请手动卸载' }
+}
+
+// ── Upgrade (AI Coding CLI tools) ──
+
+export async function upgradeTool(toolId: string): Promise<ToolInstallResult> {
+  const id = toolId as ToolId
+  const env = await getAugmentedEnv()
+  logger.info(`[local-env] Upgrading tool: ${id}`)
+
+  // Claude Code ships its own self-update command
+  if (id === 'claude-code') {
+    try {
+      let claudePath: string | undefined
+      if (process.platform !== 'win32') {
+        const nativePath = path.join(os.homedir(), '.local', 'bin', 'claude')
+        if (fs.existsSync(nativePath)) claudePath = nativePath
+      }
+      if (!claudePath) {
+        const found = await whichAll('claude', env)
+        claudePath = found[0]
+      }
+      if (!claudePath) {
+        return { success: false, error: 'Claude Code 未安装' }
+      }
+      await execBinary(claudePath, ['update'], { timeout: 300000, env })
+      logger.info(`[local-env] Tool upgraded: ${id}`)
+      return { success: true }
+    } catch (err: any) {
+      logger.error(`Failed to upgrade ${id}:`, err)
+      return { success: false, error: err.stderr || err.message }
+    }
+  }
+
+  // Other AI CLIs — reinstall the npm package at @latest
+  const npmPkg = NPM_PACKAGES[id]
+  if (npmPkg) {
+    try {
+      const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+      await execFileAsync(npmCmd, ['install', '-g', `${npmPkg}@latest`], { timeout: 600000, env })
+      logger.info(`[local-env] Tool upgraded: ${id}`)
+      return { success: true }
+    } catch (err: any) {
+      logger.error(`Failed to upgrade ${id} via npm:`, err)
+      return { success: false, error: err.stderr || err.message }
+    }
+  }
+
+  return { success: false, error: '该工具暂不支持一键升级' }
+}
+
+// ── Package Managers (pip / npm global) ──
+
+export async function listPipPackages(pythonPath?: string): Promise<PackageListResult> {
+  const env = await getAugmentedEnv()
+  const py = pythonPath || (process.platform === 'win32' ? 'python' : 'python3')
+  try {
+    const { stdout } = await execBinary(py, ['-m', 'pip', 'list', '--format=json'], { timeout: 30000, env })
+    const raw = JSON.parse(stdout) as Array<{ name: string; version: string }>
+    const packages = raw
+      .map((p) => ({ name: p.name, version: p.version }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+    return { success: true, packages }
+  } catch (err: any) {
+    logger.error('Failed to list pip packages:', err)
+    return { success: false, error: err.stderr || err.message }
+  }
+}
+
+export async function uninstallPipPackage(packageName: string, pythonPath?: string): Promise<ToolInstallResult> {
+  const env = await getAugmentedEnv()
+  const py = pythonPath || (process.platform === 'win32' ? 'python' : 'python3')
+  try {
+    await execBinary(py, ['-m', 'pip', 'uninstall', '-y', packageName], { timeout: 60000, env })
+    logger.info(`[local-env] pip package uninstalled: ${packageName}`)
+    return { success: true }
+  } catch (err: any) {
+    logger.error(`Failed to uninstall pip package ${packageName}:`, err)
+    return { success: false, error: err.stderr || err.message }
+  }
+}
+
+export async function listNpmGlobalPackages(): Promise<PackageListResult> {
+  const env = await getAugmentedEnv()
+  try {
+    const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+    const { stdout } = await execBinary(npmCmd, ['list', '-g', '--depth=0', '--json'], { timeout: 30000, env })
+    return { success: true, packages: parseNpmListOutput(stdout) }
+  } catch (err: any) {
+    // `npm list -g` can exit non-zero (e.g. peer dep warnings) while still printing valid JSON
+    if (err.stdout) {
+      try {
+        return { success: true, packages: parseNpmListOutput(err.stdout) }
+      } catch { /* fall through to error */ }
+    }
+    logger.error('Failed to list npm global packages:', err)
+    return { success: false, error: err.stderr || err.message }
+  }
+}
+
+function parseNpmListOutput(stdout: string): PackageInfo[] {
+  const data = JSON.parse(stdout)
+  const deps = (data.dependencies || {}) as Record<string, { version?: string }>
+  return Object.entries(deps)
+    .filter(([name]) => name !== 'npm') // avoid users accidentally uninstalling npm itself
+    .map(([name, info]) => ({ name, version: info?.version || 'unknown' }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+export async function uninstallNpmGlobalPackage(packageName: string): Promise<ToolInstallResult> {
+  const env = await getAugmentedEnv()
+  try {
+    const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+    await execBinary(npmCmd, ['uninstall', '-g', packageName], { timeout: 60000, env })
+    logger.info(`[local-env] npm global package uninstalled: ${packageName}`)
+    return { success: true }
+  } catch (err: any) {
+    logger.error(`Failed to uninstall npm global package ${packageName}:`, err)
+    return { success: false, error: err.stderr || err.message }
+  }
 }

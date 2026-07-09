@@ -381,7 +381,15 @@ export const api = {
   localEnv: {
     detectAll: () => ipcRenderer.invoke('local-env:detect-all'),
     detectOne: (toolId: string) => ipcRenderer.invoke('local-env:detect-one', toolId),
-    install: (toolId: string) => ipcRenderer.invoke('local-env:install', toolId)
+    install: (toolId: string) => ipcRenderer.invoke('local-env:install', toolId),
+    uninstall: (toolId: string) => ipcRenderer.invoke('local-env:uninstall', toolId),
+    upgrade: (toolId: string) => ipcRenderer.invoke('local-env:upgrade', toolId),
+    listPipPackages: (pythonPath?: string) => ipcRenderer.invoke('local-env:list-pip-packages', pythonPath),
+    uninstallPipPackage: (packageName: string, pythonPath?: string) =>
+      ipcRenderer.invoke('local-env:uninstall-pip-package', packageName, pythonPath),
+    listNpmPackages: () => ipcRenderer.invoke('local-env:list-npm-packages'),
+    uninstallNpmPackage: (packageName: string) =>
+      ipcRenderer.invoke('local-env:uninstall-npm-package', packageName)
   },
 
   copiper: {

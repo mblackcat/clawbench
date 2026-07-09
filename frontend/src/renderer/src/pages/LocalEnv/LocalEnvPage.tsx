@@ -1,16 +1,23 @@
-import React, { useEffect, useMemo } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Row, Col, Spin, Button, Typography, App, theme, Divider } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
 import { useLocalEnvStore } from '../../stores/useLocalEnvStore'
 import EnvCard from './EnvCard'
+import PackageListDrawer from './PackageListDrawer'
 import { useT } from '../../i18n'
 
 const { Title, Text } = Typography
 
 const BASE_DEV_IDS = new Set(['homebrew', 'python', 'nodejs', 'go', 'java', 'docker'])
-const DATABASE_IDS = new Set(['mysql', 'postgresql', 'mongodb'])
+const DATABASE_IDS = new Set(['mysql', 'postgresql', 'mongodb', 'redis'])
 const VCS_IDS = new Set(['git', 'svn', 'perforce'])
 const AI_TOOL_IDS = new Set(['claude-code', 'gemini-cli', 'codex-cli', 'opencode', 'traecli', 'qwen-code', 'qoder-cli'])
+
+interface PackageDrawerState {
+  kind: 'pip' | 'npm'
+  pythonPath?: string
+  title: string
+}
 
 const LocalEnvPage: React.FC = () => {
   const { message } = App.useApp()
@@ -22,10 +29,16 @@ const LocalEnvPage: React.FC = () => {
   const platform = useLocalEnvStore((s) => s.platform)
   const detecting = useLocalEnvStore((s) => s.detecting)
   const installing = useLocalEnvStore((s) => s.installing)
+  const uninstalling = useLocalEnvStore((s) => s.uninstalling)
+  const upgrading = useLocalEnvStore((s) => s.upgrading)
   const refreshingOne = useLocalEnvStore((s) => s.refreshingOne)
   const detectAll = useLocalEnvStore((s) => s.detectAll)
   const detectOne = useLocalEnvStore((s) => s.detectOne)
   const installTool = useLocalEnvStore((s) => s.installTool)
+  const uninstallTool = useLocalEnvStore((s) => s.uninstallTool)
+  const upgradeTool = useLocalEnvStore((s) => s.upgradeTool)
+
+  const [packageDrawer, setPackageDrawer] = useState<PackageDrawerState | null>(null)
 
   // Load from cache on mount; only fetches if no cached data exists
   useEffect(() => {
@@ -46,7 +59,9 @@ const LocalEnvPage: React.FC = () => {
   const handleInstall = async (toolId: string) => {
     const result = await installTool(toolId)
     if (result.success) {
-      if (result.openedBrowser) {
+      if (result.launchedSetup) {
+        message.info(t('localEnv.launchedSetup'))
+      } else if (result.openedBrowser) {
         message.info(t('localEnv.openedDownload'))
       } else {
         message.success(t('localEnv.installSuccess'))
@@ -54,6 +69,32 @@ const LocalEnvPage: React.FC = () => {
     } else {
       message.error(result.error || t('localEnv.installFailed'))
     }
+  }
+
+  const handleUninstall = async (toolId: string) => {
+    const result = await uninstallTool(toolId)
+    if (result.success) {
+      message.success(t('localEnv.uninstallSuccess'))
+    } else {
+      message.error(result.error || t('localEnv.uninstallFailed'))
+    }
+  }
+
+  const handleUpgrade = async (toolId: string) => {
+    const result = await upgradeTool(toolId)
+    if (result.success) {
+      message.success(t('localEnv.upgradeSuccess'))
+    } else {
+      message.error(result.error || t('localEnv.upgradeFailed'))
+    }
+  }
+
+  const handleOpenPackages = (kind: 'pip' | 'npm', pythonPath?: string) => {
+    setPackageDrawer({
+      kind,
+      pythonPath,
+      title: kind === 'pip' ? t('localEnv.pkg.pipTitle') : t('localEnv.pkg.npmTitle')
+    })
   }
 
   const handleRefresh = () => {
@@ -74,8 +115,13 @@ const LocalEnvPage: React.FC = () => {
               platform={platform}
               installing={installing[tool.toolId] || false}
               refreshing={refreshingOne[tool.toolId] || false}
+              uninstalling={uninstalling[tool.toolId] || false}
+              upgrading={upgrading[tool.toolId] || false}
               onInstall={handleInstall}
               onRefresh={detectOne}
+              onUninstall={handleUninstall}
+              onUpgrade={handleUpgrade}
+              onOpenPackages={handleOpenPackages}
             />
           </Col>
         ))}
@@ -120,6 +166,24 @@ const LocalEnvPage: React.FC = () => {
 
         {renderGroup(t('localEnv.groupAI'), aiTools)}
       </Spin>
+
+      <PackageListDrawer
+        open={!!packageDrawer}
+        title={packageDrawer?.title || ''}
+        onClose={() => setPackageDrawer(null)}
+        loadPackages={async () => {
+          if (!packageDrawer) return { success: false }
+          return packageDrawer.kind === 'pip'
+            ? window.api.localEnv.listPipPackages(packageDrawer.pythonPath)
+            : window.api.localEnv.listNpmPackages()
+        }}
+        uninstallPackage={async (name) => {
+          if (!packageDrawer) return { success: false }
+          return packageDrawer.kind === 'pip'
+            ? window.api.localEnv.uninstallPipPackage(name, packageDrawer.pythonPath)
+            : window.api.localEnv.uninstallNpmPackage(name)
+        }}
+      />
     </div>
   )
 }

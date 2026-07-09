@@ -341,6 +341,15 @@ export interface ClawBenchAPI {
     detectAll: () => Promise<import('./local-env').LocalEnvDetectionResult>
     detectOne: (toolId: string) => Promise<import('./local-env').ToolDetectionResult>
     install: (toolId: string) => Promise<import('./local-env').ToolInstallResult>
+    uninstall: (toolId: string) => Promise<import('./local-env').ToolInstallResult>
+    upgrade: (toolId: string) => Promise<import('./local-env').ToolInstallResult>
+    listPipPackages: (pythonPath?: string) => Promise<import('./local-env').PackageListResult>
+    uninstallPipPackage: (
+      packageName: string,
+      pythonPath?: string
+    ) => Promise<import('./local-env').ToolInstallResult>
+    listNpmPackages: () => Promise<import('./local-env').PackageListResult>
+    uninstallNpmPackage: (packageName: string) => Promise<import('./local-env').ToolInstallResult>
   }
   openclaw: {
     checkInstalled: () => Promise<import('./openclaw').OpenClawInstallCheck>
