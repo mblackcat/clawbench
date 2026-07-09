@@ -34,10 +34,24 @@ export interface ClaudeStreamState {
   blocks: Map<string, BlockAccum>
   /** Tool-result ids already emitted this turn (dedup; results can arrive via stream + user message). */
   sentToolResults: Set<string>
+  /**
+   * Ordered task list accumulated from the incremental TaskCreate/TaskUpdate
+   * tools (the successor to the single-snapshot TodoWrite). Persists across
+   * turns within a session — tasks created early stay visible as later turns
+   * update their status. The Nth TaskCreate is task id N (1-based), matching
+   * the `taskId` carried by TaskUpdate.
+   */
+  tasks: TaskAccum[]
+}
+
+interface TaskAccum {
+  content: string
+  activeForm: string
+  status: 'pending' | 'in_progress' | 'completed' | 'deleted'
 }
 
 export function createClaudeStreamState(): ClaudeStreamState {
-  return { messageIndex: -1, streamedText: false, blocks: new Map(), sentToolResults: new Set() }
+  return { messageIndex: -1, streamedText: false, blocks: new Map(), sentToolResults: new Set(), tasks: [] }
 }
 
 function resetForTurn(st: ClaudeStreamState): void {
@@ -45,6 +59,39 @@ function resetForTurn(st: ClaudeStreamState): void {
   st.streamedText = false
   st.blocks.clear()
   st.sentToolResults.clear()
+  // NOTE: st.tasks is intentionally NOT cleared — the task list persists for
+  // the lifetime of the session across agentic turns.
+}
+
+/**
+ * Folds one TaskCreate/TaskUpdate op into the accumulated task list.
+ * - TaskCreate {subject, activeForm?, description?} appends a pending task;
+ *   its 1-based position is the `taskId` that later TaskUpdate ops reference.
+ * - TaskUpdate {taskId, status} updates the task at that position. A status of
+ *   'deleted' drops the task while preserving the positions of the others
+ *   (Claude Code keeps ids stable, so we tombstone rather than splice).
+ * - TaskList carries no state; the caller just re-emits the current snapshot.
+ */
+function applyTaskOp(st: ClaudeStreamState, name: string, input: Record<string, unknown>): void {
+  if (name === 'TaskCreate') {
+    const subject = typeof input.subject === 'string' ? input.subject : ''
+    if (!subject) return
+    const activeForm = typeof input.activeForm === 'string' && input.activeForm ? input.activeForm : subject
+    st.tasks.push({ content: subject, activeForm, status: 'pending' })
+    return
+  }
+  if (name === 'TaskUpdate') {
+    const idRaw = input.taskId ?? (input as Record<string, unknown>).id ?? (input as Record<string, unknown>).task_id
+    const idx = Number(idRaw) - 1
+    if (!Number.isInteger(idx) || idx < 0 || idx >= st.tasks.length) return
+    const status = typeof input.status === 'string' ? input.status : ''
+    if (status === 'pending' || status === 'in_progress' || status === 'completed' || status === 'deleted') {
+      // Tombstone rather than splice: Claude Code keeps taskIds stable (they
+      // are 1-based positions), so removing an element would misalign every
+      // later TaskUpdate. Deleted tasks are filtered out at emit time.
+      st.tasks[idx].status = status
+    }
+  }
 }
 
 function stringifyToolResult(content: unknown): string {
@@ -144,6 +191,16 @@ export function processClaudeMessage(raw: any, st: ClaudeStreamState): CodingStr
             if (questions.length > 0) out.push({ type: 'ask_user_question', id: b.id || '', questions })
           } else if (b.name === 'TodoWrite') {
             const todos = Array.isArray(input.todos) ? input.todos : []
+            if (todos.length > 0) out.push({ type: 'todo_update', todos })
+          } else if (b.name === 'TaskCreate' || b.name === 'TaskUpdate' || b.name === 'TaskList') {
+            // TaskCreate/TaskUpdate are incremental (unlike TodoWrite's full
+            // snapshot). Fold each op into the accumulated task list and emit
+            // the full snapshot as a todo_update so the renderer draws the
+            // same checklist. TaskList is a pure read — re-emit the snapshot.
+            applyTaskOp(st, b.name, input)
+            const todos = st.tasks
+              .filter(t => t.status !== 'deleted')
+              .map(t => ({ content: t.content, activeForm: t.activeForm, status: t.status as 'pending' | 'in_progress' | 'completed' }))
             if (todos.length > 0) out.push({ type: 'todo_update', todos })
           } else {
             out.push({ type: 'tool_executing', id: b.id || '', name: b.name || '', input })

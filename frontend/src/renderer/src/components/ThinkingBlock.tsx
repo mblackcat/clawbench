@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Spin, theme } from 'antd'
-import { LoadingOutlined, UpOutlined, DownOutlined } from '@ant-design/icons'
+import { CheckCircleOutlined, UpOutlined, DownOutlined } from '@ant-design/icons'
 import { useT } from '../i18n'
 
 interface ThinkingBlockProps {
@@ -62,7 +62,7 @@ const ThinkingBlock: React.FC<ThinkingBlockProps> = ({ content, isStreaming, com
         {isStreaming ? (
           <Spin size="small" />
         ) : (
-          <LoadingOutlined style={{ fontSize: iconSize }} />
+          <CheckCircleOutlined style={{ fontSize: iconSize, color: token.colorSuccess }} />
         )}
         <span style={{ flex: 1 }}>{isStreaming ? t('coding.thinking') : t('coding.thinkingProcess')}</span>
         {!isStreaming && (

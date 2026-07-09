@@ -453,16 +453,27 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
           }))
           return
         }
-        // Handle TodoWrite dedicated event — append to streaming blocks (non-interactive)
+        // Handle TodoWrite / TaskCreate / TaskUpdate dedicated event.
+        // The incremental Task* tools emit one snapshot per op, so coalesce
+        // consecutive todo_update events into a single checklist card
+        // (replace the trailing todo_update in place) rather than appending
+        // a fresh card for every task mutation.
         if (et === 'todo_update') {
           const todoBlock: CodingContentBlock = {
             type: 'todo_update',
             todos: (event as any).todos || [],
           }
-          set(s => ({
-            sessionStreaming: { ...s.sessionStreaming, [sessionId]: true },
-            sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [...(s.sessionStreamingBlocks[sessionId] || []), todoBlock] }
-          }))
+          set(s => {
+            const prev = s.sessionStreamingBlocks[sessionId] || []
+            const last = prev[prev.length - 1]
+            const next = last && last.type === 'todo_update'
+              ? [...prev.slice(0, -1), todoBlock]
+              : [...prev, todoBlock]
+            return {
+              sessionStreaming: { ...s.sessionStreaming, [sessionId]: true },
+              sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: next }
+            }
+          })
           return
         }
 

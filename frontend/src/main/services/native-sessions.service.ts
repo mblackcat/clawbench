@@ -305,6 +305,11 @@ function readClaudeTranscript(workingDir: string, sessionId: string): NativeTran
   try { raw = fs.readFileSync(filePath, 'utf-8') } catch { return [] }
 
   const messages: NativeTranscriptMessage[] = []
+  // Ordered task list folded from incremental TaskCreate/TaskUpdate ops (the
+  // successor to single-snapshot TodoWrite). Persists across the whole
+  // transcript; Nth TaskCreate is 1-based taskId N. Deleted tasks are
+  // tombstoned (kept in place) so later taskId references stay aligned.
+  const taskAcc: Array<{ content: string; activeForm: string; status: 'pending' | 'in_progress' | 'completed' | 'deleted' }> = []
   for (const line of raw.split('\n')) {
     if (!line.trim()) continue
     let data: any
@@ -347,6 +352,31 @@ function readClaudeTranscript(workingDir: string, sessionId: string): NativeTran
                 activeForm: String(td?.activeForm ?? td?.content ?? ''),
               }))
             blocks.push({ type: 'todo_update', todos })
+          } else if (toolName === 'TaskCreate' || toolName === 'TaskUpdate') {
+            // Fold the incremental op into the running list and render the
+            // resulting snapshot as a todo_update, matching the live stream.
+            if (toolName === 'TaskCreate') {
+              const subject = typeof toolInput.subject === 'string' ? toolInput.subject : ''
+              if (subject) {
+                const activeForm = typeof toolInput.activeForm === 'string' && toolInput.activeForm ? toolInput.activeForm : subject
+                taskAcc.push({ content: subject, activeForm, status: 'pending' })
+              }
+            } else {
+              const idRaw = (toolInput as any).taskId ?? (toolInput as any).id ?? (toolInput as any).task_id
+              const idx = Number(idRaw) - 1
+              const status = typeof toolInput.status === 'string' ? toolInput.status : ''
+              if (Number.isInteger(idx) && idx >= 0 && idx < taskAcc.length &&
+                  (status === 'pending' || status === 'in_progress' || status === 'completed' || status === 'deleted')) {
+                taskAcc[idx].status = status
+              }
+            }
+            const todos = taskAcc
+              .filter(t => t.status !== 'deleted')
+              .map(t => ({ content: t.content, status: t.status as 'pending' | 'in_progress' | 'completed', activeForm: t.activeForm }))
+            if (todos.length > 0) blocks.push({ type: 'todo_update', todos })
+          } else if (toolName === 'TaskList' || toolName === 'TaskGet') {
+            // No state change; skip these bookkeeping calls entirely rather
+            // than degrading them to raw JSON tool cards.
           } else {
             blocks.push({
               type: 'tool_use',
