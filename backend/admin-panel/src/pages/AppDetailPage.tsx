@@ -161,6 +161,12 @@ const AppDetailPage: React.FC = () => {
             </Text>
           </div>
           <div>
+            <Text type="secondary" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Version</Text>
+            <Text strong style={{ fontSize: 16, display: 'block', marginTop: 4 }}>
+              {app.version ? `v${app.version}` : '—'}
+            </Text>
+          </div>
+          <div>
             <Text type="secondary" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Category</Text>
             <Text strong style={{ fontSize: 16, display: 'block', marginTop: 4 }}>
               {app.category || 'Uncategorized'}
@@ -211,6 +217,9 @@ const AppDetailPage: React.FC = () => {
         <Descriptions column={1} size="small" colon={false}>
           <Descriptions.Item label={<><TagOutlined style={{ marginRight: 6 }} />Type</>}>
             <Tag>{app.type}</Tag>
+          </Descriptions.Item>
+          <Descriptions.Item label={<><TagOutlined style={{ marginRight: 6 }} />Version</>}>
+            {app.version ? `v${app.version}` : 'Unpublished'}
           </Descriptions.Item>
           <Descriptions.Item label={<><UserOutlined style={{ marginRight: 6 }} />Author</>}>
             {app.ownerName || app.ownerId}
