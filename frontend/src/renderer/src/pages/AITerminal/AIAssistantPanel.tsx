@@ -15,6 +15,7 @@ import type { TerminalAIMessage } from '../../types/ai-terminal'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { rehypeHighlightPlugin } from '../../utils/markdown-plugins'
+import { MONO_FONT_STACK } from '../../utils/mono-font'
 import ModelSelector from '../AIChat/ModelSelector'
 import { ModelAvatar, UserAvatar } from '../../components/ProviderIcons'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -136,7 +137,7 @@ function ToolCallInline({ tc }: { tc: StreamingToolCall | NonNullable<TerminalAI
           padding: '3px 8px',
           background: token.colorFillTertiary,
           fontSize: 11,
-          fontFamily: 'monospace',
+          fontFamily: MONO_FONT_STACK,
           whiteSpace: 'pre-wrap',
           wordBreak: 'break-all',
           display: 'flex',
@@ -153,7 +154,7 @@ function ToolCallInline({ tc }: { tc: StreamingToolCall | NonNullable<TerminalAI
           padding: '4px 8px',
           borderTop: `1px solid ${token.colorBorderSecondary}`,
           fontSize: 10,
-          fontFamily: 'monospace',
+          fontFamily: MONO_FONT_STACK,
           whiteSpace: 'pre-wrap',
           maxHeight: 100,
           overflowY: 'auto',
@@ -959,7 +960,7 @@ const AIAssistantPanel: React.FC = () => {
               onKeyDown={handleSQLKeyDown}
               placeholder="输入 SQL 语句... (⌘+Enter 执行)"
               autoSize={{ minRows: 2, maxRows: 6 }}
-              style={{ fontSize: 12, fontFamily: 'monospace' }}
+              style={{ fontSize: 12, fontFamily: MONO_FONT_STACK }}
             />
             <Space.Compact direction="vertical" size="small" style={{ flexShrink: 0 }}>
               <Button
@@ -981,7 +982,7 @@ const AIAssistantPanel: React.FC = () => {
           {sqlError && (
             <div style={{ padding: '0 12px 8px' }}>
               <div style={{
-                padding: 8, fontSize: 11, fontFamily: 'monospace',
+                padding: 8, fontSize: 11, fontFamily: MONO_FONT_STACK,
                 color: token.colorError, whiteSpace: 'pre-wrap',
                 background: token.colorErrorBg, borderRadius: 6,
               }}>

@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Input, Modal, Typography, theme } from 'antd'
 import { EditOutlined } from '@ant-design/icons'
 import type { ColDef } from '../../../types/copiper'
+import { MONO_FONT_STACK } from '../../../utils/mono-font'
 
 const { Text } = Typography
 
@@ -102,7 +103,7 @@ const KVEditor: React.FC<KVEditorProps> = ({ value, onChange, onBlur }) => {
           rows={12}
           value={editText}
           onChange={(e) => setEditText(e.target.value)}
-          style={{ fontFamily: 'monospace', fontSize: 12 }}
+          style={{ fontFamily: MONO_FONT_STACK, fontSize: 12 }}
         />
       </Modal>
     </>

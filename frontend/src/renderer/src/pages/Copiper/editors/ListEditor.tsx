@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Tag, Modal, Input, Button, Space, theme } from 'antd'
 import { PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons'
 import type { ColDef } from '../../../types/copiper'
+import { MONO_FONT_STACK } from '../../../utils/mono-font'
 
 interface ListEditorProps {
   value: unknown
@@ -99,7 +100,7 @@ const ListEditor: React.FC<ListEditorProps> = ({ value, colDef, onChange, onBlur
                 background: token.colorBgTextHover
               }}
             >
-              <span style={{ flex: 1, fontSize: 13, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ flex: 1, fontSize: 13, fontFamily: MONO_FONT_STACK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {item}
               </span>
               <Button

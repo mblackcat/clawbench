@@ -9,6 +9,7 @@ import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useT } from '../../i18n';
+import { MONO_FONT_STACK } from '../../utils/mono-font';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -153,7 +154,7 @@ const PromptEditor: React.FC = () => {
           onChange={(e) => setPromptContent(e.target.value)}
           placeholder={t('promptEditor.contentPlaceholder')}
           rows={15}
-          style={{ marginTop: 8, fontFamily: 'monospace', fontSize: 13 }}
+          style={{ marginTop: 8, fontFamily: MONO_FONT_STACK, fontSize: 13 }}
         />
       </div>
 

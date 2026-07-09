@@ -7,6 +7,7 @@ import {
   ThunderboltOutlined, HighlightOutlined, RocketOutlined, CheckOutlined
 } from '@ant-design/icons'
 import { useT } from '../../i18n'
+import { MONO_FONT_STACK } from '../../utils/mono-font'
 import type { AIToolType, CodingContentBlock, CodingImage, CodingMode, CodingEffort, CodingPendingFile } from '../../types/ai-coding'
 
 const { TextArea } = Input
@@ -290,7 +291,7 @@ const CodingInput: React.FC<CodingInputProps> = ({
     key: c.key,
     label: (
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <span style={{ fontFamily: 'monospace', fontWeight: 500 }}>{c.label}</span>
+        <span style={{ fontFamily: MONO_FONT_STACK, fontWeight: 500 }}>{c.label}</span>
         <span style={{ color: token.colorTextSecondary, fontSize: 12 }}>{c.desc}</span>
       </div>
     ),
@@ -387,7 +388,7 @@ const CodingInput: React.FC<CodingInputProps> = ({
               type="text"
               size="small"
               style={{
-                fontFamily: 'monospace',
+                fontFamily: MONO_FONT_STACK,
                 fontWeight: 600,
                 fontSize: 14,
                 padding: '0 8px',
@@ -545,7 +546,7 @@ const CodingInput: React.FC<CodingInputProps> = ({
                 background: i === slashIndex ? token.colorFillSecondary : 'transparent',
               }}
             >
-              <span style={{ fontFamily: 'monospace', fontWeight: 600, color: token.colorText }}>{c.key}</span>
+              <span style={{ fontFamily: MONO_FONT_STACK, fontWeight: 600, color: token.colorText }}>{c.key}</span>
               <span style={{ color: token.colorTextSecondary, fontSize: 12 }}>{c.desc}</span>
             </div>
           ))}

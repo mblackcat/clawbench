@@ -12,6 +12,7 @@ import {
   DislikeOutlined,
 } from '@ant-design/icons'
 import { useT } from '../../i18n'
+import { MONO_FONT_STACK } from '../../utils/mono-font'
 
 const { Text, Title } = Typography
 const { TextArea } = Input
@@ -164,7 +165,7 @@ const AIAssistantSettings: React.FC = () => {
           value={soul}
           onChange={(e) => setSoul(e.target.value)}
           rows={8}
-          style={{ resize: 'vertical', fontFamily: 'monospace', fontSize: 13 }}
+          style={{ resize: 'vertical', fontFamily: MONO_FONT_STACK, fontSize: 13 }}
         />
       </Card>
 
@@ -189,7 +190,7 @@ const AIAssistantSettings: React.FC = () => {
                     value={memory}
                     onChange={(e) => setMemory(e.target.value)}
                     rows={6}
-                    style={{ resize: 'vertical', fontFamily: 'monospace', fontSize: 13, marginBottom: 8 }}
+                    style={{ resize: 'vertical', fontFamily: MONO_FONT_STACK, fontSize: 13, marginBottom: 8 }}
                   />
                   <Space>
                     <Button size="small" type="primary" onClick={() => saveMemoryFile('memory.md', memory)}>
@@ -211,7 +212,7 @@ const AIAssistantSettings: React.FC = () => {
                     value={userMd}
                     onChange={(e) => setUserMd(e.target.value)}
                     rows={6}
-                    style={{ resize: 'vertical', fontFamily: 'monospace', fontSize: 13, marginBottom: 8 }}
+                    style={{ resize: 'vertical', fontFamily: MONO_FONT_STACK, fontSize: 13, marginBottom: 8 }}
                   />
                   <Space>
                     <Button size="small" type="primary" onClick={() => saveMemoryFile('user.md', userMd)}>
@@ -333,7 +334,7 @@ const AIAssistantSettings: React.FC = () => {
                   value={tools}
                   readOnly
                   rows={4}
-                  style={{ fontFamily: 'monospace', fontSize: 13, resize: 'vertical' }}
+                  style={{ fontFamily: MONO_FONT_STACK, fontSize: 13, resize: 'vertical' }}
                 />
               ),
             },
@@ -346,7 +347,7 @@ const AIAssistantSettings: React.FC = () => {
                     value={agents}
                     onChange={(e) => setAgents(e.target.value)}
                     rows={4}
-                    style={{ fontFamily: 'monospace', fontSize: 13, resize: 'vertical', marginBottom: 8 }}
+                    style={{ fontFamily: MONO_FONT_STACK, fontSize: 13, resize: 'vertical', marginBottom: 8 }}
                   />
                   <Button size="small" type="primary" onClick={() => saveMemoryFile('agents.md', agents)}>
                     {t('common.save')}

@@ -4,6 +4,7 @@ import { CheckCircleFilled, QuestionCircleOutlined } from '@ant-design/icons'
 import { useT } from '../../i18n'
 import { useAICodingStore } from '../../stores/useAICodingStore'
 import type { AskUserQuestionItem } from '../../types/ai-coding'
+import { MONO_FONT_STACK } from '../../utils/mono-font'
 
 const { TextArea } = Input
 
@@ -83,7 +84,7 @@ const SingleQuestion: React.FC<SingleQuestionProps> = ({
               {opt.preview && (
                 <pre style={{
                   margin: '6px 0 0 24px', padding: '6px 8px', fontSize: 11,
-                  fontFamily: 'monospace', background: token.colorFillQuaternary,
+                  fontFamily: MONO_FONT_STACK, background: token.colorFillQuaternary,
                   borderRadius: 4, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
                   maxHeight: 120, overflow: 'auto', color: token.colorTextSecondary,
                 }}>

@@ -13,6 +13,7 @@ import {
 } from '@ant-design/icons'
 import { useTaskStore } from '../stores/useTaskStore'
 import type { SubAppOutput, TaskStatus } from '../types/subapp'
+import { MONO_FONT_STACK } from '../utils/mono-font'
 
 const { Text } = Typography
 
@@ -94,7 +95,7 @@ const OutputLine: React.FC<{ output: SubAppOutput }> = React.memo(({ output }) =
     <div
       style={{
         padding: '3px 12px',
-        fontFamily: 'Menlo, Monaco, Consolas, monospace',
+        fontFamily: MONO_FONT_STACK,
         fontSize: 13,
         lineHeight: '20px',
         color,
