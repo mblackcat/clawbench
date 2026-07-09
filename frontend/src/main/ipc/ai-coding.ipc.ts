@@ -23,6 +23,7 @@ import {
   interruptSession,
   executeSessionSlashCommand,
   setSessionPermissionMode,
+  resolveSessionPermission,
   setSessionEffort,
   getGroups,
   createGroup,
@@ -157,6 +158,18 @@ export function registerAICodingIpc(): void {
   ipcMain.handle('ai-coding:set-permission-mode', async (_event, sessionId: string, mode: string) => {
     return setSessionPermissionMode(sessionId, mode)
   })
+
+  ipcMain.handle(
+    'ai-coding:resolve-permission',
+    async (
+      _event,
+      sessionId: string,
+      requestId: string,
+      decision: { behavior: 'allow' | 'deny'; message?: string; updatedInput?: Record<string, unknown> }
+    ) => {
+      return resolveSessionPermission(sessionId, requestId, decision)
+    }
+  )
 
   ipcMain.handle('ai-coding:set-effort', async (_event, sessionId: string, effort: string) => {
     return setSessionEffort(sessionId, effort)

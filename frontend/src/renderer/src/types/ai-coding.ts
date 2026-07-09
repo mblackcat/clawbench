@@ -74,6 +74,7 @@ export type CodingContentBlock =
   | { type: 'tool_result'; toolUseId: string; content: string; isError?: boolean }
   | { type: 'raw_output'; text: string }
   | { type: 'ask_user_question'; id: string; questions: AskUserQuestionItem[]; answered?: boolean; answerText?: string }
+  | { type: 'permission_request'; id: string; toolName: string; input: Record<string, unknown>; resolved?: boolean; decision?: 'allow' | 'deny' }
   | { type: 'todo_update'; todos: TodoItem[] }
   | { type: 'context_usage'; inputTokens?: number; cachedInputTokens?: number; outputTokens?: number; usedTokens?: number; contextWindow?: number }
 

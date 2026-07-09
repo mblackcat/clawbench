@@ -18,8 +18,13 @@
 import { BrowserWindow } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs'
+import { randomUUID } from 'crypto'
 import * as logger from '../utils/logger'
-import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import type {
+  SDKUserMessage,
+  PermissionResult,
+  CanUseTool
+} from '@anthropic-ai/claude-agent-sdk'
 import { createMessageQueue, type MessageQueue } from './coding-adapters/message-queue'
 import { processClaudeMessage, createClaudeStreamState, type ClaudeStreamState } from './coding-adapters/claude-stream'
 import { scanAndMergeInstructions } from './coding-adapters/instructions'
@@ -72,6 +77,17 @@ interface SDKSessionState {
   permissionMode: SDKPermissionMode
   /** Current reasoning-effort choice; seeded at spawn and live-toggled via applyFlagSettings. */
   effort: SDKEffort
+  /**
+   * In-flight tool-permission prompts, keyed by requestId. The SDK's canUseTool
+   * callback blocks on these promises until the renderer answers via
+   * resolveSDKPermission(). Cleared (denied) on interrupt/close.
+   */
+  pendingPermissions: Map<string, {
+    resolve: (result: PermissionResult) => void
+    input: Record<string, unknown>
+    signal: AbortSignal
+    onAbort: () => void
+  }>
   env?: Record<string, string | undefined>
   /** Server-side streaming accumulation state. */
   streamState: ClaudeStreamState
@@ -343,6 +359,7 @@ export function launchSDKSession(
     isProcessing: false,
     permissionMode: 'bypassPermissions',  // default — matches old pipe mode behavior
     effort: (effort as SDKEffort) || 'high',
+    pendingPermissions: new Map(),
     env,
     streamState: createClaudeStreamState(),
     onEvent,
@@ -363,6 +380,77 @@ export function launchSDKSession(
   return { success: true }
 }
 
+/**
+ * Build the `canUseTool` permission callback for a session.
+ *
+ * The SDK invokes this before every tool call. Behavior depends on the
+ * session's permission mode:
+ * - `bypassPermissions` / `acceptEdits`: auto-allow (the SDK's own gating in
+ *   these modes matches the old pipe-mode behavior; we don't second-guess it).
+ * - `default` / `plan`: surface a `permission_request` event to the renderer
+ *   and BLOCK on a resolver until the user answers via `resolveSDKPermission`.
+ *   The promise resolves to the SDK `PermissionResult` (allow/deny).
+ */
+function makeCanUseTool(sessionId: string, state: SDKSessionState): CanUseTool {
+  return (toolName, input, { signal, suggestions }) => {
+    // Modes that don't require interactive confirmation resolve immediately.
+    if (state.permissionMode === 'bypassPermissions' || state.permissionMode === 'acceptEdits') {
+      return Promise.resolve({ behavior: 'allow', updatedInput: input } as PermissionResult)
+    }
+
+    const requestId = randomUUID()
+    return new Promise<PermissionResult>((resolve) => {
+      // If the turn is aborted while the prompt is pending, deny so the SDK
+      // can unwind cleanly instead of hanging.
+      const onAbort = (): void => {
+        if (state.pendingPermissions.delete(requestId)) {
+          resolve({ behavior: 'deny', message: 'Interrupted', interrupt: true } as PermissionResult)
+        }
+      }
+      if (signal.aborted) return onAbort()
+      signal.addEventListener('abort', onAbort, { once: true })
+
+      state.pendingPermissions.set(requestId, { resolve, input, signal, onAbort })
+      emit(sessionId, state, {
+        type: 'permission_request',
+        id: requestId,
+        toolName,
+        input,
+        suggestions: (suggestions || []) as unknown as Record<string, unknown>[],
+      })
+    })
+  }
+}
+
+/**
+ * Resolve a pending permission request (called from the IPC layer when the user
+ * answers). `allow` lets the tool run (optionally with edited input); `deny`
+ * blocks it with a message. No-op if the request is unknown/already resolved.
+ */
+export function resolveSDKPermission(
+  sessionId: string,
+  requestId: string,
+  decision: { behavior: 'allow' | 'deny'; updatedInput?: Record<string, unknown>; message?: string },
+): boolean {
+  const state = sdkSessions.get(sessionId)
+  const pending = state?.pendingPermissions.get(requestId)
+  if (!state || !pending) return false
+  state.pendingPermissions.delete(requestId)
+  pending.signal.removeEventListener('abort', pending.onAbort)
+  if (decision.behavior === 'allow') {
+    pending.resolve({
+      behavior: 'allow',
+      updatedInput: decision.updatedInput ?? pending.input,
+    } as PermissionResult)
+  } else {
+    pending.resolve({
+      behavior: 'deny',
+      message: decision.message || 'Denied by user',
+    } as PermissionResult)
+  }
+  return true
+}
+
 /** Build SDK options and start the long-lived query, consuming its stream. */
 async function startQuery(sessionId: string, state: SDKSessionState): Promise<void> {
   const queryFn = await ensureSDK()
@@ -376,6 +464,7 @@ async function startQuery(sessionId: string, state: SDKSessionState): Promise<vo
     allowDangerouslySkipPermissions: state.permissionMode === 'bypassPermissions',
     effort: spawnEffortLevel(state.effort),
     settingSources: ['user', 'project', 'local'],
+    canUseTool: makeCanUseTool(sessionId, state),
   }
   if (claudePath) options.pathToClaudeCodeExecutable = claudePath
   if (state.env) options.env = state.env
@@ -455,7 +544,11 @@ async function consumeQuery(
 /** Interrupt the current turn (like pressing ESC in the CLI). The session stays alive. */
 export async function interruptSDKSession(sessionId: string): Promise<void> {
   const state = sdkSessions.get(sessionId)
-  if (!state?.activeQuery) return
+  if (!state) return
+  // Deny any in-flight permission prompts so the SDK unwinds instead of hanging
+  // on a resolver that will never be answered.
+  denyAllPendingPermissions(state, 'Interrupted')
+  if (!state.activeQuery) return
   try {
     await state.activeQuery.interrupt()
   } catch {
@@ -463,11 +556,23 @@ export async function interruptSDKSession(sessionId: string): Promise<void> {
   }
 }
 
+/** Deny and clear every pending permission prompt for a session. */
+function denyAllPendingPermissions(state: SDKSessionState, message: string): void {
+  for (const [, pending] of state.pendingPermissions) {
+    try { pending.signal.removeEventListener('abort', pending.onAbort) } catch { /* ignore */ }
+    try {
+      pending.resolve({ behavior: 'deny', message, interrupt: true } as PermissionResult)
+    } catch { /* ignore */ }
+  }
+  state.pendingPermissions.clear()
+}
+
 /** Close the SDK session entirely (ends the queue + aborts the query). */
 export function closeSDKSession(sessionId: string): void {
   const state = sdkSessions.get(sessionId)
   if (!state) return
 
+  denyAllPendingPermissions(state, 'Session closed')
   try { state.messageQueue.end() } catch { /* ignore */ }
   try { state.abortController.abort() } catch { /* ignore */ }
   if (state.activeQuery) {

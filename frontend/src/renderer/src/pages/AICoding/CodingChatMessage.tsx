@@ -16,6 +16,7 @@ import { useT } from '../../i18n'
 import { MONO_FONT_STACK } from '../../utils/mono-font'
 import type { CodingMessage, CodingContentBlock, AIToolType } from '../../types/ai-coding'
 import AskUserQuestionBlock from './AskUserQuestionBlock'
+import PermissionRequestBlock from './PermissionRequestBlock'
 import TodoUpdateBlock from './TodoUpdateBlock'
 import ThinkingBlock from '../../components/ThinkingBlock'
 import { externalLinkMarkdownComponents } from '../../utils/markdown-links'
@@ -464,6 +465,18 @@ function renderAssistantBlocks(blocks: CodingContentBlock[], sessionId: string, 
           sessionId={sessionId}
           answered={b.answered}
           answerText={b.answerText}
+        />
+      )
+    } else if (b.type === 'permission_request') {
+      nodes.push(
+        <PermissionRequestBlock
+          key={i}
+          requestId={b.id}
+          toolName={b.toolName}
+          input={b.input}
+          sessionId={sessionId}
+          resolved={b.resolved}
+          decision={b.decision}
         />
       )
     } else if (b.type === 'todo_update') {

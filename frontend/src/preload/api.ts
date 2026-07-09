@@ -471,6 +471,11 @@ export const api = {
       ipcRenderer.invoke('ai-coding:execute-slash-command', sessionId, command),
     setPermissionMode: (sessionId: string, mode: string) =>
       ipcRenderer.invoke('ai-coding:set-permission-mode', sessionId, mode),
+    resolvePermission: (
+      sessionId: string,
+      requestId: string,
+      decision: { behavior: 'allow' | 'deny'; message?: string; updatedInput?: Record<string, unknown> }
+    ) => ipcRenderer.invoke('ai-coding:resolve-permission', sessionId, requestId, decision),
     setEffort: (sessionId: string, effort: string) =>
       ipcRenderer.invoke('ai-coding:set-effort', sessionId, effort),
 

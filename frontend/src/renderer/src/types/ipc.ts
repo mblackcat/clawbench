@@ -476,6 +476,11 @@ export interface ClawBenchAPI {
     interruptSession: (sessionId: string) => Promise<{ success: boolean }>
     executeSlashCommand: (sessionId: string, command: string) => Promise<{ success: boolean; error?: string }>
     setPermissionMode: (sessionId: string, mode: string) => Promise<{ success: boolean; error?: string }>
+    resolvePermission: (
+      sessionId: string,
+      requestId: string,
+      decision: { behavior: 'allow' | 'deny'; message?: string; updatedInput?: Record<string, unknown> }
+    ) => Promise<{ success: boolean; error?: string }>
     setEffort: (sessionId: string, effort: string) => Promise<{ success: boolean; error?: string }>
     onPipeEvent: (callback: (data: { sessionId: string; event: any }) => void) => () => void
     createPty: (sessionId: string) => Promise<{ success: boolean; error?: string }>
