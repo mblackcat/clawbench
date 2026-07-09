@@ -21,6 +21,11 @@ export interface ChatMessage {
   contentParts?: ContentPart[]
   toolCallId?: string
   toolCalls?: Array<{ id: string; name: string; input: Record<string, any> }>
+  // Reasoning/thinking content from a prior assistant turn (DeepSeek thinking_mode,
+  // QwQ, etc.). These providers REQUIRE it to be echoed back on the assistant
+  // message in multi-turn history, otherwise they return HTTP 400:
+  // "The 'reasoning_content' in the thinking must be passed back to the API."
+  reasoningContent?: string
 }
 
 export interface AttachmentInfo {
@@ -131,6 +136,8 @@ function buildOpenAIMessages(messages: ChatMessage[], withTools = false): any[] 
       return {
         role: 'assistant',
         content: m.content || null,
+        // Echo reasoning_content back for thinking models (DeepSeek thinking_mode, etc.)
+        ...(m.reasoningContent ? { reasoning_content: m.reasoningContent } : {}),
         tool_calls: m.toolCalls.map((tc) => ({
           id: tc.id,
           type: 'function',
@@ -152,6 +159,12 @@ function buildOpenAIMessages(messages: ChatMessage[], withTools = false): any[] 
         }
       }
       return { role: m.role, content: parts.length > 0 ? parts : m.content }
+    }
+    // Echo reasoning_content back for thinking models (assistant messages only).
+    // Self-gating: only present when a model actually produced reasoning, so
+    // non-reasoning models produce identical requests to before.
+    if (m.role === 'assistant' && m.reasoningContent) {
+      return { role: m.role, content: m.content, reasoning_content: m.reasoningContent }
     }
     return { role: m.role, content: m.content }
   })

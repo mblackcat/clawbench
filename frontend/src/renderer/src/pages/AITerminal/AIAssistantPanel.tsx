@@ -564,7 +564,12 @@ const AIAssistantPanel: React.FC = () => {
       // Build initial messages
       const aiMsgs: Array<any> = [
         { role: 'system', content: systemContent },
-        ...currentMessages.map(m => ({ role: m.role, content: m.content })),
+        ...currentMessages.map(m => ({
+          role: m.role,
+          content: m.content,
+          // Echo reasoning_content back for thinking models (DeepSeek thinking_mode, etc.)
+          ...(m.thinking ? { reasoningContent: m.thinking } : {})
+        })),
         { role: 'user', content: inputValue }
       ]
 
@@ -623,6 +628,8 @@ const AIAssistantPanel: React.FC = () => {
           {
             role: 'assistant',
             content: result.content || '',
+            // Echo reasoning_content back on tool-calling turns for thinking models
+            reasoningContent: result.thinking || undefined,
             toolCalls: [{ id: result.toolCallId, name: result.toolName, input: result.toolInput }]
           },
           {

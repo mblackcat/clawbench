@@ -1057,6 +1057,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       conversationId: activeConversationId,
       role: 'assistant',
       content: tc.streamedContent || '',
+      // Preserve this round's reasoning so it can be echoed back as reasoning_content
+      // on the next API call (required by DeepSeek thinking_mode and similar models).
+      thinkingContent: get().streamingThinkingContent || undefined,
       modelId: null,
       metadata: {
         toolCalls: [
@@ -1104,7 +1107,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
         // Build history from all messages, inlining tool call outputs into text
         const allMessages = get().messages
-        const historyForAI: Array<{ role: 'user' | 'assistant'; content: string }> = []
+        const historyForAI: Array<{ role: 'user' | 'assistant'; content: string; reasoningContent?: string }> = []
         for (const m of allMessages) {
           const role = m.role === 'assistant' ? 'assistant' as const : 'user' as const
           let content = m.content || ''
@@ -1121,7 +1124,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
           // Skip empty messages
           if (!content.trim()) continue
-          historyForAI.push({ role, content })
+          // Echo reasoning_content back for thinking models (assistant messages only)
+          historyForAI.push({
+            role,
+            content,
+            ...(role === 'assistant' && m.thinkingContent ? { reasoningContent: m.thinkingContent } : {})
+          })
         }
         // Append a user instruction to summarize
         historyForAI.push({
@@ -1225,12 +1233,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
           return {
             role: 'assistant' as const,
             content: m.content,
+            // Echo reasoning_content back for thinking models on tool-calling turns
+            ...(m.thinkingContent ? { reasoningContent: m.thinkingContent } : {}),
             toolCalls: [
               { id: tc.toolCallId, name: tc.toolName, input: tc.input }
             ]
           }
         }
-        return { role: m.role, content: m.content }
+        return {
+          role: m.role,
+          content: m.content,
+          ...(m.role === 'assistant' && m.thinkingContent ? { reasoningContent: m.thinkingContent } : {})
+        }
       })
       // Add tool result
       historyForAI.push({
@@ -1428,7 +1442,12 @@ async function streamBuiltin(
 ): Promise<void> {
   const messages = useChatStore
     .getState()
-    .messages.map((m) => ({ role: m.role, content: m.content }))
+    .messages.map((m) => ({
+      role: m.role,
+      content: m.content,
+      // Echo reasoning_content back for thinking models (DeepSeek thinking_mode, etc.)
+      ...(m.thinkingContent ? { reasoningContent: m.thinkingContent } : {})
+    }))
 
   // Build dynamic system prompt
   let customPrompt = ''
@@ -1553,7 +1572,12 @@ async function streamLocal(
 ): Promise<void> {
   const messages = useChatStore
     .getState()
-    .messages.map((m) => ({ role: m.role, content: m.content }))
+    .messages.map((m) => ({
+      role: m.role,
+      content: m.content,
+      // Echo reasoning_content back for thinking models (DeepSeek thinking_mode, etc.)
+      ...(m.thinkingContent ? { reasoningContent: m.thinkingContent } : {})
+    }))
 
   // Build dynamic system prompt
   let customPrompt = ''

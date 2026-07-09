@@ -393,7 +393,13 @@ const EditorChatPanel: React.FC<EditorChatPanelProps> = ({
     const apiMessages: Array<any> = [{ role: 'system', content: SUBAPP_CHAT_SYSTEM_PROMPT }]
     for (const m of messages) {
       if (m.role === 'user') apiMessages.push({ role: 'user', content: m.content })
-      else if (m.content) apiMessages.push({ role: 'assistant', content: m.content })
+      else if (m.content)
+        // Echo reasoning_content back for thinking models (DeepSeek thinking_mode, etc.)
+        apiMessages.push({
+          role: 'assistant',
+          content: m.content,
+          ...(m.thinking ? { reasoningContent: m.thinking } : {})
+        })
     }
     apiMessages.push({ role: 'user', content: text })
 
@@ -440,6 +446,8 @@ const EditorChatPanel: React.FC<EditorChatPanelProps> = ({
         apiMessages.push({
           role: 'assistant',
           content: res.content,
+          // Echo reasoning_content back on tool-calling turns for thinking models
+          reasoningContent: res.thinking || undefined,
           toolCalls: [{ id: res.toolCallId, name: res.toolName, input: res.toolInput }]
         })
 
