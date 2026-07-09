@@ -148,6 +148,20 @@ const CodingTerminalView: React.FC<CodingTerminalViewProps> = ({ sessionId }) =>
     termRef.current = term
     fitAddonRef.current = fitAddon
 
+    // Re-measure character cell size once the terminal's fontFamily has
+    // actually resolved. xterm.js only re-runs its cell-width measurement
+    // when the fontFamily/fontSize *option* changes, not when the browser
+    // finishes loading a font — so if the intended font resolves after
+    // xterm's first measurement, the cached cell width no longer matches
+    // the rendered glyphs, which throws off drag-selection's click-to-column
+    // math (last character under the cursor needs an extra column of drag
+    // before it's included in the selection).
+    document.fonts.ready.then(() => {
+      if (termRef.current !== term) return
+      fitAddon.fit()
+      term.refresh(0, term.rows - 1)
+    })
+
     term.attachCustomKeyEventHandler((event) => {
       if (event.type === 'keydown' && (event.isComposing || event.keyCode === 229)) {
         return false
