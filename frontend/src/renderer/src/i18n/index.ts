@@ -1657,6 +1657,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'task.fri': '周五',
     'task.sat': '周六',
 
+    // App splash / loading mask
+    'app.splashSlogan': '好好学习，天天向上',
+
     // Setup wizard
     'setup.welcomeTitle': '欢迎使用 ClawBench',
     'setup.welcomeDesc': '一站式开发者工具平台，集成 AI 助理、编码、终端与工作区管理',
@@ -3415,6 +3418,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'task.thu': 'Thu',
     'task.fri': 'Fri',
     'task.sat': 'Sat',
+
+    // App splash / loading mask
+    'app.splashSlogan': 'Study hard, improve every day',
 
     // Setup wizard
     'setup.welcomeTitle': 'Welcome to ClawBench',

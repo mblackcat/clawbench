@@ -1,0 +1,97 @@
+.app-splash-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-splash-backdrop {
+  position: absolute;
+  inset: 0;
+  opacity: 0.92;
+  backdrop-filter: blur(6px) saturate(120%);
+  -webkit-backdrop-filter: blur(6px) saturate(120%);
+}
+
+.app-splash-content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.app-splash-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  animation: appSplashFadeInUp 0.6s ease-out both;
+}
+
+.app-splash-icon {
+  width: 64px;
+  height: 64px;
+  animation: appSplashBreath 3s ease-in-out infinite;
+}
+
+.app-splash-slogan {
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.app-splash-dots {
+  display: flex;
+  gap: 6px;
+  margin-top: 22px;
+  animation: appSplashFadeInUp 0.6s ease-out 0.15s both;
+}
+
+.app-splash-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  animation: appSplashDotPulse 1.4s ease-in-out infinite;
+}
+
+.app-splash-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.app-splash-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes appSplashFadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes appSplashBreath {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+@keyframes appSplashDotPulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.85);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

@@ -4,6 +4,7 @@ import { Spin } from 'antd'
 import AppLayout from './components/Layout/AppLayout'
 import RequireAuth from './components/RequireAuth'
 import SessionGuard from './components/SessionGuard'
+import AppSplashScreen from './components/AppSplashScreen'
 import LoginPage from './pages/Login/LoginPage'
 import InstalledAppsPage from './pages/Workbench/InstalledAppsPage'
 import AppLibraryPage from './pages/Workbench/AppLibraryPage'
@@ -47,7 +48,7 @@ const AppsRedirect: React.FC = () => {
 // Root redirect that checks setup status
 const RootRedirect: React.FC = () => {
   const { hasCompletedSetup, loading } = useSettingsStore()
-  if (loading) return <LazyFallback />
+  if (loading) return <AppSplashScreen />
   if (!hasCompletedSetup) return <Navigate to="/setup" replace />
   return <Navigate to={localStorage.getItem('lastRoute') || '/ai-chat'} replace />
 }
