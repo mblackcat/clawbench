@@ -20,7 +20,7 @@ export interface AIModelConfig {
   models: string[]
   enabled: boolean
   apiVersion?: string
-  capabilities?: ('image-gen' | 'tool-use')[]
+  capabilities?: ('image-gen' | 'tool-use' | 'vision')[]
 }
 
 export interface ImageGenConfig {
@@ -307,6 +307,12 @@ export interface ClawBenchAPI {
     disconnect: (id: string) => Promise<{ success: boolean }>
     listTools: () => Promise<any[]>
     callTool: (serverId: string, toolName: string, args: Record<string, unknown>) => Promise<{ content: string; isError: boolean }>
+    callToolWithAttachments: (
+      serverId: string,
+      toolName: string,
+      args: Record<string, unknown>,
+      attachmentPaths: string[]
+    ) => Promise<{ content: string; isError: boolean }>
     getStatus: () => Promise<Array<{ id: string; name: string; connected: boolean; toolCount: number }>>
     connectAllEnabled: () => Promise<Array<{ id: string; success: boolean; error?: string }>>
   }

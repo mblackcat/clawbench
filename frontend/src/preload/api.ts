@@ -272,6 +272,12 @@ export const api = {
     listTools: () => ipcRenderer.invoke('mcp:list-tools'),
     callTool: (serverId: string, toolName: string, args: Record<string, unknown>) =>
       ipcRenderer.invoke('mcp:call-tool', { serverId, toolName, args }),
+    callToolWithAttachments: (
+      serverId: string,
+      toolName: string,
+      args: Record<string, unknown>,
+      attachmentPaths: string[]
+    ) => ipcRenderer.invoke('mcp:call-tool-with-attachments', { serverId, toolName, args, attachmentPaths }),
     getStatus: () => ipcRenderer.invoke('mcp:get-status'),
     connectAllEnabled: () => ipcRenderer.invoke('mcp:connect-all-enabled'),
   },

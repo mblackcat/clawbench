@@ -20,7 +20,7 @@ export interface AIModelConfig {
   models: string[]
   enabled: boolean
   apiVersion?: string
-  capabilities?: ('image-gen' | 'tool-use')[]
+  capabilities?: ('image-gen' | 'tool-use' | 'vision')[]
 }
 
 export interface ImageGenConfig {

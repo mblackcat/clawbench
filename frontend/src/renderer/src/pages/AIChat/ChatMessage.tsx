@@ -20,7 +20,7 @@ import {
   DislikeFilled,
 } from '@ant-design/icons'
 import type { Message, ChatAttachment } from '../../types/chat'
-import { API_BASE_URL } from '../../services/apiClient'
+import { API_BASE_URL, apiClient } from '../../services/apiClient'
 import ToolCallCard from './ToolCallCard'
 import SearchSourcesCard from './SearchSourcesCard'
 import ThinkingBlock from '../../components/ThinkingBlock'
@@ -175,13 +175,59 @@ function getFileIcon(mimeType: string) {
 
 function AttachmentPreview({ att }: { att: ChatAttachment }) {
   const { token } = theme.useToken()
+  const t = useT()
   const isImage = att.mimeType.startsWith('image/')
+  // Local models never upload to the backend — they carry a ready-to-use data URI.
+  // Backend (builtin-model) attachments only have an id, and the download route requires
+  // a JWT bearer token, which a plain <img src> can't send — so we fetch it as an
+  // authenticated Blob and hand the resulting object URL to <Image> instead.
+  const [resolvedSrc, setResolvedSrc] = useState<string | undefined>(att.previewUrl)
+  const [loadFailed, setLoadFailed] = useState(false)
+
+  useEffect(() => {
+    if (att.previewUrl || !isImage) return
+    let cancelled = false
+    let objectUrl: string | undefined
+    setLoadFailed(false)
+    apiClient
+      .downloadChatAttachment(att.attachmentId)
+      .then((blob) => {
+        if (cancelled) return
+        objectUrl = URL.createObjectURL(blob)
+        setResolvedSrc(objectUrl)
+      })
+      .catch(() => {
+        if (!cancelled) setLoadFailed(true)
+      })
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [att.attachmentId, att.previewUrl, isImage])
 
   if (isImage) {
-    const url = `${API_BASE_URL}/chat/attachments/${att.attachmentId}/download`
+    if (!resolvedSrc) {
+      return (
+        <div
+          style={{
+            width: 200,
+            height: 120,
+            borderRadius: 8,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: token.colorFillTertiary,
+            color: token.colorTextTertiary,
+            fontSize: 12,
+          }}
+        >
+          {loadFailed ? <FileOutlined style={{ fontSize: 20 }} /> : t('chat.loadingImage')}
+        </div>
+      )
+    }
     return (
       <Image
-        src={url}
+        src={resolvedSrc}
         width={200}
         style={{ borderRadius: 8, maxHeight: 300, objectFit: 'contain' }}
       />

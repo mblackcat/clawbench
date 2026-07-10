@@ -30,6 +30,16 @@ function localId(prefix = 'local'): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+/** Read a File as a base64 data URI (for session-only attachment previews). */
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(reader.error || new Error('Failed to read file'))
+    reader.readAsDataURL(file)
+  })
+}
+
 // ============ Local-mode persistence helpers ============
 const LOCAL_CONV_KEY = 'clawbench_local_chat_conversations'
 const localMsgKey = (id: string) => `clawbench_local_chat_messages_${id}`
@@ -163,6 +173,10 @@ interface ChatState {
   webSearchEnabled: boolean
   feishuKitsEnabled: boolean
   searchSources: SearchSource[]
+  // Absolute file paths of this turn's image attachments (local models only) — kept
+  // around so an auto-registered MCP vision-fallback tool call can be injected with
+  // the real image bytes, since the model itself can't produce them as an argument.
+  currentTurnAttachmentPaths: string[]
 
   // Agent state
   agentPhase: AgentPhase
@@ -362,6 +376,50 @@ async function getAvailableTools(
   return tools
 }
 
+/** MCP tools heuristically detected (by the main process) as image-recognition tools. */
+async function getVisionMcpTools(): Promise<
+  Array<{ name: string; description: string; inputSchema: Record<string, any> }>
+> {
+  try {
+    const mcpTools = await window.api.mcp.listTools()
+    return mcpTools
+      .filter((t: any) => t.isVisionTool)
+      .map((t: any) => ({ name: t.name, description: t.description || '', inputSchema: t.inputSchema || {} }))
+  } catch {
+    return []
+  }
+}
+
+/** Whether a local model config has been manually marked as natively supporting vision. */
+function localModelSupportsVision(modelConfigId?: string): boolean {
+  if (!modelConfigId) return false
+  const cfg = useAIModelStore.getState().localModels.find((c) => c.id === modelConfigId)
+  return !!cfg?.capabilities?.includes('vision')
+}
+
+/**
+ * Merge in an auto-detected MCP vision tool for local models that don't natively
+ * support vision, when this turn carries image attachments — even if general
+ * tool-calling is switched off, otherwise the model has no way to ever "see" the
+ * image at all. The model still decides for itself whether to call it.
+ */
+async function withVisionFallbackTools(
+  tools: Array<{ name: string; description: string; inputSchema: Record<string, any> }> | undefined,
+  modelSource: 'builtin' | 'local',
+  modelConfigId: string | undefined,
+  hasImageAttachments: boolean
+): Promise<Array<{ name: string; description: string; inputSchema: Record<string, any> }> | undefined> {
+  if (modelSource !== 'local' || !hasImageAttachments || localModelSupportsVision(modelConfigId)) {
+    return tools
+  }
+  const visionTools = await getVisionMcpTools()
+  if (visionTools.length === 0) return tools
+  const existingNames = new Set((tools || []).map((t) => t.name))
+  const toAdd = visionTools.filter((t) => !existingNames.has(t.name))
+  if (toAdd.length === 0) return tools
+  return [...(tools || []), ...toAdd]
+}
+
 /**
  * Execute a tool and return the result string
  */
@@ -394,6 +452,19 @@ async function executeToolCall(
     const mcpTools = await window.api.mcp.listTools()
     const mcpTool = mcpTools.find((t: any) => t.name === toolName)
     if (mcpTool && mcpTool.serverId) {
+      // Vision-fallback tool: the model decided to call it, but it cannot itself
+      // produce real image bytes as an argument — inject this turn's actual
+      // attachment(s) into whichever schema field looks like the image param.
+      const attachmentPaths = useChatStore.getState().currentTurnAttachmentPaths
+      if (mcpTool.isVisionTool && attachmentPaths.length > 0) {
+        const result = await window.api.mcp.callToolWithAttachments(
+          mcpTool.serverId,
+          toolName,
+          input,
+          attachmentPaths
+        )
+        return { output: result.content, isError: result.isError }
+      }
       const result = await window.api.mcp.callTool(mcpTool.serverId, toolName, input)
       return { output: result.content, isError: result.isError }
     }
@@ -452,6 +523,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   webSearchEnabled: false,
   feishuKitsEnabled: false,
   searchSources: [],
+  currentTurnAttachmentPaths: [],
 
   agentPhase: 'idle' as AgentPhase,
   agentStepDescription: '',
@@ -803,12 +875,32 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // Save user message
     let userMsg: Message
     if (isLocal()) {
+      // Local models never upload attachments to the backend, so the chat bubble has
+      // nothing to fetch from later — capture a data URI now (before pendingFiles is
+      // cleared) so the image can still be shown in the conversation history.
+      let localAttachments: ChatAttachment[] | undefined
+      if (pendingFiles && pendingFiles.length > 0) {
+        try {
+          localAttachments = await Promise.all(
+            pendingFiles.map(async (pf) => ({
+              attachmentId: pf.id,
+              fileName: pf.file.name,
+              fileSize: pf.file.size,
+              mimeType: pf.file.type,
+              previewUrl: pf.file.type.startsWith('image/') ? await readFileAsDataUrl(pf.file) : undefined
+            }))
+          )
+        } catch (err) {
+          console.error('Failed to build local attachment previews:', err)
+        }
+      }
       userMsg = {
         messageId: localId('msg'),
         conversationId: activeConversationId,
         role: 'user',
         content,
         modelId: null,
+        attachments: localAttachments,
         createdAt: Date.now()
       }
     } else {
@@ -854,6 +946,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
       } catch {
         tools = undefined
       }
+    }
+
+    // MCP vision fallback: local models that aren't marked as vision-capable can't
+    // read the attached image at all — offer an auto-detected MCP image-recognition
+    // tool (if one is connected) so the model can call it itself, and remember the
+    // attachment paths so the actual call can be injected with real image bytes.
+    const imagePaths = (pendingFiles || [])
+      .filter((pf) => pf.file.type.startsWith('image/'))
+      .map((pf) => (pf.file as any).path as string | undefined)
+      .filter((p): p is string => !!p)
+    if (modelSource === 'local' && imagePaths.length > 0 && !localModelSupportsVision(modelConfigId)) {
+      tools = await withVisionFallbackTools(tools, modelSource, modelConfigId, true)
+      set({ currentTurnAttachmentPaths: imagePaths })
+    } else {
+      set({ currentTurnAttachmentPaths: [] })
     }
 
     if (modelSource === 'builtin') {
@@ -1264,6 +1371,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
         } catch {
           tools = undefined
         }
+      }
+      // Keep offering the vision-fallback tool across follow-up turns in this same
+      // conversation cycle (e.g. the model may retry or call it after another tool).
+      if (get().currentTurnAttachmentPaths.length > 0) {
+        tools = await withVisionFallbackTools(tools, modelSource, selectedModelConfigId || undefined, true)
       }
 
       if (modelSource === 'builtin') {

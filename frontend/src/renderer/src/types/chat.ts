@@ -24,6 +24,12 @@ export interface ChatAttachment {
   fileName: string
   fileSize: number
   mimeType: string
+  /**
+   * Data URI for local, session-only preview (used by local/custom models, which never
+   * upload attachments to the backend). When present, the UI renders this directly
+   * instead of fetching `/chat/attachments/:id/download`.
+   */
+  previewUrl?: string
 }
 
 export interface PendingAttachment {
@@ -74,6 +80,7 @@ export interface AIModelConfig {
   apiKey: string
   models: string[]
   enabled: boolean
+  capabilities?: ('image-gen' | 'tool-use' | 'vision')[]
 }
 
 export interface ConversationListResponse {

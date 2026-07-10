@@ -34,14 +34,25 @@ const ChatInput: React.FC = () => {
   const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([])
   const [mcpLoading, setMcpLoading] = useState(false)
   const { streaming, activeConversationId, sendMessage, createConversation, toolsEnabled, setToolsEnabled, prefillInput, setPrefillInput } = useChatStore()
-  const { selectedModelId, selectedModelSource, selectedModelConfigId, builtinModels } = useAIModelStore()
+  const { selectedModelId, selectedModelSource, selectedModelConfigId, builtinModels, localModels } = useAIModelStore()
   const { token } = theme.useToken()
   const { message, modal } = App.useApp()
   const textAreaRef = useRef<any>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [visionMcpAvailable, setVisionMcpAvailable] = useState(false)
 
   const selectedModel = builtinModels.find((m) => m.id === selectedModelId)
   const supportsImagen = selectedModel?.provider === 'openai' || selectedModel?.provider === 'azure-openai'
+
+  // Does this local model lack native vision, and do we have an MCP tool that can
+  // read images for it instead? Drives a small hint near the image attachment.
+  const selectedLocalModel = localModels.find((m) => m.id === selectedModelConfigId)
+  const localModelNeedsVisionFallback =
+    selectedModelSource === 'local' &&
+    !!selectedLocalModel &&
+    !selectedLocalModel.capabilities?.includes('vision') &&
+    visionMcpAvailable &&
+    pendingFiles.some((pf) => pf.file.type.startsWith('image/'))
 
   // Load saved chat preferences on mount + check Feishu availability
   useEffect(() => {
@@ -58,6 +69,9 @@ const ChatInput: React.FC = () => {
       // If not available, force disable
       if (!res.available) setFeishuKitsEnabled(false)
     }).catch(() => setFeishuAvailable(false))
+    window.api.mcp.listTools().then((tools: any[]) => {
+      setVisionMcpAvailable(tools.some((t) => t.isVisionTool))
+    }).catch(() => setVisionMcpAvailable(false))
   }, [])
 
   // Consume prefill input from store (e.g. prompt "试试" button)
@@ -429,6 +443,12 @@ const ChatInput: React.FC = () => {
           />
         )}
       </div>
+
+      {localModelNeedsVisionFallback && (
+        <div style={{ marginBottom: 6, fontSize: 12, color: token.colorTextTertiary }}>
+          {t('chat.visionFallbackHint')}
+        </div>
+      )}
 
       {/* Pending file previews */}
       {pendingFiles.length > 0 && (

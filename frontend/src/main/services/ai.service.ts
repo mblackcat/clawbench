@@ -56,11 +56,19 @@ function getModelConfigById(configId: string): AIModelConfig | undefined {
 }
 
 /**
- * Build multimodal messages from attachments
+ * Build multimodal messages from attachments.
+ *
+ * When `supportsVision` is false, the model can't natively read images — embedding
+ * an `image_base64` content part would just get rejected/ignored by the provider.
+ * Instead we leave the message as plain text and append a hint about the attached
+ * image(s), so a model that has an MCP vision-fallback tool available (see
+ * useChatStore's `withVisionFallbackTools`) knows to call it rather than silently
+ * ignoring the picture.
  */
 function buildMessagesWithAttachments(
   messages: ChatMessage[],
-  attachments?: AttachmentInfo[]
+  attachments?: AttachmentInfo[],
+  supportsVision = true
 ): ChatMessage[] {
   if (!attachments || attachments.length === 0) return messages
 
@@ -70,10 +78,22 @@ function buildMessagesWithAttachments(
   const lastMsg = result[lastUserIdx]
   if (!lastMsg || lastMsg.role !== 'user') return result
 
+  const imageAttachments = attachments.filter((att) => att.mimeType.startsWith('image/'))
+  if (imageAttachments.length === 0) return result
+
+  if (!supportsVision) {
+    const names = imageAttachments.map((att) => att.fileName).join(', ')
+    result[lastUserIdx] = {
+      ...lastMsg,
+      content: `${lastMsg.content}\n\n[用户上传了图片附件: ${names}。你本身无法直接查看图片，如需了解图片内容，请调用可用的识图工具。]`
+    }
+    return result
+  }
+
   const parts: ContentPart[] = [{ type: 'text', text: lastMsg.content }]
-  for (const att of attachments) {
+  for (const att of imageAttachments) {
     try {
-      if (fs.existsSync(att.filePath) && att.mimeType.startsWith('image/')) {
+      if (fs.existsSync(att.filePath)) {
         const fileData = fs.readFileSync(att.filePath)
         parts.push({
           type: 'image_base64',
@@ -454,7 +474,8 @@ export async function streamChat(
   const actualModelId = modelId || config.models[0] || config.name
 
   // Build multimodal messages if attachments provided
-  const finalMessages = buildMessagesWithAttachments(messages, attachments)
+  const supportsVision = !!config.capabilities?.includes('vision')
+  const finalMessages = buildMessagesWithAttachments(messages, attachments, supportsVision)
 
   doStream(window, taskId, config, actualModelId, finalMessages, abortController.signal, tools, enableThinking, webSearchEnabled)
     .catch((err) => {

@@ -853,6 +853,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'aiModel.no': '否',
     'aiModel.imageGen': '图片生成',
     'aiModel.toolUse': '工具调用',
+    'aiModel.vision': '读图',
     'aiModel.formName': '名称',
     'aiModel.formNameRequired': '请输入名称',
     'aiModel.formNamePlaceholder': '例如：GPT-4o',
@@ -868,6 +869,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'aiModel.formModels': '模型列表',
     'aiModel.formModelsPlaceholder': '输入模型名称后回车添加，例如 gpt-4o',
     'aiModel.formCapabilities': '模型能力',
+    'aiModel.formCapabilitiesVisionHint': '未勾选"读图"时，若已连接可识别图片的 MCP 工具，发送图片时会自动提供该工具供模型调用识图',
     'aiModel.formEnabled': '启用',
     'aiModel.save': '保存',
 
@@ -1184,6 +1186,8 @@ const translations: Record<Lang, Record<string, string>> = {
     // Chat store
     'chat.newConversation': '新对话',
     'chat.uploadFailed': '文件上传失败',
+    'chat.loadingImage': '图片加载中...',
+    'chat.visionFallbackHint': '当前模型不支持读图，发送后将自动通过已连接的 MCP 识图工具识别图片内容',
     'chat.sendFailedMsg': '消息发送失败，请检查后端服务是否正常运行',
     'chat.exportTitle': '对话',
     'chat.roleUser': '用户',
@@ -2640,6 +2644,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'aiModel.no': 'No',
     'aiModel.imageGen': 'Image Generation',
     'aiModel.toolUse': 'Tool Use',
+    'aiModel.vision': 'Vision',
     'aiModel.formName': 'Name',
     'aiModel.formNameRequired': 'Please enter a name',
     'aiModel.formNamePlaceholder': 'e.g. GPT-4o',
@@ -2655,6 +2660,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'aiModel.formModels': 'Model List',
     'aiModel.formModelsPlaceholder': 'Enter model name and press Enter, e.g. gpt-4o',
     'aiModel.formCapabilities': 'Model Capabilities',
+    'aiModel.formCapabilitiesVisionHint': "When \"Vision\" is unchecked, if an image-recognition MCP tool is connected, it will be auto-offered to the model whenever an image is sent",
     'aiModel.formEnabled': 'Enabled',
     'aiModel.save': 'Save',
 
@@ -2971,6 +2977,8 @@ const translations: Record<Lang, Record<string, string>> = {
     // Chat store
     'chat.newConversation': 'New Chat',
     'chat.uploadFailed': 'File upload failed',
+    'chat.loadingImage': 'Loading image...',
+    'chat.visionFallbackHint': "This model can't read images natively — a connected MCP vision tool will be used to describe it after sending",
     'chat.sendFailedMsg': 'Failed to send message. Please check if the backend service is running.',
     'chat.exportTitle': 'Conversation',
     'chat.roleUser': 'User',
