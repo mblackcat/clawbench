@@ -66,7 +66,7 @@ if __name__ == "__main__":
   "supported_workspace_types": ["git", "svn", "perforce"],
   "confirm_before_run": false,
   "published": false,
-  "min_sdk_version": "1.0.0",
+  "min_sdk_version": "1.1.0",
   "params": [
     {
       "name": "param_key",
@@ -83,6 +83,47 @@ if __name__ == "__main__":
 
 Param types: \`string\` | \`boolean\` | \`number\` | \`enum\` (needs \`options\`) | \`path\` | \`text\` (multi-line).
 \`supported_workspace_types\` empty = workspace-agnostic.
+
+## Dynamic enum options (SDK 1.1.0+)
+
+An \`enum\` parameter can opt in to manual refresh with an App-owned slot:
+
+\`\`\`json
+{
+  "name": "model",
+  "type": "enum",
+  "label": "Model",
+  "options": ["fallback-model"],
+  "options_slot": "models"
+}
+\`\`\`
+
+The App performs both fetching and parsing, then returns final strings:
+
+\`\`\`python
+import json
+import urllib.request
+
+class MyApp(ClawBenchApp):
+    def resolve_slot(self, slot: str) -> object:
+        if slot == "models":
+            with urllib.request.urlopen("https://example.test/v1/models", timeout=15) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            options = [item["id"] for item in payload.get("data", []) if item.get("id")]
+            if not options:
+                raise RuntimeError("provider returned no models")
+            return {"options": options, "default": options[0]}
+        return super().resolve_slot(slot)
+\`\`\`
+
+ClawBench invokes the slot in a short-lived process and the SDK emits:
+
+\`\`\`json
+{"type": "slot_result", "slot": "models", "data": {"options": ["model-a"], "default": "model-a"}}
+\`\`\`
+
+The launch sidebar stays open while refreshing. Successful values use a session-only cache keyed by App version, parameter, and slot. Static \`options\` remain the initial and failure fallback. Apps must not rewrite manifest.json to refresh parameter options.
+
 
 ## JSON-line output protocol
 

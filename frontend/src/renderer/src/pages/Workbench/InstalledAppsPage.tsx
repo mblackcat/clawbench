@@ -1227,6 +1227,7 @@ const InstalledAppsPage: React.FC = () => {
         onClose={() => setDrawerOpen(false)}
         manifest={drawerManifest}
         initialValues={drawerInitialValues}
+        resolveSlot={window.api.subapp.resolveSlot}
         onSubmit={handleDrawerSubmit}
       />
 

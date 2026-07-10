@@ -8,6 +8,7 @@ export interface ParamDef {
   required?: boolean
   default?: unknown
   options?: string[] // for enum type
+  options_slot?: string // optional App resolver slot for dynamic enum options
 }
 
 export interface SubAppManifest {

@@ -17,6 +17,8 @@ export const api = {
   subapp: {
     list: () => ipcRenderer.invoke('subapp:list'),
     getManifest: (appId: string) => ipcRenderer.invoke('subapp:get-manifest', appId),
+    resolveSlot: (appId: string, slot: string, params?: Record<string, unknown>) =>
+      ipcRenderer.invoke('subapp:resolve-slot', appId, slot, params),
     execute: (appId: string, params?: Record<string, unknown>) =>
       ipcRenderer.invoke('subapp:execute', appId, params),
     cancel: (taskId: string) => ipcRenderer.invoke('subapp:cancel', taskId),

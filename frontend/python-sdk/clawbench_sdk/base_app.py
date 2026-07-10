@@ -12,6 +12,7 @@ from clawbench_sdk.output import (
     emit_output as _emit_output,
     emit_progress as _emit_progress,
     emit_result as _emit_result,
+    emit_slot_result as _emit_slot_result,
 )
 from clawbench_sdk.params import WorkspaceInfo
 
@@ -49,8 +50,14 @@ class ClawBenchApp(ABC):
             required=True,
             help="Path to a JSON file containing workspace information.",
         )
+        parser.add_argument(
+            "--slot",
+            required=False,
+            help="Resolve a named host slot instead of running the App.",
+        )
 
         args = parser.parse_args()
+        self.requested_slot: Optional[str] = args.slot
 
         # Load parameter values from the JSON file.
         with open(args.params, "r", encoding="utf-8") as f:
@@ -74,6 +81,10 @@ class ClawBenchApp(ABC):
     def run(self) -> None:
         """Execute the app logic.  Subclasses must implement this method."""
         ...
+
+    def resolve_slot(self, slot: str) -> object:
+        """Resolve a named host request with JSON-serializable data."""
+        raise NotImplementedError(f"Unknown slot: {slot}")
 
     # ------------------------------------------------------------------
     # Convenience wrappers that delegate to the output module
@@ -116,7 +127,13 @@ class ClawBenchApp(ABC):
         """
         try:
             app = cls()
-            app.run()
+            if app.requested_slot:
+                _emit_slot_result(
+                    app.requested_slot,
+                    app.resolve_slot(app.requested_slot),
+                )
+            else:
+                app.run()
         except SystemExit:
             # Re-raise so argparse errors propagate correctly.
             raise

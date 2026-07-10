@@ -74,6 +74,11 @@ export interface ClawBenchAPI {
       source: 'user'
     }>>
     getManifest: (appId: string) => Promise<import('./subapp').SubAppManifest>
+    resolveSlot: (
+      appId: string,
+      slot: string,
+      params?: Record<string, unknown>
+    ) => Promise<unknown>
     execute: (
       appId: string,
       params?: Record<string, unknown>
