@@ -341,6 +341,15 @@ export interface ClawBenchAPI {
     detectAll: () => Promise<import('./local-env').LocalEnvDetectionResult>
     detectOne: (toolId: string) => Promise<import('./local-env').ToolDetectionResult>
     install: (toolId: string) => Promise<import('./local-env').ToolInstallResult>
+    uninstall: (toolId: string) => Promise<import('./local-env').ToolInstallResult>
+    upgrade: (toolId: string) => Promise<import('./local-env').ToolInstallResult>
+    listPipPackages: (pythonPath?: string) => Promise<import('./local-env').PackageListResult>
+    uninstallPipPackage: (
+      packageName: string,
+      pythonPath?: string
+    ) => Promise<import('./local-env').ToolInstallResult>
+    listNpmPackages: () => Promise<import('./local-env').PackageListResult>
+    uninstallNpmPackage: (packageName: string) => Promise<import('./local-env').ToolInstallResult>
   }
   openclaw: {
     checkInstalled: () => Promise<import('./openclaw').OpenClawInstallCheck>
@@ -480,6 +489,11 @@ export interface ClawBenchAPI {
       sessionId: string,
       requestId: string,
       decision: { behavior: 'allow' | 'deny'; message?: string; updatedInput?: Record<string, unknown> }
+    ) => Promise<{ success: boolean; error?: string }>
+    answerQuestion: (
+      sessionId: string,
+      questionId: string,
+      answers: Record<string, string>
     ) => Promise<{ success: boolean; error?: string }>
     setEffort: (sessionId: string, effort: string) => Promise<{ success: boolean; error?: string }>
     onPipeEvent: (callback: (data: { sessionId: string; event: any }) => void) => () => void

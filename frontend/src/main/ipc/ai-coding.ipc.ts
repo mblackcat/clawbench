@@ -24,6 +24,7 @@ import {
   executeSessionSlashCommand,
   setSessionPermissionMode,
   resolveSessionPermission,
+  answerSessionQuestion,
   setSessionEffort,
   getGroups,
   createGroup,
@@ -168,6 +169,13 @@ export function registerAICodingIpc(): void {
       decision: { behavior: 'allow' | 'deny'; message?: string; updatedInput?: Record<string, unknown> }
     ) => {
       return resolveSessionPermission(sessionId, requestId, decision)
+    }
+  )
+
+  ipcMain.handle(
+    'ai-coding:answer-question',
+    async (_event, sessionId: string, questionId: string, answers: Record<string, string>) => {
+      return answerSessionQuestion(sessionId, questionId, answers)
     }
   )
 

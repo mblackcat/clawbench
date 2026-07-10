@@ -180,6 +180,22 @@ const TerminalPanel: React.FC<Props> = ({ sessionId }) => {
       fitAddon.fit()
     })
 
+    // The terminal's custom fontFamily (Nerd Fonts) may still be resolving
+    // when xterm.js first measures character-cell width at mount. Since
+    // xterm only re-measures cell width when the fontFamily/fontSize
+    // *option* changes (not when the browser actually finishes loading the
+    // font), a late-resolving font leaves the cached cell width mismatched
+    // against the glyphs actually rendered — which throws off xterm's
+    // click-to-column math and makes drag-selection feel like it needs an
+    // extra column before the last character under the cursor gets
+    // included. Re-fit and force a full repaint once fonts are ready so
+    // the cell-width measurement matches what's on screen.
+    document.fonts.ready.then(() => {
+      if (termRef.current !== term) return
+      fitAddon.fit()
+      term.refresh(0, term.rows - 1)
+    })
+
     termRef.current = term
     fitAddonRef.current = fitAddon
 

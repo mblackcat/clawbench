@@ -142,6 +142,29 @@ function formatAnswer(
   }).join('\n')
 }
 
+// ── Build the structured per-question answers map ──
+//
+// The Claude SDK expects AskUserQuestion's tool_result to carry `answers` keyed
+// by each question's exact text (multi-select answers comma/semicolon-joined),
+// per `AskUserQuestionInput.answers` — this is what actually unblocks the SDK's
+// pending tool call, unlike the flattened display string from formatAnswer().
+function buildAnswersMap(
+  questions: AskUserQuestionItem[],
+  selections: Map<number, Set<string>>,
+  customTexts: Map<number, string>
+): Record<string, string> {
+  const answers: Record<string, string> = {}
+  questions.forEach((q, i) => {
+    const sel = selections.get(i) || new Set()
+    const custom = (customTexts.get(i) || '').trim()
+    const parts: string[] = []
+    if (sel.size > 0) parts.push(Array.from(sel).join(', '))
+    if (custom) parts.push(custom)
+    answers[q.question] = parts.join('; ')
+  })
+  return answers
+}
+
 // ── Main Component ──
 
 interface AskUserQuestionBlockProps {
@@ -198,8 +221,9 @@ const AskUserQuestionBlock: React.FC<AskUserQuestionBlockProps> = ({
     if (!canSubmit || submitting) return
     setSubmitting(true)
     const text = formatAnswer(questions, selections, customTexts)
+    const answers = buildAnswersMap(questions, selections, customTexts)
     try {
-      await answerQuestion(sessionId, questionId, text)
+      await answerQuestion(sessionId, questionId, answers, text)
     } finally {
       setSubmitting(false)
     }

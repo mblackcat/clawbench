@@ -88,6 +88,28 @@ interface SDKSessionState {
     signal: AbortSignal
     onAbort: () => void
   }>
+  /**
+   * In-flight AskUserQuestion tool calls, keyed by the tool_use id (== canUseTool's
+   * `toolUseID`, which matches claude-stream.ts's emitted `ask_user_question.id`).
+   * The SDK's canUseTool callback ALWAYS blocks here for this tool — regardless of
+   * permissionMode — until the renderer answers via answerSDKQuestion(). Cleared
+   * (resolved with empty answers, not denied — AskUserQuestion has no deny concept)
+   * on interrupt/close.
+   */
+  pendingQuestions: Map<string, {
+    resolve: (result: PermissionResult) => void
+    input: Record<string, unknown>
+    signal: AbortSignal
+    onAbort: () => void
+  }>
+  /**
+   * Answers that arrive (via answerSDKQuestion) before canUseTool has registered
+   * the corresponding pendingQuestions entry — a benign race between the stream
+   * emitting `ask_user_question` (so the UI can render it) and the SDK actually
+   * invoking canUseTool for that tool call. Consumed immediately once the pending
+   * entry is created.
+   */
+  earlyQuestionAnswers: Map<string, Record<string, string>>
   env?: Record<string, string | undefined>
   /** Server-side streaming accumulation state. */
   streamState: ClaudeStreamState
@@ -360,6 +382,8 @@ export function launchSDKSession(
     permissionMode: 'bypassPermissions',  // default — matches old pipe mode behavior
     effort: (effort as SDKEffort) || 'high',
     pendingPermissions: new Map(),
+    pendingQuestions: new Map(),
+    earlyQuestionAnswers: new Map(),
     env,
     streamState: createClaudeStreamState(),
     onEvent,
@@ -381,18 +405,76 @@ export function launchSDKSession(
 }
 
 /**
+ * Handle a canUseTool invocation for the AskUserQuestion tool specifically.
+ *
+ * Unlike other tools, AskUserQuestion ALWAYS blocks — regardless of
+ * permissionMode — because the SDK needs a real answer (delivered via
+ * `updatedInput.answers`, keyed by each question's text) to produce a
+ * meaningful tool_result. Auto-allowing with the original input (as the
+ * bypassPermissions/acceptEdits fast path does for other tools) leaves the
+ * CLI to self-resolve the dangling tool call to its default option instead
+ * of actually waiting for the user — which was the root cause of this bug.
+ *
+ * The stream (claude-stream.ts) emits `ask_user_question` to the renderer as
+ * soon as the tool_use content block finishes streaming, using the block id
+ * as `id`. Per the SDK's CanUseTool contract, `toolUseID` here is that same
+ * tool_use id, so we key pendingQuestions/earlyQuestionAnswers by it — no
+ * extra id needs to flow to the renderer.
+ */
+function handleAskUserQuestion(
+  state: SDKSessionState,
+  input: Record<string, unknown>,
+  toolUseID: string,
+  signal: AbortSignal
+): Promise<PermissionResult> {
+  const key = toolUseID || randomUUID()
+
+  // The renderer may have already answered before canUseTool got here (the
+  // question is rendered from the stream event, which can precede the SDK's
+  // internal tool-execution gating). Consume the buffered answer immediately.
+  const early = state.earlyQuestionAnswers.get(key)
+  if (early) {
+    state.earlyQuestionAnswers.delete(key)
+    return Promise.resolve({ behavior: 'allow', updatedInput: { ...input, answers: early } } as PermissionResult)
+  }
+
+  return new Promise<PermissionResult>((resolve) => {
+    // If the turn is aborted while the question is pending, resolve with no
+    // answers so the SDK can unwind cleanly instead of hanging. AskUserQuestion
+    // has no "deny" concept, so we don't use the deny behavior here.
+    const onAbort = (): void => {
+      if (state.pendingQuestions.delete(key)) {
+        resolve({ behavior: 'allow', updatedInput: { ...input, answers: {} } } as PermissionResult)
+      }
+    }
+    if (signal.aborted) return onAbort()
+    signal.addEventListener('abort', onAbort, { once: true })
+
+    state.pendingQuestions.set(key, { resolve, input, signal, onAbort })
+  })
+}
+
+/**
  * Build the `canUseTool` permission callback for a session.
  *
- * The SDK invokes this before every tool call. Behavior depends on the
- * session's permission mode:
- * - `bypassPermissions` / `acceptEdits`: auto-allow (the SDK's own gating in
- *   these modes matches the old pipe-mode behavior; we don't second-guess it).
- * - `default` / `plan`: surface a `permission_request` event to the renderer
- *   and BLOCK on a resolver until the user answers via `resolveSDKPermission`.
- *   The promise resolves to the SDK `PermissionResult` (allow/deny).
+ * The SDK invokes this before every tool call. Behavior depends on the tool
+ * and the session's permission mode:
+ * - `AskUserQuestion`: ALWAYS blocks (see handleAskUserQuestion) — the user's
+ *   answer must reach the SDK regardless of permission mode.
+ * - `bypassPermissions` / `acceptEdits` (other tools): auto-allow (the SDK's
+ *   own gating in these modes matches the old pipe-mode behavior; we don't
+ *   second-guess it).
+ * - `default` / `plan` (other tools): surface a `permission_request` event to
+ *   the renderer and BLOCK on a resolver until the user answers via
+ *   `resolveSDKPermission`. The promise resolves to the SDK `PermissionResult`
+ *   (allow/deny).
  */
 function makeCanUseTool(sessionId: string, state: SDKSessionState): CanUseTool {
-  return (toolName, input, { signal, suggestions }) => {
+  return (toolName, input, { signal, suggestions, toolUseID }) => {
+    if (toolName === 'AskUserQuestion') {
+      return handleAskUserQuestion(state, input, toolUseID, signal)
+    }
+
     // Modes that don't require interactive confirmation resolve immediately.
     if (state.permissionMode === 'bypassPermissions' || state.permissionMode === 'acceptEdits') {
       return Promise.resolve({ behavior: 'allow', updatedInput: input } as PermissionResult)
@@ -448,6 +530,39 @@ export function resolveSDKPermission(
       message: decision.message || 'Denied by user',
     } as PermissionResult)
   }
+  return true
+}
+
+/**
+ * Resolve a pending AskUserQuestion tool call (called from the IPC layer when
+ * the user submits an answer in the UI). `answers` is keyed by each question's
+ * exact text, per the SDK's `AskUserQuestionInput.answers` shape (multi-select
+ * answers are comma-separated). Always resolves the tool call with
+ * `behavior: 'allow'` — AskUserQuestion has no deny concept.
+ *
+ * If canUseTool hasn't registered the pending entry yet (a benign race between
+ * the stream rendering the question and the SDK actually invoking canUseTool),
+ * the answer is buffered in earlyQuestionAnswers and consumed as soon as the
+ * pending entry is created.
+ */
+export function answerSDKQuestion(
+  sessionId: string,
+  questionId: string,
+  answers: Record<string, string>,
+): boolean {
+  const state = sdkSessions.get(sessionId)
+  if (!state) return false
+  const pending = state.pendingQuestions.get(questionId)
+  if (!pending) {
+    state.earlyQuestionAnswers.set(questionId, answers)
+    return true
+  }
+  state.pendingQuestions.delete(questionId)
+  pending.signal.removeEventListener('abort', pending.onAbort)
+  pending.resolve({
+    behavior: 'allow',
+    updatedInput: { ...pending.input, answers },
+  } as PermissionResult)
   return true
 }
 
@@ -565,6 +680,18 @@ function denyAllPendingPermissions(state: SDKSessionState, message: string): voi
     } catch { /* ignore */ }
   }
   state.pendingPermissions.clear()
+
+  // AskUserQuestion has no deny concept — resolve pending questions with empty
+  // answers so the SDK unwinds instead of hanging on a resolver that will
+  // never be answered.
+  for (const [, pending] of state.pendingQuestions) {
+    try { pending.signal.removeEventListener('abort', pending.onAbort) } catch { /* ignore */ }
+    try {
+      pending.resolve({ behavior: 'allow', updatedInput: { ...pending.input, answers: {} } } as PermissionResult)
+    } catch { /* ignore */ }
+  }
+  state.pendingQuestions.clear()
+  state.earlyQuestionAnswers.clear()
 }
 
 /** Close the SDK session entirely (ends the queue + aborts the query). */

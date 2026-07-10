@@ -46,11 +46,15 @@ interface LocalEnvState {
   detecting: boolean
   refreshingOne: Record<string, boolean>
   installing: Record<string, boolean>
+  uninstalling: Record<string, boolean>
+  upgrading: Record<string, boolean>
   lastDetectedAt: number | null
 
   detectAll: (force?: boolean) => Promise<void>
   detectOne: (toolId: string) => Promise<void>
   installTool: (toolId: string) => Promise<ToolInstallResult>
+  uninstallTool: (toolId: string) => Promise<ToolInstallResult>
+  upgradeTool: (toolId: string) => Promise<ToolInstallResult>
 }
 
 export const useLocalEnvStore = create<LocalEnvState>((set, get) => ({
@@ -60,6 +64,8 @@ export const useLocalEnvStore = create<LocalEnvState>((set, get) => ({
   detecting: false,
   refreshingOne: {},
   installing: {},
+  uninstalling: {},
+  upgrading: {},
   lastDetectedAt: cached?.timestamp ?? null,
 
   detectAll: async (force = false) => {
@@ -112,6 +118,40 @@ export const useLocalEnvStore = create<LocalEnvState>((set, get) => ({
     } catch (err: any) {
       console.error(`Failed to install ${toolId}:`, err)
       set({ installing: { ...get().installing, [toolId]: false } })
+      return { success: false, error: err.message }
+    }
+  },
+
+  uninstallTool: async (toolId: string) => {
+    set({ uninstalling: { ...get().uninstalling, [toolId]: true } })
+    try {
+      const result = await window.api.localEnv.uninstall(toolId)
+      set({ uninstalling: { ...get().uninstalling, [toolId]: false } })
+      if (result.success) {
+        // Re-detect so the card flips back to the "not installed" state
+        await get().detectOne(toolId)
+      }
+      return result
+    } catch (err: any) {
+      console.error(`Failed to uninstall ${toolId}:`, err)
+      set({ uninstalling: { ...get().uninstalling, [toolId]: false } })
+      return { success: false, error: err.message }
+    }
+  },
+
+  upgradeTool: async (toolId: string) => {
+    set({ upgrading: { ...get().upgrading, [toolId]: true } })
+    try {
+      const result = await window.api.localEnv.upgrade(toolId)
+      set({ upgrading: { ...get().upgrading, [toolId]: false } })
+      if (result.success) {
+        // Re-detect so the card reflects the new version
+        await get().detectOne(toolId)
+      }
+      return result
+    } catch (err: any) {
+      console.error(`Failed to upgrade ${toolId}:`, err)
+      set({ upgrading: { ...get().upgrading, [toolId]: false } })
       return { success: false, error: err.message }
     }
   }

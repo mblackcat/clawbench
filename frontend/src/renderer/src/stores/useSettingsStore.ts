@@ -44,7 +44,10 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   appShortcutModifier: 'Control+Shift',
   appOrder: [],
   aiToolsConfig: null,
-  loading: false,
+  // Starts true: RootRedirect gates on this before the very first render
+  // decides whether to send the user to /setup, so it must reflect
+  // "not fetched yet" from the start instead of defaulting to false.
+  loading: true,
 
   fetchSettings: async () => {
     set({ loading: true })

@@ -1,10 +1,13 @@
 import React from 'react'
-import { Card, Tag, Button, Typography, Tooltip } from 'antd'
+import { Card, Tag, Button, Typography, Tooltip, Popconfirm } from 'antd'
 import {
   DownloadOutlined,
   GlobalOutlined,
   FolderOutlined,
-  ReloadOutlined
+  ReloadOutlined,
+  DeleteOutlined,
+  ArrowUpOutlined,
+  AppstoreOutlined
 } from '@ant-design/icons'
 import { theme } from 'antd'
 import type { ToolDetectionResult, PackageManagerInfo } from '../../types/local-env'
@@ -18,8 +21,13 @@ interface EnvCardProps {
   platform: string
   installing: boolean
   refreshing: boolean
+  uninstalling?: boolean
+  upgrading?: boolean
   onInstall: (toolId: string) => void
   onRefresh: (toolId: string) => void
+  onUninstall?: (toolId: string) => void
+  onUpgrade?: (toolId: string) => void
+  onOpenPackages?: (kind: 'pip' | 'npm', pythonPath?: string) => void
 }
 
 const TOOL_ICONS: Record<string, string> = {
@@ -28,6 +36,7 @@ const TOOL_ICONS: Record<string, string> = {
   git: '',
   svn: '',
   docker: '🐳',
+  redis: '🔴',
   'claude-code': '🤖',
   'gemini-cli': '✨',
   'codex-cli': '⚡',
@@ -37,7 +46,29 @@ const TOOL_ICONS: Record<string, string> = {
 
 const NPM_TOOL_IDS = new Set(['gemini-cli', 'codex-cli', 'qwen-code'])
 
-const EnvCard: React.FC<EnvCardProps> = ({ tool, packageManagers, platform, installing, refreshing, onInstall, onRefresh }) => {
+// AI coding CLI tools support one-click "upgrade" (npm reinstall @latest, or `claude update`)
+const AI_TOOL_IDS = new Set([
+  'claude-code', 'gemini-cli', 'codex-cli', 'opencode', 'traecli', 'qwen-code', 'qoder-cli'
+])
+
+// Tools whose uninstall is intentionally not offered from this card (no safe
+// programmatic uninstall path — e.g. removing Homebrew itself is destructive)
+const NO_UNINSTALL_IDS = new Set(['homebrew'])
+
+const EnvCard: React.FC<EnvCardProps> = ({
+  tool,
+  packageManagers,
+  platform,
+  installing,
+  refreshing,
+  uninstalling = false,
+  upgrading = false,
+  onInstall,
+  onRefresh,
+  onUninstall,
+  onUpgrade,
+  onOpenPackages
+}) => {
   const { token } = theme.useToken()
   const t = useT()
 
@@ -75,6 +106,18 @@ const EnvCard: React.FC<EnvCardProps> = ({ tool, packageManagers, platform, inst
         <span style={{ fontSize: 20 }}>{TOOL_ICONS[tool.toolId]}</span>
         <Text strong style={{ fontSize: 16 }}>{tool.name}</Text>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+          {tool.installed && AI_TOOL_IDS.has(tool.toolId) && onUpgrade && (
+            <Tooltip title={t('localEnv.upgrade')}>
+              <Button
+                type="text"
+                size="small"
+                icon={<ArrowUpOutlined spin={upgrading} />}
+                loading={upgrading}
+                onClick={() => onUpgrade(tool.toolId)}
+                style={{ color: token.colorTextTertiary, padding: '0 4px' }}
+              />
+            </Tooltip>
+          )}
           <Tooltip title={t('localEnv.refreshDetect')}>
             <Button
               type="text"
@@ -84,6 +127,25 @@ const EnvCard: React.FC<EnvCardProps> = ({ tool, packageManagers, platform, inst
               style={{ color: token.colorTextTertiary, padding: '0 4px' }}
             />
           </Tooltip>
+          {tool.installed && !NO_UNINSTALL_IDS.has(tool.toolId) && onUninstall && (
+            <Popconfirm
+              title={t('localEnv.uninstallConfirm', tool.name)}
+              onConfirm={() => onUninstall(tool.toolId)}
+              okText={t('common.confirm')}
+              cancelText={t('common.cancel')}
+            >
+              <Tooltip title={t('localEnv.uninstall')}>
+                <Button
+                  type="text"
+                  danger
+                  size="small"
+                  icon={<DeleteOutlined />}
+                  loading={uninstalling}
+                  style={{ padding: '0 4px' }}
+                />
+              </Tooltip>
+            </Popconfirm>
+          )}
         </div>
       </div>
 
@@ -125,8 +187,30 @@ const EnvCard: React.FC<EnvCardProps> = ({ tool, packageManagers, platform, inst
                     {inst.path}
                   </Text>
                 </Tooltip>
+                {tool.toolId === 'python' && onOpenPackages && (
+                  <Button
+                    type="link"
+                    size="small"
+                    icon={<AppstoreOutlined />}
+                    style={{ padding: '4px 0', height: 'auto' }}
+                    onClick={() => onOpenPackages('pip', inst.path)}
+                  >
+                    {t('localEnv.pkg.viewPip')}
+                  </Button>
+                )}
               </div>
             ))}
+            {tool.toolId === 'nodejs' && onOpenPackages && (
+              <Button
+                type="link"
+                size="small"
+                icon={<AppstoreOutlined />}
+                style={{ padding: '4px 0', height: 'auto', alignSelf: 'flex-start' }}
+                onClick={() => onOpenPackages('npm')}
+              >
+                {t('localEnv.pkg.viewNpm')}
+              </Button>
+            )}
           </div>
         ) : (
           <div style={{
