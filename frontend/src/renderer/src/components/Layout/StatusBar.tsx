@@ -332,22 +332,25 @@ const StatusBar: React.FC<StatusBarProps> = ({ onToggleErrorLog, weatherVisible,
       }}
     >
       <Space size="small">
-        <Button
-          type="text"
-          size="small"
-          icon={hasErrors ? <ExclamationCircleOutlined style={{ color: token.colorError }} /> : <FileTextOutlined />}
-          onClick={onToggleErrorLog}
-          style={{ fontSize: 12, height: 22, padding: '0 4px' }}
-        >
-          {t('statusbar.logs')}
-        </Button>
+        <Tooltip title={t('statusbar.logs')}>
+          <Button
+            type="text"
+            size="small"
+            icon={hasErrors ? <ExclamationCircleOutlined style={{ color: token.colorError }} /> : <FileTextOutlined />}
+            onClick={onToggleErrorLog}
+            style={{ fontSize: 12, height: 22, padding: '0 4px' }}
+          />
+        </Tooltip>
         {isRunning ? (
-          <Space size={4}>
-            <Spin size="small" />
-            <span>{t('statusbar.working', activeTaskName)}</span>
-          </Space>
+          <Tooltip title={t('statusbar.working', activeTaskName)}>
+            <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+              <Spin size="small" />
+            </span>
+          </Tooltip>
         ) : (
-          <span style={{ color: token.colorTextSecondary }}>{t('statusbar.ready')}</span>
+          <Tooltip title={t('statusbar.ready')}>
+            <CheckCircleOutlined style={{ color: token.colorTextSecondary }} />
+          </Tooltip>
         )}
       </Space>
 
