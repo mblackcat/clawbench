@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react'
-import { Layout, theme as antTheme } from 'antd'
+import { Layout, Tooltip, theme as antTheme } from 'antd'
 import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons'
 import { Outlet } from 'react-router-dom'
 import Sidebar from './Sidebar'
@@ -13,6 +13,7 @@ import { useTaskStore } from '../../stores/useTaskStore'
 import { useSubAppExecution } from '../../hooks/useSubAppExecution'
 import { useAICodingStore } from '../../stores/useAICodingStore'
 import { localStorageManager } from '../../services/localStorageManager'
+import { useT } from '../../i18n'
 
 const { Header, Sider, Content, Footer } = Layout
 
@@ -23,6 +24,7 @@ const AppLayout: React.FC = () => {
   const activeTaskId = useTaskStore((state) => state.activeTaskId)
   const { token } = antTheme.useToken()
   const { weatherType, weatherVisible, toggleWeather, cycleWeather } = useWeatherEffect()
+  const t = useT()
 
   // 初始化 subapp 执行监听
   useSubAppExecution()
@@ -80,23 +82,31 @@ const AppLayout: React.FC = () => {
             >
               <Sidebar collapsed={collapsed} variant="settings" />
             </div>
-            <div
-              onClick={() => {
-                const next = !collapsed
-                setCollapsed(next)
-                localStorageManager.saveSidebarCollapsed(next)
-              }}
-              style={{
-                height: 36,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                color: token.colorTextSecondary
-              }}
-            >
-              {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-            </div>
+            <Tooltip title={collapsed ? t('common.expandSidebar') : ''} placement="right">
+              <div
+                onClick={() => {
+                  const next = !collapsed
+                  setCollapsed(next)
+                  localStorageManager.saveSidebarCollapsed(next)
+                }}
+                style={{
+                  height: 36,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: collapsed ? 'center' : 'flex-start',
+                  gap: 10,
+                  paddingInline: collapsed ? 0 : 24,
+                  cursor: 'pointer',
+                  color: token.colorTextSecondary,
+                  fontSize: 14
+                }}
+              >
+                {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+                {!collapsed && (
+                  <span>{t('common.collapseSidebar')}</span>
+                )}
+              </div>
+            </Tooltip>
           </div>
         </Sider>
 
