@@ -70,11 +70,13 @@ export async function feishuCallback(
     }
 
     // Electron: 通过 custom protocol 将 JWT + Feishu UAT 传递给 Electron 客户端
+    // appId is public (used by desktop lark-cli); app_secret never leaves the server
     const params = new URLSearchParams({
       token: loginResponse.token,
       uat: loginResponse.feishuAccessToken,
       urt: loginResponse.feishuRefreshToken,
       uexp: String(loginResponse.feishuTokenExpiresIn),
+      appId: config.feishu.appId || '',
     });
     const redirectUrl = `clawbench://auth/callback?${params.toString()}`;
     logger.info(`Feishu OAuth callback successful, redirecting to custom protocol`);
@@ -141,6 +143,28 @@ function errorHtml(message: string): string {
   </div>
 </body>
 </html>`;
+}
+
+/**
+ * 公开的平台飞书 App 信息（不含 secret）
+ * GET /api/v1/auth/feishu/public-config
+ * 供桌面端 lark-cli 注入 LARKSUITE_CLI_APP_ID
+ */
+export async function feishuPublicConfig(
+  _req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    res.json({
+      success: true,
+      data: {
+        appId: config.feishu.appId || '',
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
 }
 
 /**

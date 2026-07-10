@@ -263,8 +263,7 @@ export interface ClawBenchAPI {
     setChatPreferences: (prefs: { chatMode?: string; toolsEnabled?: boolean; webSearchEnabled?: boolean; feishuKitsEnabled?: boolean }) => Promise<void>
     detectFeishuCli: () => Promise<{ found: boolean; path: string }>
     installFeishuCli: () => Promise<{ success: boolean; error: string; path: string }>
-    writeFeishuCliConfig: () => Promise<{ success: boolean; error: string; path?: string }>
-    checkFeishuCliConfig: () => Promise<{ exists: boolean; hasCredentials: boolean }>
+    getFeishuKitsAuthStatus: () => Promise<{ isFeishuUser: boolean; hasPlatformAppId: boolean }>
     onFeishuCliInstallProgress: (callback: (data: { percent: number; downloadedMB: string; totalMB: string; stage: string }) => void) => () => void
     getAiToolsConfig: () => Promise<AiToolsConfig>
     setAiToolsConfig: (config: AiToolsConfig) => Promise<void>

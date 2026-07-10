@@ -146,10 +146,10 @@ export const api = {
     getChatPreferences: () => ipcRenderer.invoke('settings:get-chat-preferences'),
     setChatPreferences: (prefs: { chatMode?: string; toolsEnabled?: boolean; webSearchEnabled?: boolean; feishuKitsEnabled?: boolean }) =>
       ipcRenderer.invoke('settings:set-chat-preferences', prefs),
-    detectFeishuCli: () => ipcRenderer.invoke('settings:detect-feishu-cli'),
-    installFeishuCli: () => ipcRenderer.invoke('settings:install-feishu-cli'),
-    writeFeishuCliConfig: () => ipcRenderer.invoke('settings:write-feishu-cli-config') as Promise<{ success: boolean; error: string; path?: string }>,
-    checkFeishuCliConfig: () => ipcRenderer.invoke('settings:check-feishu-cli-config') as Promise<{ exists: boolean; hasCredentials: boolean }>,
+    detectFeishuCli: () => ipcRenderer.invoke('settings:detect-feishu-cli') as Promise<{ found: boolean; path: string }>,
+    installFeishuCli: () => ipcRenderer.invoke('settings:install-feishu-cli') as Promise<{ success: boolean; error: string; path: string }>,
+    getFeishuKitsAuthStatus: () =>
+      ipcRenderer.invoke('settings:feishu-kits-auth-status') as Promise<{ isFeishuUser: boolean; hasPlatformAppId: boolean }>,
     onFeishuCliInstallProgress: (callback: (data: { percent: number; downloadedMB: string; totalMB: string; stage: string }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
       ipcRenderer.on('settings:feishu-cli-install-progress', handler)

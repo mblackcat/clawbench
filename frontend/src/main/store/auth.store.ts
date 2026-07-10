@@ -16,6 +16,8 @@ interface AuthSchema {
   feishuAccessToken: string
   feishuRefreshToken: string
   feishuTokenExpiresAt: number // timestamp in ms
+  /** Public platform Feishu App ID (no secret) used for lark-cli account context */
+  feishuPlatformAppId: string
 }
 
 export const authStore = new Store<AuthSchema>({
@@ -47,6 +49,10 @@ export const authStore = new Store<AuthSchema>({
     feishuTokenExpiresAt: {
       type: 'number',
       default: 0
+    },
+    feishuPlatformAppId: {
+      type: 'string',
+      default: ''
     }
   }
 })
@@ -85,6 +91,7 @@ export function clearAuth(): void {
   authStore.set('feishuAccessToken', '')
   authStore.set('feishuRefreshToken', '')
   authStore.set('feishuTokenExpiresAt', 0)
+  authStore.set('feishuPlatformAppId', '')
 }
 
 export function saveUser(user: User): void {
@@ -125,4 +132,13 @@ export function getFeishuTokenExpiresAt(): number {
 export function isFeishuUser(): boolean {
   const user = getUser()
   return !!user?.feishuId
+}
+
+/** Public platform App ID for lark-cli (never stores App Secret) */
+export function saveFeishuPlatformAppId(appId: string): void {
+  if (appId) authStore.set('feishuPlatformAppId', appId)
+}
+
+export function getFeishuPlatformAppId(): string {
+  return authStore.get('feishuPlatformAppId') || ''
 }

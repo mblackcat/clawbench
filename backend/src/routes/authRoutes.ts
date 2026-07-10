@@ -1,5 +1,10 @@
 import { Router } from 'express';
-import { feishuAuthorize, feishuCallback, feishuRefreshToken } from '../controllers/authController';
+import {
+  feishuAuthorize,
+  feishuCallback,
+  feishuRefreshToken,
+  feishuPublicConfig,
+} from '../controllers/authController';
 
 /**
  * 认证相关路由（飞书 OAuth 等）
@@ -17,6 +22,12 @@ authRouter.get('/feishu', feishuAuthorize);
  * 飞书 OAuth 回调，处理授权码并通过 custom protocol 返回 JWT
  */
 authRouter.get('/feishu/callback', feishuCallback);
+
+/**
+ * GET /api/v1/auth/feishu/public-config
+ * 返回平台飞书 App 的公开信息（仅 appId，不含 secret）
+ */
+authRouter.get('/feishu/public-config', feishuPublicConfig);
 
 /**
  * POST /api/v1/auth/feishu/refresh-token

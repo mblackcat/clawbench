@@ -11,6 +11,7 @@ import { useAIModelStore } from '../../stores/useAIModelStore'
 import type { PendingAttachment } from '../../types/chat'
 import ModelSelector from './ModelSelector'
 import { useT } from '../../i18n'
+import { FeishuIcon } from '../../components/icons/FeishuIcon'
 
 const { TextArea } = Input
 const { Text } = Typography
@@ -260,7 +261,7 @@ const ChatInput: React.FC = () => {
         {feishuAvailable && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <Space size={6}>
-              <ApiOutlined style={{ color: token.colorTextSecondary }} />
+              <FeishuIcon style={{ fontSize: 14, color: token.colorTextSecondary }} />
               <Text>{t('chat.feishuKits')}</Text>
             </Space>
             <Switch size="small" checked={feishuKitsEnabled} onChange={(checked) => {

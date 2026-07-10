@@ -6,6 +6,7 @@ import {
   saveJwtToken,
   getJwtToken,
   saveFeishuTokens,
+  saveFeishuPlatformAppId,
   getFeishuAccessToken,
   getFeishuRefreshToken,
   getFeishuTokenExpiresAt,
@@ -87,7 +88,7 @@ export async function handleProtocolCallback(url: string, webContents?: WebConte
     // 保存 JWT token
     saveJwtToken(token)
 
-    // 保存飞书 User Access Token（用于直接调用飞书 API）
+    // 保存飞书 User Access Token（用于直接调用飞书 API / lark-cli）
     const uat = urlObj.searchParams.get('uat')
     const urt = urlObj.searchParams.get('urt')
     const uexp = urlObj.searchParams.get('uexp')
@@ -95,6 +96,11 @@ export async function handleProtocolCallback(url: string, webContents?: WebConte
       const expiresInSec = parseInt(uexp || '7200', 10)
       saveFeishuTokens(uat, urt || '', Number.isFinite(expiresInSec) ? expiresInSec : 7200)
       logger.info('Protocol callback: saved Feishu UAT')
+    }
+    // Public platform App ID for lark-cli (no secret)
+    const appId = urlObj.searchParams.get('appId')
+    if (appId) {
+      saveFeishuPlatformAppId(appId)
     }
 
     // 用 token 获取用户信息
