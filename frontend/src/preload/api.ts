@@ -484,6 +484,8 @@ export const api = {
       requestId: string,
       decision: { behavior: 'allow' | 'deny'; message?: string; updatedInput?: Record<string, unknown> }
     ) => ipcRenderer.invoke('ai-coding:resolve-permission', sessionId, requestId, decision),
+    answerQuestion: (sessionId: string, questionId: string, answers: Record<string, string>) =>
+      ipcRenderer.invoke('ai-coding:answer-question', sessionId, questionId, answers),
     setEffort: (sessionId: string, effort: string) =>
       ipcRenderer.invoke('ai-coding:set-effort', sessionId, effort),
 

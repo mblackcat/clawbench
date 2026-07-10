@@ -163,7 +163,7 @@ interface AICodingState {
   claudeViewModes: Record<string, ClaudeViewMode>
   setClaudeViewMode: (sid: string, m: ClaudeViewMode) => void
   sessionPendingQuestions: Record<string, { id: string; questions: AskUserQuestionItem[] } | null>
-  answerQuestion: (sid: string, questionId: string, answerText: string) => Promise<void>
+  answerQuestion: (sid: string, questionId: string, answers: Record<string, string>, answerText: string) => Promise<void>
   sessionPendingPermissions: Record<string, { id: string; toolName: string; input: Record<string, unknown> } | null>
   resolvePermission: (sid: string, requestId: string, decision: { behavior: 'allow' | 'deny'; message?: string; updatedInput?: Record<string, unknown>; applySuggestions?: boolean }) => Promise<void>
   // Global split layout state (sessions from any workspace can be mixed)
@@ -623,8 +623,8 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
   },
   setClaudeViewMode: (sid, m) => { localStorage.setItem('cb-claude-view-mode', m); set(s => ({ claudeViewModes: { ...s.claudeViewModes, [sid]: m } })) },
   interruptSession: async (sid) => { try { await window.api.aiCoding.interruptSession(sid) } catch { /* */ } },
-  answerQuestion: async (sessionId, questionId, answerText) => {
-    // Mark the question block as answered
+  answerQuestion: async (sessionId, questionId, answers, answerText) => {
+    // Mark the question block as answered so the card stops soliciting input.
     set(s => {
       const msgs = (s.sessionMessages[sessionId] || []).map(m => ({
         ...m,
@@ -639,8 +639,14 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
         sessionPendingQuestions: { ...s.sessionPendingQuestions, [sessionId]: null }
       }
     })
-    // Send the answer as a user message (creates a new query with resume)
-    await get().sendUserMessage(sessionId, answerText)
+    // The SDK's canUseTool callback is blocked awaiting this specific AskUserQuestion
+    // tool call; unblocking it with the real per-question answers lets the turn
+    // continue with those answers as the tool_result — unlike the old behavior of
+    // sending a brand-new chat message that never reached the pending tool call
+    // (which left the CLI to self-resolve the question to its default option).
+    try {
+      await window.api.aiCoding.answerQuestion(sessionId, questionId, answers)
+    } catch { /* request may already be gone (interrupt/close) */ }
   },
 
   resolvePermission: async (sessionId, requestId, decision) => {

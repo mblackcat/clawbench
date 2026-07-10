@@ -32,7 +32,7 @@ import {
 import {
   launchSDKSession, writeToSDKSession, closeSDKSession, hasSDKSession,
   getSDKSessionOutput, interruptSDKSession, setSDKPermissionMode, setSDKEffort,
-  resolveSDKPermission, detectManagedInteractiveState
+  resolveSDKPermission, answerSDKQuestion, detectManagedInteractiveState
 } from './sdk-session-manager.service'
 import {
   launchCodexSession, writeToCodexSession, closeCodexSession, hasCodexSession,
@@ -736,6 +736,20 @@ export function resolveSessionPermission(
   if (!hasSDKSession(id)) return { success: false, error: '会话未运行或非 Claude 会话' }
   const ok = resolveSDKPermission(id, requestId, decision)
   return ok ? { success: true } : { success: false, error: '权限请求不存在或已失效' }
+}
+
+/**
+ * Resolve a pending AskUserQuestion tool call raised by the Claude SDK's
+ * canUseTool callback. `answers` is keyed by each question's exact text.
+ */
+export function answerSessionQuestion(
+  id: string,
+  questionId: string,
+  answers: Record<string, string>
+): { success: boolean; error?: string } {
+  if (!hasSDKSession(id)) return { success: false, error: '会话未运行或非 Claude 会话' }
+  const ok = answerSDKQuestion(id, questionId, answers)
+  return ok ? { success: true } : { success: false, error: '问题请求不存在或已失效' }
 }
 
 /**

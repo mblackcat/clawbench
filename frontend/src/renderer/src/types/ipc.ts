@@ -490,6 +490,11 @@ export interface ClawBenchAPI {
       requestId: string,
       decision: { behavior: 'allow' | 'deny'; message?: string; updatedInput?: Record<string, unknown> }
     ) => Promise<{ success: boolean; error?: string }>
+    answerQuestion: (
+      sessionId: string,
+      questionId: string,
+      answers: Record<string, string>
+    ) => Promise<{ success: boolean; error?: string }>
     setEffort: (sessionId: string, effort: string) => Promise<{ success: boolean; error?: string }>
     onPipeEvent: (callback: (data: { sessionId: string; event: any }) => void) => () => void
     createPty: (sessionId: string) => Promise<{ success: boolean; error?: string }>
