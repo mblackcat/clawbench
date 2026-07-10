@@ -384,6 +384,7 @@ export const api = {
     install: (toolId: string) => ipcRenderer.invoke('local-env:install', toolId),
     uninstall: (toolId: string) => ipcRenderer.invoke('local-env:uninstall', toolId),
     upgrade: (toolId: string) => ipcRenderer.invoke('local-env:upgrade', toolId),
+    checkLatestVersions: (toolIds: string[]) => ipcRenderer.invoke('local-env:check-latest-versions', toolIds),
     listPipPackages: (pythonPath?: string) => ipcRenderer.invoke('local-env:list-pip-packages', pythonPath),
     uninstallPipPackage: (packageName: string, pythonPath?: string) =>
       ipcRenderer.invoke('local-env:uninstall-pip-package', packageName, pythonPath),

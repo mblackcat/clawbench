@@ -3,6 +3,7 @@ import { promisify } from 'util'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
+import * as https from 'https'
 import { shell } from 'electron'
 import * as logger from '../utils/logger'
 
@@ -1170,6 +1171,61 @@ export async function upgradeTool(toolId: string): Promise<ToolInstallResult> {
   }
 
   return { success: false, error: '该工具暂不支持一键升级' }
+}
+
+// ── Latest Version Check (AI Coding CLI tools) ──
+
+/**
+ * npm packages used only to probe the latest published version — separate from
+ * NPM_PACKAGES because Claude Code's native installer doesn't use npm, but
+ * Anthropic still publishes @anthropic-ai/claude-code in lockstep with the
+ * native binary release, so it's a reliable version source.
+ */
+const VERSION_CHECK_PACKAGES: Partial<Record<ToolId, string>> = {
+  'claude-code': '@anthropic-ai/claude-code',
+  ...NPM_PACKAGES
+}
+
+function fetchNpmLatestVersion(pkg: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const url = `https://registry.npmjs.org/${pkg}/latest`
+    const req = https.get(url, { timeout: 8000 }, (res) => {
+      if (res.statusCode !== 200) {
+        res.resume()
+        resolve(null)
+        return
+      }
+      let data = ''
+      res.on('data', (chunk) => { data += chunk })
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data)
+          resolve(typeof parsed.version === 'string' ? parsed.version : null)
+        } catch {
+          resolve(null)
+        }
+      })
+    })
+    req.on('error', () => resolve(null))
+    req.on('timeout', () => { req.destroy(); resolve(null) })
+  })
+}
+
+/**
+ * Look up the latest published version for each of the given AI coding tools.
+ * Returns null for a tool when the registry lookup fails or the tool has no
+ * known package (e.g. traecli/qoder-cli whose packages are no longer published).
+ */
+export async function checkLatestVersions(toolIds: string[]): Promise<Record<string, string | null>> {
+  const entries = await Promise.all(
+    toolIds.map(async (id) => {
+      const pkg = VERSION_CHECK_PACKAGES[id as ToolId]
+      if (!pkg) return [id, null] as const
+      const version = await fetchNpmLatestVersion(pkg)
+      return [id, version] as const
+    })
+  )
+  return Object.fromEntries(entries)
 }
 
 // ── Package Managers (pip / npm global) ──

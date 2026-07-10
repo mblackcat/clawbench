@@ -1058,6 +1058,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'localEnv.viaBrew': '通过 Homebrew 安装',
     'localEnv.viaWinget': '通过 winget 安装',
     'localEnv.download': '下载安装',
+    'localEnv.updateAvailable': '有新版本 v{0}',
 
     // My Contributions (我的) 页面
     'mine.title': '我的',
@@ -2838,6 +2839,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'localEnv.viaBrew': 'Install via Homebrew',
     'localEnv.viaWinget': 'Install via winget',
     'localEnv.download': 'Download',
+    'localEnv.updateAvailable': 'Update available: v{0}',
 
     // My Contributions page
     'mine.title': 'Mine',

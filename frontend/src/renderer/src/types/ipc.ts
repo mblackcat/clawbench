@@ -343,6 +343,7 @@ export interface ClawBenchAPI {
     install: (toolId: string) => Promise<import('./local-env').ToolInstallResult>
     uninstall: (toolId: string) => Promise<import('./local-env').ToolInstallResult>
     upgrade: (toolId: string) => Promise<import('./local-env').ToolInstallResult>
+    checkLatestVersions: (toolIds: string[]) => Promise<Record<string, string | null>>
     listPipPackages: (pythonPath?: string) => Promise<import('./local-env').PackageListResult>
     uninstallPipPackage: (
       packageName: string,

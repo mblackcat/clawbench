@@ -32,17 +32,20 @@ const LocalEnvPage: React.FC = () => {
   const uninstalling = useLocalEnvStore((s) => s.uninstalling)
   const upgrading = useLocalEnvStore((s) => s.upgrading)
   const refreshingOne = useLocalEnvStore((s) => s.refreshingOne)
+  const latestVersions = useLocalEnvStore((s) => s.latestVersions)
   const detectAll = useLocalEnvStore((s) => s.detectAll)
   const detectOne = useLocalEnvStore((s) => s.detectOne)
   const installTool = useLocalEnvStore((s) => s.installTool)
   const uninstallTool = useLocalEnvStore((s) => s.uninstallTool)
   const upgradeTool = useLocalEnvStore((s) => s.upgradeTool)
+  const checkLatestVersions = useLocalEnvStore((s) => s.checkLatestVersions)
 
   const [packageDrawer, setPackageDrawer] = useState<PackageDrawerState | null>(null)
 
   // Load from cache on mount; only fetches if no cached data exists
   useEffect(() => {
     detectAll()
+    checkLatestVersions(Array.from(AI_TOOL_IDS))
   }, [])
 
   const { baseTools, dbTools, vcsTools, aiTools } = useMemo(() => {
@@ -99,6 +102,14 @@ const LocalEnvPage: React.FC = () => {
 
   const handleRefresh = () => {
     detectAll(true)
+    checkLatestVersions(Array.from(AI_TOOL_IDS), true)
+  }
+
+  const handleRefreshOne = (toolId: string) => {
+    detectOne(toolId)
+    if (AI_TOOL_IDS.has(toolId)) {
+      checkLatestVersions([toolId], true)
+    }
   }
 
   const renderGroup = (title: string, groupTools: typeof tools) => (
@@ -117,8 +128,9 @@ const LocalEnvPage: React.FC = () => {
               refreshing={refreshingOne[tool.toolId] || false}
               uninstalling={uninstalling[tool.toolId] || false}
               upgrading={upgrading[tool.toolId] || false}
+              latestVersion={latestVersions[tool.toolId]}
               onInstall={handleInstall}
-              onRefresh={detectOne}
+              onRefresh={handleRefreshOne}
               onUninstall={handleUninstall}
               onUpgrade={handleUpgrade}
               onOpenPackages={handleOpenPackages}
