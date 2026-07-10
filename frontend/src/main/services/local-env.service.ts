@@ -203,7 +203,7 @@ async function getAugmentedEnv(): Promise<NodeJS.ProcessEnv> {
 function execBinary(
   cmd: string,
   args: string[],
-  options: { timeout?: number; env?: NodeJS.ProcessEnv } = {}
+  options: { timeout?: number; env?: NodeJS.ProcessEnv; cwd?: string } = {}
 ): Promise<{ stdout: string; stderr: string }> {
   const isWinBatch = process.platform === 'win32' && /\.(cmd|bat)$/i.test(cmd)
   if (isWinBatch) {
@@ -1230,11 +1230,50 @@ export async function checkLatestVersions(toolIds: string[]): Promise<Record<str
 
 // ── Package Managers (pip / npm global) ──
 
+/**
+ * Resolve an absolute path for `python`/`python3` instead of relying on a
+ * bareword lookup at spawn time. Not strictly required for correctness (Node's
+ * non-shell execFile already resolves via PATH without consulting cwd), but
+ * keeps behavior consistent and deterministic with the npm.cmd resolution
+ * below, and avoids ever picking up an unexpected interpreter.
+ */
+async function resolvePythonPath(pythonPath: string | undefined, env: NodeJS.ProcessEnv): Promise<string> {
+  if (pythonPath) return pythonPath
+  const cmd = process.platform === 'win32' ? 'python' : 'python3'
+  const candidates = dedup(await whichAll(cmd, env))
+  return candidates[0] || cmd
+}
+
+/**
+ * Resolve npm's absolute path on Windows instead of invoking the bareword
+ * `npm.cmd` through `shell: true`. Spawning a fresh `cmd.exe /c npm.cmd ...`
+ * this way is unreliable — `%~dp0` inside the real npm.cmd wrapper can end up
+ * resolving to the *caller's* cwd (the packaged app's own install directory)
+ * rather than npm's own install directory, making it try to load
+ * `npm-prefix.js`/`npm-cli.js` from inside the app itself and crash with
+ * MODULE_NOT_FOUND. Deriving npm's path from node's own resolved directory
+ * (same pattern as detectNodejs above) sidesteps that resolution entirely.
+ */
+async function resolveNpmCmdPath(env: NodeJS.ProcessEnv): Promise<string> {
+  if (process.platform !== 'win32') return 'npm'
+  const nodePaths = dedup(await whichAll('node', env))
+  for (const nodePath of nodePaths) {
+    const npmBin = path.join(path.dirname(nodePath), 'npm.cmd')
+    if (fs.existsSync(npmBin)) return npmBin
+  }
+  const npmPaths = await whichAll('npm.cmd', env)
+  return npmPaths[0] || 'npm.cmd'
+}
+
 export async function listPipPackages(pythonPath?: string): Promise<PackageListResult> {
   const env = await getAugmentedEnv()
-  const py = pythonPath || (process.platform === 'win32' ? 'python' : 'python3')
+  const py = await resolvePythonPath(pythonPath, env)
   try {
-    const { stdout } = await execBinary(py, ['-m', 'pip', 'list', '--format=json'], { timeout: 30000, env })
+    const { stdout } = await execBinary(py, ['-m', 'pip', 'list', '--format=json'], {
+      timeout: 30000,
+      env,
+      cwd: os.homedir()
+    })
     const raw = JSON.parse(stdout) as Array<{ name: string; version: string }>
     const packages = raw
       .map((p) => ({ name: p.name, version: p.version }))
@@ -1248,9 +1287,13 @@ export async function listPipPackages(pythonPath?: string): Promise<PackageListR
 
 export async function uninstallPipPackage(packageName: string, pythonPath?: string): Promise<ToolInstallResult> {
   const env = await getAugmentedEnv()
-  const py = pythonPath || (process.platform === 'win32' ? 'python' : 'python3')
+  const py = await resolvePythonPath(pythonPath, env)
   try {
-    await execBinary(py, ['-m', 'pip', 'uninstall', '-y', packageName], { timeout: 60000, env })
+    await execBinary(py, ['-m', 'pip', 'uninstall', '-y', packageName], {
+      timeout: 60000,
+      env,
+      cwd: os.homedir()
+    })
     logger.info(`[local-env] pip package uninstalled: ${packageName}`)
     return { success: true }
   } catch (err: any) {
@@ -1262,8 +1305,12 @@ export async function uninstallPipPackage(packageName: string, pythonPath?: stri
 export async function listNpmGlobalPackages(): Promise<PackageListResult> {
   const env = await getAugmentedEnv()
   try {
-    const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-    const { stdout } = await execBinary(npmCmd, ['list', '-g', '--depth=0', '--json'], { timeout: 30000, env })
+    const npmCmd = await resolveNpmCmdPath(env)
+    const { stdout } = await execBinary(npmCmd, ['list', '-g', '--depth=0', '--json'], {
+      timeout: 30000,
+      env,
+      cwd: os.homedir()
+    })
     return { success: true, packages: parseNpmListOutput(stdout) }
   } catch (err: any) {
     // `npm list -g` can exit non-zero (e.g. peer dep warnings) while still printing valid JSON
@@ -1289,8 +1336,8 @@ function parseNpmListOutput(stdout: string): PackageInfo[] {
 export async function uninstallNpmGlobalPackage(packageName: string): Promise<ToolInstallResult> {
   const env = await getAugmentedEnv()
   try {
-    const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-    await execBinary(npmCmd, ['uninstall', '-g', packageName], { timeout: 60000, env })
+    const npmCmd = await resolveNpmCmdPath(env)
+    await execBinary(npmCmd, ['uninstall', '-g', packageName], { timeout: 60000, env, cwd: os.homedir() })
     logger.info(`[local-env] npm global package uninstalled: ${packageName}`)
     return { success: true }
   } catch (err: any) {
