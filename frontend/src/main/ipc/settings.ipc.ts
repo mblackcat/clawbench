@@ -19,7 +19,8 @@ import { setLastChatModel, getLastChatModel, setLastBuiltinChatModel, getLastBui
 import { saveApiToken, clearApiToken } from '../store/api-credentials.store'
 import { refreshGlobalShortcuts } from '../services/shortcut.service'
 import { detectLarkCli, resetFeishuCliCache } from '../services/feishu-tools.service'
-import { isFeishuUser, getFeishuPlatformAppId, saveFeishuPlatformAppId } from '../store/auth.store'
+import { isFeishuUser, getFeishuPlatformAppId } from '../store/auth.store'
+import { ensureFeishuPlatformAppId } from '../services/auth.service'
 
 export function registerSettingsIpc(): void {
   ipcMain.handle('settings:get', async () => {
@@ -291,16 +292,9 @@ export function registerSettingsIpc(): void {
 
   /** Whether current session can enable Feishu Kits (Feishu OAuth login) */
   ipcMain.handle('settings:feishu-kits-auth-status', async () => {
-    // Best-effort: refresh public appId from backend if missing
-    if (isFeishuUser() && !getFeishuPlatformAppId()) {
-      try {
-        const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api/v1'
-        const res = await net.fetch(`${API_BASE}/auth/feishu/public-config`)
-        if (res.ok) {
-          const body = await res.json() as { success?: boolean; data?: { appId?: string } }
-          if (body?.data?.appId) saveFeishuPlatformAppId(body.data.appId)
-        }
-      } catch { /* offline / not configured */ }
+    // Best-effort: backfill platform App ID for sessions that logged in before appId was stored
+    if (isFeishuUser()) {
+      await ensureFeishuPlatformAppId()
     }
     return {
       isFeishuUser: isFeishuUser(),

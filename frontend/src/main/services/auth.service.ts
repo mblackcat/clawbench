@@ -7,6 +7,7 @@ import {
   getJwtToken,
   saveFeishuTokens,
   saveFeishuPlatformAppId,
+  getFeishuPlatformAppId,
   getFeishuAccessToken,
   getFeishuRefreshToken,
   getFeishuTokenExpiresAt,
@@ -195,6 +196,36 @@ export function getAuthStatus(): AuthStatus {
   const loggedIn = !!token && !!user
 
   return { loggedIn, user: loggedIn ? user : null, token: loggedIn ? token : undefined }
+}
+
+/**
+ * Ensure platform Feishu App ID is available for lark-cli.
+ * Prefer value saved at OAuth login; if missing (e.g. pre-upgrade session),
+ * fetch public config from backend. Never stores app secret.
+ */
+export async function ensureFeishuPlatformAppId(): Promise<string> {
+  const existing = getFeishuPlatformAppId()
+  if (existing) return existing
+
+  try {
+    logger.info('Platform App ID missing locally — fetching public-config')
+    const response = await fetch(`${API_BASE_URL}/auth/feishu/public-config`)
+    if (!response.ok) {
+      logger.error(`Feishu public-config failed: ${response.status}`)
+      return ''
+    }
+    const body = (await response.json()) as { success?: boolean; data?: { appId?: string } }
+    const appId = body?.data?.appId
+    if (typeof appId === 'string' && appId) {
+      saveFeishuPlatformAppId(appId)
+      logger.info('Platform App ID saved from public-config')
+      return appId
+    }
+    logger.warn('Feishu public-config returned empty appId')
+  } catch (err) {
+    logger.error('Failed to fetch Feishu public-config:', err)
+  }
+  return ''
 }
 
 /**

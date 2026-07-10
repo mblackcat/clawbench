@@ -13,8 +13,8 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as logger from '../utils/logger'
 import { getAiToolsConfigRaw } from '../store/settings.store'
-import { isFeishuUser, getFeishuPlatformAppId } from '../store/auth.store'
-import { getValidFeishuAccessToken } from './auth.service'
+import { isFeishuUser } from '../store/auth.store'
+import { getValidFeishuAccessToken, ensureFeishuPlatformAppId } from './auth.service'
 
 const execFileAsync = promisify(execFile)
 
@@ -29,17 +29,46 @@ export interface FeishuToolResult {
   isError: boolean
 }
 
-// ── lark-cli binary detection ──
+// ── lark-cli binary detection & Windows-safe invocation ──
+//
+// On Windows, npm installs three shims next to each other:
+//   lark-cli      → #!/bin/sh  bash script (NOT runnable by CreateProcess → ENOENT)
+//   lark-cli.cmd  → batch file (works with shell / cmd.exe)
+//   lark-cli.ps1  → PowerShell
+// `where.exe` often returns the bare `lark-cli` first, which is why chat fails
+// while an interactive terminal (PowerShell/cmd resolves PATHEXT) works.
+// Prefer .cmd, or better: spawn node + @larksuite/cli/scripts/run.js directly.
 
-let cachedCliPath: string | null = null
+interface LarkCliInvocation {
+  /** Path shown in settings / error messages */
+  displayPath: string
+  /** Executable for child_process */
+  command: string
+  /** Args prepended before the lark-cli subcommand args */
+  prefixArgs: string[]
+  shell: boolean
+}
+
+let cachedInvocation: LarkCliInvocation | null = null
 let cliChecked = false
 
 async function whichCommand(name: string): Promise<string | null> {
   try {
     if (process.platform === 'win32') {
       const { stdout } = await execFileAsync('where.exe', [name], { timeout: 5000 })
-      const first = stdout.trim().split(/\r?\n/).map((l) => l.trim()).find(Boolean)
-      return first || null
+      const lines = stdout
+        .trim()
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean)
+      if (lines.length === 0) return null
+      // Prefer Windows-native shims over the extensionless bash wrapper
+      return (
+        lines.find((l) => /\.cmd$/i.test(l)) ||
+        lines.find((l) => /\.exe$/i.test(l)) ||
+        lines.find((l) => /\.ps1$/i.test(l)) ||
+        lines[0]
+      )
     }
     const { stdout } = await execFileAsync('which', [name], { timeout: 5000 })
     return stdout.trim() || null
@@ -48,18 +77,60 @@ async function whichCommand(name: string): Promise<string | null> {
   }
 }
 
+/**
+ * Upgrade a detected path to something CreateProcess can actually run on Windows.
+ * Bare `lark-cli` (bash) exists on disk but always fails with ENOENT under execFile.
+ */
+function normalizeCliPath(raw: string): string | null {
+  if (!raw) return null
+  const p = raw.trim().replace(/^["']|["']$/g, '')
+  if (!p) return null
+
+  if (process.platform === 'win32') {
+    // Explicit .cmd
+    if (/\.cmd$/i.test(p) && fs.existsSync(p)) return p
+
+    // Bare path or .ps1 → prefer sibling .cmd
+    const asCmd = /\.ps1$/i.test(p) ? p.replace(/\.ps1$/i, '.cmd') : `${p}.cmd`
+    if (fs.existsSync(asCmd)) return asCmd
+
+    // Directory-local lark-cli.cmd (handles nvm folder + wrong filename casing)
+    const dirCmd = path.join(path.dirname(p), 'lark-cli.cmd')
+    if (fs.existsSync(dirCmd)) return dirCmd
+
+    // Last resort: bare path still "exists" but is not runnable — keep it only if
+    // we can later resolve run.js next to it
+    if (fs.existsSync(p)) return p
+    return null
+  }
+
+  return fs.existsSync(p) ? p : null
+}
+
 function candidateLarkCliPaths(): string[] {
   const home = os.homedir()
   const list: string[] = []
   if (process.platform === 'win32') {
-    // npm global on Windows (nvm / default)
+    // npm global / nvm4w / classic nvm
     if (process.env.APPDATA) {
       list.push(path.join(process.env.APPDATA, 'npm', 'lark-cli.cmd'))
-      list.push(path.join(process.env.APPDATA, 'npm', 'lark-cli'))
     }
     if (process.env.LOCALAPPDATA) {
       list.push(path.join(process.env.LOCALAPPDATA, 'npm', 'lark-cli.cmd'))
+      // classic nvm-windows: %LOCALAPPDATA%\nvm\vX.Y.Z\
+      const nvmRoot = path.join(process.env.LOCALAPPDATA, 'nvm')
+      try {
+        if (fs.existsSync(nvmRoot)) {
+          for (const entry of fs.readdirSync(nvmRoot)) {
+            if (entry.startsWith('v')) {
+              list.push(path.join(nvmRoot, entry, 'lark-cli.cmd'))
+            }
+          }
+        }
+      } catch { /* ignore */ }
     }
+    // nvm4w symlink dir
+    list.push(path.join('C:', 'nvm4w', 'nodejs', 'lark-cli.cmd'))
   } else {
     list.push('/usr/local/bin/lark-cli')
     list.push(path.join(home, '.local', 'bin', 'lark-cli'))
@@ -69,55 +140,113 @@ function candidateLarkCliPaths(): string[] {
   return list
 }
 
-async function findLarkCli(): Promise<string | null> {
-  if (cliChecked) return cachedCliPath
+/**
+ * Build a reliable spawn invocation.
+ * Prefer `node run.js` (avoids .cmd / PATHEXT / shell quirks entirely).
+ */
+function resolveInvocation(cliPath: string): LarkCliInvocation {
+  const displayPath = cliPath
+  const dir = path.dirname(cliPath)
 
-  // Priority 1: configured path from settings
+  const runJsCandidates = [
+    path.join(dir, 'node_modules', '@larksuite', 'cli', 'scripts', 'run.js'),
+    // Some installs nest under lib/node_modules
+    path.join(dir, 'lib', 'node_modules', '@larksuite', 'cli', 'scripts', 'run.js'),
+  ]
+
+  for (const runJs of runJsCandidates) {
+    if (!fs.existsSync(runJs)) continue
+    const localNode =
+      process.platform === 'win32'
+        ? path.join(dir, 'node.exe')
+        : path.join(dir, 'node')
+    const nodeCmd = fs.existsSync(localNode) ? localNode : 'node'
+    return {
+      displayPath,
+      command: nodeCmd,
+      prefixArgs: [runJs],
+      shell: false,
+    }
+  }
+
+  // Fallback: spawn the shim itself
+  if (process.platform === 'win32') {
+    // .cmd/.bat require shell; bare bash shims cannot run under CreateProcess
+    return {
+      displayPath,
+      command: cliPath,
+      prefixArgs: [],
+      shell: true,
+    }
+  }
+
+  return {
+    displayPath,
+    command: cliPath,
+    prefixArgs: [],
+    shell: false,
+  }
+}
+
+async function findLarkCliInvocation(): Promise<LarkCliInvocation | null> {
+  if (cliChecked) return cachedInvocation
+
+  const tryPath = (raw: string | null | undefined): LarkCliInvocation | null => {
+    if (!raw) return null
+    const normalized = normalizeCliPath(raw)
+    if (!normalized) return null
+    return resolveInvocation(normalized)
+  }
+
+  // Priority 1: configured path from settings (may be bare bash shim — normalize)
   try {
     const config = getAiToolsConfigRaw()
     const configured = config?.feishuKits?.cliPath
-    if (configured && fs.existsSync(configured)) {
-      cachedCliPath = configured
+    const inv = tryPath(configured)
+    if (inv) {
+      cachedInvocation = inv
       cliChecked = true
-      return cachedCliPath
+      return cachedInvocation
     }
   } catch { /* ignore */ }
 
-  // Priority 2: PATH lookup
+  // Priority 2: PATH lookup (where.exe prefers .cmd)
   const fromPath = await whichCommand('lark-cli')
-  if (fromPath) {
-    cachedCliPath = fromPath
-    cliChecked = true
-    return cachedCliPath
+  {
+    const inv = tryPath(fromPath)
+    if (inv) {
+      cachedInvocation = inv
+      cliChecked = true
+      return cachedInvocation
+    }
   }
 
   // Priority 3: common install locations
   for (const p of candidateLarkCliPaths()) {
-    try {
-      if (fs.existsSync(p)) {
-        cachedCliPath = p
-        cliChecked = true
-        return cachedCliPath
-      }
-    } catch { /* ignore */ }
+    const inv = tryPath(p)
+    if (inv) {
+      cachedInvocation = inv
+      cliChecked = true
+      return cachedInvocation
+    }
   }
 
-  cachedCliPath = null
+  cachedInvocation = null
   cliChecked = true
   return null
 }
 
 /** Reset cache so next call re-checks (useful after install). */
 export function resetFeishuCliCache(): void {
-  cachedCliPath = null
+  cachedInvocation = null
   cliChecked = false
 }
 
 /** Public detect helper for settings IPC */
 export async function detectLarkCli(): Promise<{ found: boolean; path: string }> {
   resetFeishuCliCache()
-  const p = await findLarkCli()
-  return { found: !!p, path: p || '' }
+  const inv = await findLarkCliInvocation()
+  return { found: !!inv, path: inv?.displayPath || '' }
 }
 
 // ── Tool definitions ──
@@ -265,8 +394,8 @@ export function isFeishuToolsAvailable(): { available: boolean; reason: string; 
 }
 
 async function runLarkCli(args: string[]): Promise<FeishuToolResult> {
-  const cliPath = await findLarkCli()
-  if (!cliPath) {
+  const inv = await findLarkCliInvocation()
+  if (!inv) {
     return {
       content:
         'lark-cli is not installed. Install it from Settings → AI Tools → Feishu Kits, or run:\n\n' +
@@ -291,39 +420,66 @@ async function runLarkCli(args: string[]): Promise<FeishuToolResult> {
     }
   }
 
-  const env: Record<string, string> = {
-    ...(process.env as Record<string, string>),
-    // Official lark-cli credential env vars
-    LARKSUITE_CLI_USER_ACCESS_TOKEN: uat,
+  // lark-cli requires APP_ID whenever USER_ACCESS_TOKEN is set
+  // ("blocked by env: LARKSUITE_CLI_USER_ACCESS_TOKEN is set but LARKSUITE_CLI_APP_ID is missing")
+  const appId = await ensureFeishuPlatformAppId()
+  if (!appId) {
+    return {
+      content:
+        'Platform Feishu App ID is missing. Please log out and log in again with Feishu, ' +
+        'or check that the backend exposes /auth/feishu/public-config with a valid FEISHU_APP_ID.',
+      isError: true,
+    }
   }
 
-  // Platform app id (public) — helps CLI resolve account; secret never leaves the server
-  const appId = getFeishuPlatformAppId()
-  if (appId) {
-    env.LARKSUITE_CLI_APP_ID = appId
+  const env: Record<string, string> = {
+    ...(process.env as Record<string, string>),
+    // Official lark-cli credential env vars (UAT + platform App ID, no secret)
+    LARKSUITE_CLI_USER_ACCESS_TOKEN: uat,
+    LARKSUITE_CLI_APP_ID: appId,
   }
 
   // Ensure --as user is present for user-identity operations
-  const finalArgs = [...args]
-  if (!finalArgs.includes('--as')) {
-    finalArgs.push('--as', 'user')
+  const cliArgs = [...args]
+  if (!cliArgs.includes('--as')) {
+    cliArgs.push('--as', 'user')
   }
 
+  const spawnArgs = [...inv.prefixArgs, ...cliArgs]
+
   try {
-    // On Windows, .cmd wrappers need shell; prefer running via node script when possible
-    const useShell = process.platform === 'win32' && /\.cmd$/i.test(cliPath)
-    const { stdout, stderr } = await execFileAsync(cliPath, finalArgs, {
+    logger.info(
+      `[lark-cli] spawn command=${inv.command} shell=${inv.shell} display=${inv.displayPath} args=${spawnArgs.slice(0, 6).join(' ')}`
+    )
+    const { stdout, stderr } = await execFileAsync(inv.command, spawnArgs, {
       env,
       timeout: 60_000,
       maxBuffer: 10 * 1024 * 1024,
-      shell: useShell,
+      shell: inv.shell,
       windowsHide: true,
     })
     const output = stdout.trim() || stderr.trim() || '(no output)'
     return { content: output, isError: false }
   } catch (err: any) {
+    const code = err.code ? String(err.code) : ''
     const msg = (err.stderr?.trim() || err.stdout?.trim() || err.message || 'Unknown error') as string
-    if (msg.includes('99991679') || /unauthori[sz]ed/i.test(msg) || /token/i.test(msg) && /expir/i.test(msg)) {
+
+    // Windows bare-shim ENOENT — give an actionable hint
+    if (code === 'ENOENT' || /ENOENT/i.test(msg)) {
+      return {
+        content:
+          `Failed to launch lark-cli (ENOENT).\n` +
+          `Detected path: ${inv.displayPath}\n` +
+          `Spawn: ${inv.command} ${spawnArgs[0] || ''}\n\n` +
+          `On Windows, npm installs a non-runnable bash shim named "lark-cli". ` +
+          `Please click Auto Detect in Settings → AI Tools → Feishu Kits to refresh the path ` +
+          `(should resolve to lark-cli.cmd or node + run.js), or reinstall with:\n` +
+          `npx @larksuite/cli@latest install`,
+        isError: true,
+      }
+    }
+
+    if (msg.includes('99991679') || /unauthori[sz]ed/i.test(msg) || (/token/i.test(msg) && /expir/i.test(msg))) {
       return {
         content:
           `${msg}\n\n` +
