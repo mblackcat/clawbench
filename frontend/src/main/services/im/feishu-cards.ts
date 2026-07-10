@@ -172,7 +172,7 @@ export function buildHelpCard(
       vertical_align: 'top',
       elements: [{
         tag: 'markdown',
-        content: "**<font color='purple'>💬 AI Chat</font>**\n`/chat <内容>` — 直接发起 AI 对话",
+        content: "**<font color='purple'>💬 AI 助手</font>**\n直接发消息即可多轮对话（人设/记忆/工具）\n`/chat <内容>` — 显式助手对话\n`/new` — 新开助手会话（超 1h 静默自动切断）\n`/new claude|codex|gemini` — 创建 Coding 会话\n可控制：应用运行/安装、终端命令、DB、Coding",
         text_align: 'left',
         text_size: 'normal_v2'
       }]

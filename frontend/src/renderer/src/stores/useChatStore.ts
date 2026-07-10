@@ -1525,17 +1525,20 @@ function handleSSEToolUse(
 
 /**
  * Load agent memory files for system prompt injection.
+ * When assistant master switch is off, returns empty context (minimal prompt).
  */
-async function loadAgentMemory(): Promise<AgentMemoryContext> {
+async function loadAgentMemory(assistantEnabled: boolean): Promise<AgentMemoryContext> {
+  if (!assistantEnabled) return {}
   try {
-    const [soul, memory, user, agents, statsSnippet] = await Promise.all([
+    const [soul, memory, user, agents, tools, statsSnippet] = await Promise.all([
       window.api.agent.readMemory('soul.md'),
       window.api.agent.readMemory('memory.md'),
       window.api.agent.readMemory('user.md'),
       window.api.agent.readMemory('agents.md'),
+      window.api.agent.readMemory('tools.md'),
       window.api.agent.statsSnippet(),
     ])
-    return { soul, memory, user, agents, statsSnippet }
+    return { soul, memory, user, agents, tools, statsSnippet }
   } catch {
     return {}
   }
@@ -1563,12 +1566,14 @@ async function streamBuiltin(
 
   // Build dynamic system prompt
   let customPrompt = ''
+  let assistantEnabled = true
   try {
     const agentSettings = await window.api.settings.getAgentSettings()
     customPrompt = agentSettings?.customSystemPrompt || ''
+    assistantEnabled = agentSettings?.assistantEnabled !== false
   } catch { /* ignore */ }
 
-  const agentMemory = await loadAgentMemory()
+  const agentMemory = await loadAgentMemory(assistantEnabled)
   const allToolNames: string[] = tools ? tools.map((t) => t.name) : []
   const lang = useSettingsStore.getState().language || 'zh-CN'
   const systemPrompt = buildSystemPrompt({
@@ -1579,7 +1584,8 @@ async function streamBuiltin(
     availableTools: allToolNames,
     webSearchEnabled: !!webSearchEnabled,
     userCustomPrompt: customPrompt,
-    agentMemory
+    agentMemory,
+    assistantEnabled
   })
   messages.unshift({ role: 'system', content: systemPrompt })
 
@@ -1693,12 +1699,14 @@ async function streamLocal(
 
   // Build dynamic system prompt
   let customPrompt = ''
+  let assistantEnabled = true
   try {
     const agentSettings = await window.api.settings.getAgentSettings()
     customPrompt = agentSettings?.customSystemPrompt || ''
+    assistantEnabled = agentSettings?.assistantEnabled !== false
   } catch { /* ignore */ }
 
-  const agentMemory = await loadAgentMemory()
+  const agentMemory = await loadAgentMemory(assistantEnabled)
   const allToolNames: string[] = tools ? tools.map((t) => t.name) : []
   const lang = useSettingsStore.getState().language || 'zh-CN'
   const systemPrompt = buildSystemPrompt({
@@ -1709,7 +1717,8 @@ async function streamLocal(
     availableTools: allToolNames,
     webSearchEnabled: !!webSearchEnabled,
     userCustomPrompt: customPrompt,
-    agentMemory
+    agentMemory,
+    assistantEnabled
   })
   messages.unshift({ role: 'system', content: systemPrompt })
 

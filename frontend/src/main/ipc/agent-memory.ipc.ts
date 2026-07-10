@@ -8,6 +8,11 @@ import {
   restoreSoulDefault,
   getMemoryDir,
   getStatsSnippet,
+  applySoulTemplate,
+  initSoulFromRole,
+  getSoulTemplate,
+  listSoulRoles,
+  type SoulRole,
 } from '../services/agent-memory.service'
 
 export function registerAgentMemoryIpc(): void {
@@ -44,6 +49,22 @@ export function registerAgentMemoryIpc(): void {
 
   ipcMain.handle('agent:restore-soul-default', async () => {
     return restoreSoulDefault()
+  })
+
+  ipcMain.handle('agent:apply-soul-template', async (_event, role: SoulRole) => {
+    return applySoulTemplate(role)
+  })
+
+  ipcMain.handle('agent:init-soul-from-role', async (_event, role: SoulRole) => {
+    return initSoulFromRole(role)
+  })
+
+  ipcMain.handle('agent:get-soul-template', async (_event, role: SoulRole) => {
+    return getSoulTemplate(role)
+  })
+
+  ipcMain.handle('agent:list-soul-roles', async () => {
+    return listSoulRoles()
   })
 
   ipcMain.handle('agent:get-memory-dir', async () => {

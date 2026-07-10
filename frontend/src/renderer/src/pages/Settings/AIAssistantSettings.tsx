@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import {
   Card, Form, Input, Select, Slider, Typography, theme, App, Button,
-  Tabs, Statistic, Row, Col, Tag, Popconfirm, Space,
+  Tabs, Statistic, Row, Col, Tag, Popconfirm, Space, Switch,
 } from 'antd'
 import {
   ReloadOutlined,
@@ -13,8 +13,10 @@ import {
 } from '@ant-design/icons'
 import { useT } from '../../i18n'
 import { MONO_FONT_STACK } from '../../utils/mono-font'
+import { ROLE_LABELS, ROLE_LABELS_EN, type SetupRole } from '../../constants/module-visibility'
+import { useSettingsStore } from '../../stores/useSettingsStore'
 
-const { Text, Title } = Typography
+const { Text } = Typography
 const { TextArea } = Input
 
 interface FeedbackStats {
@@ -24,14 +26,20 @@ interface FeedbackStats {
   soulSuggestions: { suggestion: string; reason: string; feedbackCount: number }[]
 }
 
+const SOUL_ROLES: SetupRole[] = ['general', 'design', 'tech', 'art']
+
 const AIAssistantSettings: React.FC = () => {
   const t = useT()
   const { token } = theme.useToken()
   const { message } = App.useApp()
+  const language = useSettingsStore((s) => s.language)
+  const roleLabels = language === 'en' ? ROLE_LABELS_EN : ROLE_LABELS
 
   // Existing behavior settings
   const [toolApprovalMode, setToolApprovalMode] = useState('auto-approve-safe')
   const [maxToolSteps, setMaxToolSteps] = useState(15)
+  const [assistantEnabled, setAssistantEnabled] = useState(true)
+  const [setupRole, setSetupRole] = useState<SetupRole | ''>('')
 
   // Agent memory files
   const [soul, setSoul] = useState('')
@@ -52,6 +60,8 @@ const AIAssistantSettings: React.FC = () => {
     ]).then(([settings, memories, statsData]: any[]) => {
       setToolApprovalMode(settings?.defaultToolApprovalMode || 'auto-approve-safe')
       setMaxToolSteps(settings?.maxAgentToolSteps ?? 15)
+      setAssistantEnabled(settings?.assistantEnabled !== false)
+      setSetupRole((settings?.setupRole as SetupRole) || '')
 
       setSoul(memories['soul.md'] || '')
       setMemory(memories['memory.md'] || '')
@@ -73,6 +83,11 @@ const AIAssistantSettings: React.FC = () => {
     window.api.settings.setAgentSettings({ maxAgentToolSteps: value }).catch(() => {})
   }, [])
 
+  const saveAssistantEnabled = useCallback((value: boolean) => {
+    setAssistantEnabled(value)
+    window.api.settings.setAgentSettings({ assistantEnabled: value }).catch(() => {})
+  }, [])
+
   const saveSoul = useCallback(() => {
     window.api.agent.writeMemory('soul.md', soul).then(() => {
       message.success(t('common.saved'))
@@ -85,6 +100,16 @@ const AIAssistantSettings: React.FC = () => {
       setSoul(content)
       message.success(t('common.saved'))
     }).catch(() => {})
+  }, [message, t])
+
+  const applyTemplate = useCallback((role: SetupRole) => {
+    window.api.agent.applySoulTemplate(role).then(async () => {
+      const content = await window.api.agent.readMemory('soul.md')
+      setSoul(content)
+      setSetupRole(role)
+      await window.api.settings.setAgentSettings({ setupRole: role })
+      message.success(t('common.saved'))
+    }).catch(() => message.error(t('common.saveFailed')))
   }, [message, t])
 
   const saveMemoryFile = useCallback((filename: string, content: string) => {
@@ -143,6 +168,23 @@ const AIAssistantSettings: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* Master switch */}
+      <Card
+        size="small"
+        title={t('settings.aiAssistant.masterTitle')}
+        style={{ borderRadius: token.borderRadiusLG }}
+        styles={{ body: { padding: '12px 16px' } }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {t('settings.aiAssistant.masterDesc')}
+            </Text>
+          </div>
+          <Switch checked={assistantEnabled} onChange={saveAssistantEnabled} />
+        </div>
+      </Card>
+
       {/* Agent Persona (soul.md) */}
       <Card
         size="small"
@@ -155,16 +197,28 @@ const AIAssistantSettings: React.FC = () => {
             <Button size="small" type="primary" onClick={saveSoul}>{t('common.save')}</Button>
           </Space>
         }
-        style={{ borderRadius: token.borderRadiusLG }}
+        style={{ borderRadius: token.borderRadiusLG, opacity: assistantEnabled ? 1 : 0.55 }}
         styles={{ body: { padding: '12px 16px' } }}
       >
         <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>
           {t('settings.aiAssistant.soulDesc')}
         </Text>
+        <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <Text style={{ fontSize: 12 }}>{t('settings.aiAssistant.templateLabel')}</Text>
+          <Select
+            size="small"
+            style={{ minWidth: 140 }}
+            placeholder={t('settings.aiAssistant.templatePlaceholder')}
+            value={setupRole || undefined}
+            onChange={(role: SetupRole) => applyTemplate(role)}
+            options={SOUL_ROLES.map((r) => ({ value: r, label: roleLabels[r] }))}
+          />
+        </div>
         <TextArea
           value={soul}
           onChange={(e) => setSoul(e.target.value)}
           rows={8}
+          disabled={!assistantEnabled}
           style={{ resize: 'vertical', fontFamily: MONO_FONT_STACK, fontSize: 13 }}
         />
       </Card>
@@ -173,9 +227,12 @@ const AIAssistantSettings: React.FC = () => {
       <Card
         size="small"
         title={t('settings.aiAssistant.memoryTitle')}
-        style={{ borderRadius: token.borderRadiusLG }}
+        style={{ borderRadius: token.borderRadiusLG, opacity: assistantEnabled ? 1 : 0.55 }}
         styles={{ body: { padding: '12px 16px' } }}
       >
+        <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>
+          {t('settings.aiAssistant.memoryAutoHint')}
+        </Text>
         <Tabs
           activeKey={memoryTab}
           onChange={setMemoryTab}
@@ -190,14 +247,15 @@ const AIAssistantSettings: React.FC = () => {
                     value={memory}
                     onChange={(e) => setMemory(e.target.value)}
                     rows={6}
+                    disabled={!assistantEnabled}
                     style={{ resize: 'vertical', fontFamily: MONO_FONT_STACK, fontSize: 13, marginBottom: 8 }}
                   />
                   <Space>
-                    <Button size="small" type="primary" onClick={() => saveMemoryFile('memory.md', memory)}>
+                    <Button size="small" type="primary" disabled={!assistantEnabled} onClick={() => saveMemoryFile('memory.md', memory)}>
                       {t('common.save')}
                     </Button>
                     <Popconfirm title={t('settings.aiAssistant.clearConfirm')} onConfirm={() => clearMemoryFile('memory.md')}>
-                      <Button size="small" danger icon={<DeleteOutlined />}>{t('settings.aiAssistant.clear')}</Button>
+                      <Button size="small" danger icon={<DeleteOutlined />} disabled={!assistantEnabled}>{t('settings.aiAssistant.clear')}</Button>
                     </Popconfirm>
                   </Space>
                 </div>
@@ -328,14 +386,23 @@ const AIAssistantSettings: React.FC = () => {
           items={[
             {
               key: 'tools.md',
-              label: 'tools.md',
+              label: 'tools.md (Harness)',
               children: (
-                <TextArea
-                  value={tools}
-                  readOnly
-                  rows={4}
-                  style={{ fontFamily: MONO_FONT_STACK, fontSize: 13, resize: 'vertical' }}
-                />
+                <div>
+                  <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>
+                    {t('settings.aiAssistant.harnessDesc')}
+                  </Text>
+                  <TextArea
+                    value={tools}
+                    onChange={(e) => setTools(e.target.value)}
+                    rows={8}
+                    disabled={!assistantEnabled}
+                    style={{ fontFamily: MONO_FONT_STACK, fontSize: 13, resize: 'vertical', marginBottom: 8 }}
+                  />
+                  <Button size="small" type="primary" disabled={!assistantEnabled} onClick={() => saveMemoryFile('tools.md', tools)}>
+                    {t('common.save')}
+                  </Button>
+                </div>
               ),
             },
             {

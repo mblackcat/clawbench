@@ -271,8 +271,20 @@ export interface ClawBenchAPI {
     detectLightpanda: () => Promise<{ found: boolean; path: string }>
     installLightpanda: () => Promise<{ success: boolean; error: string; path: string }>
     onLightpandaInstallProgress: (callback: (data: { percent: number; downloadedMB: string; totalMB: string; stage: string }) => void) => () => void
-    getAgentSettings: () => Promise<{ customSystemPrompt: string; defaultToolApprovalMode: string; maxAgentToolSteps: number }>
-    setAgentSettings: (settings: { customSystemPrompt?: string; defaultToolApprovalMode?: string; maxAgentToolSteps?: number }) => Promise<void>
+    getAgentSettings: () => Promise<{
+      customSystemPrompt: string
+      defaultToolApprovalMode: string
+      maxAgentToolSteps: number
+      assistantEnabled: boolean
+      setupRole: string
+    }>
+    setAgentSettings: (settings: {
+      customSystemPrompt?: string
+      defaultToolApprovalMode?: string
+      maxAgentToolSteps?: number
+      assistantEnabled?: boolean
+      setupRole?: string
+    }) => Promise<void>
   }
   ai: {
     streamChat: (
@@ -543,6 +555,28 @@ export interface ClawBenchAPI {
     imDisconnect: () => Promise<{ success: boolean }>
     imGetStatus: () => Promise<import('./ai-coding').AICodingIMConnectionStatus>
     imTest: () => Promise<{ success: boolean; error?: string }>
+    listImConversations: () => Promise<Array<{
+      id: string
+      source: 'im'
+      title: string
+      chatId: string
+      createdAt: number
+      updatedAt: number
+      closedAt?: number
+      closeReason?: string
+      messages: Array<{ id: string; role: string; content: string; createdAt: number }>
+    }>>
+    getImConversation: (id: string) => Promise<{
+      id: string
+      source: 'im'
+      title: string
+      chatId: string
+      createdAt: number
+      updatedAt: number
+      closedAt?: number
+      closeReason?: string
+      messages: Array<{ id: string; role: string; content: string; createdAt: number }>
+    } | null>
     onIMStatusChanged: (
       callback: (status: import('./ai-coding').AICodingIMConnectionStatus) => void
     ) => () => void
@@ -700,6 +734,10 @@ export interface ClawBenchAPI {
     statsSnippet: () => Promise<string>
     processFeedback: (data: { messageId: string; type: 'up' | 'down'; reason?: string; snippet: string }) => Promise<{ ok: boolean }>
     restoreSoulDefault: () => Promise<void>
+    applySoulTemplate: (role: string) => Promise<void>
+    initSoulFromRole: (role: string) => Promise<void>
+    getSoulTemplate: (role: string) => Promise<string>
+    listSoulRoles: () => Promise<string[]>
     getMemoryDir: () => Promise<string>
   }
   scheduledTask: {

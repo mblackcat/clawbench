@@ -14,6 +14,8 @@ import {
   setAICodingSessions,
   setAICodingGroups,
   setAICodingIMConfig,
+  getIMAutoConnect,
+  aiCodingStore,
   migrateV1ToV2,
   migrateV2ToV3
 } from '../store/ai-coding.store'
@@ -697,11 +699,41 @@ export function deleteGroup(id: string): { success: boolean; error?: string } {
 // ── IM Config ──
 
 export function getIMConfig(): AICodingIMConfig {
-  return getAICodingConfig().imConfig
+  const raw = getAICodingConfig().imConfig || {
+    feishu: { appId: '', appSecret: '' },
+  }
+  // Soft migration: existing users with credentials + auto-connect keep remote entry
+  if (!aiCodingStore.get('imRemoteMigrated')) {
+    const hasCreds = !!(raw.feishu?.appId?.trim() && raw.feishu?.appSecret?.trim())
+    const auto = getIMAutoConnect()
+    if (raw.remoteEnabled === undefined) {
+      raw.remoteEnabled = hasCreds && auto
+      setAICodingIMConfig({ ...raw, remoteEnabled: raw.remoteEnabled })
+    }
+    aiCodingStore.set('imRemoteMigrated', true)
+  }
+  return {
+    feishu: {
+      appId: raw.feishu?.appId || '',
+      appSecret: raw.feishu?.appSecret || '',
+    },
+    remoteEnabled: raw.remoteEnabled === true,
+    modelConfigId: raw.modelConfigId || '',
+    modelId: raw.modelId || '',
+    maxTurnsPerSession: raw.maxTurnsPerSession ?? 40,
+    idleTimeoutMs: raw.idleTimeoutMs ?? 3_600_000,
+  }
 }
 
 export function saveIMConfig(imConfig: AICodingIMConfig): void {
-  setAICodingIMConfig(imConfig)
+  setAICodingIMConfig({
+    ...imConfig,
+    feishu: {
+      appId: imConfig.feishu?.appId || '',
+      appSecret: imConfig.feishu?.appSecret || '',
+    },
+    remoteEnabled: imConfig.remoteEnabled === true,
+  })
 }
 
 // ── Re-exports ──

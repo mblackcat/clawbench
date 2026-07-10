@@ -150,27 +150,30 @@ const TopBar: React.FC = () => {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-        {/* IM status button — styled to match theme toggle capsule */}
-        <Tooltip title={imTooltipText}>
-          <div
-            onClick={() => setIMModalOpen(true)}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 26,
-              height: 26,
-              background: token.colorFillTertiary,
-              borderRadius: 8,
-              cursor: 'pointer',
-              transition: 'background 0.2s',
-            }}
-          >
-            {imIconNode}
-          </div>
-        </Tooltip>
-
-        <div style={{ width: 1, height: 16, background: token.colorBorderSecondary }} />
+        {/* IM entry is non-persistent: only when remote IM control is enabled */}
+        {imConfig.remoteEnabled && (
+          <>
+            <Tooltip title={imTooltipText}>
+              <div
+                onClick={() => setIMModalOpen(true)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 26,
+                  height: 26,
+                  background: token.colorFillTertiary,
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  transition: 'background 0.2s',
+                }}
+              >
+                {imIconNode}
+              </div>
+            </Tooltip>
+            <div style={{ width: 1, height: 16, background: token.colorBorderSecondary }} />
+          </>
+        )}
 
         {/* Theme toggle capsule */}
         <div style={{

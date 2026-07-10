@@ -165,9 +165,20 @@ export const api = {
       ipcRenderer.on('settings:lightpanda-install-progress', handler)
       return () => ipcRenderer.removeListener('settings:lightpanda-install-progress', handler)
     },
-    getAgentSettings: () => ipcRenderer.invoke('settings:get-agent-settings'),
-    setAgentSettings: (settings: { customSystemPrompt?: string; defaultToolApprovalMode?: string; maxAgentToolSteps?: number }) =>
-      ipcRenderer.invoke('settings:set-agent-settings', settings),
+    getAgentSettings: () => ipcRenderer.invoke('settings:get-agent-settings') as Promise<{
+      customSystemPrompt: string
+      defaultToolApprovalMode: string
+      maxAgentToolSteps: number
+      assistantEnabled: boolean
+      setupRole: string
+    }>,
+    setAgentSettings: (settings: {
+      customSystemPrompt?: string
+      defaultToolApprovalMode?: string
+      maxAgentToolSteps?: number
+      assistantEnabled?: boolean
+      setupRole?: string
+    }) => ipcRenderer.invoke('settings:set-agent-settings', settings),
   },
 
   git: {
@@ -551,6 +562,8 @@ export const api = {
     imDisconnect: () => ipcRenderer.invoke('ai-coding:im-disconnect'),
     imGetStatus: () => ipcRenderer.invoke('ai-coding:im-get-status'),
     imTest: () => ipcRenderer.invoke('ai-coding:im-test'),
+    listImConversations: () => ipcRenderer.invoke('ai-coding:list-im-conversations'),
+    getImConversation: (id: string) => ipcRenderer.invoke('ai-coding:get-im-conversation', id),
     onIMStatusChanged: (callback: (data: unknown) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data)
       ipcRenderer.on('ai-coding:im-status-changed', handler)
@@ -716,6 +729,10 @@ export const api = {
     processFeedback: (data: { messageId: string; type: 'up' | 'down'; reason?: string; snippet: string }) =>
       ipcRenderer.invoke('agent:process-feedback', data),
     restoreSoulDefault: () => ipcRenderer.invoke('agent:restore-soul-default') as Promise<void>,
+    applySoulTemplate: (role: string) => ipcRenderer.invoke('agent:apply-soul-template', role) as Promise<void>,
+    initSoulFromRole: (role: string) => ipcRenderer.invoke('agent:init-soul-from-role', role) as Promise<void>,
+    getSoulTemplate: (role: string) => ipcRenderer.invoke('agent:get-soul-template', role) as Promise<string>,
+    listSoulRoles: () => ipcRenderer.invoke('agent:list-soul-roles') as Promise<string[]>,
     getMemoryDir: () => ipcRenderer.invoke('agent:get-memory-dir') as Promise<string>,
   },
 

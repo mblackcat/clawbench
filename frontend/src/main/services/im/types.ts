@@ -141,6 +141,10 @@ export interface IMChatState {
   chatId: string
   activeWorkspaceId: string | null
   activeSessionId: string | null
+  /** Active multi-turn agent conversation (local AI-chat parity) */
+  agentConversationId?: string | null
+  lastAgentActivityAt?: number
+  agentTurnCount?: number
 }
 
 /** Parsed command from user message */

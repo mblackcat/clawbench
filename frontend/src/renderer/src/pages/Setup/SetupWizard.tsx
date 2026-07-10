@@ -448,6 +448,9 @@ const SetupWizard: React.FC = () => {
     try {
       // Save module visibility
       await updateSetting('moduleVisibility', modules)
+      // Persist role + initialize persona template for first-time users
+      await window.api.settings.setAgentSettings({ setupRole: role })
+      await window.api.agent.initSoulFromRole(role)
       // Mark setup as complete
       await completeSetup()
       message.success(t('setup.success'))
@@ -456,7 +459,7 @@ const SetupWizard: React.FC = () => {
     } catch {
       message.error(t('setup.saveFailed'))
     }
-  }, [modules, updateSetting, completeSetup, navigate, message, t])
+  }, [modules, role, updateSetting, completeSetup, navigate, message, t])
 
   const stepItems = useMemo(
     () => [

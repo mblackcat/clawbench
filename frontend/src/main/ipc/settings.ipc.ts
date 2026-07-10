@@ -130,7 +130,13 @@ export function registerSettingsIpc(): void {
     return getAgentSettings()
   })
 
-  ipcMain.handle('settings:set-agent-settings', async (_event, settings: { customSystemPrompt?: string; defaultToolApprovalMode?: string; maxAgentToolSteps?: number }) => {
+  ipcMain.handle('settings:set-agent-settings', async (_event, settings: {
+    customSystemPrompt?: string
+    defaultToolApprovalMode?: string
+    maxAgentToolSteps?: number
+    assistantEnabled?: boolean
+    setupRole?: string
+  }) => {
     setAgentSettings(settings)
   })
 

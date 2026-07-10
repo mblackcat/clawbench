@@ -66,6 +66,10 @@ interface SettingsSchema {
   customSystemPrompt: string
   defaultToolApprovalMode: string
   maxAgentToolSteps: number
+  /** Master switch for AI assistant persona/memory/harness. Default true. */
+  assistantEnabled: boolean
+  /** Role chosen in setup wizard; drives soul persona templates. */
+  setupRole: string
 }
 
 interface PublicSettings {
@@ -264,6 +268,14 @@ export const settingsStore = new Store<SettingsSchema>({
     maxAgentToolSteps: {
       type: 'number',
       default: 15
+    },
+    assistantEnabled: {
+      type: 'boolean',
+      default: true
+    },
+    setupRole: {
+      type: 'string',
+      default: ''
     }
   }
 })
@@ -391,16 +403,29 @@ export function resetSettings(): void {
   settingsStore.clear()
 }
 
-export function getAgentSettings(): { customSystemPrompt: string; defaultToolApprovalMode: string; maxAgentToolSteps: number } {
+export interface AgentSettings {
+  customSystemPrompt: string
+  defaultToolApprovalMode: string
+  maxAgentToolSteps: number
+  assistantEnabled: boolean
+  setupRole: string
+}
+
+export function getAgentSettings(): AgentSettings {
   return {
     customSystemPrompt: settingsStore.get('customSystemPrompt') || '',
     defaultToolApprovalMode: settingsStore.get('defaultToolApprovalMode') || 'auto-approve-safe',
-    maxAgentToolSteps: settingsStore.get('maxAgentToolSteps') ?? 15
+    maxAgentToolSteps: settingsStore.get('maxAgentToolSteps') ?? 15,
+    // Default true when missing (older stores)
+    assistantEnabled: settingsStore.get('assistantEnabled') !== false,
+    setupRole: settingsStore.get('setupRole') || ''
   }
 }
 
-export function setAgentSettings(settings: { customSystemPrompt?: string; defaultToolApprovalMode?: string; maxAgentToolSteps?: number }): void {
+export function setAgentSettings(settings: Partial<AgentSettings>): void {
   if (settings.customSystemPrompt !== undefined) settingsStore.set('customSystemPrompt', settings.customSystemPrompt)
   if (settings.defaultToolApprovalMode !== undefined) settingsStore.set('defaultToolApprovalMode', settings.defaultToolApprovalMode)
   if (settings.maxAgentToolSteps !== undefined) settingsStore.set('maxAgentToolSteps', settings.maxAgentToolSteps)
+  if (settings.assistantEnabled !== undefined) settingsStore.set('assistantEnabled', settings.assistantEnabled)
+  if (settings.setupRole !== undefined) settingsStore.set('setupRole', settings.setupRole)
 }
