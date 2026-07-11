@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import {
   Card, Form, Input, Select, Slider, Typography, theme, App, Button,
-  Tabs, Statistic, Row, Col, Tag, Popconfirm, Space, Switch,
+  Tabs, Statistic, Row, Col, Tag, Popconfirm, Space, Switch, Empty,
 } from 'antd'
 import {
   ReloadOutlined,
@@ -10,6 +10,7 @@ import {
   CloseOutlined,
   LikeOutlined,
   DislikeOutlined,
+  EditOutlined,
 } from '@ant-design/icons'
 import { useT } from '../../i18n'
 import { MONO_FONT_STACK } from '../../utils/mono-font'
@@ -29,6 +30,9 @@ interface FeedbackStats {
 
 const SOUL_ROLES: SetupRole[] = ['general', 'design', 'tech', 'art']
 
+type MemoryFilename = 'soul.md' | 'memory.md' | 'user.md' | 'tools.md' | 'agents.md'
+type EditableDocKey = 'user' | 'agents' | 'tools'
+
 const AIAssistantSettings: React.FC = () => {
   const t = useT()
   const { token } = theme.useToken()
@@ -40,13 +44,11 @@ const AIAssistantSettings: React.FC = () => {
   const fetchIMConfig = useAICodingStore((s) => s.fetchIMConfig)
   const [remoteImSaving, setRemoteImSaving] = useState(false)
 
-  // Existing behavior settings
   const [toolApprovalMode, setToolApprovalMode] = useState('auto-approve-safe')
   const [maxToolSteps, setMaxToolSteps] = useState(15)
   const [assistantEnabled, setAssistantEnabled] = useState(true)
   const [setupRole, setSetupRole] = useState<SetupRole | ''>('')
 
-  // Agent memory files
   const [soul, setSoul] = useState('')
   const [memory, setMemory] = useState('')
   const [userMd, setUserMd] = useState('')
@@ -54,7 +56,9 @@ const AIAssistantSettings: React.FC = () => {
   const [tools, setTools] = useState('')
   const [stats, setStats] = useState<FeedbackStats | null>(null)
 
-  const [memoryTab, setMemoryTab] = useState('memory.md')
+  const [profileGroup, setProfileGroup] = useState('youAndI')
+  const [youAndITab, setYouAndITab] = useState('persona')
+  const [editingDocs, setEditingDocs] = useState<Partial<Record<EditableDocKey, boolean>>>({})
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
@@ -94,7 +98,6 @@ const AIAssistantSettings: React.FC = () => {
     window.api.settings.setAgentSettings({ assistantEnabled: value }).catch(() => {})
   }, [])
 
-  /** Toggle TopBar Feishu entry + remote IM agent capability. */
   const saveRemoteImEnabled = useCallback(async (value: boolean) => {
     setRemoteImSaving(true)
     try {
@@ -134,19 +137,43 @@ const AIAssistantSettings: React.FC = () => {
     }).catch(() => message.error(t('common.saveFailed')))
   }, [message, t])
 
-  const saveMemoryFile = useCallback((filename: string, content: string) => {
+  const applyDocValue = useCallback((filename: MemoryFilename, content: string) => {
+    if (filename === 'soul.md') setSoul(content)
+    else if (filename === 'memory.md') setMemory(content)
+    else if (filename === 'user.md') setUserMd(content)
+    else if (filename === 'tools.md') setTools(content)
+    else if (filename === 'agents.md') setAgents(content)
+  }, [])
+
+  const saveMemoryFile = useCallback((filename: MemoryFilename, content: string, editKey?: EditableDocKey) => {
     window.api.agent.writeMemory(filename, content).then(() => {
       message.success(t('common.saved'))
+      if (editKey) {
+        setEditingDocs((prev) => ({ ...prev, [editKey]: false }))
+      }
     }).catch(() => message.error(t('common.saveFailed')))
   }, [message, t])
 
-  const clearMemoryFile = useCallback((filename: string) => {
+  const clearMemoryFile = useCallback((filename: MemoryFilename) => {
     window.api.agent.writeMemory(filename, '').then(() => {
-      if (filename === 'memory.md') setMemory('')
-      else if (filename === 'user.md') setUserMd('')
+      applyDocValue(filename, '')
       message.success(t('common.saved'))
     }).catch(() => {})
-  }, [message, t])
+  }, [applyDocValue, message, t])
+
+  const startEditDoc = useCallback((key: EditableDocKey) => {
+    setEditingDocs((prev) => ({ ...prev, [key]: true }))
+  }, [])
+
+  const cancelEditDoc = useCallback(async (key: EditableDocKey, filename: MemoryFilename) => {
+    try {
+      const content = await window.api.agent.readMemory(filename)
+      applyDocValue(filename, content)
+    } catch {
+      // keep local value if reload fails
+    }
+    setEditingDocs((prev) => ({ ...prev, [key]: false }))
+  }, [applyDocValue])
 
   const handleAcceptSuggestion = useCallback(async (index: number) => {
     if (!stats) return
@@ -187,10 +214,198 @@ const AIAssistantSettings: React.FC = () => {
   const totalUp = stats?.totalFeedback.up || 0
   const totalDown = stats?.totalFeedback.down || 0
   const totalFeedback = totalUp + totalDown
+  const monoAreaStyle: React.CSSProperties = {
+    resize: 'vertical',
+    fontFamily: MONO_FONT_STACK,
+    fontSize: 13,
+    marginBottom: 8,
+  }
+
+  const renderReadonlyHint = (hint: string) => (
+    <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>
+      {hint}
+    </Text>
+  )
+
+  const renderDocArea = (
+    value: string,
+    onChange: (v: string) => void,
+    options: {
+      rows?: number
+      readOnly: boolean
+      disabled?: boolean
+      emptyHint?: string
+    },
+  ) => {
+    if (options.readOnly && !value.trim()) {
+      return (
+        <div
+          style={{
+            marginBottom: 8,
+            padding: '20px 12px',
+            borderRadius: token.borderRadius,
+            border: `1px dashed ${token.colorBorderSecondary}`,
+            background: token.colorFillQuaternary,
+          }}
+        >
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {options.emptyHint || t('settings.aiAssistant.emptyAuto')}
+              </Text>
+            }
+          />
+        </div>
+      )
+    }
+    return (
+      <TextArea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        rows={options.rows ?? 8}
+        readOnly={options.readOnly}
+        disabled={options.disabled}
+        style={{
+          ...monoAreaStyle,
+          cursor: options.readOnly ? 'default' : undefined,
+          background: options.readOnly ? token.colorFillQuaternary : undefined,
+        }}
+      />
+    )
+  }
+
+  const renderManagedDocActions = (
+    key: EditableDocKey,
+    filename: MemoryFilename,
+    content: string,
+    canClear = true,
+  ) => {
+    const editing = !!editingDocs[key]
+    if (!editing) {
+      return (
+        <Space>
+          <Button size="small" icon={<EditOutlined />} onClick={() => startEditDoc(key)}>
+            {t('settings.aiAssistant.edit')}
+          </Button>
+          {canClear && (
+            <Popconfirm title={t('settings.aiAssistant.clearConfirm')} onConfirm={() => clearMemoryFile(filename)}>
+              <Button size="small" danger icon={<DeleteOutlined />}>
+                {t('settings.aiAssistant.clear')}
+              </Button>
+            </Popconfirm>
+          )}
+        </Space>
+      )
+    }
+    return (
+      <Space>
+        <Button size="small" type="primary" onClick={() => saveMemoryFile(filename, content, key)}>
+          {t('common.save')}
+        </Button>
+        <Button size="small" onClick={() => cancelEditDoc(key, filename)}>
+          {t('common.cancel')}
+        </Button>
+        {canClear && (
+          <Popconfirm title={t('settings.aiAssistant.clearConfirm')} onConfirm={() => clearMemoryFile(filename)}>
+            <Button size="small" danger icon={<DeleteOutlined />}>
+              {t('settings.aiAssistant.clear')}
+            </Button>
+          </Popconfirm>
+        )}
+      </Space>
+    )
+  }
+
+  const personaPanel = (
+    <div>
+      {renderReadonlyHint(t('settings.aiAssistant.soulDesc'))}
+      <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <Text style={{ fontSize: 12 }}>{t('settings.aiAssistant.templateLabel')}</Text>
+        <Select
+          size="small"
+          style={{ minWidth: 140 }}
+          placeholder={t('settings.aiAssistant.templatePlaceholder')}
+          value={setupRole || undefined}
+          onChange={(role: SetupRole) => applyTemplate(role)}
+          options={SOUL_ROLES.map((r) => ({ value: r, label: roleLabels[r] }))}
+          disabled={!assistantEnabled}
+        />
+        <div style={{ flex: 1 }} />
+        <Popconfirm title={t('settings.aiAssistant.restoreDefaultConfirm')} onConfirm={restoreSoulDefault}>
+          <Button size="small" icon={<ReloadOutlined />} disabled={!assistantEnabled}>
+            {t('settings.aiAssistant.restoreDefault')}
+          </Button>
+        </Popconfirm>
+        <Button size="small" type="primary" onClick={saveSoul} disabled={!assistantEnabled}>
+          {t('common.save')}
+        </Button>
+      </div>
+      {renderDocArea(soul, setSoul, {
+        rows: 10,
+        readOnly: false,
+        disabled: !assistantEnabled,
+      })}
+    </div>
+  )
+
+  const userPanel = (
+    <div>
+      {renderReadonlyHint(t('settings.aiAssistant.userDesc'))}
+      {renderDocArea(userMd, setUserMd, {
+        rows: 10,
+        readOnly: !editingDocs.user,
+        emptyHint: t('settings.aiAssistant.emptyUser'),
+      })}
+      {renderManagedDocActions('user', 'user.md', userMd)}
+    </div>
+  )
+
+  const subAgentsPanel = (
+    <div>
+      {renderReadonlyHint(t('settings.aiAssistant.subAgentsDesc'))}
+      {renderDocArea(agents, setAgents, {
+        rows: 8,
+        readOnly: !editingDocs.agents,
+        emptyHint: t('settings.aiAssistant.emptySubAgents'),
+      })}
+      {renderManagedDocActions('agents', 'agents.md', agents)}
+    </div>
+  )
+
+  const toolsPanel = (
+    <div>
+      {renderReadonlyHint(t('settings.aiAssistant.toolsDesc'))}
+      {renderDocArea(tools, setTools, {
+        rows: 12,
+        readOnly: !editingDocs.tools,
+        emptyHint: t('settings.aiAssistant.emptyTools'),
+      })}
+      {renderManagedDocActions('tools', 'tools.md', tools, false)}
+    </div>
+  )
+
+  const memoryPanel = (
+    <div>
+      {renderReadonlyHint(t('settings.aiAssistant.memoryDesc'))}
+      {renderDocArea(memory, setMemory, {
+        rows: 12,
+        readOnly: true,
+        emptyHint: t('settings.aiAssistant.emptyMemory'),
+      })}
+      <Space>
+        <Popconfirm title={t('settings.aiAssistant.clearConfirm')} onConfirm={() => clearMemoryFile('memory.md')}>
+          <Button size="small" danger icon={<DeleteOutlined />} disabled={!assistantEnabled}>
+            {t('settings.aiAssistant.clear')}
+          </Button>
+        </Popconfirm>
+      </Space>
+    </div>
+  )
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {/* Master switch */}
+      {/* 1. Master switch */}
       <Card
         size="small"
         title={t('settings.aiAssistant.masterTitle')}
@@ -207,7 +422,7 @@ const AIAssistantSettings: React.FC = () => {
         </div>
       </Card>
 
-      {/* Remote IM control — gates TopBar Feishu entry */}
+      {/* Remote IM — enable-style toggle next to master */}
       <Card
         size="small"
         title={t('settings.aiAssistant.remoteImTitle')}
@@ -228,248 +443,61 @@ const AIAssistantSettings: React.FC = () => {
         </div>
       </Card>
 
-      {/* Agent Persona (soul.md) */}
+      {/* 2. Unified profile / knowledge card — 3 groups, 5 leaf tabs */}
       <Card
         size="small"
-        title={t('settings.aiAssistant.soulTitle')}
-        extra={
-          <Space size={4}>
-            <Popconfirm title={t('settings.aiAssistant.restoreDefaultConfirm')} onConfirm={restoreSoulDefault}>
-              <Button size="small" icon={<ReloadOutlined />}>{t('settings.aiAssistant.restoreDefault')}</Button>
-            </Popconfirm>
-            <Button size="small" type="primary" onClick={saveSoul}>{t('common.save')}</Button>
-          </Space>
-        }
+        title={t('settings.aiAssistant.profileTitle')}
         style={{ borderRadius: token.borderRadiusLG, opacity: assistantEnabled ? 1 : 0.55 }}
         styles={{ body: { padding: '12px 16px' } }}
       >
-        <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>
-          {t('settings.aiAssistant.soulDesc')}
-        </Text>
-        <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <Text style={{ fontSize: 12 }}>{t('settings.aiAssistant.templateLabel')}</Text>
-          <Select
-            size="small"
-            style={{ minWidth: 140 }}
-            placeholder={t('settings.aiAssistant.templatePlaceholder')}
-            value={setupRole || undefined}
-            onChange={(role: SetupRole) => applyTemplate(role)}
-            options={SOUL_ROLES.map((r) => ({ value: r, label: roleLabels[r] }))}
-          />
-        </div>
-        <TextArea
-          value={soul}
-          onChange={(e) => setSoul(e.target.value)}
-          rows={8}
-          disabled={!assistantEnabled}
-          style={{ resize: 'vertical', fontFamily: MONO_FONT_STACK, fontSize: 13 }}
-        />
-      </Card>
-
-      {/* Long-term Memory */}
-      <Card
-        size="small"
-        title={t('settings.aiAssistant.memoryTitle')}
-        style={{ borderRadius: token.borderRadiusLG, opacity: assistantEnabled ? 1 : 0.55 }}
-        styles={{ body: { padding: '12px 16px' } }}
-      >
-        <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>
-          {t('settings.aiAssistant.memoryAutoHint')}
-        </Text>
         <Tabs
-          activeKey={memoryTab}
-          onChange={setMemoryTab}
+          activeKey={profileGroup}
+          onChange={setProfileGroup}
           size="small"
           items={[
             {
-              key: 'memory.md',
-              label: 'memory.md',
+              key: 'youAndI',
+              label: t('settings.aiAssistant.groupYouAndI'),
               children: (
-                <div>
-                  <TextArea
-                    value={memory}
-                    onChange={(e) => setMemory(e.target.value)}
-                    rows={6}
-                    disabled={!assistantEnabled}
-                    style={{ resize: 'vertical', fontFamily: MONO_FONT_STACK, fontSize: 13, marginBottom: 8 }}
-                  />
-                  <Space>
-                    <Button size="small" type="primary" disabled={!assistantEnabled} onClick={() => saveMemoryFile('memory.md', memory)}>
-                      {t('common.save')}
-                    </Button>
-                    <Popconfirm title={t('settings.aiAssistant.clearConfirm')} onConfirm={() => clearMemoryFile('memory.md')}>
-                      <Button size="small" danger icon={<DeleteOutlined />} disabled={!assistantEnabled}>{t('settings.aiAssistant.clear')}</Button>
-                    </Popconfirm>
-                  </Space>
-                </div>
+                <Tabs
+                  activeKey={youAndITab}
+                  onChange={setYouAndITab}
+                  size="small"
+                  items={[
+                    {
+                      key: 'persona',
+                      label: t('settings.aiAssistant.tabPersona'),
+                      children: personaPanel,
+                    },
+                    {
+                      key: 'user',
+                      label: t('settings.aiAssistant.tabUser'),
+                      children: userPanel,
+                    },
+                    {
+                      key: 'subAgents',
+                      label: t('settings.aiAssistant.tabSubAgents'),
+                      children: subAgentsPanel,
+                    },
+                  ]}
+                />
               ),
             },
             {
-              key: 'user.md',
-              label: 'user.md',
-              children: (
-                <div>
-                  <TextArea
-                    value={userMd}
-                    onChange={(e) => setUserMd(e.target.value)}
-                    rows={6}
-                    style={{ resize: 'vertical', fontFamily: MONO_FONT_STACK, fontSize: 13, marginBottom: 8 }}
-                  />
-                  <Space>
-                    <Button size="small" type="primary" onClick={() => saveMemoryFile('user.md', userMd)}>
-                      {t('common.save')}
-                    </Button>
-                    <Popconfirm title={t('settings.aiAssistant.clearConfirm')} onConfirm={() => clearMemoryFile('user.md')}>
-                      <Button size="small" danger icon={<DeleteOutlined />}>{t('settings.aiAssistant.clear')}</Button>
-                    </Popconfirm>
-                  </Space>
-                </div>
-              ),
+              key: 'canDo',
+              label: t('settings.aiAssistant.groupCanDo'),
+              children: toolsPanel,
+            },
+            {
+              key: 'learned',
+              label: t('settings.aiAssistant.groupLearned'),
+              children: memoryPanel,
             },
           ]}
         />
       </Card>
 
-      {/* Feedback Statistics */}
-      <Card
-        size="small"
-        title={t('settings.aiAssistant.feedbackTitle')}
-        extra={
-          <Popconfirm title={t('settings.aiAssistant.resetStatsConfirm')} onConfirm={resetStats}>
-            <Button size="small" danger>{t('settings.aiAssistant.resetStats')}</Button>
-          </Popconfirm>
-        }
-        style={{ borderRadius: token.borderRadiusLG }}
-        styles={{ body: { padding: '12px 16px' } }}
-      >
-        <Row gutter={16} style={{ marginBottom: 12 }}>
-          <Col span={8}>
-            <Statistic title={t('settings.aiAssistant.totalFeedback')} value={totalFeedback} />
-          </Col>
-          <Col span={8}>
-            <Statistic
-              title={t('settings.aiAssistant.helpful')}
-              value={totalUp}
-              prefix={<LikeOutlined />}
-              valueStyle={{ color: token.colorSuccess }}
-            />
-          </Col>
-          <Col span={8}>
-            <Statistic
-              title={t('settings.aiAssistant.unhelpful')}
-              value={totalDown}
-              prefix={<DislikeOutlined />}
-              valueStyle={{ color: token.colorError }}
-            />
-          </Col>
-        </Row>
-
-        {/* Topic breakdown */}
-        {Object.keys(stats?.byTopic || {}).length > 0 && (
-          <div style={{ marginBottom: 12 }}>
-            <Text type="secondary" style={{ fontSize: 12, marginBottom: 4, display: 'block' }}>
-              {t('settings.aiAssistant.topicBreakdown')}
-            </Text>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {Object.entries(stats?.byTopic || {}).map(([topic, counts]) => {
-                const rate = Math.round((counts.up / (counts.up + counts.down)) * 100)
-                return (
-                  <Tag key={topic} color={rate >= 70 ? 'green' : rate >= 40 ? 'orange' : 'red'}>
-                    {topic}: {rate}% ({counts.up + counts.down})
-                  </Tag>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Pending soul suggestions */}
-        {stats?.soulSuggestions && stats.soulSuggestions.length > 0 && (
-          <div>
-            <Text type="secondary" style={{ fontSize: 12, marginBottom: 4, display: 'block' }}>
-              {t('settings.aiAssistant.soulSuggestions')}
-            </Text>
-            {stats.soulSuggestions.map((s, i) => (
-              <div
-                key={i}
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 8,
-                  padding: '8px 10px',
-                  borderRadius: 6,
-                  border: `1px solid ${s.feedbackCount >= 3 ? token.colorWarningBorder : token.colorBorderSecondary}`,
-                  background: s.feedbackCount >= 3 ? token.colorWarningBg : token.colorBgElevated,
-                  marginBottom: 6,
-                }}
-              >
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13 }}>{s.suggestion}</div>
-                  <Text type="secondary" style={{ fontSize: 11 }}>
-                    {s.reason} ({s.feedbackCount} {t('settings.aiAssistant.feedbackCount')})
-                  </Text>
-                </div>
-                <Button size="small" type="text" icon={<CheckOutlined />} onClick={() => handleAcceptSuggestion(i)} />
-                <Button size="small" type="text" icon={<CloseOutlined />} onClick={() => handleDismissSuggestion(i)} />
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
-
-      {/* Capabilities & Sub-agents */}
-      <Card
-        size="small"
-        title={t('settings.aiAssistant.capabilitiesTitle')}
-        style={{ borderRadius: token.borderRadiusLG }}
-        styles={{ body: { padding: '12px 16px' } }}
-      >
-        <Tabs
-          size="small"
-          items={[
-            {
-              key: 'tools.md',
-              label: 'tools.md (Harness)',
-              children: (
-                <div>
-                  <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>
-                    {t('settings.aiAssistant.harnessDesc')}
-                  </Text>
-                  <TextArea
-                    value={tools}
-                    onChange={(e) => setTools(e.target.value)}
-                    rows={8}
-                    disabled={!assistantEnabled}
-                    style={{ fontFamily: MONO_FONT_STACK, fontSize: 13, resize: 'vertical', marginBottom: 8 }}
-                  />
-                  <Button size="small" type="primary" disabled={!assistantEnabled} onClick={() => saveMemoryFile('tools.md', tools)}>
-                    {t('common.save')}
-                  </Button>
-                </div>
-              ),
-            },
-            {
-              key: 'agents.md',
-              label: 'agents.md',
-              children: (
-                <div>
-                  <TextArea
-                    value={agents}
-                    onChange={(e) => setAgents(e.target.value)}
-                    rows={4}
-                    style={{ fontFamily: MONO_FONT_STACK, fontSize: 13, resize: 'vertical', marginBottom: 8 }}
-                  />
-                  <Button size="small" type="primary" onClick={() => saveMemoryFile('agents.md', agents)}>
-                    {t('common.save')}
-                  </Button>
-                </div>
-              ),
-            },
-          ]}
-        />
-      </Card>
-
-      {/* Behavior Settings */}
+      {/* 3. Behavior */}
       <Card
         size="small"
         title={t('settings.aiAssistant.behaviorTitle')}
@@ -516,6 +544,91 @@ const AIAssistantSettings: React.FC = () => {
             </div>
           </Form.Item>
         </Form>
+      </Card>
+
+      {/* 4. Feedback */}
+      <Card
+        size="small"
+        title={t('settings.aiAssistant.feedbackTitle')}
+        extra={
+          <Popconfirm title={t('settings.aiAssistant.resetStatsConfirm')} onConfirm={resetStats}>
+            <Button size="small" danger>{t('settings.aiAssistant.resetStats')}</Button>
+          </Popconfirm>
+        }
+        style={{ borderRadius: token.borderRadiusLG }}
+        styles={{ body: { padding: '12px 16px' } }}
+      >
+        <Row gutter={16} style={{ marginBottom: 12 }}>
+          <Col span={8}>
+            <Statistic title={t('settings.aiAssistant.totalFeedback')} value={totalFeedback} />
+          </Col>
+          <Col span={8}>
+            <Statistic
+              title={t('settings.aiAssistant.helpful')}
+              value={totalUp}
+              prefix={<LikeOutlined />}
+              valueStyle={{ color: token.colorSuccess }}
+            />
+          </Col>
+          <Col span={8}>
+            <Statistic
+              title={t('settings.aiAssistant.unhelpful')}
+              value={totalDown}
+              prefix={<DislikeOutlined />}
+              valueStyle={{ color: token.colorError }}
+            />
+          </Col>
+        </Row>
+
+        {Object.keys(stats?.byTopic || {}).length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <Text type="secondary" style={{ fontSize: 12, marginBottom: 4, display: 'block' }}>
+              {t('settings.aiAssistant.topicBreakdown')}
+            </Text>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {Object.entries(stats?.byTopic || {}).map(([topic, counts]) => {
+                const rate = Math.round((counts.up / (counts.up + counts.down)) * 100)
+                return (
+                  <Tag key={topic} color={rate >= 70 ? 'green' : rate >= 40 ? 'orange' : 'red'}>
+                    {topic}: {rate}% ({counts.up + counts.down})
+                  </Tag>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {stats?.soulSuggestions && stats.soulSuggestions.length > 0 && (
+          <div>
+            <Text type="secondary" style={{ fontSize: 12, marginBottom: 4, display: 'block' }}>
+              {t('settings.aiAssistant.soulSuggestions')}
+            </Text>
+            {stats.soulSuggestions.map((s, i) => (
+              <div
+                key={i}
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 8,
+                  padding: '8px 10px',
+                  borderRadius: 6,
+                  border: `1px solid ${s.feedbackCount >= 3 ? token.colorWarningBorder : token.colorBorderSecondary}`,
+                  background: s.feedbackCount >= 3 ? token.colorWarningBg : token.colorBgElevated,
+                  marginBottom: 6,
+                }}
+              >
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13 }}>{s.suggestion}</div>
+                  <Text type="secondary" style={{ fontSize: 11 }}>
+                    {s.reason} ({s.feedbackCount} {t('settings.aiAssistant.feedbackCount')})
+                  </Text>
+                </div>
+                <Button size="small" type="text" icon={<CheckOutlined />} onClick={() => handleAcceptSuggestion(i)} />
+                <Button size="small" type="text" icon={<CloseOutlined />} onClick={() => handleDismissSuggestion(i)} />
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
     </div>
   )
