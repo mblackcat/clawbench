@@ -15,6 +15,7 @@ import { useT } from '../../i18n'
 import { MONO_FONT_STACK } from '../../utils/mono-font'
 import { ROLE_LABELS, ROLE_LABELS_EN, type SetupRole } from '../../constants/module-visibility'
 import { useSettingsStore } from '../../stores/useSettingsStore'
+import { useAICodingStore } from '../../stores/useAICodingStore'
 
 const { Text } = Typography
 const { TextArea } = Input
@@ -34,6 +35,10 @@ const AIAssistantSettings: React.FC = () => {
   const { message } = App.useApp()
   const language = useSettingsStore((s) => s.language)
   const roleLabels = language === 'en' ? ROLE_LABELS_EN : ROLE_LABELS
+
+  const imConfig = useAICodingStore((s) => s.imConfig)
+  const fetchIMConfig = useAICodingStore((s) => s.fetchIMConfig)
+  const [remoteImSaving, setRemoteImSaving] = useState(false)
 
   // Existing behavior settings
   const [toolApprovalMode, setToolApprovalMode] = useState('auto-approve-safe')
@@ -57,6 +62,7 @@ const AIAssistantSettings: React.FC = () => {
       window.api.settings.getAgentSettings(),
       window.api.agent.readAllMemories(),
       window.api.agent.readStats(),
+      fetchIMConfig(),
     ]).then(([settings, memories, statsData]: any[]) => {
       setToolApprovalMode(settings?.defaultToolApprovalMode || 'auto-approve-safe')
       setMaxToolSteps(settings?.maxAgentToolSteps ?? 15)
@@ -71,7 +77,7 @@ const AIAssistantSettings: React.FC = () => {
       setStats(statsData)
       setLoaded(true)
     }).catch(() => setLoaded(true))
-  }, [])
+  }, [fetchIMConfig])
 
   const saveApprovalMode = useCallback((value: string) => {
     setToolApprovalMode(value)
@@ -87,6 +93,22 @@ const AIAssistantSettings: React.FC = () => {
     setAssistantEnabled(value)
     window.api.settings.setAgentSettings({ assistantEnabled: value }).catch(() => {})
   }, [])
+
+  /** Toggle TopBar Feishu entry + remote IM agent capability. */
+  const saveRemoteImEnabled = useCallback(async (value: boolean) => {
+    setRemoteImSaving(true)
+    try {
+      const store = useAICodingStore.getState()
+      if (!value && store.imStatus.state === 'connected') {
+        await store.imDisconnect()
+      }
+      await store.saveIMConfig({ ...store.imConfig, remoteEnabled: value })
+    } catch {
+      message.error(t('common.saveFailed'))
+    } finally {
+      setRemoteImSaving(false)
+    }
+  }, [message, t])
 
   const saveSoul = useCallback(() => {
     window.api.agent.writeMemory('soul.md', soul).then(() => {
@@ -182,6 +204,27 @@ const AIAssistantSettings: React.FC = () => {
             </Text>
           </div>
           <Switch checked={assistantEnabled} onChange={saveAssistantEnabled} />
+        </div>
+      </Card>
+
+      {/* Remote IM control — gates TopBar Feishu entry */}
+      <Card
+        size="small"
+        title={t('settings.aiAssistant.remoteImTitle')}
+        style={{ borderRadius: token.borderRadiusLG }}
+        styles={{ body: { padding: '12px 16px' } }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {t('settings.aiAssistant.remoteImDesc')}
+            </Text>
+          </div>
+          <Switch
+            checked={imConfig.remoteEnabled === true}
+            loading={remoteImSaving}
+            onChange={saveRemoteImEnabled}
+          />
         </div>
       </Card>
 
