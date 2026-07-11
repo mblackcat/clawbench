@@ -6,7 +6,13 @@ import {
 } from '../store/scheduled-task.store'
 import { completeChat, ChatMessage } from './ai.service'
 import { getIMBridgeService } from './im/im-bridge.service'
+import { computeNextRun } from '../utils/schedule-rule'
 import * as logger from '../utils/logger'
+
+// Re-export so existing imports from this module (e.g. scheduled-task.ipc.ts)
+// keep resolving. The implementation now lives in utils/schedule-rule.ts and is
+// shared with the app-scheduling engine.
+export { computeNextRun }
 
 let schedulerTimer: ReturnType<typeof setInterval> | null = null
 
@@ -78,59 +84,6 @@ function tick(): void {
 }
 
 /**
- * Compute the next run timestamp for a task based on its schedule.
- */
-export function computeNextRun(task: ScheduledTask, fromTime?: number): number | null {
-  const now = fromTime ?? Date.now()
-  const [hours, minutes] = task.time.split(':').map(Number)
-
-  if (task.repeatRule === 'none') {
-    // One-shot: find next occurrence of the specified time today or tomorrow
-    const today = new Date(now)
-    today.setHours(hours, minutes, 0, 0)
-    if (today.getTime() > now) return today.getTime()
-    today.setDate(today.getDate() + 1)
-    return today.getTime()
-  }
-
-  if (task.repeatRule === 'daily') {
-    const next = new Date(now)
-    next.setHours(hours, minutes, 0, 0)
-    if (next.getTime() <= now) {
-      next.setDate(next.getDate() + 1)
-    }
-    return next.getTime()
-  }
-
-  if (task.repeatRule === 'weekly') {
-    const targetDay = task.dayOfWeek ?? 0
-    const next = new Date(now)
-    next.setHours(hours, minutes, 0, 0)
-    const currentDay = next.getDay()
-    let daysUntil = targetDay - currentDay
-    if (daysUntil < 0 || (daysUntil === 0 && next.getTime() <= now)) {
-      daysUntil += 7
-    }
-    next.setDate(next.getDate() + daysUntil)
-    return next.getTime()
-  }
-
-  if (task.repeatRule === 'monthly') {
-    const targetDate = task.dayOfMonth ?? 1
-    const next = new Date(now)
-    next.setHours(hours, minutes, 0, 0)
-    next.setDate(targetDate)
-    if (next.getTime() <= now) {
-      next.setMonth(next.getMonth() + 1)
-      next.setDate(targetDate)
-    }
-    return next.getTime()
-  }
-
-  return null
-}
-
-/**
  * Execute a single scheduled task.
  */
 export async function executeTask(task: ScheduledTask): Promise<void> {
@@ -171,6 +124,7 @@ export async function executeTask(task: ScheduledTask): Promise<void> {
     prompt: task.prompt,
     keepInOneChat: task.keepInOneChat,
     conversationId: task.conversationId,
+    modelId: task.modelId,
     timestamp: Date.now()
   })
 
@@ -188,6 +142,7 @@ function broadcastTaskExecuted(data: {
   prompt: string
   keepInOneChat: boolean
   conversationId?: string
+  modelId?: string
   timestamp: number
 }): void {
   const windows = BrowserWindow.getAllWindows()

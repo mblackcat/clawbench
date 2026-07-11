@@ -1729,6 +1729,23 @@ const translations: Record<Lang, Record<string, string>> = {
     'task.fri': '周五',
     'task.sat': '周六',
 
+    // App scheduling (定时执行)
+    'appSchedule.title': '定时执行',
+    'appSchedule.setupSchedule': '设置定时执行',
+    'appSchedule.editSchedule': '编辑定时执行',
+    'appSchedule.executionParams': '执行参数',
+    'appSchedule.noParams': '该应用没有可配置的执行参数',
+    'appSchedule.nextRun': '下次执行',
+    'appSchedule.nextRunShort': '下次',
+    'appSchedule.start': '开始',
+    'appSchedule.stop': '停止',
+    'appSchedule.started': '定时任务已开启',
+    'appSchedule.stopped': '定时任务已停止',
+    'appSchedule.saved': '定时规则已保存',
+    'appSchedule.deleted': '定时规则已删除',
+    'appSchedule.delete': '删除',
+    'appSchedule.hint': '到达设定时间后将使用上方参数自动执行该应用（需先选择工作区）。',
+
     // App splash / loading mask
     'app.splashSlogan': '好好学习，天天向上',
 
@@ -3562,6 +3579,23 @@ const translations: Record<Lang, Record<string, string>> = {
     'task.thu': 'Thu',
     'task.fri': 'Fri',
     'task.sat': 'Sat',
+
+    // App scheduling (定时执行)
+    'appSchedule.title': 'Scheduled Run',
+    'appSchedule.setupSchedule': 'Set up scheduled run',
+    'appSchedule.editSchedule': 'Edit scheduled run',
+    'appSchedule.executionParams': 'Execution params',
+    'appSchedule.noParams': 'This app has no configurable execution params',
+    'appSchedule.nextRun': 'Next run',
+    'appSchedule.nextRunShort': 'Next',
+    'appSchedule.start': 'Start',
+    'appSchedule.stop': 'Stop',
+    'appSchedule.started': 'Scheduled run started',
+    'appSchedule.stopped': 'Scheduled run stopped',
+    'appSchedule.saved': 'Schedule saved',
+    'appSchedule.deleted': 'Schedule deleted',
+    'appSchedule.delete': 'Delete',
+    'appSchedule.hint': 'At the scheduled time the app runs automatically with the params above (a workspace must be selected).',
 
     // App splash / loading mask
     'app.splashSlogan': 'Study hard, improve every day',

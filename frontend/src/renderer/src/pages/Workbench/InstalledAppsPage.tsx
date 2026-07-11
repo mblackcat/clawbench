@@ -50,7 +50,9 @@ import { useSettingsStore } from '../../stores/useSettingsStore';
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore';
 import { useChatStore } from '../../stores/useChatStore';
 import { useSkillStore } from '../../stores/useSkillStore';
+import { useAppScheduleStore } from '../../stores/useAppScheduleStore';
 import type { ScannedSkill } from '../../types/skill';
+import dayjs from 'dayjs';
 import ParamDrawer from '../../components/ParamDrawer';
 import CreateTypeModal from '../../components/CreateTypeModal';
 import { openExternalLink } from '../../utils/markdown-links';
@@ -112,6 +114,10 @@ interface SortableCardProps {
   latestVersion?: string
   /** 点击更新按钮 */
   onUpdate: (id: string, name: string) => void
+  /** 该 app 是否已开启定时执行 */
+  scheduleEnabled?: boolean
+  /** 下次执行时间戳（scheduleEnabled 为 true 时展示） */
+  scheduleNextRunAt?: number
 }
 
 const SortableAppCard: React.FC<SortableCardProps> = ({
@@ -131,7 +137,9 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
   onShowDetail,
   hasUpdate,
   latestVersion,
-  onUpdate
+  onUpdate,
+  scheduleEnabled,
+  scheduleNextRunAt
 }) => {
   const { id, manifest, appType } = appWithType;
   const app = manifest;
@@ -252,6 +260,17 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
               >
                 {latestVersion ? t('workbench.updateAvailableVersion', latestVersion) : t('workbench.updateAvailable')}
               </Tag>
+            )}
+            {manifestType === 'app' && scheduleEnabled && scheduleNextRunAt && (
+              <Tooltip title={`${t('appSchedule.nextRun')}: ${dayjs(scheduleNextRunAt).format('YYYY-MM-DD HH:mm')}`}>
+                <Tag
+                  color="processing"
+                  icon={<SyncOutlined spin />}
+                  style={{ margin: 0, whiteSpace: 'nowrap' }}
+                >
+                  {t('appSchedule.nextRunShort')} {dayjs(scheduleNextRunAt).format('MM-DD HH:mm')}
+                </Tag>
+              </Tooltip>
             )}
           </div>
         </div>
@@ -616,6 +635,15 @@ const InstalledAppsPage: React.FC = () => {
   const activeWorkspace = useWorkspaceStore((s) => s.activeWorkspace)
   const [workspaceSkills, setWorkspaceSkills] = useState<ScannedSkill[]>([])
 
+  // App scheduling (定时执行) — one schedule per app, keyed by appId
+  const schedules = useAppScheduleStore((s) => s.schedules)
+  const fetchSchedules = useAppScheduleStore((s) => s.fetchSchedules)
+  const scheduleByApp = useMemo(() => {
+    const m = new Map<string, { enabled: boolean; nextRunAt?: number }>();
+    for (const s of schedules) m.set(s.appId, { enabled: s.enabled, nextRunAt: s.nextRunAt });
+    return m;
+  }, [schedules]);
+
   // PointerSensor with activation constraint — requires 200ms hold or 5px move
   // so normal clicks on buttons still work
   const sensors = useSensors(
@@ -628,6 +656,7 @@ const InstalledAppsPage: React.FC = () => {
     const init = async () => {
       await loadApps();
       fetchSettings();
+      fetchSchedules();
       // 联网模式下打开收藏栏时检查一次已安装应用的更新（checkForUpdates 内部
       // 读取 store 中最新的 appInfos，因此必须在 loadApps 完成后调用）
       if (!isLocalMode) {
@@ -637,6 +666,14 @@ const InstalledAppsPage: React.FC = () => {
     init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Refresh schedule badges when a scheduled app run fires (success or failure)
+  useEffect(() => {
+    const unsubscribe = window.api.appSchedule.onExecuted(() => {
+      fetchSchedules();
+    });
+    return unsubscribe;
+  }, [fetchSchedules]);
 
   // Load workspace skills for the AI Skills tab
   useEffect(() => {
@@ -1086,6 +1123,7 @@ const InstalledAppsPage: React.FC = () => {
             globalIndex >= 0 && globalIndex < 9 && appShortcutEnabled
               ? `${modifierLabel} + ${globalIndex + 1}`
               : null;
+          const sched = scheduleByApp.get(app.id);
           return (
             <SortableAppCard
               key={app.id}
@@ -1106,6 +1144,8 @@ const InstalledAppsPage: React.FC = () => {
               hasUpdate={!!updateMap[app.id]?.hasUpdate}
               latestVersion={updateMap[app.id]?.latestVersion}
               onUpdate={handleUpdate}
+              scheduleEnabled={!!sched?.enabled}
+              scheduleNextRunAt={sched?.nextRunAt}
             />
           );
         })}
