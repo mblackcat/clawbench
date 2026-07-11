@@ -34,7 +34,7 @@ const ChatInput: React.FC = () => {
   const [mcpOpen, setMcpOpen] = useState(false)
   const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([])
   const [mcpLoading, setMcpLoading] = useState(false)
-  const { streaming, activeConversationId, sendMessage, createConversation, toolsEnabled, setToolsEnabled, prefillInput, setPrefillInput } = useChatStore()
+  const { streaming, activeConversationId, activeIsIm, sendMessage, createConversation, toolsEnabled, setToolsEnabled, prefillInput, setPrefillInput } = useChatStore()
   const { selectedModelId, selectedModelSource, selectedModelConfigId, builtinModels, localModels } = useAIModelStore()
   const { token } = theme.useToken()
   const { message, modal } = App.useApp()
@@ -194,8 +194,9 @@ const ChatInput: React.FC = () => {
 
     if (!selectedModelId) return
 
+    // Viewing Feishu IM history: start a new local chat instead of writing into IM thread
     let convId = activeConversationId
-    if (!convId) {
+    if (activeIsIm || !convId) {
       try {
         convId = await createConversation(selectedModelId)
       } catch {
@@ -538,7 +539,13 @@ const ChatInput: React.FC = () => {
         onChange={(e) => setInputValue(e.target.value)}
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
-        placeholder={selectedModelId ? t('chat.inputPlaceholder') : t('chat.selectModelFirst')}
+        placeholder={
+          activeIsIm
+            ? t('chat.imReadOnlyHint')
+            : selectedModelId
+              ? t('chat.inputPlaceholder')
+              : t('chat.selectModelFirst')
+        }
         disabled={streaming}
         style={{ resize: 'none', height: 80 }}
       />

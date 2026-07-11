@@ -38,47 +38,85 @@ const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({ conversation, isActiv
     setRenameModalOpen(false)
   }
 
-  const menuItems: MenuProps['items'] = [
-    {
-      key: 'favorite',
-      icon: conversation.favorited ? <StarFilled style={{ color: token.colorWarning }} /> : <StarOutlined />,
-      label: conversation.favorited ? t('chat.unfavorite') : t('chat.favorite'),
-      onClick: (e) => { e.domEvent.stopPropagation(); toggleFavorite(conversation.conversationId) },
-    },
-    {
-      key: 'rename',
-      icon: <EditOutlined />,
-      label: t('chat.rename'),
-      onClick: (e) => { e.domEvent.stopPropagation(); setNewTitle(conversation.title); setRenameModalOpen(true) },
-    },
-    {
-      key: 'export',
-      icon: <ExportOutlined />,
-      label: t('chat.export'),
-      children: [
-        { key: 'export-md', label: 'Markdown', onClick: (e) => { e.domEvent.stopPropagation(); exportConversation(conversation.conversationId, 'markdown') } },
-        { key: 'export-json', label: 'JSON', onClick: (e) => { e.domEvent.stopPropagation(); exportConversation(conversation.conversationId, 'json') } },
-      ],
-    },
-    { type: 'divider' },
-    {
-      key: 'delete',
-      icon: <DeleteOutlined />,
-      label: t('chat.delete'),
-      danger: true,
-      onClick: (e) => {
-        e.domEvent.stopPropagation()
-        modal.confirm({
-          title: t('chat.confirmDelete'),
-          content: t('chat.deleteConfirmContent'),
-          okText: t('chat.delete'),
-          okType: 'danger',
-          cancelText: t('common.cancel'),
-          onOk: () => deleteConversation(conversation.conversationId),
-        })
-      },
-    },
-  ]
+  const isIm = conversation.source === 'im'
+
+  const menuItems: MenuProps['items'] = isIm
+    ? [
+        {
+          key: 'rename',
+          icon: <EditOutlined />,
+          label: t('chat.rename'),
+          onClick: (e) => { e.domEvent.stopPropagation(); setNewTitle(conversation.title); setRenameModalOpen(true) },
+        },
+        {
+          key: 'export',
+          icon: <ExportOutlined />,
+          label: t('chat.export'),
+          children: [
+            { key: 'export-md', label: 'Markdown', onClick: (e) => { e.domEvent.stopPropagation(); exportConversation(conversation.conversationId, 'markdown') } },
+            { key: 'export-json', label: 'JSON', onClick: (e) => { e.domEvent.stopPropagation(); exportConversation(conversation.conversationId, 'json') } },
+          ],
+        },
+        { type: 'divider' },
+        {
+          key: 'delete',
+          icon: <DeleteOutlined />,
+          label: t('chat.delete'),
+          danger: true,
+          onClick: (e) => {
+            e.domEvent.stopPropagation()
+            modal.confirm({
+              title: t('chat.confirmDelete'),
+              content: t('chat.deleteConfirmContent'),
+              okText: t('chat.delete'),
+              okType: 'danger',
+              cancelText: t('common.cancel'),
+              onOk: () => deleteConversation(conversation.conversationId),
+            })
+          },
+        },
+      ]
+    : [
+        {
+          key: 'favorite',
+          icon: conversation.favorited ? <StarFilled style={{ color: token.colorWarning }} /> : <StarOutlined />,
+          label: conversation.favorited ? t('chat.unfavorite') : t('chat.favorite'),
+          onClick: (e) => { e.domEvent.stopPropagation(); toggleFavorite(conversation.conversationId) },
+        },
+        {
+          key: 'rename',
+          icon: <EditOutlined />,
+          label: t('chat.rename'),
+          onClick: (e) => { e.domEvent.stopPropagation(); setNewTitle(conversation.title); setRenameModalOpen(true) },
+        },
+        {
+          key: 'export',
+          icon: <ExportOutlined />,
+          label: t('chat.export'),
+          children: [
+            { key: 'export-md', label: 'Markdown', onClick: (e) => { e.domEvent.stopPropagation(); exportConversation(conversation.conversationId, 'markdown') } },
+            { key: 'export-json', label: 'JSON', onClick: (e) => { e.domEvent.stopPropagation(); exportConversation(conversation.conversationId, 'json') } },
+          ],
+        },
+        { type: 'divider' },
+        {
+          key: 'delete',
+          icon: <DeleteOutlined />,
+          label: t('chat.delete'),
+          danger: true,
+          onClick: (e) => {
+            e.domEvent.stopPropagation()
+            modal.confirm({
+              title: t('chat.confirmDelete'),
+              content: t('chat.deleteConfirmContent'),
+              okText: t('chat.delete'),
+              okType: 'danger',
+              cancelText: t('common.cancel'),
+              onOk: () => deleteConversation(conversation.conversationId),
+            })
+          },
+        },
+      ]
 
   return (
     <>
@@ -110,8 +148,13 @@ const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({ conversation, isActiv
           gap: 4,
         }}>
           {conversation.favorited && <StarFilled style={{ color: token.colorWarning, fontSize: 11, flexShrink: 0 }} />}
-          {isLocal && <Tag style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0, flexShrink: 0 }}>{t('chat.local')}</Tag>}
-          <ProviderIcon provider={guessProviderFromModelId(conversation.modelId || '')} size={13} style={{ flexShrink: 0 }} />
+          {isIm && (
+            <Tag color="blue" style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0, flexShrink: 0 }}>
+              {t('chat.imBadge')}
+            </Tag>
+          )}
+          {isLocal && !isIm && <Tag style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0, flexShrink: 0 }}>{t('chat.local')}</Tag>}
+          {!isIm && <ProviderIcon provider={guessProviderFromModelId(conversation.modelId || '')} size={13} style={{ flexShrink: 0 }} />}
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {conversation.title}
           </span>

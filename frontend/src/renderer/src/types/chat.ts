@@ -1,3 +1,5 @@
+export type ConversationSource = 'local' | 'cloud' | 'im'
+
 export interface Conversation {
   conversationId: string
   title: string
@@ -5,6 +7,12 @@ export interface Conversation {
   modelId: string | null
   createdAt: number
   updatedAt: number
+  /** Where this conversation came from; IM histories are viewable in the sidebar */
+  source?: ConversationSource
+  /** Feishu chat id when source is im */
+  imChatId?: string
+  closedAt?: number
+  closeReason?: string
 }
 
 export interface Message {

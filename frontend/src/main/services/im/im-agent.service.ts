@@ -108,6 +108,32 @@ export async function getImConversation(id: string): Promise<ImAgentConversation
   return loadConversation(id)
 }
 
+export async function deleteImConversation(id: string): Promise<boolean> {
+  try {
+    await fs.unlink(join(getConvDir(), `${id}.json`))
+    // Clear runtime if pointing at this conversation
+    for (const [chatId, rt] of chatRuntime) {
+      if (rt.conversationId === id) {
+        rt.conversationId = null
+        rt.turnCount = 0
+        rt.lastActivityAt = 0
+      }
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
+export async function renameImConversation(id: string, title: string): Promise<boolean> {
+  const conv = await loadConversation(id)
+  if (!conv) return false
+  conv.title = title.trim() || conv.title
+  conv.updatedAt = Date.now()
+  await saveConversation(conv)
+  return true
+}
+
 function getRuntime(chatId: string): ChatRuntime {
   let r = chatRuntime.get(chatId)
   if (!r) {

@@ -66,6 +66,74 @@ function deleteLocalMessages(conversationId: string): void {
   try { localStorage.removeItem(localMsgKey(conversationId)) } catch { /* ignore */ }
 }
 
+/** IM conversation ids are prefixed so they never clash with local/backend ids */
+export const IM_CONV_PREFIX = 'im:'
+
+export function isImConversationId(id: string | null | undefined): boolean {
+  return !!id && id.startsWith(IM_CONV_PREFIX)
+}
+
+export function toImConversationId(rawId: string): string {
+  return rawId.startsWith(IM_CONV_PREFIX) ? rawId : `${IM_CONV_PREFIX}${rawId}`
+}
+
+export function fromImConversationId(id: string): string {
+  return id.startsWith(IM_CONV_PREFIX) ? id.slice(IM_CONV_PREFIX.length) : id
+}
+
+function buildSnippetsFromMessages(
+  messages: Array<{ role: string; content: string }>
+): string[] {
+  return messages
+    .filter((m) => m.role === 'user' || m.role === 'assistant')
+    .slice(-8)
+    .map((m) => `${m.role}: ${String(m.content || '').slice(0, 400)}`)
+}
+
+/** Push one conversation digest to main process for memory self-update */
+async function pushDigestForConversation(
+  conv: Conversation,
+  messages: Array<{ role: string; content: string }>
+): Promise<void> {
+  if (isImConversationId(conv.conversationId)) return
+  const snippets = buildSnippetsFromMessages(messages)
+  if (snippets.length === 0) return
+  try {
+    await window.api.agent.pushChatDigest({
+      conversationId: conv.conversationId,
+      title: conv.title || 'Chat',
+      source: isLocal() ? 'local-chat' : 'backend-chat',
+      updatedAt: conv.updatedAt || Date.now(),
+      snippets,
+    })
+  } catch (err) {
+    console.debug('pushChatDigest failed:', err)
+  }
+}
+
+/** Bulk sync local-mode digests (called when opening AI Chat) */
+async function syncLocalChatDigests(): Promise<void> {
+  if (!isLocal()) return
+  try {
+    const convs = loadLocalConversations()
+    const entries = convs.slice(0, 30).map((c) => {
+      const msgs = loadLocalMessages(c.conversationId)
+      return {
+        conversationId: c.conversationId,
+        title: c.title || 'Chat',
+        source: 'local-chat',
+        updatedAt: c.updatedAt || Date.now(),
+        snippets: buildSnippetsFromMessages(msgs),
+      }
+    }).filter((e) => e.snippets.length > 0)
+    if (entries.length > 0) {
+      await window.api.agent.replaceChatDigests(entries)
+    }
+  } catch (err) {
+    console.debug('syncLocalChatDigests failed:', err)
+  }
+}
+
 // ============ Search source parsers ============
 
 /** Parse search results output into SearchSource[] */
@@ -153,9 +221,14 @@ interface ChatState {
   offset: number
   hasMore: boolean
 
+  // Feishu IM agent conversation history (main process)
+  imConversations: Conversation[]
+
   // Active conversation
   activeConversationId: string | null
   messages: Message[]
+  /** True when viewing an IM history thread (read-only input) */
+  activeIsIm: boolean
 
   // Streaming state
   streaming: boolean
@@ -188,6 +261,7 @@ interface ChatState {
   loadMoreFavConversations: () => Promise<void>
   fetchConversations: (reset?: boolean) => Promise<void>
   loadMoreConversations: () => Promise<void>
+  fetchImConversations: () => Promise<void>
   createConversation: (modelId?: string) => Promise<string>
   deleteConversation: (id: string) => Promise<void>
   renameConversation: (id: string, title: string) => Promise<void>
@@ -506,8 +580,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
   offset: 0,
   hasMore: false,
 
+  imConversations: [],
+
   activeConversationId: null,
   messages: [],
+  activeIsIm: false,
 
   streaming: false,
   streamingContent: '',
@@ -564,6 +641,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (isLocal()) {
       const all = loadLocalConversations().filter((c) => !c.favorited)
       set({ conversations: all, total: all.length, offset: all.length, hasMore: false })
+      // Push digests for memory self-update (fire-and-forget)
+      syncLocalChatDigests().catch(() => {})
       return
     }
     try {
@@ -591,9 +670,32 @@ export const useChatStore = create<ChatState>((set, get) => ({
     await get().fetchConversations(false)
   },
 
+  fetchImConversations: async () => {
+    try {
+      const list = await window.api.aiCoding.listImConversations()
+      const mapped: Conversation[] = (list || []).map((c) => ({
+        conversationId: toImConversationId(c.id),
+        title: c.title || 'IM Chat',
+        favorited: false,
+        modelId: (c as any).modelId || null,
+        createdAt: c.createdAt,
+        updatedAt: c.updatedAt,
+        source: 'im' as const,
+        imChatId: c.chatId,
+        closedAt: c.closedAt,
+        closeReason: c.closeReason,
+      }))
+      set({ imConversations: mapped })
+    } catch (err) {
+      console.error('Failed to fetch IM conversations:', err)
+      set({ imConversations: [] })
+    }
+  },
+
   createConversation: async (modelId?: string) => {
-    const { activeConversationId, messages } = get()
-    if (activeConversationId && messages.length === 0) {
+    const { activeConversationId, messages, activeIsIm } = get()
+    // Empty local chat can be reused; IM history is never reused as a blank draft
+    if (activeConversationId && messages.length === 0 && !activeIsIm) {
       return activeConversationId
     }
 
@@ -605,13 +707,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
         modelId: modelId || null,
         favorited: false,
         createdAt: Date.now(),
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
+        source: 'local',
       }
       saveLocalConversations([conv, ...loadLocalConversations()])
       set((state) => ({
         conversations: [conv, ...state.conversations],
         activeConversationId: id,
         messages: [],
+        activeIsIm: false,
         toolApprovalMode: 'auto-approve-safe' as ToolApprovalMode,
         pendingToolCalls: [],
         agentPhase: 'idle' as AgentPhase,
@@ -625,6 +729,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       conversations: [conv, ...state.conversations],
       activeConversationId: conv.conversationId,
       messages: [],
+      activeIsIm: false,
       toolApprovalMode: 'auto-approve-safe' as ToolApprovalMode,
       pendingToolCalls: [],
       agentPhase: 'idle' as AgentPhase,
@@ -634,6 +739,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   deleteConversation: async (id: string) => {
+    if (isImConversationId(id)) {
+      await window.api.aiCoding.deleteImConversation(fromImConversationId(id))
+      set((state) => ({
+        imConversations: state.imConversations.filter((c) => c.conversationId !== id),
+        activeConversationId:
+          state.activeConversationId === id ? null : state.activeConversationId,
+        messages: state.activeConversationId === id ? [] : state.messages,
+        activeIsIm: state.activeConversationId === id ? false : state.activeIsIm,
+      }))
+      return
+    }
     if (!isLocal()) {
       await apiClient.deleteConversation(id)
     } else {
@@ -645,11 +761,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
       favConversations: state.favConversations.filter((c) => c.conversationId !== id),
       activeConversationId:
         state.activeConversationId === id ? null : state.activeConversationId,
-      messages: state.activeConversationId === id ? [] : state.messages
+      messages: state.activeConversationId === id ? [] : state.messages,
+      activeIsIm: state.activeConversationId === id ? false : state.activeIsIm,
     }))
   },
 
   renameConversation: async (id: string, title: string) => {
+    if (isImConversationId(id)) {
+      await window.api.aiCoding.renameImConversation(fromImConversationId(id), title)
+      set((state) => ({
+        imConversations: state.imConversations.map((c) =>
+          c.conversationId === id ? { ...c, title } : c
+        ),
+      }))
+      return
+    }
     if (!isLocal()) {
       await apiClient.updateConversation(id, { title })
     } else {
@@ -697,20 +823,67 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({
       activeConversationId: id,
       messages: [],
+      activeIsIm: isImConversationId(id),
+      streaming: false,
+      streamingContent: '',
+      streamingThinkingContent: '',
+      streamingTaskId: null,
+      streamingError: null,
       toolApprovalMode: 'auto-approve-safe' as ToolApprovalMode,
       pendingToolCalls: [],
       agentPhase: 'idle' as AgentPhase,
       agentToolHistory: []
     })
+
+    if (isImConversationId(id)) {
+      try {
+        const raw = await window.api.aiCoding.getImConversation(fromImConversationId(id))
+        if (!raw) {
+          set({ messages: [] })
+          return
+        }
+        const msgs: Message[] = (raw.messages || [])
+          .filter((m) => m.role === 'user' || m.role === 'assistant' || m.role === 'system')
+          .map((m) => ({
+            messageId: m.id,
+            conversationId: id,
+            role: m.role as Message['role'],
+            content: m.content,
+            modelId: (raw as any).modelId || null,
+            createdAt: m.createdAt,
+          }))
+        set({ messages: msgs })
+      } catch (err) {
+        console.error('Failed to load IM conversation:', err)
+      }
+      return
+    }
+
     if (isLocal()) {
-      // In local mode: load messages from localStorage
-      set({ messages: loadLocalMessages(id) })
+      const msgs = loadLocalMessages(id)
+      set({ messages: msgs })
+      const conv = loadLocalConversations().find((c) => c.conversationId === id)
+      if (conv) pushDigestForConversation(conv, msgs).catch(() => {})
       return
     }
     try {
       const result = await apiClient.getConversation(id)
-      set({ messages: result.messages || [] })
       const msgs = result.messages || []
+      set({ messages: msgs })
+      if (result.conversation) {
+        pushDigestForConversation(
+          {
+            conversationId: id,
+            title: result.conversation.title || 'Chat',
+            favorited: !!result.conversation.favorited,
+            modelId: result.conversation.modelId || null,
+            createdAt: result.conversation.createdAt,
+            updatedAt: result.conversation.updatedAt,
+            source: 'cloud',
+          },
+          msgs
+        ).catch(() => {})
+      }
       const lastAssistant = [...msgs]
         .reverse()
         .find((m) => m.role === 'assistant' && m.modelId)
@@ -735,7 +908,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   clearActiveConversation: () => {
-    set({ activeConversationId: null, messages: [], pendingToolCalls: [] })
+    set({ activeConversationId: null, messages: [], pendingToolCalls: [], activeIsIm: false })
   },
 
   deleteMessages: async (messageId, mode) => {
@@ -837,8 +1010,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   sendMessage: async (content, modelSource, modelId, modelConfigId, pendingFiles, enableThinking, webSearchEnabled, feishuKitsEnabled) => {
-    const { activeConversationId, toolsEnabled } = get()
+    const { activeConversationId, toolsEnabled, activeIsIm } = get()
     if (!activeConversationId) return
+    // IM history is read-only in the client; continue chatting via Feishu bot
+    if (activeIsIm || isImConversationId(activeConversationId)) {
+      set({
+        streamingError: getT()('chat.imReadOnlyHint'),
+      })
+      return
+    }
 
     set({ streamingError: null, pendingToolCalls: [], searchSources: [], agentPhase: 'thinking' as AgentPhase, agentStepDescription: '', agentToolHistory: [] })
 
@@ -1067,6 +1247,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
           c.conversationId === conversationId ? { ...c, modelId: modelId, updatedAt: Date.now() } : c
         )
       )
+    }
+
+    // Push digest for memory self-update
+    if (conversationId && !isImConversationId(conversationId)) {
+      const allMsgs = get().messages
+      const title =
+        [...get().conversations, ...get().favConversations].find((c) => c.conversationId === conversationId)?.title
+        || 'Chat'
+      pushDigestForConversation(
+        {
+          conversationId,
+          title,
+          favorited: false,
+          modelId: modelId || null,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          source: isLocal() ? 'local' : 'cloud',
+        },
+        allMsgs
+      ).catch(() => {})
     }
 
     // Auto-generate title after first exchange
@@ -1429,7 +1629,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   exportConversation: (id: string, format: 'markdown' | 'json') => {
-    const allConvs = [...get().conversations, ...get().favConversations]
+    const allConvs = [...get().conversations, ...get().favConversations, ...get().imConversations]
     const conv = allConvs.find((c) => c.conversationId === id)
     const msgs = get().activeConversationId === id ? get().messages : []
 

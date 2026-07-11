@@ -577,6 +577,8 @@ export interface ClawBenchAPI {
       closeReason?: string
       messages: Array<{ id: string; role: string; content: string; createdAt: number }>
     } | null>
+    deleteImConversation: (id: string) => Promise<boolean>
+    renameImConversation: (id: string, title: string) => Promise<boolean>
     onIMStatusChanged: (
       callback: (status: import('./ai-coding').AICodingIMConnectionStatus) => void
     ) => () => void
@@ -739,6 +741,27 @@ export interface ClawBenchAPI {
     getSoulTemplate: (role: string) => Promise<string>
     listSoulRoles: () => Promise<string[]>
     getMemoryDir: () => Promise<string>
+    pushChatDigest: (entry: {
+      conversationId: string
+      title: string
+      source: string
+      updatedAt: number
+      snippets: string[]
+    }) => Promise<void>
+    replaceChatDigests: (entries: Array<{
+      conversationId: string
+      title: string
+      source: string
+      updatedAt: number
+      snippets: string[]
+    }>) => Promise<void>
+    listChatDigests: () => Promise<Array<{
+      conversationId: string
+      title: string
+      source: string
+      updatedAt: number
+      snippets: string[]
+    }>>
   }
   scheduledTask: {
     list: () => Promise<import('./scheduled-task').ScheduledTask[]>

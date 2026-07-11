@@ -268,6 +268,16 @@ export function registerAICodingIpc(): void {
     return getImConversation(id)
   })
 
+  ipcMain.handle('ai-coding:delete-im-conversation', async (_event, id: string) => {
+    const { deleteImConversation } = await import('../services/im/im-agent.service')
+    return deleteImConversation(id)
+  })
+
+  ipcMain.handle('ai-coding:rename-im-conversation', async (_event, id: string, title: string) => {
+    const { renameImConversation } = await import('../services/im/im-agent.service')
+    return renameImConversation(id, title)
+  })
+
   ipcMain.handle('ai-coding:open-directory', async (_event, dirPath: string) => {
     return shell.openPath(dirPath)
   })

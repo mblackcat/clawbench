@@ -564,6 +564,9 @@ export const api = {
     imTest: () => ipcRenderer.invoke('ai-coding:im-test'),
     listImConversations: () => ipcRenderer.invoke('ai-coding:list-im-conversations'),
     getImConversation: (id: string) => ipcRenderer.invoke('ai-coding:get-im-conversation', id),
+    deleteImConversation: (id: string) => ipcRenderer.invoke('ai-coding:delete-im-conversation', id) as Promise<boolean>,
+    renameImConversation: (id: string, title: string) =>
+      ipcRenderer.invoke('ai-coding:rename-im-conversation', id, title) as Promise<boolean>,
     onIMStatusChanged: (callback: (data: unknown) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data)
       ipcRenderer.on('ai-coding:im-status-changed', handler)
@@ -734,6 +737,21 @@ export const api = {
     getSoulTemplate: (role: string) => ipcRenderer.invoke('agent:get-soul-template', role) as Promise<string>,
     listSoulRoles: () => ipcRenderer.invoke('agent:list-soul-roles') as Promise<string[]>,
     getMemoryDir: () => ipcRenderer.invoke('agent:get-memory-dir') as Promise<string>,
+    pushChatDigest: (entry: {
+      conversationId: string
+      title: string
+      source: string
+      updatedAt: number
+      snippets: string[]
+    }) => ipcRenderer.invoke('agent:push-chat-digest', entry) as Promise<void>,
+    replaceChatDigests: (entries: Array<{
+      conversationId: string
+      title: string
+      source: string
+      updatedAt: number
+      snippets: string[]
+    }>) => ipcRenderer.invoke('agent:replace-chat-digests', entries) as Promise<void>,
+    listChatDigests: () => ipcRenderer.invoke('agent:list-chat-digests'),
   },
 
   scheduledTask: {

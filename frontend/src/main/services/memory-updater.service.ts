@@ -2,15 +2,16 @@
  * Memory self-update: while the client is online and assistant is enabled,
  * periodically condense recent conversation digests into memory.md.
  *
- * Phase 3 foundation — digests currently come from IM agent conversations;
- * local AI Chat digests can be merged later via IPC.
+ * Sources:
+ * - IM agent conversations (main-process store)
+ * - Local / backend AI Chat digests pushed from renderer via chat-digest.service
  */
 
-import { getAgentSettings } from '../store/settings.store'
+import { getAgentSettings, getAiModelConfigs, getLastChatModel } from '../store/settings.store'
 import { readMemory, writeMemory } from './agent-memory.service'
 import { listImConversations, getImConversation } from './im/im-agent.service'
+import { listChatDigests } from './chat-digest.service'
 import { completeChat } from './ai.service'
-import { getAiModelConfigs, getLastChatModel } from '../store/settings.store'
 import * as logger from '../utils/logger'
 
 const INTERVAL_MS = 45 * 60 * 1000 // 45 minutes
@@ -103,10 +104,21 @@ ${digests.slice(0, 8000)}
 }
 
 async function collectDigests(): Promise<string> {
-  const list = await listImConversations()
-  const recent = list.slice(0, 8)
   const parts: string[] = []
-  for (const item of recent) {
+
+  // 1) AI Chat digests (local + any backend chats the renderer pushed)
+  const chatDigests = await listChatDigests()
+  for (const d of chatDigests.slice(0, 12)) {
+    if (!d.snippets?.length) continue
+    const body = d.snippets.join('\n')
+    parts.push(
+      `### AI Chat [${d.source}] ${d.title} (${new Date(d.updatedAt).toISOString()})\n${body}`
+    )
+  }
+
+  // 2) IM agent conversations
+  const list = await listImConversations()
+  for (const item of list.slice(0, 8)) {
     const full = await getImConversation(item.id)
     if (!full) continue
     const msgs = full.messages
@@ -118,5 +130,6 @@ async function collectDigests(): Promise<string> {
       parts.push(`### IM ${full.title} (${new Date(full.updatedAt).toISOString()})\n${msgs}`)
     }
   }
+
   return parts.join('\n\n')
 }

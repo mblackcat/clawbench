@@ -14,6 +14,12 @@ import {
   listSoulRoles,
   type SoulRole,
 } from '../services/agent-memory.service'
+import {
+  pushChatDigest,
+  replaceChatDigests,
+  listChatDigests,
+  type ChatDigestEntry,
+} from '../services/chat-digest.service'
 
 export function registerAgentMemoryIpc(): void {
   ipcMain.handle('agent:read-memory', async (_event, filename: string) => {
@@ -69,5 +75,17 @@ export function registerAgentMemoryIpc(): void {
 
   ipcMain.handle('agent:get-memory-dir', async () => {
     return getMemoryDir()
+  })
+
+  ipcMain.handle('agent:push-chat-digest', async (_event, entry: ChatDigestEntry) => {
+    await pushChatDigest(entry)
+  })
+
+  ipcMain.handle('agent:replace-chat-digests', async (_event, entries: ChatDigestEntry[]) => {
+    await replaceChatDigests(entries || [])
+  })
+
+  ipcMain.handle('agent:list-chat-digests', async () => {
+    return listChatDigests()
   })
 }

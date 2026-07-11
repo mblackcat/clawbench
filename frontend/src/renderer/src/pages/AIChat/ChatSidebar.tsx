@@ -19,16 +19,23 @@ const ChatSidebar: React.FC = () => {
   const {
     favConversations, favHasMore,
     conversations, hasMore,
+    imConversations,
     activeConversationId,
     fetchFavConversations, loadMoreFavConversations,
     fetchConversations, loadMoreConversations,
+    fetchImConversations,
     createConversation, selectConversation,
   } = useChatStore()
 
   useEffect(() => {
     fetchFavConversations()
     fetchConversations()
-  }, [fetchFavConversations, fetchConversations])
+    fetchImConversations()
+    // Refresh IM list when window regains focus (user may have chatted via Feishu)
+    const onFocus = (): void => { fetchImConversations() }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [fetchFavConversations, fetchConversations, fetchImConversations])
 
   const { mainView, setMainView } = useScheduledTaskStore()
 
@@ -195,13 +202,41 @@ const ChatSidebar: React.FC = () => {
                   {t('chat.loadMore')}
                 </Button>
               )}
-              {conversations.length === 0 && favConversations.length === 0 && (
+              {conversations.length === 0 && favConversations.length === 0 && imConversations.length === 0 && (
                 <div style={{ textAlign: 'center', padding: 16, color: token.colorTextDisabled, fontSize: 12 }}>
                   {t('chat.noHistory')}
                 </div>
               )}
             </div>
           </div>
+
+          {/* Feishu IM agent history */}
+          {imConversations.length > 0 && (
+            <div style={{
+              background: token.colorBgLayout,
+              borderRadius: token.borderRadiusSM,
+              margin: '3px 4px',
+              maxHeight: 280,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden'
+            }}>
+              <div style={{ padding: '2px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Text strong style={{ fontSize: 11, color: token.colorTextTertiary }}>{t('chat.imHistory')}</Text>
+              </div>
+              <div style={{ flex: 1, overflowY: 'auto', padding: '0 4px 4px' }}>
+                {imConversations.map(conv => (
+                  <ChatSidebarItem
+                    key={conv.conversationId}
+                    conversation={conv}
+                    isActive={conv.conversationId === activeConversationId}
+                    isLocal={false}
+                    onClick={() => { setMainView('chat'); selectConversation(conv.conversationId) }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
