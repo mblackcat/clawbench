@@ -115,6 +115,12 @@ export interface AICodingIMConfig {
     appId: string
     appSecret: string
   }
+  /** Show TopBar Feishu entry and enable remote agent control */
+  remoteEnabled?: boolean
+  modelConfigId?: string
+  modelId?: string
+  maxTurnsPerSession?: number
+  idleTimeoutMs?: number
 }
 
 export interface AICodingConfig {

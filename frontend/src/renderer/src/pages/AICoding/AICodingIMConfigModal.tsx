@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react'
-import { Modal, Form, Input, Typography, App, Button, Space, Tag, Divider } from 'antd'
+import React, { useEffect, useState, useMemo } from 'react'
+import { Modal, Form, Input, Typography, App, Button, Space, Tag, Divider, Switch, Select, Alert } from 'antd'
 import {
   LinkOutlined,
   DisconnectOutlined,
@@ -10,8 +10,26 @@ import {
 import type { AICodingIMConfig, AICodingIMConnectionStatus } from '../../types/ai-coding'
 import FeishuGuideModal from '../../components/FeishuGuideModal'
 import { useT } from '../../i18n'
+import { useAIModelStore } from '../../stores/useAIModelStore'
 
 const { Text } = Typography
+
+/** Providers that run full internal tool loops in IM agent mode */
+const IM_TOOL_CAPABLE_PROVIDERS = new Set([
+  'openai',
+  'openai-compatible',
+  'openai-responses',
+  'azure-openai',
+  'qwen',
+  'doubao',
+  'deepseek',
+  'kimi',
+])
+
+function isImToolCapableProvider(provider?: string): boolean {
+  if (!provider) return true // unset → fallback last chat model; show soft hint only
+  return IM_TOOL_CAPABLE_PROVIDERS.has(provider.toLowerCase())
+}
 
 interface AICodingIMConfigModalProps {
   open: boolean
@@ -39,26 +57,61 @@ const AICodingIMConfigModal: React.FC<AICodingIMConfigModalProps> = ({
   const [testing, setTesting] = useState(false)
   const [connecting, setConnecting] = useState(false)
   const [isGuideModalOpen, setIsGuideModalOpen] = useState(false)
+  const [remoteEnabled, setRemoteEnabled] = useState(false)
   const t = useT()
+
+  const localModels = useAIModelStore((s) => s.localModels)
+  const fetchLocalModels = useAIModelStore((s) => s.fetchLocalModels)
 
   useEffect(() => {
     if (open) {
+      fetchLocalModels().catch(() => {})
       form.setFieldsValue({
         feishuAppId: config.feishu.appId,
-        feishuAppSecret: config.feishu.appSecret
+        feishuAppSecret: config.feishu.appSecret,
+        modelConfigId: config.modelConfigId || undefined,
+        modelId: config.modelId || undefined,
       })
+      setRemoteEnabled(config.remoteEnabled === true)
     }
-  }, [open, config, form])
+  }, [open, config, form, fetchLocalModels])
+
+  const modelOptions = useMemo(() => {
+    return (localModels || []).map((m) => ({
+      value: m.id,
+      label: m.name || m.id,
+      models: m.models || [],
+      provider: m.provider || '',
+    }))
+  }, [localModels])
+
+  const selectedConfigId = Form.useWatch('modelConfigId', form)
+  const selectedConfig = useMemo(
+    () => (localModels || []).find((m) => m.id === selectedConfigId),
+    [localModels, selectedConfigId]
+  )
+  const selectedSupportsTools = isImToolCapableProvider(selectedConfig?.provider)
+  const modelIdOptions = useMemo(() => {
+    const cfg = modelOptions.find((o) => o.value === selectedConfigId)
+    return (cfg?.models || []).map((id: string) => ({ value: id, label: id }))
+  }, [modelOptions, selectedConfigId])
+
+  const buildConfig = (values: any): AICodingIMConfig => ({
+    feishu: {
+      appId: values.feishuAppId || '',
+      appSecret: values.feishuAppSecret || ''
+    },
+    remoteEnabled,
+    modelConfigId: values.modelConfigId || '',
+    modelId: values.modelId || '',
+    maxTurnsPerSession: config.maxTurnsPerSession ?? 40,
+    idleTimeoutMs: config.idleTimeoutMs ?? 3_600_000,
+  })
 
   const handleOk = async (): Promise<void> => {
     try {
       const values = await form.validateFields()
-      await onOk({
-        feishu: {
-          appId: values.feishuAppId || '',
-          appSecret: values.feishuAppSecret || ''
-        }
-      })
+      await onOk(buildConfig(values))
       message.success(t('im.configSaved'))
     } catch {
       // validation error
@@ -66,15 +119,12 @@ const AICodingIMConfigModal: React.FC<AICodingIMConfigModalProps> = ({
   }
 
   const handleTest = async (): Promise<void> => {
-    // First save config
     const values = form.getFieldsValue()
     if (!values.feishuAppId || !values.feishuAppSecret) {
       message.warning(t('im.fillCredentials'))
       return
     }
-    await onOk({
-      feishu: { appId: values.feishuAppId, appSecret: values.feishuAppSecret }
-    })
+    await onOk(buildConfig(values))
     setTesting(true)
     try {
       const result = await onTest()
@@ -91,15 +141,16 @@ const AICodingIMConfigModal: React.FC<AICodingIMConfigModalProps> = ({
   }
 
   const handleConnect = async (): Promise<void> => {
-    // Save config first
     const values = form.getFieldsValue()
     if (!values.feishuAppId || !values.feishuAppSecret) {
       message.warning(t('im.fillCredentials'))
       return
     }
-    await onOk({
-      feishu: { appId: values.feishuAppId, appSecret: values.feishuAppSecret }
-    })
+    if (!remoteEnabled) {
+      message.warning(t('im.enableRemoteFirst'))
+      return
+    }
+    await onOk(buildConfig(values))
     setConnecting(true)
     try {
       await onConnect()
@@ -148,6 +199,20 @@ const AICodingIMConfigModal: React.FC<AICodingIMConfigModalProps> = ({
       width={520}
     >
       <div style={{ marginTop: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
+            <Text strong style={{ fontSize: 14, display: 'block' }}>{t('im.remoteEnabled')}</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>{t('im.remoteEnabledDesc')}</Text>
+          </div>
+          <Switch
+            checked={remoteEnabled}
+            onChange={setRemoteEnabled}
+            disabled={isConnected}
+          />
+        </div>
+
+        <Divider style={{ margin: '12px 0' }} />
+
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Space>
             <Text strong style={{ fontSize: 14 }}>{t('im.feishu')}</Text>
@@ -169,7 +234,40 @@ const AICodingIMConfigModal: React.FC<AICodingIMConfigModalProps> = ({
           <Form.Item name="feishuAppSecret" label="App Secret">
             <Input.Password placeholder={t('im.appSecretPlaceholder')} disabled={isConnected} />
           </Form.Item>
+          <Form.Item name="modelConfigId" label={t('im.modelConfig')}>
+            <Select
+              allowClear
+              placeholder={t('im.modelConfigPlaceholder')}
+              options={modelOptions}
+              disabled={isConnected}
+              onChange={() => form.setFieldValue('modelId', undefined)}
+            />
+          </Form.Item>
+          <Form.Item name="modelId" label={t('im.modelId')}>
+            <Select
+              allowClear
+              placeholder={t('im.modelIdPlaceholder')}
+              options={modelIdOptions}
+              disabled={isConnected || !selectedConfigId}
+            />
+          </Form.Item>
         </Form>
+
+        {selectedConfigId && !selectedSupportsTools && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message={t('im.toolSupportLimited')}
+          />
+        )}
+
+        <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>
+          {t('im.agentHint')}
+        </Text>
+        <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 12 }}>
+          {t('im.toolSupportHint')}
+        </Text>
 
         {imStatus.state === 'error' && imStatus.error && (
           <Text type="danger" style={{ display: 'block', marginBottom: 12 }}>
@@ -203,6 +301,7 @@ const AICodingIMConfigModal: React.FC<AICodingIMConfigModalProps> = ({
               type="primary"
               loading={isConnecting}
               size="small"
+              disabled={!remoteEnabled}
             >
               {t('im.connect')}
             </Button>
@@ -217,9 +316,9 @@ const AICodingIMConfigModal: React.FC<AICodingIMConfigModalProps> = ({
           </Text>
         </div>
       </div>
-      <FeishuGuideModal 
-        open={isGuideModalOpen} 
-        onCancel={() => setIsGuideModalOpen(false)} 
+      <FeishuGuideModal
+        open={isGuideModalOpen}
+        onCancel={() => setIsGuideModalOpen(false)}
       />
     </Modal>
   )

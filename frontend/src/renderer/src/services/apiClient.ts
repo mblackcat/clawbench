@@ -683,6 +683,15 @@ class ApiClient {
     await this.httpClient.put('/chat/attachments/link', { attachmentIds, messageId }, true);
   }
 
+  /**
+   * 下载聊天附件二进制内容（携带 JWT）。
+   * <img src> 无法附带 Authorization header，所以图片预览必须先用这个方法拉取 Blob，
+   * 再转成 object URL 给 <img>/<Image> 使用，否则会因 401 显示裂图。
+   */
+  async downloadChatAttachment(attachmentId: string): Promise<Blob> {
+    return this.httpClient.download(`/chat/attachments/${attachmentId}/download`, true);
+  }
+
   // ============ AI API ============
 
   async getBuiltinModels(): Promise<AIModel[]> {

@@ -12,6 +12,8 @@ import {
 import { theme } from 'antd'
 import type { ToolDetectionResult, PackageManagerInfo } from '../../types/local-env'
 import { useT } from '../../i18n'
+import { ProviderIcon } from '../../components/ProviderIcons'
+import { EnvToolIcon, hasEnvToolIcon } from '../../components/ToolIcons'
 
 const { Text } = Typography
 
@@ -23,6 +25,8 @@ interface EnvCardProps {
   refreshing: boolean
   uninstalling?: boolean
   upgrading?: boolean
+  /** Latest published version (from npm registry), if known — AI coding tools only */
+  latestVersion?: string | null
   onInstall: (toolId: string) => void
   onRefresh: (toolId: string) => void
   onUninstall?: (toolId: string) => void
@@ -30,18 +34,33 @@ interface EnvCardProps {
   onOpenPackages?: (kind: 'pip' | 'npm', pythonPath?: string) => void
 }
 
-const TOOL_ICONS: Record<string, string> = {
-  python: '🐍',
-  nodejs: '⬢',
-  git: '',
-  svn: '',
-  docker: '🐳',
-  redis: '🔴',
-  'claude-code': '🤖',
-  'gemini-cli': '✨',
-  'codex-cli': '⚡',
-  'qwen-code': '🌟',
-  homebrew: '🍺'
+// Brand provider key for AI coding CLI tools that already have an icon in ProviderIcons.tsx
+const AI_TOOL_PROVIDERS: Record<string, string> = {
+  'claude-code': 'claude',
+  'codex-cli': 'codex',
+  'gemini-cli': 'google',
+  'qwen-code': 'qwen'
+}
+
+function renderToolIcon(toolId: string, size = 20) {
+  if (hasEnvToolIcon(toolId)) {
+    return <EnvToolIcon toolId={toolId} size={size} />
+  }
+  const provider = AI_TOOL_PROVIDERS[toolId] ?? toolId
+  return <ProviderIcon provider={provider} size={size} />
+}
+
+/** Simple dotted-numeric version comparator (mirrors applicationManager.ts) */
+function isNewerVersion(current: string, latest: string): boolean {
+  const currentParts = current.split('.').map(Number)
+  const latestParts = latest.split('.').map(Number)
+  for (let i = 0; i < Math.max(currentParts.length, latestParts.length); i++) {
+    const c = currentParts[i] || 0
+    const l = latestParts[i] || 0
+    if (l > c) return true
+    if (l < c) return false
+  }
+  return false
 }
 
 const NPM_TOOL_IDS = new Set(['gemini-cli', 'codex-cli', 'qwen-code'])
@@ -63,6 +82,7 @@ const EnvCard: React.FC<EnvCardProps> = ({
   refreshing,
   uninstalling = false,
   upgrading = false,
+  latestVersion,
   onInstall,
   onRefresh,
   onUninstall,
@@ -71,6 +91,11 @@ const EnvCard: React.FC<EnvCardProps> = ({
 }) => {
   const { token } = theme.useToken()
   const t = useT()
+
+  const installedVersion = tool.installations[0]?.version
+  const hasUpdate = Boolean(
+    latestVersion && installedVersion && isNewerVersion(installedVersion, latestVersion)
+  )
 
   const getInstallLabel = (): { label: string; viaPkgMgr: boolean } => {
     if (tool.toolId === 'claude-code') {
@@ -103,18 +128,27 @@ const EnvCard: React.FC<EnvCardProps> = ({
     >
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <span style={{ fontSize: 20 }}>{TOOL_ICONS[tool.toolId]}</span>
+        {renderToolIcon(tool.toolId)}
         <Text strong style={{ fontSize: 16 }}>{tool.name}</Text>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
           {tool.installed && AI_TOOL_IDS.has(tool.toolId) && onUpgrade && (
-            <Tooltip title={t('localEnv.upgrade')}>
+            <Tooltip
+              title={
+                hasUpdate
+                  ? t('localEnv.updateAvailable', latestVersion as string)
+                  : t('localEnv.upgrade')
+              }
+            >
               <Button
                 type="text"
                 size="small"
                 icon={<ArrowUpOutlined spin={upgrading} />}
                 loading={upgrading}
                 onClick={() => onUpgrade(tool.toolId)}
-                style={{ color: token.colorTextTertiary, padding: '0 4px' }}
+                style={{
+                  color: hasUpdate ? token.colorSuccess : token.colorTextTertiary,
+                  padding: '0 4px'
+                }}
               />
             </Tooltip>
           )}
@@ -170,6 +204,11 @@ const EnvCard: React.FC<EnvCardProps> = ({
                   {inst.extras && Object.entries(inst.extras).map(([key, val]) => (
                     <Tag key={key} color="default">{key} {val}</Tag>
                   ))}
+                  {idx === 0 && hasUpdate && (
+                    <Tag color="success">
+                      {t('localEnv.updateAvailable', latestVersion as string)}
+                    </Tag>
+                  )}
                 </div>
                 <Tooltip title={inst.path}>
                   <Text

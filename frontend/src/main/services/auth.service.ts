@@ -6,6 +6,8 @@ import {
   saveJwtToken,
   getJwtToken,
   saveFeishuTokens,
+  saveFeishuPlatformAppId,
+  getFeishuPlatformAppId,
   getFeishuAccessToken,
   getFeishuRefreshToken,
   getFeishuTokenExpiresAt,
@@ -87,7 +89,7 @@ export async function handleProtocolCallback(url: string, webContents?: WebConte
     // 保存 JWT token
     saveJwtToken(token)
 
-    // 保存飞书 User Access Token（用于直接调用飞书 API）
+    // 保存飞书 User Access Token（用于直接调用飞书 API / lark-cli）
     const uat = urlObj.searchParams.get('uat')
     const urt = urlObj.searchParams.get('urt')
     const uexp = urlObj.searchParams.get('uexp')
@@ -95,6 +97,11 @@ export async function handleProtocolCallback(url: string, webContents?: WebConte
       const expiresInSec = parseInt(uexp || '7200', 10)
       saveFeishuTokens(uat, urt || '', Number.isFinite(expiresInSec) ? expiresInSec : 7200)
       logger.info('Protocol callback: saved Feishu UAT')
+    }
+    // Public platform App ID for lark-cli (no secret)
+    const appId = urlObj.searchParams.get('appId')
+    if (appId) {
+      saveFeishuPlatformAppId(appId)
     }
 
     // 用 token 获取用户信息
@@ -189,6 +196,36 @@ export function getAuthStatus(): AuthStatus {
   const loggedIn = !!token && !!user
 
   return { loggedIn, user: loggedIn ? user : null, token: loggedIn ? token : undefined }
+}
+
+/**
+ * Ensure platform Feishu App ID is available for lark-cli.
+ * Prefer value saved at OAuth login; if missing (e.g. pre-upgrade session),
+ * fetch public config from backend. Never stores app secret.
+ */
+export async function ensureFeishuPlatformAppId(): Promise<string> {
+  const existing = getFeishuPlatformAppId()
+  if (existing) return existing
+
+  try {
+    logger.info('Platform App ID missing locally — fetching public-config')
+    const response = await fetch(`${API_BASE_URL}/auth/feishu/public-config`)
+    if (!response.ok) {
+      logger.error(`Feishu public-config failed: ${response.status}`)
+      return ''
+    }
+    const body = (await response.json()) as { success?: boolean; data?: { appId?: string } }
+    const appId = body?.data?.appId
+    if (typeof appId === 'string' && appId) {
+      saveFeishuPlatformAppId(appId)
+      logger.info('Platform App ID saved from public-config')
+      return appId
+    }
+    logger.warn('Feishu public-config returned empty appId')
+  } catch (err) {
+    logger.error('Failed to fetch Feishu public-config:', err)
+  }
+  return ''
 }
 
 /**

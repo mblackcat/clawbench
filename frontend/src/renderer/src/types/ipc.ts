@@ -20,7 +20,7 @@ export interface AIModelConfig {
   models: string[]
   enabled: boolean
   apiVersion?: string
-  capabilities?: ('image-gen' | 'tool-use')[]
+  capabilities?: ('image-gen' | 'tool-use' | 'vision')[]
 }
 
 export interface ImageGenConfig {
@@ -74,6 +74,11 @@ export interface ClawBenchAPI {
       source: 'user'
     }>>
     getManifest: (appId: string) => Promise<import('./subapp').SubAppManifest>
+    resolveSlot: (
+      appId: string,
+      slot: string,
+      params?: Record<string, unknown>
+    ) => Promise<unknown>
     execute: (
       appId: string,
       params?: Record<string, unknown>
@@ -258,8 +263,7 @@ export interface ClawBenchAPI {
     setChatPreferences: (prefs: { chatMode?: string; toolsEnabled?: boolean; webSearchEnabled?: boolean; feishuKitsEnabled?: boolean }) => Promise<void>
     detectFeishuCli: () => Promise<{ found: boolean; path: string }>
     installFeishuCli: () => Promise<{ success: boolean; error: string; path: string }>
-    writeFeishuCliConfig: () => Promise<{ success: boolean; error: string; path?: string }>
-    checkFeishuCliConfig: () => Promise<{ exists: boolean; hasCredentials: boolean }>
+    getFeishuKitsAuthStatus: () => Promise<{ isFeishuUser: boolean; hasPlatformAppId: boolean }>
     onFeishuCliInstallProgress: (callback: (data: { percent: number; downloadedMB: string; totalMB: string; stage: string }) => void) => () => void
     getAiToolsConfig: () => Promise<AiToolsConfig>
     setAiToolsConfig: (config: AiToolsConfig) => Promise<void>
@@ -267,8 +271,20 @@ export interface ClawBenchAPI {
     detectLightpanda: () => Promise<{ found: boolean; path: string }>
     installLightpanda: () => Promise<{ success: boolean; error: string; path: string }>
     onLightpandaInstallProgress: (callback: (data: { percent: number; downloadedMB: string; totalMB: string; stage: string }) => void) => () => void
-    getAgentSettings: () => Promise<{ customSystemPrompt: string; defaultToolApprovalMode: string; maxAgentToolSteps: number }>
-    setAgentSettings: (settings: { customSystemPrompt?: string; defaultToolApprovalMode?: string; maxAgentToolSteps?: number }) => Promise<void>
+    getAgentSettings: () => Promise<{
+      customSystemPrompt: string
+      defaultToolApprovalMode: string
+      maxAgentToolSteps: number
+      assistantEnabled: boolean
+      setupRole: string
+    }>
+    setAgentSettings: (settings: {
+      customSystemPrompt?: string
+      defaultToolApprovalMode?: string
+      maxAgentToolSteps?: number
+      assistantEnabled?: boolean
+      setupRole?: string
+    }) => Promise<void>
   }
   ai: {
     streamChat: (
@@ -302,6 +318,12 @@ export interface ClawBenchAPI {
     disconnect: (id: string) => Promise<{ success: boolean }>
     listTools: () => Promise<any[]>
     callTool: (serverId: string, toolName: string, args: Record<string, unknown>) => Promise<{ content: string; isError: boolean }>
+    callToolWithAttachments: (
+      serverId: string,
+      toolName: string,
+      args: Record<string, unknown>,
+      attachmentPaths: string[]
+    ) => Promise<{ content: string; isError: boolean }>
     getStatus: () => Promise<Array<{ id: string; name: string; connected: boolean; toolCount: number }>>
     connectAllEnabled: () => Promise<Array<{ id: string; success: boolean; error?: string }>>
   }
@@ -343,6 +365,7 @@ export interface ClawBenchAPI {
     install: (toolId: string) => Promise<import('./local-env').ToolInstallResult>
     uninstall: (toolId: string) => Promise<import('./local-env').ToolInstallResult>
     upgrade: (toolId: string) => Promise<import('./local-env').ToolInstallResult>
+    checkLatestVersions: (toolIds: string[]) => Promise<Record<string, string | null>>
     listPipPackages: (pythonPath?: string) => Promise<import('./local-env').PackageListResult>
     uninstallPipPackage: (
       packageName: string,
@@ -532,6 +555,30 @@ export interface ClawBenchAPI {
     imDisconnect: () => Promise<{ success: boolean }>
     imGetStatus: () => Promise<import('./ai-coding').AICodingIMConnectionStatus>
     imTest: () => Promise<{ success: boolean; error?: string }>
+    listImConversations: () => Promise<Array<{
+      id: string
+      source: 'im'
+      title: string
+      chatId: string
+      createdAt: number
+      updatedAt: number
+      closedAt?: number
+      closeReason?: string
+      messages: Array<{ id: string; role: string; content: string; createdAt: number }>
+    }>>
+    getImConversation: (id: string) => Promise<{
+      id: string
+      source: 'im'
+      title: string
+      chatId: string
+      createdAt: number
+      updatedAt: number
+      closedAt?: number
+      closeReason?: string
+      messages: Array<{ id: string; role: string; content: string; createdAt: number }>
+    } | null>
+    deleteImConversation: (id: string) => Promise<boolean>
+    renameImConversation: (id: string, title: string) => Promise<boolean>
     onIMStatusChanged: (
       callback: (status: import('./ai-coding').AICodingIMConnectionStatus) => void
     ) => () => void
@@ -689,7 +736,32 @@ export interface ClawBenchAPI {
     statsSnippet: () => Promise<string>
     processFeedback: (data: { messageId: string; type: 'up' | 'down'; reason?: string; snippet: string }) => Promise<{ ok: boolean }>
     restoreSoulDefault: () => Promise<void>
+    applySoulTemplate: (role: string) => Promise<void>
+    initSoulFromRole: (role: string) => Promise<void>
+    getSoulTemplate: (role: string) => Promise<string>
+    listSoulRoles: () => Promise<string[]>
     getMemoryDir: () => Promise<string>
+    pushChatDigest: (entry: {
+      conversationId: string
+      title: string
+      source: string
+      updatedAt: number
+      snippets: string[]
+    }) => Promise<void>
+    replaceChatDigests: (entries: Array<{
+      conversationId: string
+      title: string
+      source: string
+      updatedAt: number
+      snippets: string[]
+    }>) => Promise<void>
+    listChatDigests: () => Promise<Array<{
+      conversationId: string
+      title: string
+      source: string
+      updatedAt: number
+      snippets: string[]
+    }>>
   }
   scheduledTask: {
     list: () => Promise<import('./scheduled-task').ScheduledTask[]>

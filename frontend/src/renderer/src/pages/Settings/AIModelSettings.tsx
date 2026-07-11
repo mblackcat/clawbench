@@ -67,7 +67,8 @@ const AIModelSettings: React.FC = () => {
 
   const capabilityOptions = useMemo(() => [
     { label: t('aiModel.imageGen'), value: 'image-gen' },
-    { label: t('aiModel.toolUse'), value: 'tool-use' }
+    { label: t('aiModel.toolUse'), value: 'tool-use' },
+    { label: t('aiModel.vision'), value: 'vision' }
   ], [t])
 
   const loadModels = useCallback(async () => {
@@ -223,6 +224,9 @@ const AIModelSettings: React.FC = () => {
           {(caps || []).includes('tool-use') && (
             <Tag color="geekblue">{t('aiModel.toolUse')}</Tag>
           )}
+          {(caps || []).includes('vision') && (
+            <Tag color="green">{t('aiModel.vision')}</Tag>
+          )}
         </Space>
       )
     },
@@ -349,7 +353,11 @@ const AIModelSettings: React.FC = () => {
             />
           </Form.Item>
 
-          <Form.Item name="capabilities" label={t('aiModel.formCapabilities')}>
+          <Form.Item
+            name="capabilities"
+            label={t('aiModel.formCapabilities')}
+            extra={t('aiModel.formCapabilitiesVisionHint')}
+          >
             <Checkbox.Group options={capabilityOptions} />
           </Form.Item>
 

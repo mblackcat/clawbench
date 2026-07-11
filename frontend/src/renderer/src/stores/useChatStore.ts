@@ -30,6 +30,16 @@ function localId(prefix = 'local'): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+/** Read a File as a base64 data URI (for session-only attachment previews). */
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(reader.error || new Error('Failed to read file'))
+    reader.readAsDataURL(file)
+  })
+}
+
 // ============ Local-mode persistence helpers ============
 const LOCAL_CONV_KEY = 'clawbench_local_chat_conversations'
 const localMsgKey = (id: string) => `clawbench_local_chat_messages_${id}`
@@ -54,6 +64,74 @@ function saveLocalMessages(conversationId: string, messages: Message[]): void {
 }
 function deleteLocalMessages(conversationId: string): void {
   try { localStorage.removeItem(localMsgKey(conversationId)) } catch { /* ignore */ }
+}
+
+/** IM conversation ids are prefixed so they never clash with local/backend ids */
+export const IM_CONV_PREFIX = 'im:'
+
+export function isImConversationId(id: string | null | undefined): boolean {
+  return !!id && id.startsWith(IM_CONV_PREFIX)
+}
+
+export function toImConversationId(rawId: string): string {
+  return rawId.startsWith(IM_CONV_PREFIX) ? rawId : `${IM_CONV_PREFIX}${rawId}`
+}
+
+export function fromImConversationId(id: string): string {
+  return id.startsWith(IM_CONV_PREFIX) ? id.slice(IM_CONV_PREFIX.length) : id
+}
+
+function buildSnippetsFromMessages(
+  messages: Array<{ role: string; content: string }>
+): string[] {
+  return messages
+    .filter((m) => m.role === 'user' || m.role === 'assistant')
+    .slice(-8)
+    .map((m) => `${m.role}: ${String(m.content || '').slice(0, 400)}`)
+}
+
+/** Push one conversation digest to main process for memory self-update */
+async function pushDigestForConversation(
+  conv: Conversation,
+  messages: Array<{ role: string; content: string }>
+): Promise<void> {
+  if (isImConversationId(conv.conversationId)) return
+  const snippets = buildSnippetsFromMessages(messages)
+  if (snippets.length === 0) return
+  try {
+    await window.api.agent.pushChatDigest({
+      conversationId: conv.conversationId,
+      title: conv.title || 'Chat',
+      source: isLocal() ? 'local-chat' : 'backend-chat',
+      updatedAt: conv.updatedAt || Date.now(),
+      snippets,
+    })
+  } catch (err) {
+    console.debug('pushChatDigest failed:', err)
+  }
+}
+
+/** Bulk sync local-mode digests (called when opening AI Chat) */
+async function syncLocalChatDigests(): Promise<void> {
+  if (!isLocal()) return
+  try {
+    const convs = loadLocalConversations()
+    const entries = convs.slice(0, 30).map((c) => {
+      const msgs = loadLocalMessages(c.conversationId)
+      return {
+        conversationId: c.conversationId,
+        title: c.title || 'Chat',
+        source: 'local-chat',
+        updatedAt: c.updatedAt || Date.now(),
+        snippets: buildSnippetsFromMessages(msgs),
+      }
+    }).filter((e) => e.snippets.length > 0)
+    if (entries.length > 0) {
+      await window.api.agent.replaceChatDigests(entries)
+    }
+  } catch (err) {
+    console.debug('syncLocalChatDigests failed:', err)
+  }
 }
 
 // ============ Search source parsers ============
@@ -143,9 +221,14 @@ interface ChatState {
   offset: number
   hasMore: boolean
 
+  // Feishu IM agent conversation history (main process)
+  imConversations: Conversation[]
+
   // Active conversation
   activeConversationId: string | null
   messages: Message[]
+  /** True when viewing an IM history thread (read-only input) */
+  activeIsIm: boolean
 
   // Streaming state
   streaming: boolean
@@ -163,6 +246,10 @@ interface ChatState {
   webSearchEnabled: boolean
   feishuKitsEnabled: boolean
   searchSources: SearchSource[]
+  // Absolute file paths of this turn's image attachments (local models only) — kept
+  // around so an auto-registered MCP vision-fallback tool call can be injected with
+  // the real image bytes, since the model itself can't produce them as an argument.
+  currentTurnAttachmentPaths: string[]
 
   // Agent state
   agentPhase: AgentPhase
@@ -174,6 +261,7 @@ interface ChatState {
   loadMoreFavConversations: () => Promise<void>
   fetchConversations: (reset?: boolean) => Promise<void>
   loadMoreConversations: () => Promise<void>
+  fetchImConversations: () => Promise<void>
   createConversation: (modelId?: string) => Promise<string>
   deleteConversation: (id: string) => Promise<void>
   renameConversation: (id: string, title: string) => Promise<void>
@@ -362,6 +450,50 @@ async function getAvailableTools(
   return tools
 }
 
+/** MCP tools heuristically detected (by the main process) as image-recognition tools. */
+async function getVisionMcpTools(): Promise<
+  Array<{ name: string; description: string; inputSchema: Record<string, any> }>
+> {
+  try {
+    const mcpTools = await window.api.mcp.listTools()
+    return mcpTools
+      .filter((t: any) => t.isVisionTool)
+      .map((t: any) => ({ name: t.name, description: t.description || '', inputSchema: t.inputSchema || {} }))
+  } catch {
+    return []
+  }
+}
+
+/** Whether a local model config has been manually marked as natively supporting vision. */
+function localModelSupportsVision(modelConfigId?: string): boolean {
+  if (!modelConfigId) return false
+  const cfg = useAIModelStore.getState().localModels.find((c) => c.id === modelConfigId)
+  return !!cfg?.capabilities?.includes('vision')
+}
+
+/**
+ * Merge in an auto-detected MCP vision tool for local models that don't natively
+ * support vision, when this turn carries image attachments — even if general
+ * tool-calling is switched off, otherwise the model has no way to ever "see" the
+ * image at all. The model still decides for itself whether to call it.
+ */
+async function withVisionFallbackTools(
+  tools: Array<{ name: string; description: string; inputSchema: Record<string, any> }> | undefined,
+  modelSource: 'builtin' | 'local',
+  modelConfigId: string | undefined,
+  hasImageAttachments: boolean
+): Promise<Array<{ name: string; description: string; inputSchema: Record<string, any> }> | undefined> {
+  if (modelSource !== 'local' || !hasImageAttachments || localModelSupportsVision(modelConfigId)) {
+    return tools
+  }
+  const visionTools = await getVisionMcpTools()
+  if (visionTools.length === 0) return tools
+  const existingNames = new Set((tools || []).map((t) => t.name))
+  const toAdd = visionTools.filter((t) => !existingNames.has(t.name))
+  if (toAdd.length === 0) return tools
+  return [...(tools || []), ...toAdd]
+}
+
 /**
  * Execute a tool and return the result string
  */
@@ -394,6 +526,19 @@ async function executeToolCall(
     const mcpTools = await window.api.mcp.listTools()
     const mcpTool = mcpTools.find((t: any) => t.name === toolName)
     if (mcpTool && mcpTool.serverId) {
+      // Vision-fallback tool: the model decided to call it, but it cannot itself
+      // produce real image bytes as an argument — inject this turn's actual
+      // attachment(s) into whichever schema field looks like the image param.
+      const attachmentPaths = useChatStore.getState().currentTurnAttachmentPaths
+      if (mcpTool.isVisionTool && attachmentPaths.length > 0) {
+        const result = await window.api.mcp.callToolWithAttachments(
+          mcpTool.serverId,
+          toolName,
+          input,
+          attachmentPaths
+        )
+        return { output: result.content, isError: result.isError }
+      }
       const result = await window.api.mcp.callTool(mcpTool.serverId, toolName, input)
       return { output: result.content, isError: result.isError }
     }
@@ -435,8 +580,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
   offset: 0,
   hasMore: false,
 
+  imConversations: [],
+
   activeConversationId: null,
   messages: [],
+  activeIsIm: false,
 
   streaming: false,
   streamingContent: '',
@@ -452,6 +600,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   webSearchEnabled: false,
   feishuKitsEnabled: false,
   searchSources: [],
+  currentTurnAttachmentPaths: [],
 
   agentPhase: 'idle' as AgentPhase,
   agentStepDescription: '',
@@ -492,6 +641,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (isLocal()) {
       const all = loadLocalConversations().filter((c) => !c.favorited)
       set({ conversations: all, total: all.length, offset: all.length, hasMore: false })
+      // Push digests for memory self-update (fire-and-forget)
+      syncLocalChatDigests().catch(() => {})
       return
     }
     try {
@@ -519,9 +670,32 @@ export const useChatStore = create<ChatState>((set, get) => ({
     await get().fetchConversations(false)
   },
 
+  fetchImConversations: async () => {
+    try {
+      const list = await window.api.aiCoding.listImConversations()
+      const mapped: Conversation[] = (list || []).map((c) => ({
+        conversationId: toImConversationId(c.id),
+        title: c.title || 'IM Chat',
+        favorited: false,
+        modelId: (c as any).modelId || null,
+        createdAt: c.createdAt,
+        updatedAt: c.updatedAt,
+        source: 'im' as const,
+        imChatId: c.chatId,
+        closedAt: c.closedAt,
+        closeReason: c.closeReason,
+      }))
+      set({ imConversations: mapped })
+    } catch (err) {
+      console.error('Failed to fetch IM conversations:', err)
+      set({ imConversations: [] })
+    }
+  },
+
   createConversation: async (modelId?: string) => {
-    const { activeConversationId, messages } = get()
-    if (activeConversationId && messages.length === 0) {
+    const { activeConversationId, messages, activeIsIm } = get()
+    // Empty local chat can be reused; IM history is never reused as a blank draft
+    if (activeConversationId && messages.length === 0 && !activeIsIm) {
       return activeConversationId
     }
 
@@ -533,13 +707,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
         modelId: modelId || null,
         favorited: false,
         createdAt: Date.now(),
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
+        source: 'local',
       }
       saveLocalConversations([conv, ...loadLocalConversations()])
       set((state) => ({
         conversations: [conv, ...state.conversations],
         activeConversationId: id,
         messages: [],
+        activeIsIm: false,
         toolApprovalMode: 'auto-approve-safe' as ToolApprovalMode,
         pendingToolCalls: [],
         agentPhase: 'idle' as AgentPhase,
@@ -553,6 +729,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       conversations: [conv, ...state.conversations],
       activeConversationId: conv.conversationId,
       messages: [],
+      activeIsIm: false,
       toolApprovalMode: 'auto-approve-safe' as ToolApprovalMode,
       pendingToolCalls: [],
       agentPhase: 'idle' as AgentPhase,
@@ -562,6 +739,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   deleteConversation: async (id: string) => {
+    if (isImConversationId(id)) {
+      await window.api.aiCoding.deleteImConversation(fromImConversationId(id))
+      set((state) => ({
+        imConversations: state.imConversations.filter((c) => c.conversationId !== id),
+        activeConversationId:
+          state.activeConversationId === id ? null : state.activeConversationId,
+        messages: state.activeConversationId === id ? [] : state.messages,
+        activeIsIm: state.activeConversationId === id ? false : state.activeIsIm,
+      }))
+      return
+    }
     if (!isLocal()) {
       await apiClient.deleteConversation(id)
     } else {
@@ -573,11 +761,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
       favConversations: state.favConversations.filter((c) => c.conversationId !== id),
       activeConversationId:
         state.activeConversationId === id ? null : state.activeConversationId,
-      messages: state.activeConversationId === id ? [] : state.messages
+      messages: state.activeConversationId === id ? [] : state.messages,
+      activeIsIm: state.activeConversationId === id ? false : state.activeIsIm,
     }))
   },
 
   renameConversation: async (id: string, title: string) => {
+    if (isImConversationId(id)) {
+      await window.api.aiCoding.renameImConversation(fromImConversationId(id), title)
+      set((state) => ({
+        imConversations: state.imConversations.map((c) =>
+          c.conversationId === id ? { ...c, title } : c
+        ),
+      }))
+      return
+    }
     if (!isLocal()) {
       await apiClient.updateConversation(id, { title })
     } else {
@@ -625,20 +823,67 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({
       activeConversationId: id,
       messages: [],
+      activeIsIm: isImConversationId(id),
+      streaming: false,
+      streamingContent: '',
+      streamingThinkingContent: '',
+      streamingTaskId: null,
+      streamingError: null,
       toolApprovalMode: 'auto-approve-safe' as ToolApprovalMode,
       pendingToolCalls: [],
       agentPhase: 'idle' as AgentPhase,
       agentToolHistory: []
     })
+
+    if (isImConversationId(id)) {
+      try {
+        const raw = await window.api.aiCoding.getImConversation(fromImConversationId(id))
+        if (!raw) {
+          set({ messages: [] })
+          return
+        }
+        const msgs: Message[] = (raw.messages || [])
+          .filter((m) => m.role === 'user' || m.role === 'assistant' || m.role === 'system')
+          .map((m) => ({
+            messageId: m.id,
+            conversationId: id,
+            role: m.role as Message['role'],
+            content: m.content,
+            modelId: (raw as any).modelId || null,
+            createdAt: m.createdAt,
+          }))
+        set({ messages: msgs })
+      } catch (err) {
+        console.error('Failed to load IM conversation:', err)
+      }
+      return
+    }
+
     if (isLocal()) {
-      // In local mode: load messages from localStorage
-      set({ messages: loadLocalMessages(id) })
+      const msgs = loadLocalMessages(id)
+      set({ messages: msgs })
+      const conv = loadLocalConversations().find((c) => c.conversationId === id)
+      if (conv) pushDigestForConversation(conv, msgs).catch(() => {})
       return
     }
     try {
       const result = await apiClient.getConversation(id)
-      set({ messages: result.messages || [] })
       const msgs = result.messages || []
+      set({ messages: msgs })
+      if (result.conversation) {
+        pushDigestForConversation(
+          {
+            conversationId: id,
+            title: result.conversation.title || 'Chat',
+            favorited: !!result.conversation.favorited,
+            modelId: result.conversation.modelId || null,
+            createdAt: result.conversation.createdAt,
+            updatedAt: result.conversation.updatedAt,
+            source: 'cloud',
+          },
+          msgs
+        ).catch(() => {})
+      }
       const lastAssistant = [...msgs]
         .reverse()
         .find((m) => m.role === 'assistant' && m.modelId)
@@ -663,7 +908,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   clearActiveConversation: () => {
-    set({ activeConversationId: null, messages: [], pendingToolCalls: [] })
+    set({ activeConversationId: null, messages: [], pendingToolCalls: [], activeIsIm: false })
   },
 
   deleteMessages: async (messageId, mode) => {
@@ -765,8 +1010,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   sendMessage: async (content, modelSource, modelId, modelConfigId, pendingFiles, enableThinking, webSearchEnabled, feishuKitsEnabled) => {
-    const { activeConversationId, toolsEnabled } = get()
+    const { activeConversationId, toolsEnabled, activeIsIm } = get()
     if (!activeConversationId) return
+    // IM history is read-only in the client; continue chatting via Feishu bot
+    if (activeIsIm || isImConversationId(activeConversationId)) {
+      set({
+        streamingError: getT()('chat.imReadOnlyHint'),
+      })
+      return
+    }
 
     set({ streamingError: null, pendingToolCalls: [], searchSources: [], agentPhase: 'thinking' as AgentPhase, agentStepDescription: '', agentToolHistory: [] })
 
@@ -803,12 +1055,32 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // Save user message
     let userMsg: Message
     if (isLocal()) {
+      // Local models never upload attachments to the backend, so the chat bubble has
+      // nothing to fetch from later — capture a data URI now (before pendingFiles is
+      // cleared) so the image can still be shown in the conversation history.
+      let localAttachments: ChatAttachment[] | undefined
+      if (pendingFiles && pendingFiles.length > 0) {
+        try {
+          localAttachments = await Promise.all(
+            pendingFiles.map(async (pf) => ({
+              attachmentId: pf.id,
+              fileName: pf.file.name,
+              fileSize: pf.file.size,
+              mimeType: pf.file.type,
+              previewUrl: pf.file.type.startsWith('image/') ? await readFileAsDataUrl(pf.file) : undefined
+            }))
+          )
+        } catch (err) {
+          console.error('Failed to build local attachment previews:', err)
+        }
+      }
       userMsg = {
         messageId: localId('msg'),
         conversationId: activeConversationId,
         role: 'user',
         content,
         modelId: null,
+        attachments: localAttachments,
         createdAt: Date.now()
       }
     } else {
@@ -854,6 +1126,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
       } catch {
         tools = undefined
       }
+    }
+
+    // MCP vision fallback: local models that aren't marked as vision-capable can't
+    // read the attached image at all — offer an auto-detected MCP image-recognition
+    // tool (if one is connected) so the model can call it itself, and remember the
+    // attachment paths so the actual call can be injected with real image bytes.
+    const imagePaths = (pendingFiles || [])
+      .filter((pf) => pf.file.type.startsWith('image/'))
+      .map((pf) => (pf.file as any).path as string | undefined)
+      .filter((p): p is string => !!p)
+    if (modelSource === 'local' && imagePaths.length > 0 && !localModelSupportsVision(modelConfigId)) {
+      tools = await withVisionFallbackTools(tools, modelSource, modelConfigId, true)
+      set({ currentTurnAttachmentPaths: imagePaths })
+    } else {
+      set({ currentTurnAttachmentPaths: [] })
     }
 
     if (modelSource === 'builtin') {
@@ -960,6 +1247,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
           c.conversationId === conversationId ? { ...c, modelId: modelId, updatedAt: Date.now() } : c
         )
       )
+    }
+
+    // Push digest for memory self-update
+    if (conversationId && !isImConversationId(conversationId)) {
+      const allMsgs = get().messages
+      const title =
+        [...get().conversations, ...get().favConversations].find((c) => c.conversationId === conversationId)?.title
+        || 'Chat'
+      pushDigestForConversation(
+        {
+          conversationId,
+          title,
+          favorited: false,
+          modelId: modelId || null,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          source: isLocal() ? 'local' : 'cloud',
+        },
+        allMsgs
+      ).catch(() => {})
     }
 
     // Auto-generate title after first exchange
@@ -1265,6 +1572,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
           tools = undefined
         }
       }
+      // Keep offering the vision-fallback tool across follow-up turns in this same
+      // conversation cycle (e.g. the model may retry or call it after another tool).
+      if (get().currentTurnAttachmentPaths.length > 0) {
+        tools = await withVisionFallbackTools(tools, modelSource, selectedModelConfigId || undefined, true)
+      }
 
       if (modelSource === 'builtin') {
         // SSE continuation with tool result
@@ -1317,7 +1629,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   exportConversation: (id: string, format: 'markdown' | 'json') => {
-    const allConvs = [...get().conversations, ...get().favConversations]
+    const allConvs = [...get().conversations, ...get().favConversations, ...get().imConversations]
     const conv = allConvs.find((c) => c.conversationId === id)
     const msgs = get().activeConversationId === id ? get().messages : []
 
@@ -1413,17 +1725,20 @@ function handleSSEToolUse(
 
 /**
  * Load agent memory files for system prompt injection.
+ * When assistant master switch is off, returns empty context (minimal prompt).
  */
-async function loadAgentMemory(): Promise<AgentMemoryContext> {
+async function loadAgentMemory(assistantEnabled: boolean): Promise<AgentMemoryContext> {
+  if (!assistantEnabled) return {}
   try {
-    const [soul, memory, user, agents, statsSnippet] = await Promise.all([
+    // Progressive context: only always-on slices are loaded into the system prompt.
+    // tools.md / agents.md are fetched on demand via read_agent_file.
+    const [soul, memory, user, statsSnippet] = await Promise.all([
       window.api.agent.readMemory('soul.md'),
       window.api.agent.readMemory('memory.md'),
       window.api.agent.readMemory('user.md'),
-      window.api.agent.readMemory('agents.md'),
       window.api.agent.statsSnippet(),
     ])
-    return { soul, memory, user, agents, statsSnippet }
+    return { soul, memory, user, statsSnippet }
   } catch {
     return {}
   }
@@ -1451,12 +1766,14 @@ async function streamBuiltin(
 
   // Build dynamic system prompt
   let customPrompt = ''
+  let assistantEnabled = true
   try {
     const agentSettings = await window.api.settings.getAgentSettings()
     customPrompt = agentSettings?.customSystemPrompt || ''
+    assistantEnabled = agentSettings?.assistantEnabled !== false
   } catch { /* ignore */ }
 
-  const agentMemory = await loadAgentMemory()
+  const agentMemory = await loadAgentMemory(assistantEnabled)
   const allToolNames: string[] = tools ? tools.map((t) => t.name) : []
   const lang = useSettingsStore.getState().language || 'zh-CN'
   const systemPrompt = buildSystemPrompt({
@@ -1467,7 +1784,8 @@ async function streamBuiltin(
     availableTools: allToolNames,
     webSearchEnabled: !!webSearchEnabled,
     userCustomPrompt: customPrompt,
-    agentMemory
+    agentMemory,
+    assistantEnabled
   })
   messages.unshift({ role: 'system', content: systemPrompt })
 
@@ -1581,12 +1899,14 @@ async function streamLocal(
 
   // Build dynamic system prompt
   let customPrompt = ''
+  let assistantEnabled = true
   try {
     const agentSettings = await window.api.settings.getAgentSettings()
     customPrompt = agentSettings?.customSystemPrompt || ''
+    assistantEnabled = agentSettings?.assistantEnabled !== false
   } catch { /* ignore */ }
 
-  const agentMemory = await loadAgentMemory()
+  const agentMemory = await loadAgentMemory(assistantEnabled)
   const allToolNames: string[] = tools ? tools.map((t) => t.name) : []
   const lang = useSettingsStore.getState().language || 'zh-CN'
   const systemPrompt = buildSystemPrompt({
@@ -1597,7 +1917,8 @@ async function streamLocal(
     availableTools: allToolNames,
     webSearchEnabled: !!webSearchEnabled,
     userCustomPrompt: customPrompt,
-    agentMemory
+    agentMemory,
+    assistantEnabled
   })
   messages.unshift({ role: 'system', content: systemPrompt })
 

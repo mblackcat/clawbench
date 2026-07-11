@@ -16,6 +16,7 @@ import { settingsStore } from './store/settings.store'
 import * as logger from './utils/logger'
 import { migrateSettings } from './utils/migrate-settings'
 import { initScheduler } from './services/scheduled-task.service'
+import { startMemoryUpdater } from './services/memory-updater.service'
 
 const PROTOCOL = 'clawbench'
 let tray: Tray | null = null
@@ -269,6 +270,8 @@ app.whenReady().then(() => {
   registerGlobalShortcuts()
   initAutoUpdater()
   initScheduler()
+  // Long-term memory self-update (skipped when assistant master switch is off)
+  startMemoryUpdater()
 
   // Check for updates 8 seconds after startup to avoid slowing down launch
   setTimeout(() => {

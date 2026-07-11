@@ -37,6 +37,36 @@ function saveCache(data: LocalEnvDetectionResult): void {
 // Hydrate from localStorage on module load
 const cached = loadCache()
 
+// Latest-version lookups (npm registry) are cheap and change often — cache for
+// a much shorter window than the tool-detection cache above.
+const VERSIONS_CACHE_KEY = 'clawbench:localEnv:latestVersions'
+const VERSIONS_CACHE_TTL = 60 * 60 * 1000 // 1 hour
+
+interface VersionsCacheEntry {
+  data: Record<string, string | null>
+  timestamp: number
+}
+
+function loadVersionsCache(): VersionsCacheEntry | null {
+  try {
+    const raw = localStorage.getItem(VERSIONS_CACHE_KEY)
+    if (!raw) return null
+    const entry: VersionsCacheEntry = JSON.parse(raw)
+    if (Date.now() - entry.timestamp > VERSIONS_CACHE_TTL) return null
+    return entry
+  } catch {
+    return null
+  }
+}
+
+function saveVersionsCache(data: Record<string, string | null>): void {
+  try {
+    localStorage.setItem(VERSIONS_CACHE_KEY, JSON.stringify({ data, timestamp: Date.now() }))
+  } catch { /* ignore quota errors */ }
+}
+
+const cachedVersions = loadVersionsCache()
+
 // ── Store ──
 
 interface LocalEnvState {
@@ -49,12 +79,15 @@ interface LocalEnvState {
   uninstalling: Record<string, boolean>
   upgrading: Record<string, boolean>
   lastDetectedAt: number | null
+  latestVersions: Record<string, string | null>
+  lastVersionCheckAt: number | null
 
   detectAll: (force?: boolean) => Promise<void>
   detectOne: (toolId: string) => Promise<void>
   installTool: (toolId: string) => Promise<ToolInstallResult>
   uninstallTool: (toolId: string) => Promise<ToolInstallResult>
   upgradeTool: (toolId: string) => Promise<ToolInstallResult>
+  checkLatestVersions: (toolIds: string[], force?: boolean) => Promise<void>
 }
 
 export const useLocalEnvStore = create<LocalEnvState>((set, get) => ({
@@ -67,6 +100,8 @@ export const useLocalEnvStore = create<LocalEnvState>((set, get) => ({
   uninstalling: {},
   upgrading: {},
   lastDetectedAt: cached?.timestamp ?? null,
+  latestVersions: cachedVersions?.data ?? {},
+  lastVersionCheckAt: cachedVersions?.timestamp ?? null,
 
   detectAll: async (force = false) => {
     // Use cached data if available and not forcing a refresh
@@ -153,6 +188,18 @@ export const useLocalEnvStore = create<LocalEnvState>((set, get) => ({
       console.error(`Failed to upgrade ${toolId}:`, err)
       set({ upgrading: { ...get().upgrading, [toolId]: false } })
       return { success: false, error: err.message }
+    }
+  },
+
+  checkLatestVersions: async (toolIds: string[], force = false) => {
+    if (!force && get().lastVersionCheckAt !== null) return
+    try {
+      const result = await window.api.localEnv.checkLatestVersions(toolIds)
+      const merged = { ...get().latestVersions, ...result }
+      saveVersionsCache(merged)
+      set({ latestVersions: merged, lastVersionCheckAt: Date.now() })
+    } catch (err) {
+      console.error('Failed to check latest tool versions:', err)
     }
   }
 }))

@@ -1,0 +1,7 @@
+schema: spec-driven
+created: 2026-07-10
+status: in-progress
+summary: >
+  Unify AI assistant capabilities (persona, harness, memory, module tools)
+  and link Feishu IM remote control to the same agent pipeline (not coding-only).
+  Top-bar IM entry becomes non-persistent (shown only when remote IM is enabled).

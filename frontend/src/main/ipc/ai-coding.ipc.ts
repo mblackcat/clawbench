@@ -57,6 +57,9 @@ async function autoConnectIM(): Promise<void> {
     if (!getIMAutoConnect()) return
 
     const imConfig = getIMConfig()
+    // Remote IM control master switch (non-persistent TopBar entry)
+    if (!imConfig.remoteEnabled) return
+
     const { appId, appSecret } = imConfig.feishu
     if (!appId || !appSecret) return
 
@@ -253,6 +256,26 @@ export function registerAICodingIpc(): void {
 
   ipcMain.handle('ai-coding:save-im-config', async (_event, config) => {
     return saveIMConfig(config)
+  })
+
+  ipcMain.handle('ai-coding:list-im-conversations', async () => {
+    const { listImConversations } = await import('../services/im/im-agent.service')
+    return listImConversations()
+  })
+
+  ipcMain.handle('ai-coding:get-im-conversation', async (_event, id: string) => {
+    const { getImConversation } = await import('../services/im/im-agent.service')
+    return getImConversation(id)
+  })
+
+  ipcMain.handle('ai-coding:delete-im-conversation', async (_event, id: string) => {
+    const { deleteImConversation } = await import('../services/im/im-agent.service')
+    return deleteImConversation(id)
+  })
+
+  ipcMain.handle('ai-coding:rename-im-conversation', async (_event, id: string, title: string) => {
+    const { renameImConversation } = await import('../services/im/im-agent.service')
+    return renameImConversation(id, title)
   })
 
   ipcMain.handle('ai-coding:open-directory', async (_event, dirPath: string) => {

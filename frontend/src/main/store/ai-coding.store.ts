@@ -48,6 +48,15 @@ export interface AICodingIMConfig {
     appId: string
     appSecret: string
   }
+  /** When true, show TopBar Feishu entry and allow remote agent/coding control. Default false for new users. */
+  remoteEnabled?: boolean
+  /** Fixed model for IM agent mode */
+  modelConfigId?: string
+  modelId?: string
+  /** Max agent turns per IM conversation session (default 40) */
+  maxTurnsPerSession?: number
+  /** Idle silence before auto-closing agent conversation (default 1h) */
+  idleTimeoutMs?: number
 }
 
 interface AICodingSchema {
@@ -57,6 +66,8 @@ interface AICodingSchema {
   imConfig: AICodingIMConfig
   /** Whether the user wants IM to auto-connect on startup. Set true on explicit connect, false on explicit disconnect. */
   imAutoConnect: boolean
+  /** One-time soft migration for remoteEnabled */
+  imRemoteMigrated?: boolean
 }
 
 const DEFAULT_GROUP: AICodingGroup = {
@@ -67,7 +78,10 @@ const DEFAULT_GROUP: AICodingGroup = {
 }
 
 const DEFAULT_IM_CONFIG: AICodingIMConfig = {
-  feishu: { appId: '', appSecret: '' }
+  feishu: { appId: '', appSecret: '' },
+  remoteEnabled: false,
+  maxTurnsPerSession: 40,
+  idleTimeoutMs: 3_600_000,
 }
 
 export const aiCodingStore = new Store<AICodingSchema>({
@@ -138,6 +152,10 @@ export const aiCodingStore = new Store<AICodingSchema>({
       }
     },
     imAutoConnect: {
+      type: 'boolean',
+      default: false
+    },
+    imRemoteMigrated: {
       type: 'boolean',
       default: false
     }

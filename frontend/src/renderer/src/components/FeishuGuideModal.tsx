@@ -61,7 +61,7 @@ const CopyableCode: React.FC<{
 }
 
 // ── No-approval scopes (免审批) ──
-// Merged: IM bot scopes + feishu-cli no-approval scopes
+// IM bot scopes for AI Coding remote control (independent of Feishu Kits / lark-cli)
 const NO_APPROVAL_CONFIG = `{
   "scopes": {
     "tenant": [
@@ -331,24 +331,6 @@ const FeishuGuideModal: React.FC<FeishuGuideModalProps> = ({ open, onCancel }) =
         <Title level={5}>{t('feishuGuide.step5')}</Title>
         <Paragraph>
           {t('feishuGuide.step5Desc')}
-        </Paragraph>
-
-        <Title level={5} style={{ color: token.colorTextSecondary }}>
-          {t('feishuGuide.step6')}
-        </Title>
-        <Paragraph type="secondary">
-          {t('feishuGuide.step6Desc')}
-        </Paragraph>
-        <Paragraph>
-          {t('feishuGuide.step6RedirectLabel')}
-        </Paragraph>
-        <CopyableCode inline token={token}>http://127.0.0.1:9768/callback</CopyableCode>
-        <Paragraph style={{ marginTop: 12 }}>
-          {t('feishuGuide.step6LoginLabel')}
-        </Paragraph>
-        <CopyableCode inline token={token}>feishu-cli auth login</CopyableCode>
-        <Paragraph type="secondary" style={{ fontSize: 12, marginTop: 8 }}>
-          {t('feishuGuide.step6Tip')}
         </Paragraph>
       </Typography>
     </Modal>

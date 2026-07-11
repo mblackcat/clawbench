@@ -10,6 +10,7 @@ import {
   getI18nPayload,
   sendUiEventToSubApp
 } from '../services/python-runner.service'
+import { resolveSubAppSlot } from '../services/subapp-slot.service'
 import { getActiveWorkspace } from '../services/workspace.service'
 import { installSkill, InstallMode, SkillTool } from '../services/skill-install.service'
 import { getPythonSdkPath, getTempDir } from '../utils/paths'
@@ -77,6 +78,44 @@ export function registerSubAppIpc(): void {
   ipcMain.handle('subapp:get-manifest', async (_event, appId: string) => {
     return getManifest(appId)
   })
+
+  ipcMain.handle(
+    'subapp:resolve-slot',
+    async (
+      _event,
+      appId: string,
+      slot: string,
+      params: Record<string, unknown> = {}
+    ) => {
+      const manifest = getManifest(appId)
+      const appPath = getSubAppPath(appId)
+      if (!manifest || !appPath) {
+        throw new Error(`Sub-app not found: ${appId}`)
+      }
+
+      const normalizedSlot = slot.trim()
+      if (!normalizedSlot) {
+        throw new Error('Slot name is required')
+      }
+
+      const workspace = getActiveWorkspace()
+      if (!workspace) {
+        throw new Error('No active workspace selected')
+      }
+
+      const python = await resolvePythonCommand()
+      return resolveSubAppSlot({
+        appPath,
+        entryFile: manifest.entry,
+        slot: normalizedSlot,
+        params,
+        workspace,
+        pythonPath: python.path,
+        sdkPath: getPythonSdkPath(),
+        timeoutMs: 30_000
+      })
+    }
+  )
 
   ipcMain.handle(
     'subapp:execute',

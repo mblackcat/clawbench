@@ -62,6 +62,24 @@ export function registerMcpIpc(): void {
     }
   )
 
+  // Vision-fallback tool call: injects real image attachment bytes into whatever
+  // image-like parameter the tool's schema exposes, since the model that decided to
+  // call the tool cannot itself produce real image bytes as an argument.
+  ipcMain.handle(
+    'mcp:call-tool-with-attachments',
+    async (
+      _event,
+      params: { serverId: string; toolName: string; args: Record<string, any>; attachmentPaths: string[] }
+    ) => {
+      return mcpClientManager.callToolWithImageInjection(
+        params.serverId,
+        params.toolName,
+        params.args,
+        params.attachmentPaths || []
+      )
+    }
+  )
+
   // Status
   ipcMain.handle('mcp:get-status', async () => {
     return mcpClientManager.getStatus()

@@ -14,6 +14,7 @@ class OutputType(Enum):
     PROGRESS = "progress"
     RESULT = "result"
     ERROR = "error"
+    SLOT_RESULT = "slot_result"
 
 
 def _emit(data: Dict[str, Any]) -> None:
@@ -79,4 +80,13 @@ def emit_error(message: str, details: str = "") -> None:
         "type": OutputType.ERROR.value,
         "message": message,
         "details": details,
+    })
+
+
+def emit_slot_result(slot: str, data: Any) -> None:
+    """Emit the JSON-serializable result of a named App slot."""
+    _emit({
+        "type": OutputType.SLOT_RESULT.value,
+        "slot": slot,
+        "data": data,
     })

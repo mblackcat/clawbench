@@ -5,6 +5,7 @@ import {
   installTool,
   uninstallTool,
   upgradeTool,
+  checkLatestVersions,
   listPipPackages,
   uninstallPipPackage,
   listNpmGlobalPackages,
@@ -30,6 +31,10 @@ export function registerLocalEnvIpc(): void {
 
   ipcMain.handle('local-env:upgrade', async (_event, toolId: string) => {
     return upgradeTool(toolId)
+  })
+
+  ipcMain.handle('local-env:check-latest-versions', async (_event, toolIds: string[]) => {
+    return checkLatestVersions(toolIds)
   })
 
   ipcMain.handle('local-env:list-pip-packages', async (_event, pythonPath?: string) => {

@@ -55,10 +55,23 @@ import { listSubApps, getSubAppPath } from '../subapp.service'
 import { listWorkspaces, setActiveWorkspace } from '../workspace.service'
 import { executeSubAppWithCallbacks, resolvePythonCommand } from '../python-runner.service'
 import { listRecentMarketApps, searchMarketApps, installMarketApp } from './marketplace.service'
-import { getAiModelConfigs, getLastChatModel } from '../../store/settings.store'
 import { getPythonSdkPath } from '../../utils/paths'
 import * as logger from '../../utils/logger'
 import { randomUUID } from 'crypto'
+import { handleImAgentMessage, closeAgentSession } from './im-agent.service'
+
+// ── Helpers ──
+
+function splitText(text: string, maxLen: number): string[] {
+  if (text.length <= maxLen) return [text]
+  const chunks: string[] = []
+  let i = 0
+  while (i < text.length) {
+    chunks.push(text.slice(i, i + maxLen))
+    i += maxLen
+  }
+  return chunks
+}
 
 // ── Singleton ──
 
@@ -239,28 +252,29 @@ class IMBridgeService {
           break
 
         case 'new':
-          await this.handleNew(chatId, parsed.args[0])
+          // Bare /new → reset agent conversation; /new <tool> → coding session
+          if (!parsed.args[0]) {
+            closeAgentSession(chatId, 'new')
+            await this.adapter?.sendText(chatId, '已开启新的助手对话。直接发送消息即可继续；`/new <工具>` 可创建 Coding 会话。')
+          } else {
+            await this.handleNew(chatId, parsed.args[0])
+          }
           break
 
         case 'chat':
-          await this.handleChat(chatId, parsed.args[0] || '')
+          await this.handleAgentChat(chatId, parsed.args[0] || '')
           break
 
         default: {
-          // No command prefix — check if we have an active session for stdin forwarding
+          // No command prefix — coding session stdin takes priority when active
           const chatState = this.getChatState(chatId)
           if (chatState.activeSessionId) {
             await this.handleStdinForward(chatId, text, msg.messageId)
-          } else if (chatState.activeWorkspaceId) {
-            await this.adapter?.sendText(chatId, '请先用 /ss <n> 选择会话，或直接发送 /w 查看工作区列表')
+          } else if (text.trim().startsWith('/')) {
+            await this.adapter?.sendText(chatId, '未识别的指令，输入 /help 查看可用指令')
           } else {
-            // No active context and not a recognized command
-            if (text.trim().startsWith('/')) {
-              await this.adapter?.sendText(chatId, '未识别的指令，输入 /help 查看可用指令')
-            } else {
-              const card = buildNoContextCard()
-              await this.adapter?.sendCard(chatId, card)
-            }
+            // Plain text → full agent chat (apps/terminal/coding tools + memory)
+            await this.handleAgentChat(chatId, text)
           }
         }
       }
@@ -726,62 +740,32 @@ class IMBridgeService {
     }
   }
 
-  private async handleChat(chatId: string, text: string): Promise<void> {
+  /** Full agent chat (persona/harness/memory/tools + history). */
+  private async handleAgentChat(chatId: string, text: string): Promise<void> {
     if (!text.trim()) {
-      await this.adapter?.sendText(chatId, '请输入内容，例如：`/chat 如何优化代码性能？`')
+      await this.adapter?.sendText(chatId, '请输入内容，或发送 /help 查看指令。助手对话支持多轮；`/new` 新开对话。')
       return
     }
 
-    const configs = getAiModelConfigs()
-    if (!configs || configs.length === 0) {
-      await this.adapter?.sendText(chatId, '❌ 尚未配置 AI 模型，请在桌面端设置中添加 AI 模型配置。')
+    const imConfig = getIMConfig()
+    if (!imConfig.remoteEnabled) {
+      await this.adapter?.sendText(chatId, '远程 IM 控制未开启。请在 ClawBench 客户端设置中启用「远程 IM 控制」。')
       return
     }
-
-    const { configId: lastConfigId, modelId: lastModelId } = getLastChatModel()
-    const config = (lastConfigId && configs.find((c) => c.id === lastConfigId)) || configs[0]
-    const modelId = (lastModelId && config.models?.includes(lastModelId) ? lastModelId : null)
-      ?? config.models?.[0]
-      ?? config.name
-    const provider = config.provider.toLowerCase()
 
     try {
-      let reply = ''
-      const messages = [{ role: 'user' as const, content: text }]
-
-      if (provider === 'anthropic' || provider === 'anthropic-compatible') {
-        const { default: Anthropic } = await import('@anthropic-ai/sdk')
-        const { normalizeAnthropicBaseURL } = await import('../../utils/endpoint')
-        const client = new Anthropic({ apiKey: config.apiKey, baseURL: normalizeAnthropicBaseURL(config.endpoint) })
-        const resp = await client.messages.create({
-          model: modelId,
-          max_tokens: 1024,
-          messages
-        })
-        reply = resp.content[0]?.type === 'text' ? resp.content[0].text : ''
-      } else if (provider === 'google') {
-        const { GoogleGenerativeAI } = await import('@google/generative-ai')
-        const genAI = new GoogleGenerativeAI(config.apiKey)
-        const model = genAI.getGenerativeModel({ model: modelId })
-        const result = await model.generateContent(text)
-        reply = result.response.text()
-      } else {
-        const { default: OpenAI, AzureOpenAI } = await import('openai')
-        const { normalizeOpenAIBaseURL } = await import('../../utils/endpoint')
-        const client = provider === 'azure-openai'
-          ? new AzureOpenAI({ apiKey: config.apiKey, apiVersion: config.apiVersion || '2025-04-01-preview', endpoint: config.endpoint })
-          : new OpenAI({ apiKey: config.apiKey, baseURL: normalizeOpenAIBaseURL(config.endpoint) })
-        const resp = await client.chat.completions.create({
-          model: modelId,
-          messages: messages.map((m) => ({ role: m.role, content: m.content })),
-          max_tokens: 1024
-        })
-        reply = resp.choices[0]?.message?.content?.trim() || ''
+      await this.adapter?.sendText(chatId, '⏳ 思考中…')
+      const { reply, notice } = await handleImAgentMessage(chatId, text)
+      if (notice) {
+        await this.adapter?.sendText(chatId, notice)
       }
-
-      await this.adapter?.sendText(chatId, reply || '(无回复)')
+      // Feishu text length soft limit — split long replies
+      const chunks = splitText(reply || '(无回复)', 3500)
+      for (const chunk of chunks) {
+        await this.adapter?.sendText(chatId, chunk)
+      }
     } catch (err) {
-      await this.adapter?.sendText(chatId, `❌ AI 调用失败：${err}`)
+      await this.adapter?.sendText(chatId, `❌ 助手对话失败：${err}`)
     }
   }
 

@@ -182,7 +182,7 @@ interface AICodingState {
 
 export const useAICodingStore = create<AICodingState>((set, get) => ({
   workspaces: [], sessions: [], groups: [],
-  imConfig: { feishu: { appId: '', appSecret: '' } }, imStatus: { state: 'disconnected' }, loading: false,
+  imConfig: { feishu: { appId: '', appSecret: '' }, remoteEnabled: false }, imStatus: { state: 'disconnected' }, loading: false,
   activeSessionId: null, sessionMessages: loadPersistedMessages(), sessionStreaming: {}, sessionStreamingBlocks: {}, sessionModes: {}, sessionEffort: {}, sessionContextUsage: {},
   claudeViewModes: {},
   sessionPendingQuestions: {},

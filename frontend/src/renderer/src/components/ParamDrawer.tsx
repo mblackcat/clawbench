@@ -1,5 +1,6 @@
-import React, { useEffect, useCallback } from 'react'
+import React, { useEffect, useCallback, useRef, useState } from 'react'
 import {
+  App as AntdApp,
   Drawer,
   Form,
   Input,
@@ -13,9 +14,23 @@ import {
   Descriptions,
   theme
 } from 'antd'
-import { FolderOpenOutlined, QuestionCircleOutlined } from '@ant-design/icons'
+import {
+  FolderOpenOutlined,
+  QuestionCircleOutlined,
+  ReloadOutlined
+} from '@ant-design/icons'
 import type { SubAppManifest, ParamDef } from '../types/subapp'
 import { buildManifestDefaultParams } from '../utils/subapp-params'
+import {
+  DynamicOptionsError,
+  buildDynamicOptionsCacheKey,
+  getDynamicOptionsCache,
+  parseDynamicOptionsResult,
+  reconcileDynamicOptionValue,
+  setDynamicOptionsCache,
+  type DynamicOptionsResult
+} from '../utils/subapp-dynamic-options'
+import { useT } from '../i18n'
 
 const { Text } = Typography
 
@@ -24,20 +39,64 @@ interface ParamDrawerProps {
   onClose: () => void
   manifest: SubAppManifest | null
   initialValues?: Record<string, unknown>
+  resolveSlot: (
+    appId: string,
+    slot: string,
+    params?: Record<string, unknown>
+  ) => Promise<unknown>
   onSubmit: (params: Record<string, unknown>) => void
 }
 
-const ParamDrawer: React.FC<ParamDrawerProps> = ({ open, onClose, manifest, initialValues, onSubmit }) => {
+const ParamDrawer: React.FC<ParamDrawerProps> = ({
+  open,
+  onClose,
+  manifest,
+  initialValues,
+  resolveSlot,
+  onSubmit
+}) => {
   const [form] = Form.useForm()
   const { token } = theme.useToken()
+  const { message } = AntdApp.useApp()
+  const t = useT()
+  const [dynamicOptionsByParam, setDynamicOptionsByParam] = useState<
+    Record<string, DynamicOptionsResult>
+  >({})
+  const [refreshingParams, setRefreshingParams] = useState<Record<string, boolean>>({})
+  const drawerGenerationRef = useRef(0)
+  const isRefreshing = Object.values(refreshingParams).some(Boolean)
 
   // Reset and populate default values whenever the drawer opens or manifest changes
   useEffect(() => {
-    if (open && manifest?.params) {
-      const defaults = initialValues ?? buildManifestDefaultParams(manifest.params)
-      form.resetFields()
-      form.setFieldsValue(defaults)
+    drawerGenerationRef.current += 1
+    if (!open || !manifest) {
+      setDynamicOptionsByParam({})
+      setRefreshingParams({})
+      return
     }
+
+    const params = manifest.params ?? []
+    const defaults = {
+      ...(initialValues ?? buildManifestDefaultParams(params))
+    }
+    const cachedOptions: Record<string, DynamicOptionsResult> = {}
+
+    for (const param of params) {
+      if (param.type !== 'enum' || !param.options_slot?.trim()) continue
+      const key = buildDynamicOptionsCacheKey(manifest.id, manifest.version, param)
+      const cached = getDynamicOptionsCache(key)
+      if (!cached) continue
+
+      cachedOptions[param.name] = cached
+      const reconciled = reconcileDynamicOptionValue(defaults[param.name], cached)
+      if (reconciled === undefined) delete defaults[param.name]
+      else defaults[param.name] = reconciled
+    }
+
+    setDynamicOptionsByParam(cachedOptions)
+    setRefreshingParams({})
+    form.resetFields()
+    form.setFieldsValue(defaults)
   }, [open, manifest, initialValues, form])
 
   const handleSubmit = useCallback(async () => {
@@ -59,15 +118,98 @@ const ParamDrawer: React.FC<ParamDrawerProps> = ({ open, onClose, manifest, init
     [form]
   )
 
+  const handleRefreshOptions = useCallback(
+    async (param: ParamDef) => {
+      const slot = param.options_slot?.trim()
+      if (!manifest || !slot || refreshingParams[param.name]) return
+      const requestGeneration = drawerGenerationRef.current
+
+      setRefreshingParams((current) => ({ ...current, [param.name]: true }))
+      try {
+        const data = await resolveSlot(
+          manifest.id,
+          slot,
+          form.getFieldsValue(true) as Record<string, unknown>
+        )
+        const result = parseDynamicOptionsResult(data)
+        const key = buildDynamicOptionsCacheKey(manifest.id, manifest.version, param)
+        setDynamicOptionsCache(key, result)
+        if (requestGeneration !== drawerGenerationRef.current) return
+
+        setDynamicOptionsByParam((current) => ({
+          ...current,
+          [param.name]: result
+        }))
+
+        const nextValue = reconcileDynamicOptionValue(
+          form.getFieldValue(param.name),
+          result
+        )
+        if (nextValue === undefined) form.setFieldValue(param.name, undefined)
+        else form.setFieldValue(param.name, nextValue)
+
+        message.success(t('workbench.refreshOptionsSuccess', String(result.options.length)))
+      } catch (error) {
+        if (requestGeneration !== drawerGenerationRef.current) return
+
+        if (error instanceof DynamicOptionsError) {
+          message.error(
+            t(
+              error.code === 'empty'
+                ? 'workbench.refreshOptionsEmpty'
+                : 'workbench.refreshOptionsInvalid'
+            )
+          )
+        } else {
+          const reason = error instanceof Error ? error.message : String(error)
+          if (reason === 'No active workspace selected') {
+            message.error(t('workbench.selectWorkspaceFirst'))
+          } else if (/timed out/i.test(reason)) {
+            message.error(t('workbench.refreshOptionsTimeout'))
+          } else {
+            message.error(t('workbench.refreshOptionsFailed', reason))
+          }
+        }
+      } finally {
+        if (requestGeneration === drawerGenerationRef.current) {
+          setRefreshingParams((current) => ({ ...current, [param.name]: false }))
+        }
+      }
+    },
+    [form, manifest, message, refreshingParams, resolveSlot, t]
+  )
+
   const renderLabel = (param: ParamDef): React.ReactNode => (
-    <Space size={4}>
-      <Text>{param.label}</Text>
-      {param.description && (
-        <Tooltip title={param.description}>
-          <QuestionCircleOutlined style={{ color: token.colorTextTertiary, cursor: 'help' }} />
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        width: '100%'
+      }}
+    >
+      <Space size={4}>
+        <Text>{param.label}</Text>
+        {param.description && (
+          <Tooltip title={param.description}>
+            <QuestionCircleOutlined style={{ color: token.colorTextTertiary, cursor: 'help' }} />
+          </Tooltip>
+        )}
+      </Space>
+      {param.type === 'enum' && param.options_slot?.trim() && (
+        <Tooltip title={t('workbench.refreshOptions')}>
+          <Button
+            type="text"
+            size="small"
+            aria-label={t('workbench.refreshOptions')}
+            icon={<ReloadOutlined spin={refreshingParams[param.name]} />}
+            disabled={refreshingParams[param.name]}
+            onClick={() => handleRefreshOptions(param)}
+            style={{ padding: '0 4px', height: 24 }}
+          />
         </Tooltip>
       )}
-    </Space>
+    </div>
   )
 
   const renderField = (param: ParamDef): React.ReactNode => {
@@ -92,7 +234,7 @@ const ParamDrawer: React.FC<ParamDrawerProps> = ({ open, onClose, manifest, init
       case 'enum':
         return (
           <Select placeholder={`请选择${param.label}`}>
-            {param.options?.map((opt) => (
+            {(dynamicOptionsByParam[param.name]?.options ?? param.options ?? []).map((opt) => (
               <Select.Option key={opt} value={opt}>
                 {opt}
               </Select.Option>
@@ -136,7 +278,7 @@ const ParamDrawer: React.FC<ParamDrawerProps> = ({ open, onClose, manifest, init
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <Space>
             <Button onClick={onClose}>{manifest?.params?.length ? '取消' : '关闭'}</Button>
-            <Button type="primary" onClick={handleSubmit}>
+            <Button type="primary" onClick={handleSubmit} disabled={isRefreshing}>
               执行
             </Button>
           </Space>
@@ -166,6 +308,7 @@ const ParamDrawer: React.FC<ParamDrawerProps> = ({ open, onClose, manifest, init
             key={param.name}
             name={param.name}
             label={renderLabel(param)}
+            labelCol={{ style: { width: '100%' } }}
             rules={[
               {
                 required: param.required,

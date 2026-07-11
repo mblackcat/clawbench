@@ -17,6 +17,8 @@ import { useT } from '../../i18n'
 
 interface SidebarProps {
   collapsed: boolean
+  /** 'main' renders all items except settings; 'settings' renders only the settings item */
+  variant?: 'main' | 'settings'
 }
 
 // OpenClaw SVG icon — monochrome, follows theme via currentColor
@@ -33,13 +35,18 @@ const OpenClawSvg = () => (
 )
 const OpenClawIcon = (props: any) => <Icon component={OpenClawSvg} {...props} />
 
-const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
+const Sidebar: React.FC<SidebarProps> = ({ collapsed, variant = 'main' }) => {
   const navigate = useNavigate()
   const location = useLocation()
   const { moduleVisibility } = useSettingsStore()
   const t = useT()
 
   const allItems: (NonNullable<MenuProps['items']>[number] & { moduleKey?: string })[] = [
+    {
+      key: '/workbench',
+      icon: <StarOutlined />,
+      label: t('menu.workbench')
+    },
     {
       key: '/ai-chat',
       icon: <RobotOutlined />,
@@ -65,11 +72,6 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
       moduleKey: 'aiAgents'
     },
     {
-      key: '/workbench',
-      icon: <StarOutlined />,
-      label: t('menu.workbench')
-    },
-    {
       key: '/local-env',
       icon: <LaptopOutlined />,
       label: t('menu.localEnv'),
@@ -89,6 +91,7 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
   ]
 
   const menuItems: MenuProps['items'] = allItems
+    .filter((item) => (variant === 'settings' ? item.key === '/settings' : item.key !== '/settings'))
     .filter((item) => {
       if (!item.moduleKey) return true
       return moduleVisibility[item.moduleKey as keyof typeof moduleVisibility]

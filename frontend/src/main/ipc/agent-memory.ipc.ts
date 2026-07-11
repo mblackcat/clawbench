@@ -8,7 +8,18 @@ import {
   restoreSoulDefault,
   getMemoryDir,
   getStatsSnippet,
+  applySoulTemplate,
+  initSoulFromRole,
+  getSoulTemplate,
+  listSoulRoles,
+  type SoulRole,
 } from '../services/agent-memory.service'
+import {
+  pushChatDigest,
+  replaceChatDigests,
+  listChatDigests,
+  type ChatDigestEntry,
+} from '../services/chat-digest.service'
 
 export function registerAgentMemoryIpc(): void {
   ipcMain.handle('agent:read-memory', async (_event, filename: string) => {
@@ -46,7 +57,35 @@ export function registerAgentMemoryIpc(): void {
     return restoreSoulDefault()
   })
 
+  ipcMain.handle('agent:apply-soul-template', async (_event, role: SoulRole) => {
+    return applySoulTemplate(role)
+  })
+
+  ipcMain.handle('agent:init-soul-from-role', async (_event, role: SoulRole) => {
+    return initSoulFromRole(role)
+  })
+
+  ipcMain.handle('agent:get-soul-template', async (_event, role: SoulRole) => {
+    return getSoulTemplate(role)
+  })
+
+  ipcMain.handle('agent:list-soul-roles', async () => {
+    return listSoulRoles()
+  })
+
   ipcMain.handle('agent:get-memory-dir', async () => {
     return getMemoryDir()
+  })
+
+  ipcMain.handle('agent:push-chat-digest', async (_event, entry: ChatDigestEntry) => {
+    await pushChatDigest(entry)
+  })
+
+  ipcMain.handle('agent:replace-chat-digests', async (_event, entries: ChatDigestEntry[]) => {
+    await replaceChatDigests(entries || [])
+  })
+
+  ipcMain.handle('agent:list-chat-digests', async () => {
+    return listChatDigests()
   })
 }

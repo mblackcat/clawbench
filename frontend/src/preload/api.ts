@@ -17,6 +17,8 @@ export const api = {
   subapp: {
     list: () => ipcRenderer.invoke('subapp:list'),
     getManifest: (appId: string) => ipcRenderer.invoke('subapp:get-manifest', appId),
+    resolveSlot: (appId: string, slot: string, params?: Record<string, unknown>) =>
+      ipcRenderer.invoke('subapp:resolve-slot', appId, slot, params),
     execute: (appId: string, params?: Record<string, unknown>) =>
       ipcRenderer.invoke('subapp:execute', appId, params),
     cancel: (taskId: string) => ipcRenderer.invoke('subapp:cancel', taskId),
@@ -144,10 +146,10 @@ export const api = {
     getChatPreferences: () => ipcRenderer.invoke('settings:get-chat-preferences'),
     setChatPreferences: (prefs: { chatMode?: string; toolsEnabled?: boolean; webSearchEnabled?: boolean; feishuKitsEnabled?: boolean }) =>
       ipcRenderer.invoke('settings:set-chat-preferences', prefs),
-    detectFeishuCli: () => ipcRenderer.invoke('settings:detect-feishu-cli'),
-    installFeishuCli: () => ipcRenderer.invoke('settings:install-feishu-cli'),
-    writeFeishuCliConfig: () => ipcRenderer.invoke('settings:write-feishu-cli-config') as Promise<{ success: boolean; error: string; path?: string }>,
-    checkFeishuCliConfig: () => ipcRenderer.invoke('settings:check-feishu-cli-config') as Promise<{ exists: boolean; hasCredentials: boolean }>,
+    detectFeishuCli: () => ipcRenderer.invoke('settings:detect-feishu-cli') as Promise<{ found: boolean; path: string }>,
+    installFeishuCli: () => ipcRenderer.invoke('settings:install-feishu-cli') as Promise<{ success: boolean; error: string; path: string }>,
+    getFeishuKitsAuthStatus: () =>
+      ipcRenderer.invoke('settings:feishu-kits-auth-status') as Promise<{ isFeishuUser: boolean; hasPlatformAppId: boolean }>,
     onFeishuCliInstallProgress: (callback: (data: { percent: number; downloadedMB: string; totalMB: string; stage: string }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
       ipcRenderer.on('settings:feishu-cli-install-progress', handler)
@@ -163,9 +165,20 @@ export const api = {
       ipcRenderer.on('settings:lightpanda-install-progress', handler)
       return () => ipcRenderer.removeListener('settings:lightpanda-install-progress', handler)
     },
-    getAgentSettings: () => ipcRenderer.invoke('settings:get-agent-settings'),
-    setAgentSettings: (settings: { customSystemPrompt?: string; defaultToolApprovalMode?: string; maxAgentToolSteps?: number }) =>
-      ipcRenderer.invoke('settings:set-agent-settings', settings),
+    getAgentSettings: () => ipcRenderer.invoke('settings:get-agent-settings') as Promise<{
+      customSystemPrompt: string
+      defaultToolApprovalMode: string
+      maxAgentToolSteps: number
+      assistantEnabled: boolean
+      setupRole: string
+    }>,
+    setAgentSettings: (settings: {
+      customSystemPrompt?: string
+      defaultToolApprovalMode?: string
+      maxAgentToolSteps?: number
+      assistantEnabled?: boolean
+      setupRole?: string
+    }) => ipcRenderer.invoke('settings:set-agent-settings', settings),
   },
 
   git: {
@@ -270,6 +283,12 @@ export const api = {
     listTools: () => ipcRenderer.invoke('mcp:list-tools'),
     callTool: (serverId: string, toolName: string, args: Record<string, unknown>) =>
       ipcRenderer.invoke('mcp:call-tool', { serverId, toolName, args }),
+    callToolWithAttachments: (
+      serverId: string,
+      toolName: string,
+      args: Record<string, unknown>,
+      attachmentPaths: string[]
+    ) => ipcRenderer.invoke('mcp:call-tool-with-attachments', { serverId, toolName, args, attachmentPaths }),
     getStatus: () => ipcRenderer.invoke('mcp:get-status'),
     connectAllEnabled: () => ipcRenderer.invoke('mcp:connect-all-enabled'),
   },
@@ -384,6 +403,7 @@ export const api = {
     install: (toolId: string) => ipcRenderer.invoke('local-env:install', toolId),
     uninstall: (toolId: string) => ipcRenderer.invoke('local-env:uninstall', toolId),
     upgrade: (toolId: string) => ipcRenderer.invoke('local-env:upgrade', toolId),
+    checkLatestVersions: (toolIds: string[]) => ipcRenderer.invoke('local-env:check-latest-versions', toolIds),
     listPipPackages: (pythonPath?: string) => ipcRenderer.invoke('local-env:list-pip-packages', pythonPath),
     uninstallPipPackage: (packageName: string, pythonPath?: string) =>
       ipcRenderer.invoke('local-env:uninstall-pip-package', packageName, pythonPath),
@@ -542,6 +562,11 @@ export const api = {
     imDisconnect: () => ipcRenderer.invoke('ai-coding:im-disconnect'),
     imGetStatus: () => ipcRenderer.invoke('ai-coding:im-get-status'),
     imTest: () => ipcRenderer.invoke('ai-coding:im-test'),
+    listImConversations: () => ipcRenderer.invoke('ai-coding:list-im-conversations'),
+    getImConversation: (id: string) => ipcRenderer.invoke('ai-coding:get-im-conversation', id),
+    deleteImConversation: (id: string) => ipcRenderer.invoke('ai-coding:delete-im-conversation', id) as Promise<boolean>,
+    renameImConversation: (id: string, title: string) =>
+      ipcRenderer.invoke('ai-coding:rename-im-conversation', id, title) as Promise<boolean>,
     onIMStatusChanged: (callback: (data: unknown) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data)
       ipcRenderer.on('ai-coding:im-status-changed', handler)
@@ -707,7 +732,26 @@ export const api = {
     processFeedback: (data: { messageId: string; type: 'up' | 'down'; reason?: string; snippet: string }) =>
       ipcRenderer.invoke('agent:process-feedback', data),
     restoreSoulDefault: () => ipcRenderer.invoke('agent:restore-soul-default') as Promise<void>,
+    applySoulTemplate: (role: string) => ipcRenderer.invoke('agent:apply-soul-template', role) as Promise<void>,
+    initSoulFromRole: (role: string) => ipcRenderer.invoke('agent:init-soul-from-role', role) as Promise<void>,
+    getSoulTemplate: (role: string) => ipcRenderer.invoke('agent:get-soul-template', role) as Promise<string>,
+    listSoulRoles: () => ipcRenderer.invoke('agent:list-soul-roles') as Promise<string[]>,
     getMemoryDir: () => ipcRenderer.invoke('agent:get-memory-dir') as Promise<string>,
+    pushChatDigest: (entry: {
+      conversationId: string
+      title: string
+      source: string
+      updatedAt: number
+      snippets: string[]
+    }) => ipcRenderer.invoke('agent:push-chat-digest', entry) as Promise<void>,
+    replaceChatDigests: (entries: Array<{
+      conversationId: string
+      title: string
+      source: string
+      updatedAt: number
+      snippets: string[]
+    }>) => ipcRenderer.invoke('agent:replace-chat-digests', entries) as Promise<void>,
+    listChatDigests: () => ipcRenderer.invoke('agent:list-chat-digests'),
   },
 
   scheduledTask: {

@@ -2,6 +2,18 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import type { MCPServerConfig, MCPToolInfo } from './mcp-types'
+import { detectVisionTool, findImageInputParam } from './mcp-types'
+import * as fs from 'fs'
+import * as path from 'path'
+
+const MIME_BY_EXT: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.bmp': 'image/bmp',
+}
 import * as logger from '../../utils/logger'
 
 interface ConnectedServer {
@@ -53,13 +65,16 @@ class MCPClientManager {
 
       // List available tools
       const toolsResult = await client.listTools()
-      const tools: MCPToolInfo[] = (toolsResult.tools || []).map((t) => ({
-        name: t.name,
-        description: t.description || '',
-        inputSchema: (t.inputSchema || {}) as Record<string, any>,
-        serverId: config.id,
-        serverName: config.name,
-      }))
+      const tools: MCPToolInfo[] = (toolsResult.tools || []).map((t) => {
+        const base = {
+          name: t.name,
+          description: t.description || '',
+          inputSchema: (t.inputSchema || {}) as Record<string, any>,
+          serverId: config.id,
+          serverName: config.name,
+        }
+        return { ...base, isVisionTool: detectVisionTool(base) }
+      })
 
       this.servers.set(config.id, { config, client, transport, tools })
       logger.info(`Connected to MCP server: ${config.name}, ${tools.length} tools available`)
@@ -138,6 +153,55 @@ class MCPClientManager {
         isError: true,
       }
     }
+  }
+
+  /**
+   * Call a tool that was auto-registered as a "vision fallback" for a non-vision model.
+   * The model can only decide TO call this tool — it can't generate real image bytes as
+   * an argument — so we locate the schema's image-like parameter and overwrite whatever
+   * placeholder the model produced with the actual attached image(s), read fresh from disk.
+   */
+  async callToolWithImageInjection(
+    serverId: string,
+    toolName: string,
+    args: Record<string, any>,
+    attachmentPaths: string[]
+  ): Promise<{ content: string; isError: boolean }> {
+    const server = this.servers.get(serverId)
+    if (!server) {
+      throw new Error(`MCP server ${serverId} not connected`)
+    }
+    const tool = server.tools.find((t) => t.name === toolName)
+    const imageParam = tool ? findImageInputParam(tool.inputSchema) : undefined
+
+    if (!imageParam || attachmentPaths.length === 0) {
+      // No recognizable image param (or nothing to inject) — fall back to a plain call.
+      return this.callTool(serverId, toolName, args)
+    }
+
+    const encode = (filePath: string): string | undefined => {
+      try {
+        if (!fs.existsSync(filePath)) return undefined
+        const data = fs.readFileSync(filePath).toString('base64')
+        if (imageParam.wantsBase64Only) return data
+        const mime = MIME_BY_EXT[path.extname(filePath).toLowerCase()] || 'application/octet-stream'
+        return `data:${mime};base64,${data}`
+      } catch (err) {
+        logger.error(`Failed to read attachment for MCP vision tool injection: ${filePath}`, err)
+        return undefined
+      }
+    }
+
+    const injectedArgs = { ...args }
+    if (imageParam.isArray) {
+      const encoded = attachmentPaths.map(encode).filter((v): v is string => !!v)
+      if (encoded.length > 0) injectedArgs[imageParam.key] = encoded
+    } else {
+      const encoded = encode(attachmentPaths[0])
+      if (encoded) injectedArgs[imageParam.key] = encoded
+    }
+
+    return this.callTool(serverId, toolName, injectedArgs)
   }
 
   /**

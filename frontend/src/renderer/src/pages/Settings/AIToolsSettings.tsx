@@ -19,8 +19,7 @@ import {
   GithubOutlined,
   LinkOutlined,
   CheckCircleOutlined,
-  FolderOpenOutlined,
-  SettingOutlined
+  FolderOpenOutlined
 } from '@ant-design/icons'
 import { useT } from '../../i18n'
 import { useSettingsStore } from '../../stores/useSettingsStore'
@@ -37,11 +36,11 @@ const DEFAULT_CONFIG: AiToolsConfig = {
 
 const LIGHTPANDA_GITHUB = 'https://github.com/lightpanda-io/browser'
 const LIGHTPANDA_DOCS = 'https://lightpanda.io/docs/open-source/installation'
-const FEISHU_CLI_GITHUB = 'https://github.com/riba2534/feishu-cli'
+const LARK_CLI_GITHUB = 'https://github.com/larksuite/cli'
 
 const AIToolsSettings: React.FC = () => {
   const { token } = theme.useToken()
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const t = useT()
   const { aiToolsConfig, fetchAiToolsConfig, updateAiToolsConfig } = useSettingsStore()
   const [testingBrave, setTestingBrave] = useState(false)
@@ -56,9 +55,7 @@ const AIToolsSettings: React.FC = () => {
   const [installingFk, setInstallingFk] = useState(false)
   const [fkInstallProgress, setFkInstallProgress] = useState<{ percent: number; downloadedMB: string; totalMB: string; stage: string } | null>(null)
   const fkCleanupRef = useRef<(() => void) | null>(null)
-  const [fkConfigSynced, setFkConfigSynced] = useState(false)
-  const [fkHasImCredentials, setFkHasImCredentials] = useState(false)
-  const [syncingFkConfig, setSyncingFkConfig] = useState(false)
+  const [isFeishuUser, setIsFeishuUser] = useState(false)
 
   const config = aiToolsConfig || DEFAULT_CONFIG
 
@@ -72,16 +69,11 @@ const AIToolsSettings: React.FC = () => {
     }
   }, [aiToolsConfig?.webSearch.braveApiKey])
 
-  // Check feishu-cli config status + IM credentials availability
+  // Feishu OAuth login status (independent of AI Coding IM)
   useEffect(() => {
-    window.api.settings.checkFeishuCliConfig().then((res) => {
-      setFkConfigSynced(res.exists && res.hasCredentials)
-    }).catch(() => {})
-    // Check if IM feishu credentials are configured
-    window.api.aiCoding.getIMConfig().then((cfg: any) => {
-      const feishu = cfg?.feishu
-      setFkHasImCredentials(!!(feishu?.appId && feishu?.appSecret))
-    }).catch(() => {})
+    window.api.settings.getFeishuKitsAuthStatus().then((res) => {
+      setIsFeishuUser(!!res.isFeishuUser)
+    }).catch(() => setIsFeishuUser(false))
   }, [])
 
   const updateConfig = (patch: Partial<AiToolsConfig>) => {
@@ -203,8 +195,9 @@ const AIToolsSettings: React.FC = () => {
       const result = await window.api.settings.installFeishuCli()
       if (result.success) {
         message.success(t('settings.aiTools.feishuCliInstallSuccess', result.path))
+        // Only record path; enabling still requires explicit confirm (Feishu identity notice)
         updateConfig({
-          feishuKits: { ...feishuKits, enabled: true, cliPath: result.path }
+          feishuKits: { ...feishuKits, cliPath: result.path }
         })
       } else {
         message.error(`${t('settings.aiTools.feishuCliInstallFailed')}: ${result.error}`)
@@ -219,23 +212,6 @@ const AIToolsSettings: React.FC = () => {
     }
   }
 
-  const handleSyncFeishuCliConfig = async () => {
-    setSyncingFkConfig(true)
-    try {
-      const result = await window.api.settings.writeFeishuCliConfig()
-      if (result.success) {
-        message.success(t('settings.aiTools.feishuCliConfigSynced'))
-        setFkConfigSynced(true)
-      } else {
-        message.error(result.error)
-      }
-    } catch (err: any) {
-      message.error(err.message)
-    } finally {
-      setSyncingFkConfig(false)
-    }
-  }
-
   const handleSelectFeishuCliPath = async () => {
     const files = await window.api.dialog.selectFiles()
     if (files && files.length > 0) {
@@ -243,6 +219,32 @@ const AIToolsSettings: React.FC = () => {
         feishuKits: { ...feishuKits, cliPath: files[0] }
       })
     }
+  }
+
+  const handleToggleFeishuKits = (checked: boolean) => {
+    if (!checked) {
+      updateConfig({ feishuKits: { ...feishuKits, enabled: false } })
+      return
+    }
+
+    if (!isFeishuUser) {
+      modal.warning({
+        title: t('settings.aiTools.feishuKitsNeedLoginTitle'),
+        content: t('settings.aiTools.feishuKitsNeedLoginDesc'),
+      })
+      return
+    }
+
+    modal.confirm({
+      title: t('settings.aiTools.feishuKitsEnableTitle'),
+      content: t('settings.aiTools.feishuKitsEnableDesc'),
+      okText: t('settings.aiTools.feishuKitsEnableOk'),
+      cancelText: t('common.cancel'),
+      onOk: () => {
+        updateConfig({ feishuKits: { ...feishuKits, enabled: true } })
+        message.success(t('settings.aiTools.feishuKitsEnabled'))
+      },
+    })
   }
 
   return (
@@ -430,7 +432,7 @@ const AIToolsSettings: React.FC = () => {
         </div>
       </Card>
 
-      {/* Feishu Kits */}
+      {/* Feishu Kits — official lark-cli, Feishu login UAT only (not AI Coding IM) */}
       <Card
         title={
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -438,9 +440,7 @@ const AIToolsSettings: React.FC = () => {
             <Switch
               size="small"
               checked={feishuKits.enabled}
-              onChange={(checked) =>
-                updateConfig({ feishuKits: { ...feishuKits, enabled: checked } })
-              }
+              onChange={handleToggleFeishuKits}
             />
           </div>
         }
@@ -452,6 +452,16 @@ const AIToolsSettings: React.FC = () => {
           <Text type="secondary" style={{ fontSize: 12 }}>
             {t('settings.aiTools.feishuKitsDesc')}
           </Text>
+
+          <div>
+            {isFeishuUser ? (
+              <Tag icon={<CheckCircleOutlined />} color="success">
+                {t('settings.aiTools.feishuKitsAuthOk')}
+              </Tag>
+            ) : (
+              <Tag color="warning">{t('settings.aiTools.feishuKitsAuthMissing')}</Tag>
+            )}
+          </div>
 
           {/* CLI Path input + detect + file select */}
           <div>
@@ -466,7 +476,7 @@ const AIToolsSettings: React.FC = () => {
                     feishuKits: { ...feishuKits, cliPath: e.target.value }
                   })
                 }
-                placeholder="~/.local/bin/feishu-cli"
+                placeholder="lark-cli"
                 style={{ flex: 1 }}
               />
               <Button
@@ -512,7 +522,7 @@ const AIToolsSettings: React.FC = () => {
                 type="link"
                 icon={<GithubOutlined />}
                 size="small"
-                href={FEISHU_CLI_GITHUB}
+                href={LARK_CLI_GITHUB}
                 target="_blank"
                 style={{ padding: '0 4px' }}
               >
@@ -538,38 +548,6 @@ const AIToolsSettings: React.FC = () => {
               </div>
             )}
           </div>
-
-          {/* Sync config from IM credentials */}
-          {fkHasImCredentials && (
-            <div style={{ borderTop: `1px solid ${token.colorBorderSecondary}`, paddingTop: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <Text style={{ fontSize: 13 }}>{t('settings.aiTools.feishuCliConfigSync')}</Text>
-                  <div>
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      {t('settings.aiTools.feishuCliConfigSyncDesc')}
-                    </Text>
-                  </div>
-                </div>
-                <Button
-                  icon={fkConfigSynced ? <CheckCircleOutlined /> : <SettingOutlined />}
-                  loading={syncingFkConfig}
-                  onClick={handleSyncFeishuCliConfig}
-                  size="small"
-                  type={fkConfigSynced ? 'default' : 'primary'}
-                >
-                  {fkConfigSynced
-                    ? t('settings.aiTools.feishuCliConfigResync')
-                    : t('settings.aiTools.feishuCliConfigSyncBtn')}
-                </Button>
-              </div>
-              {fkConfigSynced && (
-                <Tag icon={<CheckCircleOutlined />} color="success" style={{ marginTop: 6 }}>
-                  ~/.feishu-cli/config.yaml
-                </Tag>
-              )}
-            </div>
-          )}
         </div>
       </Card>
 
