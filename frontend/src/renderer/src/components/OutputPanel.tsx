@@ -236,6 +236,12 @@ const OutputPanel: React.FC<OutputPanelProps> = ({ taskId }) => {
             {task.appName}
           </Text>
 
+          {task.scheduled && (
+            <Tag icon={<ClockCircleOutlined />} color="purple" style={{ margin: 0 }}>
+              定时
+            </Tag>
+          )}
+
           <Tag icon={statusInfo.icon} color={statusInfo.color} style={{ margin: 0 }}>
             {statusInfo.label}
           </Tag>

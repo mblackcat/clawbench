@@ -52,11 +52,22 @@ export function useSubAppExecution(): UseSubAppExecutionReturn {
       }
     )
 
-    // Listen for tasks started via global shortcuts (from main process)
+    // Listen for tasks started via global shortcuts or the scheduler (from main process)
     const unsubStarted = window.api.subapp.onTaskStarted(
-      (data: { taskId: string; appId: string; appName: string }) => {
-        startTask(data.taskId, data.appId, data.appName)
-        setActiveTask(data.taskId)
+      (data: { taskId: string; appId: string; appName: string; scheduled?: boolean }) => {
+        const scheduled = !!data.scheduled
+        startTask(data.taskId, data.appId, data.appName, { scheduled })
+        // For background scheduled runs, don't steal focus from a currently-running
+        // interactive task — only surface the panel when the user is idle.
+        if (scheduled) {
+          const state = useTaskStore.getState()
+          const active = state.activeTaskId ? state.tasks[state.activeTaskId] : undefined
+          if (!active || active.status !== 'running') {
+            setActiveTask(data.taskId)
+          }
+        } else {
+          setActiveTask(data.taskId)
+        }
       }
     )
 

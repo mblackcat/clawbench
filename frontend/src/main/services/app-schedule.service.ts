@@ -82,25 +82,44 @@ function tick(): void {
 }
 
 /**
- * Execute a single scheduled app run (headless — no renderer required).
+ * Execute a single scheduled app run.
+ *
+ * Runs headlessly (no WebContents), but mirrors the interactive run's
+ * `subapp:*` events to every window so the scheduled execution shows up in the
+ * bottom output panel — marked as a scheduled run via `scheduled: true` and a
+ * `⏰ 定时执行` announcement line.
  */
 export async function executeAppSchedule(schedule: AppSchedule): Promise<void> {
   logger.info(`[AppScheduler] Executing schedule for "${schedule.appName}" (${schedule.appId})`)
 
-  const manifest = getManifest(schedule.appId)
+  const { appId, appName } = schedule
+  const taskId = randomUUID()
+
+  // Surface the run in the bottom output panel (same channel as manual runs),
+  // flagged as scheduled so the renderer marks it and can avoid stealing focus.
+  sendToAllWindows('subapp:task-started', { taskId, appId, appName, scheduled: true })
+  sendToAllWindows('subapp:output', {
+    taskId,
+    type: 'output',
+    level: 'info',
+    message: `⏰ 定时执行：${appName}`,
+    timestamp: Date.now()
+  })
+
+  const manifest = getManifest(appId)
   if (!manifest) {
-    markRunResult(schedule, false, 'App manifest not found')
+    finishScheduled(taskId, schedule, false, 'App manifest not found')
     return
   }
-  const appPath = getSubAppPath(schedule.appId)
+  const appPath = getSubAppPath(appId)
   if (!appPath) {
-    markRunResult(schedule, false, 'App path not found')
+    finishScheduled(taskId, schedule, false, 'App path not found')
     return
   }
 
   const workspace = getActiveWorkspace()
   if (!workspace) {
-    markRunResult(schedule, false, 'No active workspace selected')
+    finishScheduled(taskId, schedule, false, 'No active workspace selected')
     return
   }
 
@@ -108,19 +127,11 @@ export async function executeAppSchedule(schedule: AppSchedule): Promise<void> {
   try {
     pythonPath = (await resolvePythonCommand()).path
   } catch (err: any) {
-    markRunResult(schedule, false, `Python not available: ${err?.message || err}`)
+    finishScheduled(taskId, schedule, false, `Python not available: ${err?.message || err}`)
     return
   }
 
   const sdkPath = getPythonSdkPath()
-  const taskId = randomUUID()
-
-  // Hold the schedule id in a closure so the async completion callback (which
-  // only receives success/summary) can update the right record.
-  const scheduleId = schedule.id
-  const appId = schedule.appId
-  const appName = schedule.appName
-  const repeatRule = schedule.repeatRule
 
   executeSubAppWithCallbacks(
     taskId,
@@ -134,27 +145,65 @@ export async function executeAppSchedule(schedule: AppSchedule): Promise<void> {
     pythonPath,
     sdkPath,
     {
-      onComplete: (success, summary) => {
-        markRunResultById(scheduleId, repeatRule, success, summary)
-        broadcastAppScheduleExecuted({
-          scheduleId,
-          appId,
-          appName,
-          status: success ? 'success' : 'error',
-          summary,
+      onOutput: (message, level) => {
+        sendToAllWindows('subapp:output', {
+          taskId,
+          type: 'output',
+          message,
+          level,
           timestamp: Date.now()
         })
+      },
+      onProgress: (percent, message) => {
+        sendToAllWindows('subapp:progress', {
+          taskId,
+          type: 'progress',
+          percent,
+          message,
+          timestamp: Date.now()
+        })
+      },
+      onComplete: (success, summary) => {
+        finishScheduled(taskId, schedule, success, summary)
       }
     }
   )
 }
 
-function markRunResult(
+/**
+ * Finalize a scheduled run: push a result banner to the output panel, update
+ * schedule tracking, and broadcast a badge-refresh event.
+ */
+function finishScheduled(
+  taskId: string,
   schedule: AppSchedule,
   success: boolean,
   summary: string
 ): void {
-  markRunResultById(schedule.id, schedule.repeatRule, success, summary)
+  sendToAllWindows('subapp:task-status', {
+    taskId,
+    status: success ? 'completed' : 'failed',
+    success,
+    summary,
+    timestamp: Date.now()
+  })
+
+  const existing = listAppSchedules().find((s) => s.id === schedule.id)
+  if (existing) {
+    const nextRun =
+      schedule.repeatRule === 'none'
+        ? undefined
+        : computeNextRun(existing, Date.now() + 60_000) ?? undefined
+    updateAppSchedule(schedule.id, {
+      lastRunAt: Date.now(),
+      lastRunStatus: success ? 'success' : 'error',
+      lastRunSummary: summary,
+      nextRunAt: nextRun,
+      // Disable one-shot schedules after execution
+      ...(schedule.repeatRule === 'none' ? { enabled: false } : {})
+    })
+  }
+
   broadcastAppScheduleExecuted({
     scheduleId: schedule.id,
     appId: schedule.appId,
@@ -165,24 +214,12 @@ function markRunResult(
   })
 }
 
-function markRunResultById(
-  scheduleId: string,
-  repeatRule: AppSchedule['repeatRule'],
-  success: boolean,
-  summary: string
-): void {
-  const existing = listAppSchedules().find((s) => s.id === scheduleId)
-  if (!existing) return
-  const nextRun =
-    repeatRule === 'none' ? undefined : computeNextRun(existing, Date.now() + 60_000) ?? undefined
-  updateAppSchedule(scheduleId, {
-    lastRunAt: Date.now(),
-    lastRunStatus: success ? 'success' : 'error',
-    lastRunSummary: summary,
-    nextRunAt: nextRun,
-    // Disable one-shot schedules after execution
-    ...(repeatRule === 'none' ? { enabled: false } : {})
-  })
+function sendToAllWindows(channel: string, payload: unknown): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send(channel, payload)
+    }
+  }
 }
 
 function broadcastAppScheduleExecuted(data: {
@@ -193,10 +230,5 @@ function broadcastAppScheduleExecuted(data: {
   summary: string
   timestamp: number
 }): void {
-  const windows = BrowserWindow.getAllWindows()
-  for (const win of windows) {
-    if (!win.isDestroyed()) {
-      win.webContents.send('app-schedule:executed', data)
-    }
-  }
+  sendToAllWindows('app-schedule:executed', data)
 }

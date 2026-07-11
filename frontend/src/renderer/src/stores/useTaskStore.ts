@@ -11,7 +11,7 @@ interface TaskState {
   tasks: Record<string, TaskInfo>
   activeTaskId: string | null
   systemLogs: SystemLogEntry[]
-  startTask: (taskId: string, appId: string, appName: string) => void
+  startTask: (taskId: string, appId: string, appName: string, opts?: { scheduled?: boolean }) => void
   updateOutput: (taskId: string, output: SubAppOutput) => void
   updateProgress: (taskId: string, percent: number) => void
   updateStatus: (
@@ -31,7 +31,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   activeTaskId: null,
   systemLogs: [],
 
-  startTask: (taskId: string, appId: string, appName: string) => {
+  startTask: (taskId: string, appId: string, appName: string, opts?: { scheduled?: boolean }) => {
     const task: TaskInfo = {
       taskId,
       appId,
@@ -39,7 +39,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       status: 'running',
       progress: 0,
       outputs: [],
-      startedAt: Date.now()
+      startedAt: Date.now(),
+      scheduled: opts?.scheduled
     }
     set((state) => ({
       tasks: { ...state.tasks, [taskId]: task }
