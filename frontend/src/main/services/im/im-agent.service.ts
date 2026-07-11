@@ -192,21 +192,18 @@ async function buildAgentSystemPrompt(availableTools: string[]): Promise<string>
     soul?: string
     memory?: string
     user?: string
-    agents?: string
-    tools?: string
     statsSnippet?: string
   } = {}
 
   if (assistantEnabled) {
-    const [soul, memory, user, agents, tools, statsSnippet] = await Promise.all([
+    // Progressive: tools/agents loaded on demand via read_agent_file, not every IM turn
+    const [soul, memory, user, statsSnippet] = await Promise.all([
       readMemory('soul.md'),
       readMemory('memory.md'),
       readMemory('user.md'),
-      readMemory('agents.md'),
-      readMemory('tools.md'),
       getStatsSnippet(),
     ])
-    agentMemory = { soul, memory, user, agents, tools, statsSnippet }
+    agentMemory = { soul, memory, user, statsSnippet }
   }
 
   return buildSystemPrompt({

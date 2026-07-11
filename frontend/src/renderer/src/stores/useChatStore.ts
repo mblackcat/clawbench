@@ -1730,15 +1730,15 @@ function handleSSEToolUse(
 async function loadAgentMemory(assistantEnabled: boolean): Promise<AgentMemoryContext> {
   if (!assistantEnabled) return {}
   try {
-    const [soul, memory, user, agents, tools, statsSnippet] = await Promise.all([
+    // Progressive context: only always-on slices are loaded into the system prompt.
+    // tools.md / agents.md are fetched on demand via read_agent_file.
+    const [soul, memory, user, statsSnippet] = await Promise.all([
       window.api.agent.readMemory('soul.md'),
       window.api.agent.readMemory('memory.md'),
       window.api.agent.readMemory('user.md'),
-      window.api.agent.readMemory('agents.md'),
-      window.api.agent.readMemory('tools.md'),
       window.api.agent.statsSnippet(),
     ])
-    return { soul, memory, user, agents, tools, statsSnippet }
+    return { soul, memory, user, statsSnippet }
   } catch {
     return {}
   }

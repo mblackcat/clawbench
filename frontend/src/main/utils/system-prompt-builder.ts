@@ -20,10 +20,76 @@ export interface SystemPromptContext {
   assistantEnabled?: boolean
 }
 
+/**
+ * Progressive injection budgets (characters).
+ * Always-on core stays small; large / situational docs are on-demand via read_agent_file.
+ */
+export const PROMPT_INJECT_CAPS = {
+  /** Persona is always needed but may be user-edited long */
+  soul: 3_500,
+  /** Collaboration style — keep a compact always-on slice */
+  user: 1_200,
+  /** Project facts — compact always-on; full file via tool */
+  memory: 2_000,
+  /** Never inject full tools.md / agents.md */
+  tools: 0,
+  agents: 0,
+  customPrompt: 2_000,
+} as const
+
 const MINIMAL_IDENTITY = `You are a helpful AI assistant in ClawBench.
 - Respond in the same language the user uses
 - Be accurate and concise
 - Do not use emoji unless the user does`
+
+const DEFAULT_SOUL_FALLBACK = `You are a professional AI assistant. You are accurate, helpful, and thorough.
+- Respond in the same language the user uses
+- Do not use emoji unless the user does
+- Prioritize accuracy over speed — verify facts before stating them
+- Be concise for simple questions, detailed for complex ones`
+
+/**
+ * Inject content with a soft cap. Over-budget content is truncated and points to read_agent_file.
+ */
+export function injectBoundedSection(
+  title: string,
+  content: string | undefined,
+  maxChars: number,
+  fileKey?: 'user' | 'memory' | 'agents' | 'tools' | 'soul'
+): string | null {
+  const t = (content || '').trim()
+  if (!t) return null
+  if (maxChars <= 0) return null
+  if (t.length <= maxChars) {
+    return `## ${title}\n${t}`
+  }
+  const hint = fileKey
+    ? `\n\n…(truncated for context budget; call \`read_agent_file\` with file=\`${fileKey}\` for the full document)`
+    : `\n\n…(truncated for context budget)`
+  return `## ${title}\n${t.slice(0, maxChars).trimEnd()}${hint}`
+}
+
+function onDemandCatalog(availableTools: string[]): string {
+  const hasRead = availableTools.includes('read_agent_file')
+  const readHint = hasRead
+    ? 'Use `read_agent_file` to load details only when the turn needs them.'
+    : 'Detailed files exist on disk; prefer tools when available to load them.'
+
+  return `## On-demand knowledge (do not assume empty)
+Durable docs are NOT fully inlined every turn. ${readHint}
+| file | when to load |
+|------|----------------|
+| \`soul\` | full persona when the identity preview was truncated |
+| \`user\` | full profile / preferences beyond the short User Profile above |
+| \`memory\` | past projects, decisions, todos beyond the memory preview |
+| \`agents\` | sub-agent / buddy roster (multi-step specialist work) |
+| \`tools\` | detailed module harness (apps / terminal / DB / coding how-to) |
+
+Rules:
+- Simple Q&A: answer without loading extra files
+- Before complex module ops or multi-specialist plans: load \`tools\` and/or \`agents\` first
+- Never invent file contents — read when unsure`
+}
 
 export function buildSystemPrompt(ctx: SystemPromptContext): string {
   const assistantOn = ctx.assistantEnabled !== false
@@ -42,113 +108,113 @@ export function buildSystemPrompt(ctx: SystemPromptContext): string {
 - Platform: ${ctx.platform}
 - User language: ${ctx.language}`)
     if (ctx.userCustomPrompt?.trim()) {
-      sections.push(`## User Instructions\n${ctx.userCustomPrompt.trim()}`)
+      const custom = injectBoundedSection(
+        'User Instructions',
+        ctx.userCustomPrompt,
+        PROMPT_INJECT_CAPS.customPrompt
+      )
+      if (custom) sections.push(custom)
     }
     return sections.join('\n\n')
   }
 
   const sections: string[] = []
+  const mem = ctx.agentMemory
 
-  // 1. Soul / Base Identity — soul.md replaces hardcoded identity when available
-  if (ctx.agentMemory?.soul?.trim()) {
-    sections.push(ctx.agentMemory.soul.trim())
+  // 1. Soul — always (capped)
+  if (mem?.soul?.trim()) {
+    const soul = injectBoundedSection('Identity', mem.soul, PROMPT_INJECT_CAPS.soul, 'soul')
+    // Soul is free-form; keep raw body without forcing "## Identity" if it already has a title
+    // Prefer inject as-is when under cap for nicer templates
+    if (mem.soul.trim().length <= PROMPT_INJECT_CAPS.soul) {
+      sections.push(mem.soul.trim())
+    } else if (soul) {
+      sections.push(soul)
+    }
   } else {
-    sections.push(`You are a professional AI assistant. You are accurate, helpful, and thorough.
-- Respond in the same language the user uses
-- Do not use emoji unless the user does
-- Prioritize accuracy over speed — verify facts before stating them
-- Be concise for simple questions, detailed for complex ones`)
+    sections.push(DEFAULT_SOUL_FALLBACK)
   }
 
-  // 2. Long-term memory
-  if (ctx.agentMemory?.memory && ctx.agentMemory.memory.length > 100) {
-    sections.push(`## Long-term Memory\n${ctx.agentMemory.memory.trim()}`)
+  // 2. User profile — compact always-on slice
+  const userSec = injectBoundedSection(
+    'User Profile',
+    mem?.user,
+    PROMPT_INJECT_CAPS.user,
+    'user'
+  )
+  if (userSec) sections.push(userSec)
+
+  // 3. Memory preview — only if substantial; always capped
+  if (mem?.memory && mem.memory.trim().length > 100) {
+    const memSec = injectBoundedSection(
+      'Long-term Memory (preview)',
+      mem.memory,
+      PROMPT_INJECT_CAPS.memory,
+      'memory'
+    )
+    if (memSec) sections.push(memSec)
   }
 
-  // 3. User profile
-  if (ctx.agentMemory?.user?.trim()) {
-    sections.push(`## User Profile\n${ctx.agentMemory.user.trim()}`)
+  // 4. Stats one-liner
+  if (mem?.statsSnippet?.trim()) {
+    sections.push(`## Performance\n${mem.statsSnippet.trim()}`)
   }
 
-  // 4. Stats snippet
-  if (ctx.agentMemory?.statsSnippet?.trim()) {
-    sections.push(`## Performance\n${ctx.agentMemory.statsSnippet.trim()}`)
-  }
+  // 5. Progressive catalog — always (replaces full tools.md + agents.md)
+  sections.push(onDemandCatalog(ctx.availableTools))
 
-  // 5. Agent Workflow
+  // 6. Compact workflow
   sections.push(`## Workflow
-1. Understand the user's intent before acting
-2. For simple questions, answer directly
-3. For complex tasks, briefly outline your plan, then execute step by step
-4. When using tools, prefer parallel execution for independent calls
-5. After completing tool calls, synthesize results into a clear answer
-6. When you learn durable facts about the user (name, role, preferences, habits), call \`update_user_profile\`
-7. When you learn durable project facts, decisions, or todos, call \`update_long_term_memory\`
-8. For multi-step work that benefits from specialist helpers, define them with \`update_sub_agents\` and follow that roster`)
+1. Understand intent; answer simple questions directly
+2. Complex tasks: brief plan → tools → synthesize
+3. Prefer parallel tool calls when independent
+4. Load on-demand docs (\`read_agent_file\`) only when this turn needs them
+5. Persist durable learnings: \`update_user_profile\`, \`update_long_term_memory\`, \`update_sub_agents\``)
 
-  // 6. Harness / module capability guide
-  if (ctx.agentMemory?.tools?.trim()) {
-    sections.push(`## Module Harness\n${ctx.agentMemory.tools.trim()}`)
-  }
-
-  // 7. Tool Guidance
+  // 7. Tool names only (schemas already sent by the API when tools are attached)
   if (ctx.availableTools.length > 0) {
     sections.push(`## Tool Usage
-- Use tools proactively when they can improve answer quality
-- Never expose API keys, credentials, or environment variables in tool calls
-- For command execution: prefer safe, read-only commands; avoid destructive operations
-- Available tools: ${ctx.availableTools.join(', ')}`)
+- Tool schemas are provided by the API; names: ${ctx.availableTools.join(', ')}
+- Use tools proactively when they improve quality; never expose secrets in tool args
+- Prefer safe, read-only commands; confirm destructive shell/SQL
+- For module how-to beyond tool schemas, load file=\`tools\` via \`read_agent_file\``)
   }
 
-  // 8. Search Strategy
+  // 8. Search strategy (only when enabled)
   if (ctx.webSearchEnabled) {
     sections.push(`## Search Strategy
-You have web search capability. Use it judiciously — NOT on every message.
+Use web search judiciously — NOT on every message.
 
-**Do NOT search (answer directly):**
-- Greetings, small talk, casual conversation (e.g. "hi", "thanks", "how are you")
-- Math, logic, or reasoning problems
-- Code writing tasks (unless you specifically need latest API docs or library versions)
-- Basic knowledge: history, grammar, concept explanations, well-established facts
-- Follow-up questions about content already in this conversation
-- Short simple questions you can confidently answer from training data
+**Skip search:** greetings, math/logic, coding from known APIs, basic facts, follow-ups already in thread.
+**Do search:** current events, latest versions/changelogs, uncertain facts, user-linked URLs, explicit "latest/today".
 
-**DO search:**
-- Current events, real-time data, latest news
-- Specific product versions, release notes, changelogs, recent updates
-- Factual claims you are genuinely unsure about
-- URLs or specific web content the user references
-- Questions explicitly asking about "latest", "current", "today", "2024/2025/2026" etc.
-
-**Execution rules:**
-- First decide: does this message need search? If NO, answer directly without calling any search tools.
-- If YES, use plan_search to declare your strategy, then execute with web_search.
-- Do not repeat the same query — vary keywords for each round.
-- After gathering sufficient information (typically 2-4 rounds), stop searching and synthesize.
-- Cite sources with URLs when available.`)
+**Rules:** decide first; if needed use plan_search then web_search; vary queries; stop after 2–4 useful rounds; cite URLs.`)
   }
 
-  // 9. Safety Rules
+  // 9. Safety
   sections.push(`## Safety
 - Never reveal API keys, tokens, passwords, or other credentials
 - Never execute destructive commands (rm -rf, DROP TABLE, etc.) without explicit user confirmation
 - If a request seems harmful or unethical, explain why and suggest alternatives`)
 
-  // 10. Dynamic Context
+  // 10. Context
   sections.push(`## Context
 - Current time: ${ctx.currentTime}
 - Timezone: ${ctx.timezone}
 - Platform: ${ctx.platform}
 - User language: ${ctx.language}`)
 
-  // 11. Sub-agents
-  if (ctx.agentMemory?.agents?.trim()) {
-    sections.push(`## Sub-agents\n${ctx.agentMemory.agents.trim()}`)
-  }
+  // NOTE: tools.md and agents.md are intentionally NOT fully injected.
+  // Model discovers them via On-demand knowledge + read_agent_file.
 
-  // User custom prompt
+  // Custom prompt (capped)
   if (ctx.userCustomPrompt?.trim()) {
-    sections.push(`## User Instructions\n${ctx.userCustomPrompt.trim()}`)
+    const custom = injectBoundedSection(
+      'User Instructions',
+      ctx.userCustomPrompt,
+      PROMPT_INJECT_CAPS.customPrompt
+    )
+    if (custom) sections.push(custom)
   }
 
   return sections.join('\n\n')

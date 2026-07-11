@@ -36,11 +36,11 @@ You can control local ClawBench modules via tools. Prefer tools over guessing.
 - \`create_coding_session\` — create a session in a workspace with toolType (claude|codex|gemini|…) and optional initialPrompt
 
 ## Self-maintenance (durable knowledge)
-Use these when you learn something that should persist across chats:
-- \`update_user_profile\` — who the user is: name/titles, role, preferences (hands-on vs hands-off), habits, communication style
-- \`update_long_term_memory\` — projects, decisions, facts, open todos (not the user persona)
-- \`update_sub_agents\` — specialist “buddies” you create for multi-step work (role, when to use, notes)
-- \`read_agent_file\` — re-read user.md / memory.md / agents.md before a large rewrite
+Full tools/agents/memory files are not always in the system prompt — load with \`read_agent_file\` when needed:
+- \`read_agent_file\` — soul | user | memory | agents | tools (on-demand detail)
+- \`update_user_profile\` — who the user is: name/titles, role, preferences, habits
+- \`update_long_term_memory\` — projects, decisions, facts, open todos
+- \`update_sub_agents\` — specialist buddies for multi-step work
 
 ## Remote Feishu IM (when user messages via bot)
 - Same tools and persona as local chat

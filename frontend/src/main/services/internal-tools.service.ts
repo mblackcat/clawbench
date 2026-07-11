@@ -595,14 +595,17 @@ class AgentMemoryToolProvider implements InternalToolProvider {
       {
         name: 'read_agent_file',
         description:
-          'Read a durable agent knowledge file: user (profile), memory (long-term facts/projects), or agents (sub-agent buddies). Use before large rewrites.',
+          'Load a durable agent knowledge file on demand (not fully inlined in the system prompt). ' +
+          'soul=full persona; user=profile/preferences; memory=projects/decisions/todos; ' +
+          'agents=sub-agent buddy roster; tools=detailed module harness (apps/terminal/DB/coding). ' +
+          'Call when the current turn needs more than the short previews.',
         inputSchema: {
           type: 'object',
           properties: {
             file: {
               type: 'string',
-              description: 'user | memory | agents',
-              enum: ['user', 'memory', 'agents'],
+              description: 'soul | user | memory | agents | tools',
+              enum: ['soul', 'user', 'memory', 'agents', 'tools'],
             },
           },
           required: ['file'],
@@ -666,19 +669,23 @@ class AgentMemoryToolProvider implements InternalToolProvider {
     if (toolName === 'read_agent_file') {
       const file = String(input.file || '').toLowerCase()
       const map: Record<string, string> = {
+        soul: 'soul.md',
         user: 'user.md',
         memory: 'memory.md',
         agents: 'agents.md',
+        tools: 'tools.md',
       }
       const filename = map[file]
       if (!filename) {
-        return { content: 'file must be user | memory | agents', isError: true }
+        return { content: 'file must be soul | user | memory | agents | tools', isError: true }
       }
       try {
         const content = await readMemory(filename)
+        // tools harness + memory can be larger; allow more for on-demand loads
+        const max = file === 'tools' || file === 'memory' ? 12_000 : 8_000
         return {
           content: content?.trim()
-            ? content.slice(0, 8000)
+            ? content.slice(0, max)
             : `(empty ${filename})`,
           isError: false,
         }
