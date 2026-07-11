@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react'
-import { Modal, Form, Input, Typography, App, Button, Space, Tag, Divider, Switch, Select } from 'antd'
+import { Modal, Form, Input, Typography, App, Button, Space, Tag, Divider, Switch, Select, Alert } from 'antd'
 import {
   LinkOutlined,
   DisconnectOutlined,
@@ -13,6 +13,23 @@ import { useT } from '../../i18n'
 import { useAIModelStore } from '../../stores/useAIModelStore'
 
 const { Text } = Typography
+
+/** Providers that run full internal tool loops in IM agent mode */
+const IM_TOOL_CAPABLE_PROVIDERS = new Set([
+  'openai',
+  'openai-compatible',
+  'openai-responses',
+  'azure-openai',
+  'qwen',
+  'doubao',
+  'deepseek',
+  'kimi',
+])
+
+function isImToolCapableProvider(provider?: string): boolean {
+  if (!provider) return true // unset → fallback last chat model; show soft hint only
+  return IM_TOOL_CAPABLE_PROVIDERS.has(provider.toLowerCase())
+}
 
 interface AICodingIMConfigModalProps {
   open: boolean
@@ -64,10 +81,16 @@ const AICodingIMConfigModal: React.FC<AICodingIMConfigModalProps> = ({
       value: m.id,
       label: m.name || m.id,
       models: m.models || [],
+      provider: m.provider || '',
     }))
   }, [localModels])
 
   const selectedConfigId = Form.useWatch('modelConfigId', form)
+  const selectedConfig = useMemo(
+    () => (localModels || []).find((m) => m.id === selectedConfigId),
+    [localModels, selectedConfigId]
+  )
+  const selectedSupportsTools = isImToolCapableProvider(selectedConfig?.provider)
   const modelIdOptions = useMemo(() => {
     const cfg = modelOptions.find((o) => o.value === selectedConfigId)
     return (cfg?.models || []).map((id: string) => ({ value: id, label: id }))
@@ -230,8 +253,20 @@ const AICodingIMConfigModal: React.FC<AICodingIMConfigModalProps> = ({
           </Form.Item>
         </Form>
 
-        <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 12 }}>
+        {selectedConfigId && !selectedSupportsTools && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message={t('im.toolSupportLimited')}
+          />
+        )}
+
+        <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>
           {t('im.agentHint')}
+        </Text>
+        <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 12 }}>
+          {t('im.toolSupportHint')}
         </Text>
 
         {imStatus.state === 'error' && imStatus.error && (
