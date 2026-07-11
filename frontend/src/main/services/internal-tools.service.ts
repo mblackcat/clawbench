@@ -23,6 +23,11 @@ import { getActiveWorkspace } from './workspace.service'
 import { listRecentMarketApps, searchMarketApps, installMarketApp } from './im/marketplace.service'
 import { getPythonSdkPath } from '../utils/paths'
 import { executeCommand } from './tool-executor.service'
+import {
+  applyAgentFileUpdate,
+  readMemory,
+  writeToolsHarness,
+} from './agent-memory.service'
 
 // ============ Tool Provider Interface ============
 
@@ -580,9 +585,153 @@ class TerminalToolProvider implements InternalToolProvider {
   }
 }
 
+// ============ Agent memory / self-maintenance ============
+
+class AgentMemoryToolProvider implements InternalToolProvider {
+  name = 'agent-memory'
+
+  async listTools(): Promise<ToolDefinition[]> {
+    return [
+      {
+        name: 'read_agent_file',
+        description:
+          'Read a durable agent knowledge file: user (profile), memory (long-term facts/projects), or agents (sub-agent buddies). Use before large rewrites.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            file: {
+              type: 'string',
+              description: 'user | memory | agents',
+              enum: ['user', 'memory', 'agents'],
+            },
+          },
+          required: ['file'],
+        },
+      },
+      {
+        name: 'update_user_profile',
+        description:
+          'Update user.md — how to address the user, role/titles, expertise, preferences (hands-on vs hands-off), habits, communication style. Prefer merge (append) for small insights; replace only with a full rewritten profile.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            content: { type: 'string', description: 'Markdown content to write' },
+            mode: {
+              type: 'string',
+              description: 'replace (full file) or append (default append for small notes)',
+              enum: ['replace', 'append'],
+            },
+          },
+          required: ['content'],
+        },
+      },
+      {
+        name: 'update_long_term_memory',
+        description:
+          'Update memory.md — projects, decisions, facts, open todos (not the user persona). Prefer append for new facts; replace when condensing the whole file.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            content: { type: 'string', description: 'Markdown content to write' },
+            mode: {
+              type: 'string',
+              description: 'replace or append',
+              enum: ['replace', 'append'],
+            },
+          },
+          required: ['content'],
+        },
+      },
+      {
+        name: 'update_sub_agents',
+        description:
+          'Update agents.md (sub-agents / buddies): specialist helpers for multi-step work. Include name, role, when to use, and notes. Use replace to publish the full roster.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            content: { type: 'string', description: 'Full or partial markdown for sub-agents' },
+            mode: {
+              type: 'string',
+              description: 'replace (recommended for full roster) or append',
+              enum: ['replace', 'append'],
+            },
+          },
+          required: ['content'],
+        },
+      },
+    ]
+  }
+
+  async executeTool(toolName: string, input: Record<string, any>): Promise<ToolResult> {
+    if (toolName === 'read_agent_file') {
+      const file = String(input.file || '').toLowerCase()
+      const map: Record<string, string> = {
+        user: 'user.md',
+        memory: 'memory.md',
+        agents: 'agents.md',
+      }
+      const filename = map[file]
+      if (!filename) {
+        return { content: 'file must be user | memory | agents', isError: true }
+      }
+      try {
+        const content = await readMemory(filename)
+        return {
+          content: content?.trim()
+            ? content.slice(0, 8000)
+            : `(empty ${filename})`,
+          isError: false,
+        }
+      } catch (err: any) {
+        return { content: `Read failed: ${err.message}`, isError: true }
+      }
+    }
+
+    const fileMap: Record<string, 'user' | 'memory' | 'agents'> = {
+      update_user_profile: 'user',
+      update_long_term_memory: 'memory',
+      update_sub_agents: 'agents',
+    }
+    const file = fileMap[toolName]
+    if (!file) {
+      return { content: `Unknown tool: ${toolName}`, isError: true }
+    }
+
+    const content = String(input.content || '')
+    const mode = input.mode === 'replace' ? 'replace' : 'append'
+    // Sub-agents default to replace when mode omitted for cleaner roster
+    const effectiveMode =
+      toolName === 'update_sub_agents' && input.mode === undefined ? 'replace' : mode
+
+    const result = await applyAgentFileUpdate(file, content, effectiveMode)
+    if (!result.ok) {
+      return { content: result.error || 'Update failed', isError: true }
+    }
+    return {
+      content: `Updated ${file}.md (${effectiveMode}, ${result.length} chars)`,
+      isError: false,
+    }
+  }
+}
+
 // ============ Singleton Registry ============
 
 export const internalToolRegistry = new InternalToolRegistry()
+
+/**
+ * Rebuild tools.md from static harness + live registered tool list.
+ */
+export async function refreshToolsHarness(): Promise<void> {
+  try {
+    const tools = await internalToolRegistry.listAllTools()
+    await writeToolsHarness(
+      tools.map((t) => ({ name: t.name, description: t.description || '' }))
+    )
+    logger.info(`[internal-tools] tools.md refreshed (${tools.length} tools)`)
+  } catch (err) {
+    logger.error('[internal-tools] Failed to refresh tools.md:', err)
+  }
+}
 
 /**
  * Initialize all internal tool providers.
@@ -593,5 +742,8 @@ export function initInternalTools(): void {
   internalToolRegistry.register(new WorkbenchToolProvider())
   internalToolRegistry.register(new CodingToolProvider())
   internalToolRegistry.register(new TerminalToolProvider())
+  internalToolRegistry.register(new AgentMemoryToolProvider())
   logger.info('[internal-tools] All providers registered')
+  // Fire-and-forget: sync tools.md with live tool list
+  refreshToolsHarness().catch(() => {})
 }

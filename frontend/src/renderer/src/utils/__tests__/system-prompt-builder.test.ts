@@ -40,5 +40,23 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('Long-term Memory')
     expect(prompt).toContain('Module Harness')
     expect(prompt).toContain('Module Harness Body')
+    expect(prompt).toContain('update_user_profile')
+    expect(prompt).toContain('update_sub_agents')
+  })
+
+  it('injects user profile and sub-agents when present', () => {
+    const prompt = buildSystemPrompt({
+      ...base,
+      assistantEnabled: true,
+      agentMemory: {
+        soul: '# Soul',
+        user: 'Name: Alex; prefers low control',
+        agents: '### Reviewer\n- Role: code review',
+      },
+    })
+    expect(prompt).toContain('User Profile')
+    expect(prompt).toContain('prefers low control')
+    expect(prompt).toContain('Sub-agents')
+    expect(prompt).toContain('Reviewer')
   })
 })

@@ -81,7 +81,10 @@ export function buildSystemPrompt(ctx: SystemPromptContext): string {
 2. For simple questions, answer directly
 3. For complex tasks, briefly outline your plan, then execute step by step
 4. When using tools, prefer parallel execution for independent calls
-5. After completing tool calls, synthesize results into a clear answer`)
+5. After completing tool calls, synthesize results into a clear answer
+6. When you learn durable facts about the user (name, role, preferences, habits), call \`update_user_profile\`
+7. When you learn durable project facts, decisions, or todos, call \`update_long_term_memory\`
+8. For multi-step work that benefits from specialist helpers, define them with \`update_sub_agents\` and follow that roster`)
 
   // 6. Harness / module capability guide
   if (ctx.agentMemory?.tools?.trim()) {

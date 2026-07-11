@@ -1,21 +1,29 @@
 /**
  * Memory self-update: while the client is online and assistant is enabled,
- * periodically condense recent conversation digests into memory.md.
+ * periodically condense recent conversation digests into memory.md + user.md
+ * (and lightly refresh agents.md when digests mention specialist helpers).
  *
  * Sources:
  * - IM agent conversations (main-process store)
  * - Local / backend AI Chat digests pushed from renderer via chat-digest.service
  */
 
-import { getAgentSettings, getAiModelConfigs, getLastChatModel } from '../store/settings.store'
-import { readMemory, writeMemory } from './agent-memory.service'
+import { getAgentSettings } from '../store/settings.store'
+import {
+  readMemory,
+  writeMemory,
+  resolveBackgroundModel,
+  MAX_MEMORY_CHARS,
+  MAX_USER_CHARS,
+  MAX_AGENTS_CHARS,
+} from './agent-memory.service'
+import { parseMemoryUpdateLlmResult } from './agent-memory-utils'
 import { listImConversations, getImConversation } from './im/im-agent.service'
 import { listChatDigests } from './chat-digest.service'
 import { completeChat } from './ai.service'
 import * as logger from '../utils/logger'
 
 const INTERVAL_MS = 45 * 60 * 1000 // 45 minutes
-const MAX_MEMORY_CHARS = 12_000
 
 let timer: ReturnType<typeof setInterval> | null = null
 let lastRunAt = 0
@@ -61,40 +69,75 @@ export async function runMemoryUpdate(force = false): Promise<void> {
       return
     }
 
-    const configs = getAiModelConfigs().filter((c) => c.enabled !== false)
-    if (!configs.length) return
+    const model = resolveBackgroundModel()
+    if (!model) return
 
-    const last = getLastChatModel()
-    const config = (last.configId && configs.find((c) => c.id === last.configId)) || configs[0]
-    const modelId = last.modelId || config.models?.[0] || config.name
+    const [existingMemory, existingUser, existingAgents] = await Promise.all([
+      readMemory('memory.md'),
+      readMemory('user.md'),
+      readMemory('agents.md'),
+    ])
 
-    const existing = await readMemory('memory.md')
-    const prompt = `You maintain a long-term memory file for a desktop AI assistant.
-Merge the conversation digests into an updated memory.md.
-Keep facts, preferences, project names, decisions, and open todos.
-Remove redundancy. Max ~${MAX_MEMORY_CHARS} characters. Write plain markdown only.
+    const systemMessage = `You maintain durable knowledge files for a desktop AI assistant.
+Return ONLY valid JSON (no markdown fences) with keys:
+- "memory_md": full updated long-term memory (facts, projects, decisions, open todos). Max ~${MAX_MEMORY_CHARS} chars.
+- "user_md": full updated user profile (how to address them, role/titles, expertise, preferences including control style, habits, communication). Max ~${MAX_USER_CHARS} chars.
+- "agents_md": optional full sub-agents file if digests imply specialist helpers; otherwise omit or keep existing. Max ~${MAX_AGENTS_CHARS} chars.
 
-## Current memory.md
-${existing.slice(0, 8000) || '(empty)'}
+Rules:
+- Merge new digests into existing content; remove redundancy; plain markdown only inside each value
+- Separate "who the user is" (user_md) from "what happened / projects" (memory_md)
+- Do not invent credentials or private data not present in digests`
+
+    const userMessage = `## Current memory.md
+${(existingMemory || '(empty)').slice(0, 6000)}
+
+## Current user.md
+${(existingUser || '(empty)').slice(0, 3000)}
+
+## Current agents.md
+${(existingAgents || '(empty)').slice(0, 2000)}
 
 ## New digests
 ${digests.slice(0, 8000)}
 `
 
     const updated = await completeChat(
-      config.id,
+      model.configId,
       [
-        { role: 'system', content: 'You output only the updated memory.md markdown body.' },
-        { role: 'user', content: prompt },
+        { role: 'system', content: systemMessage },
+        { role: 'user', content: userMessage },
       ],
-      modelId,
+      model.modelId,
       4096
     )
 
-    if (updated && updated.trim().length > 20) {
-      await writeMemory('memory.md', updated.trim().slice(0, MAX_MEMORY_CHARS))
+    const parsed = parseMemoryUpdateLlmResult(updated)
+    if (!parsed) {
+      logger.warn('[memory-updater] LLM response was not valid JSON; skip write')
+      return
+    }
+
+    let wrote = false
+    if (parsed.memory_md) {
+      await writeMemory('memory.md', parsed.memory_md)
+      wrote = true
+    }
+    if (parsed.user_md) {
+      await writeMemory('user.md', parsed.user_md)
+      wrote = true
+    }
+    if (parsed.agents_md) {
+      await writeMemory('agents.md', parsed.agents_md)
+      wrote = true
+    }
+
+    if (wrote) {
       lastRunAt = Date.now()
-      logger.info('[memory-updater] memory.md updated')
+      logger.info(
+        `[memory-updater] updated` +
+          ` memory=${!!parsed.memory_md} user=${!!parsed.user_md} agents=${!!parsed.agents_md}`
+      )
     }
   } catch (err) {
     logger.error('[memory-updater] Failed:', err)

@@ -2,8 +2,32 @@ import { join } from 'path'
 import { promises as fs } from 'fs'
 import { getAppDataPath } from '../utils/paths'
 import { getUser } from '../store/auth.store'
-import { getAgentSettings } from '../store/settings.store'
+import { getAgentSettings, getAiModelConfigs, getLastChatModel } from '../store/settings.store'
+import { completeChat } from './ai.service'
 import * as logger from '../utils/logger'
+import {
+  DEFAULT_TOOLS_HARNESS,
+  MAX_AGENTS_CHARS,
+  MAX_MEMORY_CHARS,
+  MAX_USER_CHARS,
+  buildToolsHarnessContent,
+  clampMarkdown,
+  mergeSoulSuggestionList,
+  parseFeedbackLlmResult,
+  type LiveToolInfo,
+} from './agent-memory-utils'
+
+export {
+  DEFAULT_TOOLS_HARNESS_BODY,
+  DEFAULT_TOOLS_HARNESS,
+  buildToolsHarnessContent,
+  extractJsonObject,
+  parseFeedbackLlmResult,
+  parseMemoryUpdateLlmResult,
+  MAX_MEMORY_CHARS,
+  MAX_USER_CHARS,
+  MAX_AGENTS_CHARS,
+} from './agent-memory-utils'
 
 export interface FeedbackStats {
   totalFeedback: { up: number; down: number }
@@ -109,33 +133,6 @@ You are a creative-work assistant in ClawBench, focused on artistic direction, n
 }
 
 const DEFAULT_SOUL = SOUL_TEMPLATES.general
-
-/** Default harness / capability guide injected via tools.md */
-export const DEFAULT_TOOLS_HARNESS = `# ClawBench Module Harness
-
-You can control local ClawBench modules via tools. Prefer tools over guessing.
-
-## Workbench Apps
-- \`list_workbench_apps\` — list installed apps and parameters
-- \`run_workbench_app\` — run an installed app by id with params
-- \`search_market_apps\` — search published marketplace apps
-- \`install_market_app\` — install a published app by applicationId
-
-## AI Terminal & Database
-- \`list_terminal_sessions\` / \`run_terminal_command\` — list sessions and run a command (prefer non-destructive)
-- \`list_db_connections\` — list saved DB connections
-- \`query_database\` — read-only SQL (SELECT)
-- \`execute_database\` — DML when the user explicitly wants writes; never DROP/TRUNCATE without explicit confirmation
-
-## AI Coding
-- \`list_coding_workspaces\` / \`list_coding_sessions\` — inventory
-- \`create_coding_session\` — create a session in a workspace with toolType (claude|codex|gemini|…) and optional initialPrompt
-
-## Remote Feishu IM (when user messages via bot)
-- Same tools and persona as local chat
-- Slash commands still work for power users: /help, /w, /ss, /new <tool>, /app, …
-- Bare \`/new\` starts a fresh agent conversation; \`/new <tool>\` creates a coding session
-`
 
 const DEFAULT_STATS: FeedbackStats = {
   totalFeedback: { up: 0, down: 0 },
@@ -270,9 +267,27 @@ export async function updateStats(
 }
 
 /**
- * Process feedback through LLM to update memory files.
- * This is a fire-and-forget background task.
- * When assistant master switch is OFF, only stats are updated (no memory.md writes).
+ * Resolve a model for background agent-memory jobs (feedback / self-update).
+ */
+export function resolveBackgroundModel(): { configId: string; modelId: string } | null {
+  const configs = getAiModelConfigs().filter((c) => c.enabled !== false)
+  if (!configs.length) return null
+  const last = getLastChatModel()
+  const config = (last.configId && configs.find((c) => c.id === last.configId)) || configs[0]
+  const modelId = last.modelId || config.models?.[0] || config.name
+  return { configId: config.id, modelId }
+}
+
+/**
+ * Write tools.md from static harness + currently registered tools.
+ */
+export async function writeToolsHarness(liveTools: LiveToolInfo[] = []): Promise<void> {
+  await writeMemory('tools.md', buildToolsHarnessContent(liveTools))
+}
+
+/**
+ * Process feedback through LLM to update memory.md / user.md / soulSuggestions.
+ * Fire-and-forget background task. When assistant master switch is OFF, only stats update.
  */
 export async function processFeedback(data: {
   messageId: string
@@ -280,13 +295,124 @@ export async function processFeedback(data: {
   reason?: string
   snippet: string
 }): Promise<void> {
+  const assistantOn = getAgentSettings().assistantEnabled !== false
   try {
-    // Only update stats — memory.md is reserved for LLM-driven insights
-    await updateStats(data.type)
-    logger.info(`[agent-memory] Processed ${data.type} feedback for message ${data.messageId}`)
+    if (!assistantOn) {
+      await updateStats(data.type)
+      logger.info(`[agent-memory] Feedback ${data.type} (stats only; assistant off) for ${data.messageId}`)
+      return
+    }
+
+    const model = resolveBackgroundModel()
+    if (!model) {
+      await updateStats(data.type)
+      logger.info('[agent-memory] Feedback: no model config; stats only')
+      return
+    }
+
+    const [memory, user, soul] = await Promise.all([
+      readMemory('memory.md'),
+      readMemory('user.md'),
+      readMemory('soul.md'),
+    ])
+
+    const systemMessage = `You maintain long-term memory files for a desktop AI assistant based on user feedback.
+Return ONLY valid JSON (no markdown fences) with keys:
+- "memory_md": full updated memory.md — projects, decisions, facts, open todos, what worked/failed
+- "user_md": full updated user.md — how to address the user, role/titles, expertise, preferences (hands-on vs hands-off), habits, communication style
+- "topic": short topic tag (e.g. coding, design, general)
+- "soul_suggestion": null OR { "suggestion": "one concrete persona tweak", "reason": "why" } when feedback implies a lasting style change
+
+Rules:
+- Be concise; merge into existing content, remove redundancy
+- Thumbs-up: reinforce effective patterns and preferences
+- Thumbs-down: capture what to avoid / what the user wanted instead
+- Do not invent secrets, credentials, or private data not in the snippet
+- Each of memory_md / user_md must be the COMPLETE file body`
+
+    const userMessage = `## Current memory.md (truncated)
+${(memory || '(empty)').slice(0, 4000)}
+
+## Current user.md (truncated)
+${(user || '(empty)').slice(0, 2500)}
+
+## Current soul.md (first 800 chars)
+${(soul || '').slice(0, 800)}
+
+## Conversation snippet
+${(data.snippet || '').slice(0, 4000)}
+
+## Feedback
+type: ${data.type === 'up' ? 'THUMBS_UP' : 'THUMBS_DOWN'}
+reason: ${data.reason || '(none)'}
+
+Update both files and return JSON only.`
+
+    const response = await completeChat(
+      model.configId,
+      [
+        { role: 'system', content: systemMessage },
+        { role: 'user', content: userMessage },
+      ],
+      model.modelId,
+      4096
+    )
+
+    const parsed = parseFeedbackLlmResult(response)
+    if (parsed?.memory_md) {
+      await writeMemory('memory.md', parsed.memory_md)
+    }
+    if (parsed?.user_md) {
+      await writeMemory('user.md', parsed.user_md)
+    }
+
+    await updateStats(data.type, parsed?.topic)
+
+    if (parsed?.soul_suggestion?.suggestion) {
+      const stats = await readStats()
+      stats.soulSuggestions = mergeSoulSuggestionList(stats.soulSuggestions, parsed.soul_suggestion)
+      await writeMemory('stats.json', JSON.stringify(stats, null, 2))
+    }
+
+    logger.info(
+      `[agent-memory] Feedback ${data.type} processed for ${data.messageId}` +
+        ` (memory=${!!parsed?.memory_md}, user=${!!parsed?.user_md}, topic=${parsed?.topic || '-'})`
+    )
   } catch (err) {
     logger.error('[agent-memory] Failed to process feedback:', err)
+    try {
+      await updateStats(data.type)
+    } catch {
+      /* ignore secondary failure */
+    }
   }
+}
+
+/**
+ * Apply a full or partial rewrite of a self-maintained memory file (from tools).
+ */
+export async function applyAgentFileUpdate(
+  file: 'user' | 'memory' | 'agents',
+  content: string,
+  mode: 'replace' | 'append' = 'replace'
+): Promise<{ ok: boolean; length: number; error?: string }> {
+  const filename =
+    file === 'user' ? 'user.md' : file === 'memory' ? 'memory.md' : 'agents.md'
+  const max =
+    file === 'user' ? MAX_USER_CHARS : file === 'memory' ? MAX_MEMORY_CHARS : MAX_AGENTS_CHARS
+  const incoming = (content || '').trim()
+  if (!incoming) {
+    return { ok: false, length: 0, error: 'content is empty' }
+  }
+
+  let next = incoming
+  if (mode === 'append') {
+    const existing = (await readMemory(filename)).trim()
+    next = existing ? `${existing}\n\n${incoming}` : incoming
+  }
+  next = clampMarkdown(next, max)
+  await writeMemory(filename, next)
+  return { ok: true, length: next.length }
 }
 
 /**
@@ -316,12 +442,12 @@ export async function initSoulFromRole(role: SoulRole): Promise<void> {
   } catch {
     await writeMemory('soul.md', getSoulTemplate(role))
   }
-  // Always ensure tools.md harness exists for new users
+  // Ensure tools.md exists (static body; live tool list refreshed by internal-tools init)
   const toolsPath = join(getMemoryDir(), 'tools.md')
   try {
     await fs.access(toolsPath)
   } catch {
-    await writeMemory('tools.md', DEFAULT_TOOLS_HARNESS)
+    await writeMemory('tools.md', buildToolsHarnessContent([]))
   }
 }
 
