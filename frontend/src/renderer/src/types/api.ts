@@ -75,6 +75,8 @@ export interface Application {
   /** 最新版本号（列表接口附带） */
   version?: string;
   downloadCount: number;
+  /** 登录用户上报的执行次数（app 类型子应用） */
+  executionCount?: number;
   metadata: Record<string, any>;
   createdAt: number;
   updatedAt: number;

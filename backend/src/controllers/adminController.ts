@@ -15,8 +15,14 @@ import {
   setApplicationPublished,
 } from '../repositories/applicationRepository';
 import { getLatestVersionsByApplicationIds } from '../repositories/applicationVersionRepository';
+import {
+  listExecutionErrorsByApplication,
+  countExecutionErrors,
+} from '../repositories/applicationExecutionErrorRepository';
+import { getUserById } from '../repositories/userRepository';
 import { userToResponse } from '../models/user';
 import { applicationToResponse } from '../models/application';
+import { executionErrorToResponse } from '../models/applicationExecutionError';
 import { logger } from '../utils/logger';
 
 /**
@@ -270,6 +276,64 @@ export async function updateApplicationAdminHandler(
     });
   } catch (error) {
     logger.error('Error updating application (admin):', error);
+    res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: 'Internal server error' },
+    });
+  }
+}
+
+/**
+ * GET /api/v1/admin/applications/:applicationId/execution-errors
+ * 分页返回某应用登录用户上报的执行错误日志。仅管理员可见（受路由层 requireAdmin 保护）。
+ * Query params: limit (default 20), offset (default 0)
+ */
+export async function listExecutionErrorsHandler(
+  req: AuthRequest,
+  res: Response
+): Promise<void> {
+  try {
+    const { applicationId } = req.params;
+    const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
+    const offset = parseInt(req.query.offset as string) || 0;
+
+    const application = await getApplicationById(applicationId);
+    if (!application) {
+      res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Application not found' },
+      });
+      return;
+    }
+
+    const [errors, total] = await Promise.all([
+      listExecutionErrorsByApplication(applicationId, limit, offset),
+      countExecutionErrors(applicationId),
+    ]);
+
+    // 批量查用户名（逐条查询即可，单个应用的错误日志量级不大）
+    const usernameCache = new Map<string, string | undefined>();
+    const errorResponses = await Promise.all(
+      errors.map(async (err) => {
+        if (!usernameCache.has(err.userId)) {
+          const user = await getUserById(err.userId);
+          usernameCache.set(err.userId, user?.username);
+        }
+        return executionErrorToResponse(err, usernameCache.get(err.userId));
+      })
+    );
+
+    res.json({
+      success: true,
+      data: {
+        errors: errorResponses,
+        total,
+        limit,
+        offset,
+      },
+    });
+  } catch (error) {
+    logger.error('Error listing execution errors:', error);
     res.status(500).json({
       success: false,
       error: { code: 'INTERNAL_ERROR', message: 'Internal server error' },

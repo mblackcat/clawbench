@@ -15,6 +15,7 @@ import { getActiveWorkspace } from '../services/workspace.service'
 import { installSkill, InstallMode, SkillTool } from '../services/skill-install.service'
 import { getPythonSdkPath, getTempDir } from '../utils/paths'
 import { unzipArchive } from '../utils/zip'
+import { recordDownloadEvent } from '../services/usage-tracking.service'
 import * as logger from '../utils/logger'
 
 /**
@@ -179,7 +180,9 @@ export function registerSubAppIpc(): void {
 
       executeSubApp(
         taskId,
+        appId,
         manifest.name,
+        manifest.version,
         appPath,
         manifest.entry,
         params || {},
@@ -230,6 +233,7 @@ export function registerSubAppIpc(): void {
       }
 
       logger.info(`[Marketplace] Installed: ${result.manifest?.name} (${appId})`)
+      recordDownloadEvent(appId, result.manifest?.version)
       return { success: true, manifest: result.manifest }
     }
   )
@@ -259,6 +263,7 @@ export function registerSubAppIpc(): void {
       }
 
       logger.info(`[Marketplace] Updated (merged): ${result.manifest?.name} (${appId})`)
+      recordDownloadEvent(appId, result.manifest?.version)
       return { success: true, manifest: result.manifest }
     }
   )

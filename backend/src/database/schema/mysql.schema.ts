@@ -217,7 +217,31 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
     if (!featuredExists || featuredExists.cnt === 0) {
       await safeDDL(database,`ALTER TABLE applications ADD COLUMN featured INTEGER DEFAULT 0`);
     }
+    // 应用表迁移：添加 execution_count 列（登录用户上报的执行次数）
+    const executionCountExists = await database.get<{ cnt: number }>(
+      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'applications' AND COLUMN_NAME = 'execution_count'`,
+      [currentDb]
+    );
+    if (!executionCountExists || executionCountExists.cnt === 0) {
+      await safeDDL(database,`ALTER TABLE applications ADD COLUMN execution_count INTEGER DEFAULT 0`);
+    }
   }
+
+  // 应用执行错误日志表（登录用户上报，仅管理员可见）
+  await safeDDL(database,`
+    CREATE TABLE IF NOT EXISTS application_execution_errors (
+      error_id VARCHAR(36) PRIMARY KEY,
+      application_id VARCHAR(36) NOT NULL,
+      user_id VARCHAR(36) NOT NULL,
+      version VARCHAR(50),
+      message TEXT NOT NULL,
+      details TEXT,
+      created_at BIGINT NOT NULL,
+      FOREIGN KEY (application_id) REFERENCES applications(application_id),
+      FOREIGN KEY (user_id) REFERENCES users(user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
 
   // 创建索引
   const ensureIndex = async (table: string, name: string, ddl: string) => {
@@ -244,6 +268,7 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
     await ensureIndex('messages', 'idx_messages_conversation', 'CREATE INDEX idx_messages_conversation ON messages(conversation_id)');
     await ensureIndex('chat_attachments', 'idx_attachments_message', 'CREATE INDEX idx_attachments_message ON chat_attachments(message_id)');
     await ensureIndex('users', 'idx_users_feishu_open_id', 'CREATE UNIQUE INDEX idx_users_feishu_open_id ON users(feishu_open_id)');
+    await ensureIndex('application_execution_errors', 'idx_exec_errors_application', 'CREATE INDEX idx_exec_errors_application ON application_execution_errors(application_id, created_at)');
   }
 
   logger.info('MySQL schema initialized successfully');

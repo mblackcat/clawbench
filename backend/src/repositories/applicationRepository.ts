@@ -28,8 +28,8 @@ export async function createApplication(
   await database.run(
     `INSERT INTO applications (
       application_id, name, description, owner_id, type, category,
-      published, featured, download_count, metadata, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      published, featured, download_count, execution_count, metadata, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       applicationId,
       input.name,
@@ -40,6 +40,7 @@ export async function createApplication(
       0, // published = false
       0, // featured = false
       0, // download_count = 0
+      0, // execution_count = 0
       input.metadata ? JSON.stringify(input.metadata) : null,
       now,
       now,
@@ -56,6 +57,7 @@ export async function createApplication(
     published: false,
     featured: false,
     downloadCount: 0,
+    executionCount: 0,
     metadata: input.metadata || null,
     createdAt: now,
     updatedAt: now,
@@ -219,6 +221,20 @@ export async function setApplicationFeatured(
 export async function incrementDownloadCount(applicationId: string): Promise<boolean> {
   const result = await database.run(
     'UPDATE applications SET download_count = download_count + 1 WHERE application_id = ?',
+    [applicationId]
+  );
+
+  return result.changes > 0;
+}
+
+/**
+ * 增加应用执行计数（登录用户上报）
+ * @param applicationId 应用ID
+ * @returns 是否更新成功
+ */
+export async function incrementExecutionCount(applicationId: string): Promise<boolean> {
+  const result = await database.run(
+    'UPDATE applications SET execution_count = execution_count + 1 WHERE application_id = ?',
     [applicationId]
   );
 

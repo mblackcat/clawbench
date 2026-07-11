@@ -118,7 +118,9 @@ async function handleShortcutTrigger(index: number): Promise<void> {
 
   executeSubApp(
     taskId,
+    manifest.id,
     manifest.name,
+    manifest.version,
     appInfo.path,
     manifest.entry,
     {},
