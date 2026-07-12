@@ -50,6 +50,9 @@ const MyContributionsPage: React.FC = () => {
   const { token } = theme.useToken();
   const { message } = App.useApp();
   const t = useT();
+  // Back button target. Default to 收藏栏; if the user came from 发现
+  // (injected via navigate state), return there instead.
+  const backTarget = (location.state as { from?: string } | null)?.from || '/workbench/installed';
   const [localApps, setLocalApps] = useState<LocalAppWithType[]>([]);
   const [allApps, setAllApps] = useState<Application[]>([]);
 
@@ -171,20 +174,39 @@ const MyContributionsPage: React.FC = () => {
     }
   };
 
+  // Manifest type tag — mirrors 收藏栏 so cards have a consistent visual cue
+  // for 应用/技能/提示词/链接 across pages (useful when browsing across tabs).
+  const getManifestTypeTag = (type?: string) => {
+    switch (type) {
+      case 'ai-skill':
+        return <Tag color="purple" style={{ margin: 0 }}>{t('workbench.tagSkill')}</Tag>;
+      case 'prompt':
+        return <Tag color="cyan" style={{ margin: 0 }}>{t('workbench.tagPrompt')}</Tag>;
+      case 'link':
+        return <Tag color="geekblue" style={{ margin: 0 }}>{t('workbench.tagLink')}</Tag>;
+      case 'app':
+      default:
+        return null;  // 'app' is the default; tag would be noise
+    }
+  };
+
   const handleEdit = (appId: string, type?: string) => {
+    // Pass `from` so editors' Back button + post-save navigation returns
+    // here rather than the default 我的 page (matters when editor is opened
+    // from another page like 发现 and the user came back here in between).
     if (type === 'ai-skill') {
-      navigate('/developer/new-skill', { state: { appId } });
+      navigate('/developer/new-skill', { state: { appId, from: location.pathname } });
     } else if (type === 'prompt') {
-      navigate('/developer/new-prompt', { state: { appId } });
+      navigate('/developer/new-prompt', { state: { appId, from: location.pathname } });
     } else if (type === 'link') {
-      navigate('/developer/new-link', { state: { appId } });
+      navigate('/developer/new-link', { state: { appId, from: location.pathname } });
     } else {
-      navigate(`/developer/code/${appId}`);
+      navigate(`/developer/code/${appId}`, { state: { from: location.pathname } });
     }
   };
 
   const handlePublish = (appId: string) => {
-    navigate('/developer/publish', { state: { appId } });
+    navigate('/developer/publish', { state: { appId, from: location.pathname } });
   };
 
   const handleViewDetail = useCallback((appId: string) => {
@@ -248,6 +270,7 @@ const MyContributionsPage: React.FC = () => {
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <Tag style={{ margin: 0 }}>v{app.version}</Tag>
+            {getManifestTypeTag(app.type)}
             {getAppTypeTag(appType)}
           </div>
         </div>
@@ -410,7 +433,7 @@ const MyContributionsPage: React.FC = () => {
   return (
     <div style={{ padding: 24 }}>
       <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center', gap: 12 }}>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/workbench/installed')}>
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(backTarget)}>
           {t('common.back')}
         </Button>
         <Title level={4} style={{ margin: 0 }}>{t('mine.title')}</Title>

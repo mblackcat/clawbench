@@ -72,7 +72,11 @@ interface SubAppInfo {
   source: 'user'
 }
 
-type AppType = 'installed' | 'draft' | 'local';
+// Publication status. Renamed from 'installed' (which was misleading — every
+// card here is favorited) to 'published' so the tag actually conveys useful
+// information. Determined authoritatively by the server-side published-name
+// set, with `manifest.published` as an offline / local-mode fallback.
+type AppType = 'published' | 'draft' | 'local';
 
 interface AppWithType extends SubAppInfo {
   appType: AppType
@@ -596,6 +600,10 @@ const InstalledAppsPage: React.FC = () => {
   const { token } = theme.useToken();
   const { modal, message } = App.useApp();
   const [apps, setApps] = useState<AppWithType[]>([]);
+  // Server-side set of published app names (mirror of the marketplace). Used
+  // to authoritatively decide whether a locally-favorited app has been
+  // published — same source of truth as 我的 page. Empty in local mode.
+  const [publishedAppNames, setPublishedAppNames] = useState<Set<string>>(new Set());
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerManifest, setDrawerManifest] = useState<SubAppManifest | null>(null);
   const [drawerAppId, setDrawerAppId] = useState<string>('');
@@ -661,6 +669,15 @@ const InstalledAppsPage: React.FC = () => {
       // 读取 store 中最新的 appInfos，因此必须在 loadApps 完成后调用）
       if (!isLocalMode) {
         checkForUpdates().catch(() => { /* 非关键路径 */ });
+        // Fetch published app names from server so we can correctly mark apps
+        // as 已发布 even when the local manifest.published flag wasn't
+        // written back (older clients, web-side publishing, etc.).
+        try {
+          const published = await applicationManager.fetchApplications(true);
+          setPublishedAppNames(new Set(published.map((a) => a.name)));
+        } catch {
+          // 非关键路径：网络异常时回退到 manifest.published
+        }
       }
     };
     init();
@@ -690,7 +707,7 @@ const InstalledAppsPage: React.FC = () => {
   // 监听 appInfos 变化，分类应用
   useEffect(() => {
     classifyApps();
-  }, [appInfos, user, appOrder]);
+  }, [appInfos, user, appOrder, publishedAppNames]);
 
   const loadApps = async () => {
     try {
@@ -702,6 +719,11 @@ const InstalledAppsPage: React.FC = () => {
 
   /**
    * 分类应用并按 appOrder 排序，再按类型分组
+   *
+   * 发布状态判定优先级：
+   * 1. 服务端 publishedAppNames 集合命中（最权威，覆盖"别处发布"场景）
+   * 2. 本地 manifest.published === true（发布回写 / 离线场景的兜底）
+   * 3. 否则：作者是自己 → draft；否则 → local
    */
   const classifyApps = () => {
     const classified: AppWithType[] = appInfos
@@ -710,8 +732,10 @@ const InstalledAppsPage: React.FC = () => {
         const manifest = info.manifest;
         let appType: AppType = 'local';
 
-        if (manifest.published) {
-          appType = 'installed';
+        const isPublished = publishedAppNames.has(manifest.name) || manifest.published === true;
+
+        if (isPublished) {
+          appType = 'published';
         } else {
           const authorId = getAuthorId(manifest.author);
           const currentUserId = user?.feishu_id || user?.id;
@@ -884,8 +908,8 @@ const InstalledAppsPage: React.FC = () => {
 
   const getAppTypeTag = useCallback((appType: AppType) => {
     switch (appType) {
-      case 'installed':
-        return <Tag color="blue" style={{ margin: 0 }}>{t('workbench.tagFavorited')}</Tag>;
+      case 'published':
+        return <Tag color="green" style={{ margin: 0 }}>{t('workbench.tagPublished')}</Tag>;
       case 'draft':
         return <Tag color="orange" style={{ margin: 0 }}>{t('workbench.tagDraft')}</Tag>;
       case 'local':
@@ -1167,12 +1191,12 @@ const InstalledAppsPage: React.FC = () => {
             ]}
           />
           {!isLocalMode && (
-            <Button icon={<CompassOutlined />} onClick={() => navigate('/workbench/library')}>
+            <Button icon={<CompassOutlined />} onClick={() => navigate('/workbench/library', { state: { from: '/workbench/installed' } })}>
               {t('workbench.discover')}
             </Button>
           )}
           <Space.Compact>
-            <Button icon={<SnippetsOutlined />} onClick={() => navigate('/workbench/my-contributions')}>
+            <Button icon={<SnippetsOutlined />} onClick={() => navigate('/workbench/my-contributions', { state: { from: '/workbench/installed' } })}>
               {t('workbench.mine')}
             </Button>
             <Button icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>

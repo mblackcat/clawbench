@@ -27,7 +27,11 @@ const AppPublisher: React.FC = () => {
   const t = useT()
   const { loggedIn, isLocalMode } = useAuthStore()
   const canPublish = loggedIn && !isLocalMode
-  const initialAppId = (location.state as { appId?: string })?.appId
+  const initialState = location.state as { appId?: string; from?: string } | null
+  const initialAppId = initialState?.appId
+  // Where to return to. Falls back to /workbench/my-contributions so direct
+  // URL entry never strands the user with navigate(-1) → blank page.
+  const backTarget = initialState?.from || '/workbench/my-contributions'
 
   const getTypeLabel = (type?: string): string => {
     switch (type) {
@@ -156,6 +160,18 @@ const AppPublisher: React.FC = () => {
         t('appPublisher.changelog', manifest.name, manifest.version)
       )
 
+      // Write back published=true to the local manifest so other pages
+      // (收藏栏, 我的) can immediately reflect the published state without
+      // waiting on a server refetch. Combined with the server-side
+      // published-name set they already use, this is belt + suspenders.
+      try {
+        await window.api.developer.updateApp(selectedAppId, { ...manifest, published: true })
+      } catch (writebackErr) {
+        // Non-fatal: server-side set will still mark it as published on
+        // next fetch. Just log.
+        console.warn('Failed to write back published flag:', writebackErr)
+      }
+
       setCurrentStep(3)
       setPublishResult({
         status: 'success',
@@ -187,6 +203,57 @@ const AppPublisher: React.FC = () => {
   }
 
   if (publishResult) {
+    const isSkillType = selectedApp?.type === 'ai-skill'
+    const isPromptType = selectedApp?.type === 'prompt'
+    const isLinkType = selectedApp?.type === 'link'
+    const isAppType = !selectedApp?.type || selectedApp?.type === 'app'
+    // Build exit buttons. Always include "去发现" and "去我的"; also offer
+    // a context-aware "back to editor" so the user isn't forced to lose
+    // their place after a publish.
+    const editorButton = selectedAppId
+      ? isAppType
+        ? (
+          <Button
+            key="editor"
+            type="primary"
+            onClick={() => navigate(`/developer/code/${selectedAppId}`, { state: { from: '/developer/publish' } })}
+          >
+            {t('appPublisher.backToCodeEditor')}
+          </Button>
+        )
+        : isSkillType
+          ? (
+            <Button
+              key="editor"
+              type="primary"
+              onClick={() => navigate('/developer/new-skill', { state: { appId: selectedAppId, from: '/developer/publish' } })}
+            >
+              {t('appPublisher.backToSkillEditor')}
+            </Button>
+          )
+          : isPromptType
+            ? (
+              <Button
+                key="editor"
+                type="primary"
+                onClick={() => navigate('/developer/new-prompt', { state: { appId: selectedAppId, from: '/developer/publish' } })}
+              >
+                {t('appPublisher.backToPromptEditor')}
+              </Button>
+            )
+            : isLinkType
+              ? (
+                <Button
+                  key="editor"
+                  type="primary"
+                  onClick={() => navigate('/developer/new-link', { state: { appId: selectedAppId, from: '/developer/publish' } })}
+                >
+                  {t('appPublisher.backToLinkEditor')}
+                </Button>
+              )
+              : null
+      : null
+
     return (
       <div style={{ maxWidth: 600, margin: '0 auto' }}>
         <Result
@@ -194,16 +261,20 @@ const AppPublisher: React.FC = () => {
           title={publishResult.status === 'success' ? t('appPublisher.resultSuccess') : t('appPublisher.resultError')}
           subTitle={publishResult.message}
           extra={[
-            <Button key="back" onClick={() => navigate('/workbench/library')}>
+            <Button key="back" onClick={() => navigate(backTarget)}>
+              {t('common.back')}
+            </Button>,
+            <Button key="discover" onClick={() => navigate('/workbench/library')}>
               {t('appPublisher.backToDiscover')}
             </Button>,
             <Button
               key="mine"
-              type="primary"
+              type={editorButton ? 'default' : 'primary'}
               onClick={() => navigate('/workbench/my-contributions')}
             >
               {t('appPublisher.backToMine')}
-            </Button>
+            </Button>,
+            editorButton
           ]}
         />
       </div>
@@ -215,7 +286,7 @@ const AppPublisher: React.FC = () => {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
         <Button
           icon={<ArrowLeftOutlined />}
-          onClick={() => navigate(-1)}
+          onClick={() => navigate(backTarget)}
         >
           {t('common.back')}
         </Button>
