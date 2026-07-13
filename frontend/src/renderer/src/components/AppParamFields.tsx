@@ -224,16 +224,16 @@ const AppParamFields = forwardRef<AppParamFieldsHandle, AppParamFieldsProps>(
     const renderField = (param: ParamDef): React.ReactNode => {
       switch (param.type) {
         case 'string':
-          return <Input placeholder={`请输入${param.label}`} />
+          return <Input placeholder={t('paramField.inputPlaceholder', param.label)} />
 
         case 'text':
-          return <Input.TextArea rows={4} placeholder={`请输入${param.label}`} />
+          return <Input.TextArea rows={4} placeholder={t('paramField.inputPlaceholder', param.label)} />
 
         case 'number':
           return (
             <InputNumber
               style={{ width: '100%' }}
-              placeholder={`请输入${param.label}`}
+              placeholder={t('paramField.inputPlaceholder', param.label)}
             />
           )
 
@@ -242,7 +242,7 @@ const AppParamFields = forwardRef<AppParamFieldsHandle, AppParamFieldsProps>(
 
         case 'enum':
           return (
-            <Select placeholder={`请选择${param.label}`}>
+            <Select placeholder={t('paramField.selectPlaceholder', param.label)}>
               {(dynamicOptionsByParam[param.name]?.options ?? param.options ?? []).map((opt) => (
                 <Select.Option key={opt} value={opt}>
                   {opt}
@@ -254,7 +254,7 @@ const AppParamFields = forwardRef<AppParamFieldsHandle, AppParamFieldsProps>(
         case 'path':
           return (
             <Input
-              placeholder={`请选择${param.label}`}
+              placeholder={t('paramField.selectPlaceholder', param.label)}
               readOnly
               addonAfter={
                 <Button
@@ -264,14 +264,14 @@ const AppParamFields = forwardRef<AppParamFieldsHandle, AppParamFieldsProps>(
                   onClick={() => handleSelectDirectory(param.name)}
                   style={{ padding: 0, height: 'auto' }}
                 >
-                  浏览
+                  {t('paramField.browse')}
                 </Button>
               }
             />
           )
 
         default:
-          return <Input placeholder={`请输入${param.label}`} />
+          return <Input placeholder={t('paramField.inputPlaceholder', param.label)} />
       }
     }
 
@@ -286,7 +286,7 @@ const AppParamFields = forwardRef<AppParamFieldsHandle, AppParamFieldsProps>(
               name={param.name}
               label={renderLabel(param)}
               labelCol={{ style: { width: '100%' } }}
-              rules={[{ required: param.required, message: `${param.label}为必填项` }]}
+              rules={[{ required: param.required, message: t('paramField.required', param.label) }]}
               valuePropName={param.type === 'boolean' ? 'checked' : 'value'}
             >
               {renderField(param)}

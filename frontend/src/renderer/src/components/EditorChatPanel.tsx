@@ -23,6 +23,7 @@ import ThinkingBlock from './ThinkingBlock'
 import ModelSelector from '../pages/AIChat/ModelSelector'
 import { SUBAPP_CHAT_SYSTEM_PROMPT, SUBAPP_CHAT_TOOLS } from '../skills/subappCreateSkill'
 import { apiClient, API_BASE_URL } from '../services/apiClient'
+import { useT } from '../i18n'
 import '../pages/AIChat/chat-styles.css'
 
 const { TextArea } = Input
@@ -47,10 +48,10 @@ interface ChatMsg {
 }
 
 const TOOL_LABELS: Record<string, string> = {
-  list_files: '列出文件',
-  read_file: '读取文件',
-  write_file: '写入文件',
-  create_folder: '新建文件夹'
+  list_files: 'editor.toolListFiles',
+  read_file: 'editor.toolReadFile',
+  write_file: 'editor.toolWriteFile',
+  create_folder: 'editor.toolCreateFolder'
 }
 
 const TOOL_ICONS: Record<string, React.ReactNode> = {
@@ -83,6 +84,7 @@ const EditorChatPanel: React.FC<EditorChatPanelProps> = ({
   onClose
 }) => {
   const { token } = theme.useToken()
+  const t = useT()
   const [messages, setMessages] = useState<ChatMsg[]>([])
   const [inputValue, setInputValue] = useState('')
   const [streaming, setStreaming] = useState(false)
@@ -138,7 +140,7 @@ const EditorChatPanel: React.FC<EditorChatPanelProps> = ({
             isDirectory: boolean
           }>
           const lines = list.map((f) => (f.isDirectory ? `${f.name}/` : f.name))
-          return { result: lines.length ? lines.join('\n') : '(空目录)', isError: false }
+          return { result: lines.length ? lines.join('\n') : t('editor.toolEmptyDir'), isError: false }
         }
         if (toolName === 'read_file') {
           const content = (await window.api.developer.readFile(joinRel(appPath, input.path))) as string
@@ -147,19 +149,19 @@ const EditorChatPanel: React.FC<EditorChatPanelProps> = ({
         if (toolName === 'write_file') {
           await window.api.developer.writeFile(joinRel(appPath, input.path), String(input.content ?? ''))
           onFilesChanged()
-          return { result: `已写入 ${input.path}`, isError: false }
+          return { result: t('editor.toolWritten', String(input.path)), isError: false }
         }
         if (toolName === 'create_folder') {
           await window.api.developer.createFolder(joinRel(appPath, input.path))
           onFilesChanged()
-          return { result: `已创建文件夹 ${input.path}`, isError: false }
+          return { result: t('editor.toolFolderCreated', String(input.path)), isError: false }
         }
-        return { result: `未知工具: ${toolName}`, isError: true }
+        return { result: t('editor.toolUnknown', String(toolName)), isError: true }
       } catch (err: any) {
         return { result: err?.message || String(err), isError: true }
       }
     },
-    [appId, appPath, onFilesChanged]
+    [appId, appPath, onFilesChanged, t]
   )
 
   const streamOneRound = useCallback(
@@ -371,7 +373,7 @@ const EditorChatPanel: React.FC<EditorChatPanelProps> = ({
           id: `a-${Date.now()}`,
           role: 'assistant',
           content:
-            '⚠️ 未找到可用模型。请在「设置 → AI 模型」中添加并启用一个模型（如 Claude / OpenAI / Gemini），然后重试。'
+            t('editor.noModelError')
         }
       ])
       setInputValue('')
@@ -470,7 +472,7 @@ const EditorChatPanel: React.FC<EditorChatPanelProps> = ({
           {
             id: `e-${Date.now()}`,
             role: 'assistant',
-            content: `❌ 出错了：${err?.message || String(err)}`,
+            content: t('editor.streamError', String(err?.message || String(err))),
             tools: accumulatedTools.length ? [...accumulatedTools] : undefined
           }
         ])
@@ -482,7 +484,7 @@ const EditorChatPanel: React.FC<EditorChatPanelProps> = ({
       setStreaming(false)
       forceUpdate()
     }
-  }, [inputValue, streaming, messages, resolveModel, streamOneRound, streamBuiltinOneRound, executeTool, forceUpdate])
+  }, [inputValue, streaming, messages, resolveModel, streamOneRound, streamBuiltinOneRound, executeTool, forceUpdate, t])
 
   const handleCancel = useCallback(() => {
     cancelledRef.current = true
@@ -528,7 +530,7 @@ const EditorChatPanel: React.FC<EditorChatPanelProps> = ({
         }}
       >
         {TOOL_ICONS[tr.name]}
-        <span>{TOOL_LABELS[tr.name] || tr.name}</span>
+        <span>{(TOOL_LABELS[tr.name] && t(TOOL_LABELS[tr.name])) || tr.name}</span>
         {detail && <Text code style={{ fontSize: 11 }}>{detail}</Text>}
         <span style={{ marginLeft: 'auto' }}>{statusIcon}</span>
       </div>
@@ -542,7 +544,7 @@ const EditorChatPanel: React.FC<EditorChatPanelProps> = ({
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
           {isUser ? null : <RobotOutlined style={{ color: token.colorPrimary }} />}
           <Text type="secondary" style={{ fontSize: 12 }}>
-            {isUser ? '你' : 'AI 编码助手'}
+            {isUser ? t('editor.roleYou') : t('editor.assistantName')}
           </Text>
         </div>
         {m.thinking && <ThinkingBlock content={m.thinking} isStreaming={false} />}
@@ -594,13 +596,13 @@ const EditorChatPanel: React.FC<EditorChatPanelProps> = ({
       >
         <RobotOutlined style={{ color: token.colorPrimary }} />
         <Text strong style={{ flex: 1 }}>
-          AI 编码
+          {t('editor.title')}
         </Text>
         <ModelSelector size="small" />
-        <Tooltip title="清空对话">
+        <Tooltip title={t('editor.clearChat')}>
           <Button type="text" size="small" icon={<ClearOutlined />} onClick={handleClear} disabled={streaming} />
         </Tooltip>
-        <Tooltip title="关闭面板">
+        <Tooltip title={t('editor.closePanel')}>
           <Button type="text" size="small" icon={<CloseOutlined />} onClick={onClose} />
         </Tooltip>
       </div>
@@ -612,7 +614,7 @@ const EditorChatPanel: React.FC<EditorChatPanelProps> = ({
             image={Empty.PRESENTED_IMAGE_SIMPLE}
             description={
               <span style={{ fontSize: 12, color: token.colorTextSecondary }}>
-                让 AI 帮你读写当前子应用的文件、实现功能、修复问题。
+                {t('editor.emptyHint')}
               </span>
             }
             style={{ marginTop: 48 }}
@@ -627,7 +629,7 @@ const EditorChatPanel: React.FC<EditorChatPanelProps> = ({
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
               <RobotOutlined style={{ color: token.colorPrimary }} />
               <Text type="secondary" style={{ fontSize: 12 }}>
-                AI 编码助手
+                {t('editor.assistantName')}
               </Text>
             </div>
             {streamingThinkingRef.current && (
@@ -647,7 +649,7 @@ const EditorChatPanel: React.FC<EditorChatPanelProps> = ({
             ) : (
               !streamingToolsRef.current.length && (
                 <Text type="secondary" style={{ fontSize: 12 }}>
-                  <LoadingOutlined /> 思考中...
+                  <LoadingOutlined /> {t('editor.thinking')}
                 </Text>
               )
             )}
@@ -662,18 +664,18 @@ const EditorChatPanel: React.FC<EditorChatPanelProps> = ({
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="描述你想实现的功能或要修改的内容...（Enter 发送，Shift+Enter 换行）"
+          placeholder={t('editor.inputPlaceholder')}
           autoSize={{ minRows: 2, maxRows: 6 }}
           disabled={streaming}
         />
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
           {streaming ? (
             <Button danger icon={<StopOutlined />} onClick={handleCancel}>
-              停止
+              {t('editor.stop')}
             </Button>
           ) : (
             <Button type="primary" icon={<SendOutlined />} onClick={handleSend} disabled={!inputValue.trim()}>
-              发送
+              {t('editor.send')}
             </Button>
           )}
         </div>

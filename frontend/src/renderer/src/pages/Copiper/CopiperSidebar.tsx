@@ -11,8 +11,10 @@ import {
 } from '@ant-design/icons'
 import { useCopiperStore } from '../../stores/useCopiperStore'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
+import { useT } from '../../i18n'
 
 const CopiperSidebar: React.FC = () => {
+  const t = useT()
   const { token } = theme.useToken()
   const { message, modal } = App.useApp()
 
@@ -164,9 +166,9 @@ const CopiperSidebar: React.FC = () => {
     try {
       await createDatabase(filePath, newTableInDbName.trim())
       await fetchDatabases(activeWorkspace.path)
-      message.success('JDB 文件已创建')
+      message.success(t('copiper.dbCreated'))
     } catch {
-      message.error('创建 JDB 文件失败')
+      message.error(t('copiper.dbCreateFailed'))
     }
     setNewDbOpen(false)
     setNewDbName('')
@@ -176,20 +178,20 @@ const CopiperSidebar: React.FC = () => {
   const handleDeleteDb = (filePath: string) => {
     const db = databases.find((d) => d.filePath === filePath)
     modal.confirm({
-      title: '确认删除',
-      content: `确定要删除 ${db?.fileName || filePath} 吗？此操作不可撤销。`,
-      okText: '删除',
+      title: t('common.delete'),
+      content: t('copiper.confirmDeleteDb', db?.fileName || filePath),
+      okText: t('common.delete'),
       okType: 'danger',
-      cancelText: '取消',
+      cancelText: t('common.cancel'),
       onOk: async () => {
         try {
           await deleteDatabase(filePath)
           if (activeWorkspace) {
             await fetchDatabases(activeWorkspace.path)
           }
-          message.success('JDB 文件已删除')
+          message.success(t('copiper.dbDeleted'))
         } catch {
-          message.error('删除 JDB 文件失败')
+          message.error(t('copiper.dbDeleteFailed'))
         }
       }
     })
@@ -202,9 +204,9 @@ const CopiperSidebar: React.FC = () => {
       if (activeWorkspace) {
         await fetchDatabases(activeWorkspace.path)
       }
-      message.success('表已添加')
+      message.success(t('copiper.tableAdded'))
     } catch {
-      message.error('添加表失败')
+      message.error(t('copiper.tableAddFailed'))
     }
     setNewTableOpen(false)
     setNewTableName('')
@@ -212,11 +214,11 @@ const CopiperSidebar: React.FC = () => {
 
   const handleRemoveTable = (filePath: string, tableName: string) => {
     modal.confirm({
-      title: '确认删除表',
-      content: `确定要删除表 "${tableName}" 吗？此操作不可撤销。`,
-      okText: '删除',
+      title: t('copiper.confirmDeleteTableTitle'),
+      content: t('copiper.confirmDeleteTable', tableName),
+      okText: t('common.delete'),
       okType: 'danger',
-      cancelText: '取消',
+      cancelText: t('common.cancel'),
       onOk: async () => {
         try {
           if (filePath !== activeFilePath) {
@@ -226,9 +228,9 @@ const CopiperSidebar: React.FC = () => {
           if (activeWorkspace) {
             await fetchDatabases(activeWorkspace.path)
           }
-          message.success('表已删除')
+          message.success(t('copiper.tableDeleted'))
         } catch {
-          message.error('删除表失败')
+          message.error(t('copiper.tableDeleteFailed'))
         }
       }
     })
@@ -241,9 +243,9 @@ const CopiperSidebar: React.FC = () => {
       if (activeWorkspace) {
         await fetchDatabases(activeWorkspace.path)
       }
-      message.success('表已重命名')
+      message.success(t('copiper.tableRenamed'))
     } catch {
-      message.error('重命名表失败')
+      message.error(t('copiper.tableRenameFailed'))
     }
     setRenameOpen(false)
     setRenameValue('')
@@ -253,7 +255,7 @@ const CopiperSidebar: React.FC = () => {
     {
       key: 'new-db',
       icon: <PlusOutlined />,
-      label: '新建 JDB 文件',
+      label: t('copiper.newDb'),
       onClick: () => {
         setNewDbName('')
         setNewTableInDbName('')
@@ -263,7 +265,7 @@ const CopiperSidebar: React.FC = () => {
     {
       key: 'new-table',
       icon: <PlusOutlined />,
-      label: '新建表',
+      label: t('copiper.newTable'),
       disabled: !contextMenuTarget,
       onClick: () => {
         if (!contextMenuTarget) return
@@ -279,7 +281,7 @@ const CopiperSidebar: React.FC = () => {
     {
       key: 'delete-db',
       icon: <DeleteOutlined />,
-      label: '删除 JDB 文件',
+      label: t('copiper.deleteDb'),
       danger: true,
       disabled: !contextMenuTarget,
       onClick: () => {
@@ -294,7 +296,7 @@ const CopiperSidebar: React.FC = () => {
     {
       key: 'rename-table',
       icon: <EditOutlined />,
-      label: '重命名表',
+      label: t('copiper.renameTable'),
       onClick: () => {
         if (contextMenuTarget?.tableName) {
           setRenameValue(contextMenuTarget.tableName)
@@ -306,7 +308,7 @@ const CopiperSidebar: React.FC = () => {
     {
       key: 'delete-table',
       icon: <DeleteOutlined />,
-      label: '删除表',
+      label: t('copiper.deleteTable'),
       danger: true,
       onClick: () => {
         if (contextMenuTarget?.tableName) {
@@ -342,7 +344,7 @@ const CopiperSidebar: React.FC = () => {
           alignItems: 'center'
         }}
       >
-        <span>JDB 文件</span>
+        <span>{t('copiper.jdbFiles')}</span>
         <PlusOutlined
           style={{ cursor: 'pointer', color: token.colorPrimary }}
           onClick={() => {
@@ -357,7 +359,7 @@ const CopiperSidebar: React.FC = () => {
       <div style={{ padding: '6px 8px 4px' }}>
         <Input
           size="small"
-          placeholder="搜索过滤 (支持正则)"
+          placeholder={t('copiper.searchFilterPlaceholder')}
           prefix={<SearchOutlined style={{ color: token.colorTextQuaternary, fontSize: 12 }} />}
           allowClear
           value={filterText}
@@ -424,28 +426,28 @@ const CopiperSidebar: React.FC = () => {
 
       {/* New JDB Dialog */}
       <Modal
-        title="新建 JDB 文件"
+        title={t('copiper.newDb')}
         open={newDbOpen}
         onCancel={() => setNewDbOpen(false)}
         onOk={handleCreateDb}
-        okText="创建"
-        cancelText="取消"
+        okText={t('common.create')}
+        cancelText={t('common.cancel')}
         okButtonProps={{ disabled: !newDbName.trim() || !newTableInDbName.trim() }}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div>
-            <div style={{ marginBottom: 4, color: token.colorText }}>文件名</div>
+            <div style={{ marginBottom: 4, color: token.colorText }}>{t('copiper.fileName')}</div>
             <Input
-              placeholder="例如: CropData"
+              placeholder={t('copiper.fileNamePlaceholder')}
               value={newDbName}
               onChange={(e) => setNewDbName(e.target.value)}
               suffix=".jdb"
             />
           </div>
           <div>
-            <div style={{ marginBottom: 4, color: token.colorText }}>初始表名</div>
+            <div style={{ marginBottom: 4, color: token.colorText }}>{t('copiper.initialTableName')}</div>
             <Input
-              placeholder="例如: CropData"
+              placeholder={t('copiper.fileNamePlaceholder')}
               value={newTableInDbName}
               onChange={(e) => setNewTableInDbName(e.target.value)}
             />
@@ -455,18 +457,18 @@ const CopiperSidebar: React.FC = () => {
 
       {/* New Table Dialog */}
       <Modal
-        title="新建表"
+        title={t('copiper.newTable')}
         open={newTableOpen}
         onCancel={() => setNewTableOpen(false)}
         onOk={handleAddTable}
-        okText="创建"
-        cancelText="取消"
+        okText={t('common.create')}
+        cancelText={t('common.cancel')}
         okButtonProps={{ disabled: !newTableName.trim() }}
       >
         <div>
-          <div style={{ marginBottom: 4, color: token.colorText }}>表名</div>
+          <div style={{ marginBottom: 4, color: token.colorText }}>{t('copiper.tableName')}</div>
           <Input
-            placeholder="例如: ItemData"
+            placeholder={t('copiper.tableNamePlaceholder')}
             value={newTableName}
             onChange={(e) => setNewTableName(e.target.value)}
           />
@@ -475,16 +477,16 @@ const CopiperSidebar: React.FC = () => {
 
       {/* Rename Table Dialog */}
       <Modal
-        title="重命名表"
+        title={t('copiper.renameTable')}
         open={renameOpen}
         onCancel={() => setRenameOpen(false)}
         onOk={handleRenameTable}
-        okText="确定"
-        cancelText="取消"
+        okText={t('common.confirm')}
+        cancelText={t('common.cancel')}
         okButtonProps={{ disabled: !renameValue.trim() }}
       >
         <div>
-          <div style={{ marginBottom: 4, color: token.colorText }}>新表名</div>
+          <div style={{ marginBottom: 4, color: token.colorText }}>{t('copiper.newTableName')}</div>
           <Input
             value={renameValue}
             onChange={(e) => setRenameValue(e.target.value)}

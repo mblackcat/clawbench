@@ -3,6 +3,7 @@ import { Result, Spin, App, theme } from 'antd'
 import { InboxOutlined } from '@ant-design/icons'
 import { useCopiperStore } from '../../stores/useCopiperStore'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
+import { useT } from '../../i18n'
 import CopiperSidebar from './CopiperSidebar'
 import CopiperToolbar from './CopiperToolbar'
 import CopiperTable from './CopiperTable'
@@ -13,6 +14,7 @@ import RowDetailDrawer from './RowDetailDrawer'
 import ValidationPanel from './ValidationPanel'
 
 const CopiperPage: React.FC = () => {
+  const t = useT()
   const { token } = theme.useToken()
   const { message } = App.useApp()
 
@@ -46,8 +48,8 @@ const CopiperPage: React.FC = () => {
         e.preventDefault()
         if (dirty) {
           saveCurrentDatabase()
-            .then(() => message.success('已保存'))
-            .catch(() => message.error('保存失败'))
+            .then(() => message.success(t('common.saved')))
+            .catch(() => message.error(t('common.saveFailed')))
         }
       }
     },
@@ -73,9 +75,9 @@ const CopiperPage: React.FC = () => {
   const handleSave = async () => {
     try {
       await saveCurrentDatabase()
-      message.success('已保存')
+      message.success(t('common.saved'))
     } catch {
-      message.error('保存失败')
+      message.error(t('common.saveFailed'))
     }
   }
 
@@ -94,8 +96,8 @@ const CopiperPage: React.FC = () => {
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
         <Result
           icon={<InboxOutlined />}
-          title="请先选择工作区"
-          subTitle="在左侧菜单中选择或创建一个工作区后即可使用配表工具"
+          title={t('copiper.selectWorkspaceFirst')}
+          subTitle={t('copiper.selectWorkspaceHint')}
         />
       </div>
     )
@@ -160,7 +162,7 @@ const CopiperPage: React.FC = () => {
                 icon={<InboxOutlined style={{ color: token.colorTextQuaternary }} />}
                 title={
                   <span style={{ color: token.colorTextSecondary }}>
-                    {activeDatabase ? '请选择一张表' : '请选择一个 JDB 文件'}
+                    {activeDatabase ? t('copiper.selectTable') : t('copiper.selectJdbFile')}
                   </span>
                 }
               />

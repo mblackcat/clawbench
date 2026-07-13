@@ -10,7 +10,7 @@ import {
 } from '@ant-design/icons'
 import { useAITerminalStore } from '../../stores/useAITerminalStore'
 import { useAIModelStore } from '../../stores/useAIModelStore'
-import { useT } from '../../i18n'
+import { useT, getT } from '../../i18n'
 import type { TerminalAIMessage } from '../../types/ai-terminal'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -80,14 +80,14 @@ const DB_TOOLS = [
   }
 ]
 
-// Tool display name mapping
+// Tool display name mapping (i18n keys)
 const TOOL_LABELS: Record<string, string> = {
-  terminal_execute: '执行命令',
-  terminal_read_output: '读取终端',
-  db_query: '查询数据',
-  db_execute: '执行 SQL',
-  db_get_tables: '获取表列表',
-  db_get_schema: '获取表结构',
+  terminal_execute: 'terminal.tool.execCmd',
+  terminal_read_output: 'terminal.tool.readOutput',
+  db_query: 'terminal.tool.queryData',
+  db_execute: 'terminal.tool.execSQL',
+  db_get_tables: 'terminal.tool.getTables',
+  db_get_schema: 'terminal.tool.getSchema',
 }
 
 // Streaming tool call state
@@ -102,9 +102,11 @@ interface StreamingToolCall {
 // ── ToolCallCard (compact inline) ───────────────────────────────────────────
 function ToolCallInline({ tc }: { tc: StreamingToolCall | NonNullable<TerminalAIMessage['toolCalls']>[number] }) {
   const { token } = theme.useToken()
+  const t = useT()
   const [expanded, setExpanded] = useState(false)
   const status = 'status' in tc ? tc.status : (tc.isError ? 'error' : (tc.result !== undefined ? 'completed' : 'running'))
-  const label = TOOL_LABELS[tc.name] || tc.name
+  const labelKey = TOOL_LABELS[tc.name]
+  const label = labelKey ? t(labelKey) : tc.name
   const preview = tc.input?.command || tc.input?.sql || tc.input?.table || ''
 
   return (
@@ -330,15 +332,16 @@ const AIAssistantPanel: React.FC = () => {
     toolName: string, input: Record<string, any>, tabId: string, dbConnId?: string
   ): Promise<{ result: string; isError: boolean }> => {
     try {
+      const tt = getT()
       if (toolName === 'terminal_execute') {
         const execResult = await window.api.aiTerminal.aiExecuteCommand(tabId, input.command as string)
         return {
-          result: execResult.success ? (execResult.output || '命令已执行') : (execResult.error || '执行失败'),
+          result: execResult.success ? (execResult.output || tt('terminal.cmdExecuted')) : (execResult.error || tt('terminal.execFailed')),
           isError: !execResult.success
         }
       } else if (toolName === 'terminal_read_output') {
         const output = await window.api.aiTerminal.getTerminalOutput(tabId)
-        return { result: output.slice(-3000) || '(无输出)', isError: false }
+        return { result: output.slice(-3000) || tt('terminal.noOutput'), isError: false }
       } else if (toolName === 'db_query' && dbConnId) {
         const qResult = await window.api.aiTerminal.queryDB(dbConnId, input.sql as string)
         const maxRows = qResult.rows.slice(0, 50)
@@ -356,7 +359,7 @@ const AIAssistantPanel: React.FC = () => {
         const schema = await window.api.aiTerminal.getDBTableSchema(dbConnId, input.table as string)
         return { result: JSON.stringify(schema, null, 2), isError: false }
       }
-      return { result: '未知工具或缺少连接', isError: true }
+      return { result: tt('terminal.unknownToolNoConn'), isError: true }
     } catch (err: any) {
       return { result: err.message || String(err), isError: true }
     }
@@ -659,7 +662,7 @@ const AIAssistantPanel: React.FC = () => {
       }
       addAIMessage(effectiveTabId, assistantMsg)
     } catch (err: any) {
-      const content = streamingContentRef.current || `请求失败: ${err.message || String(err)}`
+      const content = streamingContentRef.current || t('terminal.requestFailed', err.message || String(err))
       const errorMsg: TerminalAIMessage = {
         id: `msg-${Date.now()}`,
         role: 'assistant',
@@ -697,9 +700,9 @@ const AIAssistantPanel: React.FC = () => {
     }
     // Break the pending streamOneRound Promise (main process won't send done/error on abort)
     if (rejectStreamRef.current) {
-      rejectStreamRef.current(new Error('已取消'))
+      rejectStreamRef.current(new Error(t('terminal.cancelled')))
     }
-  }, [])
+  }, [t])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -761,7 +764,7 @@ const AIAssistantPanel: React.FC = () => {
                   transition: 'all 0.2s',
                 }}
               >
-                <ConsoleSqlOutlined style={{ fontSize: 10 }} /> SQL Executor
+                <ConsoleSqlOutlined style={{ fontSize: 10 }} /> {t('terminal.sqlExecutor')}
               </button>
               <button
                 onClick={() => setBottomTab('ai')}
@@ -813,7 +816,7 @@ const AIAssistantPanel: React.FC = () => {
                   transition: 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
                   zIndex: 0,
                 }} />
-                <Tooltip title="快速模式">
+                <Tooltip title={t('terminal.fastMode')}>
                   <button
                     onClick={() => setChatMode('fast')}
                     style={{
@@ -829,7 +832,7 @@ const AIAssistantPanel: React.FC = () => {
                     <ThunderboltOutlined />
                   </button>
                 </Tooltip>
-                <Tooltip title="深度思考">
+                <Tooltip title={t('terminal.deepThinking')}>
                   <button
                     onClick={() => setChatMode('thinking')}
                     style={{
@@ -846,7 +849,7 @@ const AIAssistantPanel: React.FC = () => {
                   </button>
                 </Tooltip>
               </div>
-              <Tooltip title={toolsEnabled ? '工具已启用' : '工具已禁用'}>
+              <Tooltip title={toolsEnabled ? t('terminal.toolsEnabled') : t('terminal.toolsDisabled')}>
                 <Button
                   type="text"
                   size="small"
@@ -860,7 +863,7 @@ const AIAssistantPanel: React.FC = () => {
               </Tooltip>
             </>
           )}
-          <Tooltip title={collapsed ? '展开' : '收起'}>
+          <Tooltip title={collapsed ? t('terminal.expand') : t('terminal.collapse')}>
             <Button
               type="text"
               size="small"
@@ -908,7 +911,7 @@ const AIAssistantPanel: React.FC = () => {
               gap: 4
             }}>
               <Text type="secondary" style={{ fontSize: 11 }}>
-                已选中 {selectedText.length} 字符
+                {t('terminal.selectedChars', selectedText.length)}
               </Text>
               <Button
                 type="text"
@@ -927,8 +930,8 @@ const AIAssistantPanel: React.FC = () => {
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={isDBMode
-                ? '用自然语言查询或修改数据...'
-                : '输入需求，AI 可以自动在终端中执行命令...'}
+                ? t('terminal.dbInputPlaceholder')
+                : t('terminal.cmdInputPlaceholder')}
               autoSize={{ minRows: 2, maxRows: 4 }}
               style={{ fontSize: 12 }}
               disabled={aiStreaming}
@@ -965,7 +968,7 @@ const AIAssistantPanel: React.FC = () => {
               value={sqlInput}
               onChange={e => setSqlInput(e.target.value)}
               onKeyDown={handleSQLKeyDown}
-              placeholder="输入 SQL 语句... (⌘+Enter 执行)"
+              placeholder={t('terminal.sqlInputPlaceholder')}
               autoSize={{ minRows: 2, maxRows: 6 }}
               style={{ fontSize: 12, fontFamily: MONO_FONT_STACK }}
             />

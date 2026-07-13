@@ -1,6 +1,7 @@
 import React from 'react'
 import { Modal, Descriptions, Typography, Space } from 'antd'
 import { ExclamationCircleOutlined } from '@ant-design/icons'
+import { useT } from '../i18n'
 
 const { Text } = Typography
 
@@ -19,6 +20,7 @@ const ConfirmRunDialog: React.FC<ConfirmRunDialogProps> = ({
   appName,
   params
 }) => {
+  const t = useT()
   const hasParams = params && Object.keys(params).length > 0
 
   return (
@@ -26,20 +28,20 @@ const ConfirmRunDialog: React.FC<ConfirmRunDialogProps> = ({
       title={
         <Space>
           <ExclamationCircleOutlined style={{ color: '#faad14', fontSize: 20 }} />
-          <span>确认执行</span>
+          <span>{t('confirmRun.title')}</span>
         </Space>
       }
       open={open}
       onOk={onConfirm}
       onCancel={onCancel}
-      okText="执行"
-      cancelText="取消"
+      okText={t('paramDrawer.run')}
+      cancelText={t('common.cancel')}
       centered
       destroyOnHidden
     >
       <div style={{ marginBottom: hasParams ? 16 : 0, marginTop: 8 }}>
         <Text>
-          确定要执行 「<Text strong>{appName}</Text>」 吗？
+          {t('confirmRun.contentPrefix')}<Text strong>{appName}</Text>{t('confirmRun.contentSuffix')}
         </Text>
       </div>
 
@@ -55,8 +57,8 @@ const ConfirmRunDialog: React.FC<ConfirmRunDialogProps> = ({
               <Text style={{ wordBreak: 'break-all' }}>
                 {typeof value === 'boolean'
                   ? value
-                    ? '是'
-                    : '否'
+                    ? t('aiModel.yes')
+                    : t('aiModel.no')
                   : value === null || value === undefined
                     ? '-'
                     : String(value)}

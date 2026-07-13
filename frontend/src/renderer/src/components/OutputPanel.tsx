@@ -14,6 +14,7 @@ import {
 import { useTaskStore } from '../stores/useTaskStore'
 import type { SubAppOutput, TaskStatus } from '../types/subapp'
 import { MONO_FONT_STACK } from '../utils/mono-font'
+import { useT } from '../i18n'
 
 const { Text } = Typography
 
@@ -25,15 +26,16 @@ const STATUS_CONFIG: Record<
   TaskStatus,
   { color: string; label: string; icon: React.ReactNode }
 > = {
-  idle: { color: 'default', label: '空闲', icon: <ClockCircleOutlined /> },
-  running: { color: 'processing', label: '运行中', icon: <LoadingOutlined /> },
-  completed: { color: 'success', label: '已完成', icon: <CheckCircleOutlined /> },
-  failed: { color: 'error', label: '失败', icon: <CloseCircleOutlined /> },
-  cancelled: { color: 'warning', label: '已取消', icon: <MinusCircleOutlined /> }
+  idle: { color: 'default', label: 'output.idle', icon: <ClockCircleOutlined /> },
+  running: { color: 'processing', label: 'logs.running', icon: <LoadingOutlined /> },
+  completed: { color: 'success', label: 'logs.completed', icon: <CheckCircleOutlined /> },
+  failed: { color: 'error', label: 'logs.failed', icon: <CloseCircleOutlined /> },
+  cancelled: { color: 'warning', label: 'logs.cancelled', icon: <MinusCircleOutlined /> }
 }
 
 const OutputLine: React.FC<{ output: SubAppOutput }> = React.memo(({ output }) => {
   const { token } = theme.useToken()
+  const t = useT()
 
   if (output.type === 'progress') {
     return null // Progress is handled by the header progress bar
@@ -52,7 +54,7 @@ const OutputLine: React.FC<{ output: SubAppOutput }> = React.memo(({ output }) =
         }}
       >
         <Text strong style={{ color: isSuccess ? token.colorSuccess : token.colorError }}>
-          {isSuccess ? '[完成] ' : '[失败] '}
+          {isSuccess ? t('output.completePrefix') : t('output.failedPrefix')}
         </Text>
         <Text style={{ color: isSuccess ? token.colorSuccess : token.colorError }}>
           {output.summary || output.message || ''}
@@ -127,6 +129,7 @@ const OutputPanel: React.FC<OutputPanelProps> = ({ taskId }) => {
   const [collapsed, setCollapsed] = useState(false)
   const outputEndRef = useRef<HTMLDivElement>(null)
   const { token } = theme.useToken()
+  const t = useT()
 
   const task = useTaskStore((state) => (taskId ? state.tasks[taskId] : undefined))
   const setActiveTask = useTaskStore((state) => state.setActiveTask)
@@ -174,7 +177,7 @@ const OutputPanel: React.FC<OutputPanelProps> = ({ taskId }) => {
             flexShrink: 0
           }}
         >
-          <Text type="secondary">输出面板</Text>
+          <Text type="secondary">{t('output.panelTitle')}</Text>
           <Space size={4}>
             <Button
               type="text"
@@ -199,7 +202,7 @@ const OutputPanel: React.FC<OutputPanelProps> = ({ taskId }) => {
               justifyContent: 'center'
             }}
           >
-            <Empty description="暂无运行中的任务" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            <Empty description={t('output.noRunningTasks')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
           </div>
         )}
       </div>
@@ -238,12 +241,12 @@ const OutputPanel: React.FC<OutputPanelProps> = ({ taskId }) => {
 
           {task.scheduled && (
             <Tag icon={<ClockCircleOutlined />} color="purple" style={{ margin: 0 }}>
-              定时
+              {t('output.scheduled')}
             </Tag>
           )}
 
           <Tag icon={statusInfo.icon} color={statusInfo.color} style={{ margin: 0 }}>
-            {statusInfo.label}
+            {t(statusInfo.label)}
           </Tag>
 
           {task.status === 'running' && (
@@ -265,7 +268,7 @@ const OutputPanel: React.FC<OutputPanelProps> = ({ taskId }) => {
               icon={<StopOutlined />}
               onClick={handleCancel}
             >
-              取消
+              {t('common.cancel')}
             </Button>
           )}
           <Button
@@ -303,7 +306,7 @@ const OutputPanel: React.FC<OutputPanelProps> = ({ taskId }) => {
                 justifyContent: 'center'
               }}
             >
-              <Text type="secondary">等待输出...</Text>
+              <Text type="secondary">{t('output.waitingOutput')}</Text>
             </div>
           ) : (
             outputs.map((output, index) => (

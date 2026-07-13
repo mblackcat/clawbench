@@ -3,6 +3,7 @@ import { Input, Modal, Typography, theme } from 'antd'
 import { EditOutlined } from '@ant-design/icons'
 import type { ColDef } from '../../../types/copiper'
 import { MONO_FONT_STACK } from '../../../utils/mono-font'
+import { useT } from '../../../i18n'
 
 const { Text } = Typography
 
@@ -45,6 +46,7 @@ const toDisplayJson = (raw: unknown): string => {
 }
 
 const CKVEditor: React.FC<CKVEditorProps> = ({ value, colDef, onChange, onBlur }) => {
+  const t = useT()
   const { token } = theme.useToken()
   const [modalOpen, setModalOpen] = useState(false)
   const [editText, setEditText] = useState('')
@@ -91,7 +93,7 @@ const CKVEditor: React.FC<CKVEditorProps> = ({ value, colDef, onChange, onBlur }
         <EditOutlined style={{ color: token.colorPrimary, flexShrink: 0 }} />
       </div>
       <Modal
-        title={`编辑 ${className} 数据`}
+        title={t('copiper.editClassData', className)}
         open={modalOpen}
         onOk={handleOk}
         onCancel={() => {
@@ -102,7 +104,7 @@ const CKVEditor: React.FC<CKVEditorProps> = ({ value, colDef, onChange, onBlur }
         destroyOnHidden
       >
         <div style={{ marginBottom: 8 }}>
-          <Text type="secondary">Class: <Text code>{className}</Text></Text>
+          <Text type="secondary">{t('copiper.classLabel')} <Text code>{className}</Text></Text>
         </div>
         <Input.TextArea
           autoFocus

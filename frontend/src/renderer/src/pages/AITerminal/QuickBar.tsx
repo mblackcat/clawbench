@@ -2,6 +2,7 @@ import React from 'react'
 import { Button, Tooltip, Dropdown, theme } from 'antd'
 import { PlusOutlined, ThunderboltOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import { useAITerminalStore } from '../../stores/useAITerminalStore'
+import { useT } from '../../i18n'
 import type { QuickCommand } from '../../types/ai-terminal'
 
 interface Props {
@@ -11,6 +12,7 @@ interface Props {
 
 const QuickBar: React.FC<Props> = ({ onNew, onEdit }) => {
   const { token } = theme.useToken()
+  const t = useT()
   const { quickCommands, activeTabId, executeQuickCommand, deleteQuickCommand } = useAITerminalStore()
 
   // Filter commands applicable to current tab
@@ -39,8 +41,8 @@ const QuickBar: React.FC<Props> = ({ onNew, onEdit }) => {
           trigger={['contextMenu']}
           menu={{
             items: [
-              { key: 'edit', label: '编辑', icon: <EditOutlined /> },
-              { key: 'delete', label: '删除', icon: <DeleteOutlined />, danger: true }
+              { key: 'edit', label: t('terminal.edit'), icon: <EditOutlined /> },
+              { key: 'delete', label: t('common.delete'), icon: <DeleteOutlined />, danger: true }
             ],
             onClick: ({ key }) => {
               if (key === 'edit') onEdit(cmd)
@@ -57,7 +59,7 @@ const QuickBar: React.FC<Props> = ({ onNew, onEdit }) => {
           </Button>
         </Dropdown>
       ))}
-      <Tooltip title="新建快捷命令">
+      <Tooltip title={t('terminal.newQuickCmdTooltip')}>
         <Button
           type="dashed"
           size="small"

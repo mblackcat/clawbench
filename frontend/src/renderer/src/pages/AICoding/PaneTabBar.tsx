@@ -142,7 +142,7 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
     >
       {/* Fixed buttons */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '0 4px 0 8px', flexShrink: 0 }}>
-        <Tooltip title="新建会话">
+        <Tooltip title={t('coding.newSession')}>
           <Button type="text" size="small" icon={<PlusOutlined />} onClick={onNewSession} />
         </Tooltip>
       </div>
@@ -163,11 +163,11 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
           const title = session.title || `#${idx + 1}`
 
           const tabContextMenu = [
-            { key: 'split-right', label: '向右拆分', onClick: () => onSplitRight?.(session.id) },
-            { key: 'split-down', label: '向下拆分', onClick: () => onSplitDown?.(session.id) },
+            { key: 'split-right', label: t('coding.splitRight'), onClick: () => onSplitRight?.(session.id) },
+            { key: 'split-down', label: t('coding.splitDown'), onClick: () => onSplitDown?.(session.id) },
             { type: 'divider' as const },
-            { key: 'close', label: '关闭', onClick: () => onCloseTab(session.id) },
-            { key: 'close-others', label: '关闭其他', onClick: () => {
+            { key: 'close', label: t('coding.close'), onClick: () => onCloseTab(session.id) },
+            { key: 'close-others', label: t('coding.closeOthers'), onClick: () => {
               tabs.forEach(t => { if (t.id !== session.id) onCloseTab(t.id) })
             }},
           ]

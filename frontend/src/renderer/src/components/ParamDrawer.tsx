@@ -123,22 +123,22 @@ const ParamDrawer: React.FC<ParamDrawerProps> = ({
       footer={
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <Space>
-            <Button onClick={onClose}>{manifest?.params?.length ? '取消' : '关闭'}</Button>
+            <Button onClick={onClose}>{manifest?.params?.length ? t('common.cancel') : t('skillDetail.close')}</Button>
             <Button type="primary" onClick={handleSubmit} disabled={isRefreshing}>
-              执行
+              {t('paramDrawer.run')}
             </Button>
           </Space>
         </div>
       }
     >
       <Descriptions column={1} size="small" style={{ marginBottom: 16 }}>
-        <Descriptions.Item label="名称">{manifest?.name}</Descriptions.Item>
-        <Descriptions.Item label="版本">{manifest?.version}</Descriptions.Item>
+        <Descriptions.Item label={t('paramDrawer.name')}>{manifest?.name}</Descriptions.Item>
+        <Descriptions.Item label={t('paramDrawer.version')}>{manifest?.version}</Descriptions.Item>
         {manifest?.description && (
-          <Descriptions.Item label="描述">{manifest.description}</Descriptions.Item>
+          <Descriptions.Item label={t('paramDrawer.description')}>{manifest.description}</Descriptions.Item>
         )}
         {manifest?.author && (
-          <Descriptions.Item label="作者">
+          <Descriptions.Item label={t('paramDrawer.author')}>
             {typeof manifest.author === 'string' ? manifest.author : manifest.author.name}
           </Descriptions.Item>
         )}

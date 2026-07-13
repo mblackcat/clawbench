@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react'
 import { Drawer, Form, Typography, Divider, theme } from 'antd'
 import { useCopiperStore } from '../../stores/useCopiperStore'
+import { useT } from '../../i18n'
 import type { ColDef } from '../../types/copiper'
 import StringEditor from './editors/StringEditor'
 import NumberEditor from './editors/NumberEditor'
@@ -35,10 +36,10 @@ const groupColumns = (columns: ColDef[]): Record<string, ColDef[]> => {
   return groups
 }
 
-const groupLabels: Record<string, string> = {
-  data: 'Data Fields',
-  sup: 'Supplementary Fields',
-  rdesc: 'Description Fields'
+const groupLabelKeys: Record<string, string> = {
+  data: 'copiper.groupDataFields',
+  sup: 'copiper.groupSupplementaryFields',
+  rdesc: 'copiper.groupDescriptionFields'
 }
 
 const getEditorForColumn = (
@@ -69,6 +70,7 @@ const getEditorForColumn = (
 }
 
 const RowDetailDrawer: React.FC<RowDetailDrawerProps> = ({ open, rowIndex, onClose }) => {
+  const t = useT()
   const { token } = theme.useToken()
 
   const activeDatabase = useCopiperStore((s) => s.activeDatabase)
@@ -92,15 +94,15 @@ const RowDetailDrawer: React.FC<RowDetailDrawerProps> = ({ open, rowIndex, onClo
 
   if (!row || rowIndex == null) {
     return (
-      <Drawer title="行详情" open={open} onClose={onClose} width={480}>
-        <Text type="secondary">未选择行</Text>
+      <Drawer title={t('copiper.rowDetail')} open={open} onClose={onClose} width={480}>
+        <Text type="secondary">{t('copiper.noRowSelected')}</Text>
       </Drawer>
     )
   }
 
   return (
     <Drawer
-      title={`第 ${rowIndex + 1} 行 (id: ${row.id})`}
+      title={t('copiper.rowTitle', String(rowIndex + 1), String(row.id))}
       open={open}
       onClose={onClose}
       width={520}
@@ -111,7 +113,7 @@ const RowDetailDrawer: React.FC<RowDetailDrawerProps> = ({ open, rowIndex, onClo
           <div key={groupKey}>
             <Divider orientation="left" style={{ marginTop: 8, marginBottom: 12 }}>
               <Text type="secondary" style={{ fontSize: 12 }}>
-                {groupLabels[groupKey] || groupKey}
+                {(groupLabelKeys[groupKey] && t(groupLabelKeys[groupKey])) || groupKey}
               </Text>
             </Divider>
             {cols.map((col) => (

@@ -710,7 +710,7 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
                               flexShrink: 0,
                               padding: '2px'
                             }}
-                            title="新建会话"
+                            title={t('coding.newSession')}
                             onClick={(e) => {
                               e.stopPropagation()
                               onNewSession(ws.id)

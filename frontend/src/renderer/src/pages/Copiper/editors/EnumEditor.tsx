@@ -1,6 +1,7 @@
 import React from 'react'
 import { Select } from 'antd'
 import type { ColDef } from '../../../types/copiper'
+import { useT } from '../../../i18n'
 
 interface EnumEditorProps {
   value: unknown
@@ -11,6 +12,8 @@ interface EnumEditorProps {
 }
 
 const EnumEditor: React.FC<EnumEditorProps> = ({ value, colDef, onChange, onBlur, autoFocus }) => {
+  const t = useT()
+
   const parseOptions = (): string[] => {
     if (!colDef.options) return []
     if (Array.isArray(colDef.options)) return colDef.options
@@ -21,7 +24,7 @@ const EnumEditor: React.FC<EnumEditorProps> = ({ value, colDef, onChange, onBlur
   const isOptional = colDef.req_or_opt === 'optional'
 
   const selectOptions = [
-    ...(isOptional ? [{ label: '(空)', value: '' }] : []),
+    ...(isOptional ? [{ label: t('copiper.emptyOption'), value: '' }] : []),
     ...options.map((opt) => ({ label: opt, value: opt }))
   ]
 

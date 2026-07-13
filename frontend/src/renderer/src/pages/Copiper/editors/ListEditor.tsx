@@ -3,6 +3,7 @@ import { Tag, Modal, Input, Button, Space, theme } from 'antd'
 import { PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons'
 import type { ColDef } from '../../../types/copiper'
 import { MONO_FONT_STACK } from '../../../utils/mono-font'
+import { useT } from '../../../i18n'
 
 interface ListEditorProps {
   value: unknown
@@ -28,6 +29,7 @@ const parseListValue = (value: unknown): string[] => {
 }
 
 const ListEditor: React.FC<ListEditorProps> = ({ value, colDef, onChange, onBlur }) => {
+  const t = useT()
   const { token } = theme.useToken()
   const [modalOpen, setModalOpen] = useState(false)
   const [items, setItems] = useState<string[]>([])
@@ -73,11 +75,11 @@ const ListEditor: React.FC<ListEditorProps> = ({ value, colDef, onChange, onBlur
           minWidth: 0
         }}
       >
-        <Tag style={{ margin: 0 }}>{currentItems.length} 项</Tag>
+        <Tag style={{ margin: 0 }}>{t('copiper.listItemCount', currentItems.length)}</Tag>
         <EditOutlined style={{ color: token.colorPrimary, flexShrink: 0 }} />
       </div>
       <Modal
-        title={`编辑列表 (${subType || 'items'})`}
+        title={t('copiper.editList', subType || 'items')}
         open={modalOpen}
         onOk={handleOk}
         onCancel={() => {
@@ -116,12 +118,12 @@ const ListEditor: React.FC<ListEditorProps> = ({ value, colDef, onChange, onBlur
             <Input
               size="small"
               value={newItem}
-              placeholder="Add item..."
+              placeholder={t('copiper.addItemPlaceholder')}
               onChange={(e) => setNewItem(e.target.value)}
               onPressEnter={handleAdd}
             />
             <Button size="small" icon={<PlusOutlined />} onClick={handleAdd}>
-              Add
+              {t('copiper.add')}
             </Button>
           </Space.Compact>
         </div>

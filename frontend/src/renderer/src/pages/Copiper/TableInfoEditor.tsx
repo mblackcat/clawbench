@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Modal, Form, Input, InputNumber, Switch, Select, Typography, App, theme } from 'antd'
 import { useCopiperStore } from '../../stores/useCopiperStore'
+import { useT } from '../../i18n'
 import type { TableInfo } from '../../types/copiper'
 
 const { Text } = Typography
@@ -11,6 +12,7 @@ interface TableInfoEditorProps {
 }
 
 const TableInfoEditor: React.FC<TableInfoEditorProps> = ({ open, onClose }) => {
+  const t = useT()
   const { token } = theme.useToken()
   const { message } = App.useApp()
 
@@ -79,10 +81,10 @@ const TableInfoEditor: React.FC<TableInfoEditorProps> = ({ open, onClose }) => {
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await (window.api as any).copiper.saveTableInfos([info as TableInfo])
-        message.success('Table info saved')
+        message.success(t('copiper.tableInfoSaved'))
         onClose()
       } catch (err) {
-        message.error('Failed to save: ' + (err instanceof Error ? err.message : String(err)))
+        message.error(t('copiper.tableInfoSaveFailed', err instanceof Error ? err.message : String(err)))
       } finally {
         setSaving(false)
       }
@@ -93,56 +95,56 @@ const TableInfoEditor: React.FC<TableInfoEditorProps> = ({ open, onClose }) => {
 
   return (
     <Modal
-      title={`表信息: ${activeTableName || '(无)'}`}
+      title={t('copiper.tableInfoTitle', activeTableName || t('copiper.none'))}
       open={open}
       onOk={handleSave}
       onCancel={onClose}
-      okText="保存"
+      okText={t('common.save')}
       okButtonProps={{ loading: saving }}
       width={560}
       destroyOnHidden
     >
       <Form form={form} layout="vertical" size="small">
-        <Form.Item name="db_key" label="DB Key">
+        <Form.Item name="db_key" label={t('copiper.dbKey')}>
           <Input placeholder="{rel_dir}_{db_name}_{tb_name}" />
         </Form.Item>
 
-        <Form.Item name="rel_dir" label="Relative Directory">
-          <Input placeholder="e.g. basic" />
+        <Form.Item name="rel_dir" label={t('copiper.relativeDir')}>
+          <Input placeholder={t('copiper.relativeDirPlaceholder')} />
         </Form.Item>
 
-        <Form.Item name="ptb" label="Table Name" rules={[{ required: true }]}>
+        <Form.Item name="ptb" label={t('copiper.tableName')} rules={[{ required: true }]}>
           <Input />
         </Form.Item>
 
-        <Form.Item name="sheet_name" label="Sheet Name">
-          <Input placeholder="Excel sheet name" />
+        <Form.Item name="sheet_name" label={t('copiper.sheetName')}>
+          <Input placeholder={t('copiper.sheetNamePlaceholder')} />
         </Form.Item>
 
         <div style={{ display: 'flex', gap: 16 }}>
-          <Form.Item name="from" label="From Column" style={{ flex: 1 }}>
+          <Form.Item name="from" label={t('copiper.fromColumn')} style={{ flex: 1 }}>
             <Input placeholder="idx_name" />
           </Form.Item>
-          <Form.Item name="to" label="To Column" style={{ flex: 1 }}>
+          <Form.Item name="to" label={t('copiper.toColumn')} style={{ flex: 1 }}>
             <Input placeholder="id" />
           </Form.Item>
         </div>
 
-        <Form.Item name="src_list" label="Source Tables" extra="Comma-separated list of source table names">
-          <Input placeholder="TableA, TableB" />
+        <Form.Item name="src_list" label={t('copiper.sourceTables')} extra={t('copiper.sourceTablesExtra')}>
+          <Input placeholder={t('copiper.sourceTablesPlaceholder')} />
         </Form.Item>
 
         <div style={{ display: 'flex', gap: 16 }}>
-          <Form.Item name="use_jdb" label="Use JDB" valuePropName="checked" style={{ flex: 1 }}>
+          <Form.Item name="use_jdb" label={t('copiper.useJdb')} valuePropName="checked" style={{ flex: 1 }}>
             <Switch />
           </Form.Item>
-          <Form.Item name="auto_divide_num" label="Auto Divide Num" style={{ flex: 1 }}>
+          <Form.Item name="auto_divide_num" label={t('copiper.autoDivideNum')} style={{ flex: 1 }}>
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
         </div>
 
-        <Form.Item name="desc" label="Description">
-          <Input.TextArea rows={3} placeholder="Table description..." />
+        <Form.Item name="desc" label={t('copiper.description')}>
+          <Input.TextArea rows={3} placeholder={t('copiper.descriptionPlaceholder')} />
         </Form.Item>
       </Form>
     </Modal>

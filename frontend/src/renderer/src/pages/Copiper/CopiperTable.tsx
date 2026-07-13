@@ -6,6 +6,7 @@ import { registerLanguageDictionary, zhCN } from 'handsontable/i18n'
 import Handsontable from 'handsontable'
 import 'handsontable/dist/handsontable.full.min.css'
 import { useCopiperStore } from '../../stores/useCopiperStore'
+import { useT, getT } from '../../i18n'
 import type { ColDef } from '../../types/copiper'
 
 registerAllModules()
@@ -43,7 +44,7 @@ class MultiSelectEditor extends Handsontable.editors.BaseEditor {
     this.searchInput = doc.createElement('input')
     this.searchInput.type = 'text'
     this.searchInput.className = 'copiper-multiselect-search'
-    this.searchInput.setAttribute('placeholder', '输入以筛选…')
+    this.searchInput.setAttribute('placeholder', getT()('copiper.filterPlaceholder'))
     this.searchInput.addEventListener('input', () => {
       this.filterText = this.searchInput.value.trim().toLowerCase()
       this.renderList()
@@ -158,7 +159,7 @@ class MultiSelectEditor extends Handsontable.editors.BaseEditor {
     if (visible.length === 0) {
       const empty = doc.createElement('div')
       empty.className = 'copiper-multiselect-empty'
-      empty.textContent = '无匹配项'
+      empty.textContent = getT()('copiper.noMatches')
       this.listEl.appendChild(empty)
       return
     }
@@ -200,6 +201,7 @@ interface CopiperTableProps {
 }
 
 const CopiperTable: React.FC<CopiperTableProps> = ({ onRowDoubleClick }) => {
+  const t = useT()
   const { token } = theme.useToken()
   const hotRef = useRef<{ hotInstance: Handsontable | null } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -762,7 +764,7 @@ const CopiperTable: React.FC<CopiperTableProps> = ({ onRowDoubleClick }) => {
           color: token.colorTextSecondary
         }}
       >
-        <Text type="secondary">请选择一张表</Text>
+        <Text type="secondary">{t('copiper.selectTable')}</Text>
       </div>
     )
   }

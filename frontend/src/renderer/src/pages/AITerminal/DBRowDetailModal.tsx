@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { Modal, Form, Input, Button, Space, App, Typography, theme, Popconfirm } from 'antd'
 import { EditOutlined, DeleteOutlined, SaveOutlined, CloseOutlined } from '@ant-design/icons'
+import { useT } from '../../i18n'
 import type { DBTableColumn } from '../../types/ai-terminal'
 
 const { Text } = Typography
@@ -26,6 +27,7 @@ const DBRowDetailModal: React.FC<Props> = ({
 }) => {
   const { token } = theme.useToken()
   const { message } = App.useApp()
+  const t = useT()
   const [form] = Form.useForm()
   const [mode, setMode] = useState(initialMode)
   const [saving, setSaving] = useState(false)
@@ -88,37 +90,37 @@ const DBRowDetailModal: React.FC<Props> = ({
           }
         }
         if (Object.keys(changes).length === 0) {
-          message.info('没有修改')
+          message.info(t('db.noChanges'))
           setSaving(false)
           return
         }
         await onSave(changes, getPrimaryKeys())
       }
-      message.success(mode === 'new' ? '新增成功' : '保存成功')
+      message.success(mode === 'new' ? t('db.addSuccess') : t('db.saveSuccess'))
       onClose()
     } catch (err: any) {
       if (err.errorFields) return // form validation
-      message.error(`操作失败: ${err.message || String(err)}`)
+      message.error(t('db.operateFailed', err.message || String(err)))
     } finally {
       setSaving(false)
     }
-  }, [form, mode, columns, rowData, onSave, onClose, message, getPrimaryKeys])
+  }, [form, mode, columns, rowData, onSave, onClose, message, t, getPrimaryKeys])
 
   const handleDelete = useCallback(async () => {
     try {
       setSaving(true)
       await onDelete(getPrimaryKeys())
-      message.success('删除成功')
+      message.success(t('db.deleteSuccess'))
       onClose()
     } catch (err: any) {
-      message.error(`删除失败: ${err.message || String(err)}`)
+      message.error(t('db.deleteFailed', err.message || String(err)))
     } finally {
       setSaving(false)
     }
-  }, [onDelete, getPrimaryKeys, onClose, message])
+  }, [onDelete, getPrimaryKeys, onClose, message, t])
 
   const isReadOnly = mode === 'view'
-  const title = mode === 'new' ? '新增行' : mode === 'edit' ? '编辑行' : '行详情'
+  const title = mode === 'new' ? t('db.newRow') : mode === 'edit' ? t('db.editRow') : t('db.rowDetail')
 
   const isLongValue = (val: any) => {
     const str = val !== null && typeof val === 'object' ? JSON.stringify(val) : String(val ?? '')
@@ -137,18 +139,18 @@ const DBRowDetailModal: React.FC<Props> = ({
           <div>
             {mode === 'view' && effectivePkCols.length > 0 && (
               <Space>
-                <Button icon={<EditOutlined />} onClick={() => setMode('edit')}>编辑</Button>
-                <Popconfirm title="确定删除此行？" onConfirm={handleDelete} okType="danger">
-                  <Button danger icon={<DeleteOutlined />} loading={saving}>删除</Button>
+                <Button icon={<EditOutlined />} onClick={() => setMode('edit')}>{t('db.edit')}</Button>
+                <Popconfirm title={t('db.confirmDeleteRow')} onConfirm={handleDelete} okType="danger">
+                  <Button danger icon={<DeleteOutlined />} loading={saving}>{t('common.delete')}</Button>
                 </Popconfirm>
               </Space>
             )}
           </div>
           <Space>
-            <Button onClick={onClose}>关闭</Button>
+            <Button onClick={onClose}>{t('db.close')}</Button>
             {(mode === 'edit' || mode === 'new') && (
               <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={saving}>
-                {mode === 'new' ? '新增' : '保存'}
+                {mode === 'new' ? t('db.add') : t('db.save')}
               </Button>
             )}
           </Space>

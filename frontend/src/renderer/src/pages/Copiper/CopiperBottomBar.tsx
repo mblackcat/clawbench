@@ -2,6 +2,7 @@ import React from 'react'
 import { Button, Space, Badge, theme } from 'antd'
 import { SaveOutlined, ExportOutlined } from '@ant-design/icons'
 import { useCopiperStore } from '../../stores/useCopiperStore'
+import { useT } from '../../i18n'
 
 interface CopiperBottomBarProps {
   onSave: () => void
@@ -9,6 +10,7 @@ interface CopiperBottomBarProps {
 }
 
 const CopiperBottomBar: React.FC<CopiperBottomBarProps> = ({ onSave, onExport }) => {
+  const t = useT()
   const { token } = theme.useToken()
 
   const dirty = useCopiperStore((s) => s.dirty)
@@ -42,7 +44,7 @@ const CopiperBottomBar: React.FC<CopiperBottomBarProps> = ({ onSave, onExport })
                 display: 'inline-block'
               }}
             />
-            <span style={{ color: token.colorTextSecondary, fontSize: 13 }}>未保存</span>
+            <span style={{ color: token.colorTextSecondary, fontSize: 13 }}>{t('copiper.unsaved')}</span>
           </span>
         )}
         {(errorCount > 0 || warningCount > 0) && (
@@ -52,7 +54,7 @@ const CopiperBottomBar: React.FC<CopiperBottomBarProps> = ({ onSave, onExport })
                 count={errorCount}
                 size="small"
                 color={token.colorError}
-                title={`${errorCount} 个错误`}
+                title={t('copiper.errorCount', errorCount)}
               />
             )}
             {warningCount > 0 && (
@@ -60,7 +62,7 @@ const CopiperBottomBar: React.FC<CopiperBottomBarProps> = ({ onSave, onExport })
                 count={warningCount}
                 size="small"
                 color={token.colorWarning}
-                title={`${warningCount} 个警告`}
+                title={t('copiper.warningCount', warningCount)}
               />
             )}
           </Space>
@@ -73,7 +75,7 @@ const CopiperBottomBar: React.FC<CopiperBottomBarProps> = ({ onSave, onExport })
           loading={saving}
           onClick={onSave}
         >
-          保存
+          {t('common.save')}
         </Button>
         <Button
           type="primary"
@@ -82,7 +84,7 @@ const CopiperBottomBar: React.FC<CopiperBottomBarProps> = ({ onSave, onExport })
           loading={exporting}
           onClick={onExport}
         >
-          导出
+          {t('copiper.export')}
         </Button>
       </Space>
     </div>

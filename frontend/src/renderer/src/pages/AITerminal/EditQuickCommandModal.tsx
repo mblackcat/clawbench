@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Modal, Form, Input, Select, App } from 'antd'
 import { useAITerminalStore } from '../../stores/useAITerminalStore'
+import { useT } from '../../i18n'
 import type { QuickCommand } from '../../types/ai-terminal'
 import { MONO_FONT_STACK } from '../../utils/mono-font'
 
@@ -15,6 +16,7 @@ interface Props {
 const EditQuickCommandModal: React.FC<Props> = ({ open, command, onClose }) => {
   const [form] = Form.useForm()
   const { message } = App.useApp()
+  const t = useT()
   const { saveQuickCommand, connections } = useAITerminalStore()
   const [loading, setLoading] = useState(false)
 
@@ -45,7 +47,7 @@ const EditQuickCommandModal: React.FC<Props> = ({ open, command, onClose }) => {
         targets: values.targets || []
       })
 
-      message.success(command ? '命令已更新' : '命令已创建')
+      message.success(command ? t('terminal.cmdUpdated') : t('terminal.cmdCreated'))
       onClose()
     } catch {
       // validation error
@@ -55,13 +57,13 @@ const EditQuickCommandModal: React.FC<Props> = ({ open, command, onClose }) => {
   }
 
   const targetOptions = [
-    { value: 'local', label: '本地终端' },
+    { value: 'local', label: t('terminal.localTerminal') },
     ...connections.map(c => ({ value: c.id, label: c.name }))
   ]
 
   return (
     <Modal
-      title={command ? '编辑快捷命令' : '新建快捷命令'}
+      title={command ? t('terminal.editQuickCmd') : t('terminal.newQuickCmd')}
       open={open}
       onOk={handleOk}
       onCancel={onClose}
@@ -69,15 +71,15 @@ const EditQuickCommandModal: React.FC<Props> = ({ open, command, onClose }) => {
       destroyOnHidden
     >
       <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
-        <Form.Item name="name" label="命令名称" rules={[{ required: true, message: '请输入名称' }]}>
-          <Input placeholder="例如: 部署生产" />
+        <Form.Item name="name" label={t('terminal.cmdName')} rules={[{ required: true, message: t('terminal.cmdNameRequired') }]}>
+          <Input placeholder={t('terminal.cmdNamePlaceholder')} />
         </Form.Item>
 
         <Form.Item
           name="commands"
-          label="命令内容"
-          rules={[{ required: true, message: '请输入命令' }]}
-          extra="多条命令用换行分隔，将按顺序执行"
+          label={t('terminal.cmdContent')}
+          rules={[{ required: true, message: t('terminal.cmdContentRequired') }]}
+          extra={t('terminal.cmdContentExtra')}
         >
           <TextArea
             rows={4}
@@ -88,13 +90,13 @@ const EditQuickCommandModal: React.FC<Props> = ({ open, command, onClose }) => {
 
         <Form.Item
           name="targets"
-          label="适用目标"
-          extra="不选则对所有连接可用"
+          label={t('terminal.cmdTargets')}
+          extra={t('terminal.cmdTargetsExtra')}
         >
           <Select
             mode="multiple"
             allowClear
-            placeholder="默认所有连接"
+            placeholder={t('terminal.cmdTargetsPlaceholder')}
             options={targetOptions}
           />
         </Form.Item>

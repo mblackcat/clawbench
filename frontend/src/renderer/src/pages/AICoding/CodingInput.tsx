@@ -17,21 +17,21 @@ const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', '
 // Claude Code slash commands — shown in autocomplete dropdown
 const CLAUDE_SLASH_COMMANDS = [
   // ── 常用操作 ──
-  { key: '/compact', label: '/compact', desc: '压缩对话上下文' },
-  { key: '/clear', label: '/clear', desc: '清空对话记录' },
-  { key: '/cost', label: '/cost', desc: '查看费用统计' },
-  { key: '/help', label: '/help', desc: '查看帮助' },
+  { key: '/compact', label: '/compact', descKey: 'coding.slashCompactDesc' },
+  { key: '/clear', label: '/clear', descKey: 'coding.slashClearDesc' },
+  { key: '/cost', label: '/cost', descKey: 'coding.slashCostDesc' },
+  { key: '/help', label: '/help', descKey: 'coding.slashHelpDesc' },
   // ── 模式/模型 ──
-  { key: '/model', label: '/model', desc: '查看/切换模型' },
-  { key: '/permissions', label: '/permissions', desc: '查看/切换权限模式' },
-  { key: '/plan', label: '/plan', desc: '切换到 Plan 模式' },
+  { key: '/model', label: '/model', descKey: 'coding.slashModel' },
+  { key: '/permissions', label: '/permissions', descKey: 'coding.slashPermissions' },
+  { key: '/plan', label: '/plan', descKey: 'coding.slashPlan' },
   // ── 代码工具 ──
-  { key: '/review', label: '/review', desc: '代码审查' },
-  { key: '/init', label: '/init', desc: '初始化 CLAUDE.md' },
+  { key: '/review', label: '/review', descKey: 'coding.slashReviewDesc' },
+  { key: '/init', label: '/init', descKey: 'coding.slashInit' },
   // ── 仅 CLI ──
-  { key: '/memory', label: '/memory', desc: '管理记忆 (仅 CLI)' },
-  { key: '/mcp', label: '/mcp', desc: '管理 MCP 服务器 (仅 CLI)' },
-  { key: '/doctor', label: '/doctor', desc: '诊断环境 (仅 CLI)' },
+  { key: '/memory', label: '/memory', descKey: 'coding.slashMemoryDesc' },
+  { key: '/mcp', label: '/mcp', descKey: 'coding.slashMcpDesc' },
+  { key: '/doctor', label: '/doctor', descKey: 'coding.slashDoctorDesc' },
 ]
 
 const CODEX_SLASH_COMMANDS = [
@@ -136,7 +136,7 @@ const CodingInput: React.FC<CodingInputProps> = ({
   }, [workingDir])
 
   const slashCommands = useMemo(() => {
-    if (toolType === 'claude') return CLAUDE_SLASH_COMMANDS
+    if (toolType === 'claude') return CLAUDE_SLASH_COMMANDS.map(c => ({ ...c, desc: t(c.descKey) }))
     if (toolType === 'codex') return CODEX_SLASH_COMMANDS.map(c => ({ ...c, desc: t(c.descKey) }))
     return []
   }, [toolType, t])
@@ -405,12 +405,12 @@ const CodingInput: React.FC<CodingInputProps> = ({
           {/* Streaming status */}
           {isStreaming && (
             <span style={{ color: token.colorTextSecondary, fontSize: 11, whiteSpace: 'nowrap', flexShrink: 0 }}>
-              处理中...
+              {t('coding.processing')}
             </span>
           )}
 
           {/* Attachment button */}
-          <Tooltip title="添加附件">
+          <Tooltip title={t('coding.addAttachment')}>
             <Button
               type="text"
               size="small"
@@ -423,14 +423,14 @@ const CodingInput: React.FC<CodingInputProps> = ({
           {/* Interrupt + Stop (streaming) */}
           {isStreaming && (
             <>
-              <Tooltip title="中断当前任务">
+              <Tooltip title={t('coding.interruptTask')}>
                 <Button
                   size="small"
                   icon={<PauseCircleOutlined />}
                   onClick={onInterrupt}
                 />
               </Tooltip>
-              <Tooltip title="停止会话">
+              <Tooltip title={t('coding.stopSession')}>
                 <Button
                   size="small"
                   danger
@@ -561,7 +561,7 @@ const CodingInput: React.FC<CodingInputProps> = ({
         onKeyDown={handleKeyDown}
         onCompositionStart={() => setIsComposing(true)}
         onCompositionEnd={() => setIsComposing(false)}
-        placeholder={hasPendingQuestion ? '请先回答上方的问题' : isStreaming ? '等待响应中...' : '输入消息，Enter 发送，Shift+Enter 换行'}
+        placeholder={hasPendingQuestion ? t('coding.answerQuestionFirst') : isStreaming ? t('coding.waitingResponseDots') : t('coding.messagePlaceholder')}
         autoSize={{ minRows: 2, maxRows: 8 }}
         disabled={isStreaming || hasPendingQuestion}
         style={{
@@ -603,7 +603,7 @@ const CodingInput: React.FC<CodingInputProps> = ({
             whiteSpace: 'nowrap',
           }}>
             <MessageOutlined style={{ fontSize: 10 }} />
-            {messageCount} 轮对话
+            {t('coding.turnsCount', String(messageCount))}
           </span>
         )}
         {contextUsage && ((contextUsage.usedTokens || 0) > 0 || (contextUsage.inputTokens || 0) > 0) && (

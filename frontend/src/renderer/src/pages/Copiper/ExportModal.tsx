@@ -8,6 +8,7 @@ import {
   MinusCircleOutlined
 } from '@ant-design/icons'
 import { useCopiperStore } from '../../stores/useCopiperStore'
+import { useT } from '../../i18n'
 import type { ExportConfig, ExportResult } from '../../types/copiper'
 
 const { Text } = Typography
@@ -31,6 +32,7 @@ interface ExportModalProps {
 }
 
 const ExportModal: React.FC<ExportModalProps> = ({ open, onClose }) => {
+  const t = useT()
   const { token } = theme.useToken()
   const { message } = App.useApp()
 
@@ -60,7 +62,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ open, onClose }) => {
 
   const handleExport = async () => {
     if (formats.length === 0) {
-      message.warning('请至少选择一种格式')
+      message.warning(t('copiper.selectAtLeastOneFormat'))
       return
     }
 
@@ -77,14 +79,18 @@ const ExportModal: React.FC<ExportModalProps> = ({ open, onClose }) => {
       const skipCount = exportResults.filter((r) => r.skipped).length
       const failCount = exportResults.filter((r) => !r.success).length
       if (failCount === 0) {
-        const parts = [`${successCount} 个成功`]
-        if (skipCount > 0) parts.push(`${skipCount} 个跳过`)
+        const parts = [t('copiper.exportSuccessCount', successCount)]
+        if (skipCount > 0) parts.push(t('copiper.exportSkipCount', skipCount))
         message.success(parts.join(', '))
       } else {
-        message.warning(`${successCount} 个成功, ${failCount} 个失败${skipCount > 0 ? `, ${skipCount} 个跳过` : ''}`)
+        message.warning(
+          skipCount > 0
+            ? t('copiper.exportPartialWithSkip', successCount, failCount, skipCount)
+            : t('copiper.exportPartial', successCount, failCount)
+        )
       }
     } catch (err) {
-      message.error('导出失败: ' + (err instanceof Error ? err.message : String(err)))
+      message.error(t('copiper.exportFailed', err instanceof Error ? err.message : String(err)))
     }
   }
 
@@ -111,52 +117,52 @@ const ExportModal: React.FC<ExportModalProps> = ({ open, onClose }) => {
 
   const resultColumns = [
     {
-      title: '表名',
+      title: t('copiper.colTableName'),
       dataIndex: 'tableName',
       key: 'tableName',
       width: 160
     },
     {
-      title: '格式',
+      title: t('copiper.colFormat'),
       dataIndex: 'format',
       key: 'format',
       width: 80,
       render: (fmt: string) => <Tag>{fmt}</Tag>
     },
     {
-      title: '行数',
+      title: t('copiper.colRowCount'),
       dataIndex: 'rowCount',
       key: 'rowCount',
       width: 70
     },
     {
-      title: '状态',
+      title: t('copiper.colStatus'),
       dataIndex: 'success',
       key: 'success',
       width: 100,
       render: (_success: boolean, record: ExportResult) =>
         record.skipped ? (
-          <Tag color="default" icon={<MinusCircleOutlined />}>Skipped</Tag>
+          <Tag color="default" icon={<MinusCircleOutlined />}>{t('copiper.statusSkipped')}</Tag>
         ) : record.success ? (
-          <Tag color="success" icon={<CheckCircleOutlined />}>OK</Tag>
+          <Tag color="success" icon={<CheckCircleOutlined />}>{t('copiper.statusOk')}</Tag>
         ) : (
-          <Tag color="error" icon={<CloseCircleOutlined />}>Failed</Tag>
+          <Tag color="error" icon={<CloseCircleOutlined />}>{t('copiper.statusFailed')}</Tag>
         )
     },
     {
-      title: '输出路径',
+      title: t('copiper.colOutputPath'),
       dataIndex: 'outputPath',
       key: 'outputPath',
       ellipsis: true,
       render: (path: string, record: ExportResult) =>
         record.skipped ? (
-          <Text type="secondary" style={{ fontSize: 12 }}>No data</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>{t('copiper.noData')}</Text>
         ) : record.success ? (
           <Text style={{ fontSize: 12 }} copyable={{ text: path }}>
             {path}
           </Text>
         ) : (
-          <Text type="danger" style={{ fontSize: 12 }}>{record.error || '未知错误'}</Text>
+          <Text type="danger" style={{ fontSize: 12 }}>{record.error || t('copiper.unknownError')}</Text>
         )
     }
   ]
@@ -166,14 +172,14 @@ const ExportModal: React.FC<ExportModalProps> = ({ open, onClose }) => {
       title={
         <span>
           <ExportOutlined style={{ marginRight: 8 }} />
-          导出数据
+          {t('copiper.exportData')}
         </span>
       }
       open={open}
       onOk={handleExport}
       onCancel={onClose}
-      okText={exporting ? '导出中...' : '导出'}
-      cancelText="关闭"
+      okText={exporting ? t('copiper.exporting') : t('copiper.export')}
+      cancelText={t('copiper.close')}
       okButtonProps={{ loading: exporting, disabled: formats.length === 0 || selectedTables.length === 0 }}
       width={720}
       destroyOnHidden
@@ -181,7 +187,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ open, onClose }) => {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {/* Format selection */}
         <div>
-          <Text strong style={{ display: 'block', marginBottom: 8 }}>导出格式</Text>
+          <Text strong style={{ display: 'block', marginBottom: 8 }}>{t('copiper.exportFormat')}</Text>
           <Checkbox.Group
             value={formats}
             onChange={(vals) => {
@@ -200,7 +206,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ open, onClose }) => {
         {/* Table selection */}
         <div>
           <Text strong style={{ display: 'block', marginBottom: 8 }}>
-            导出表 ({selectedTables.length}/{tableNames.length})
+            {t('copiper.exportTables', selectedTables.length, tableNames.length)}
           </Text>
           <Checkbox.Group
             value={selectedTables}
@@ -223,7 +229,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ open, onClose }) => {
         {/* Results */}
         {hasRun && results.length > 0 && (
           <div>
-            <Text strong style={{ display: 'block', marginBottom: 8 }}>导出结果</Text>
+            <Text strong style={{ display: 'block', marginBottom: 8 }}>{t('copiper.exportResults')}</Text>
             <Table
               columns={resultColumns}
               dataSource={results}
@@ -240,7 +246,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ open, onClose }) => {
           <div>
             <Text strong style={{ display: 'block', marginBottom: 8 }}>
               <InfoCircleOutlined style={{ marginRight: 4 }} />
-              脚本执行情况
+              {t('copiper.scriptExecution')}
             </Text>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {hookSummaries.map((s) => (
@@ -253,13 +259,13 @@ const ExportModal: React.FC<ExportModalProps> = ({ open, onClose }) => {
                   <Text strong style={{ fontSize: 13 }}>{s.tableName}</Text>
                   {s.checkInfo && (
                     <div style={{ marginTop: 4 }}>
-                      <Tag color="blue" style={{ fontSize: 11 }}>检查</Tag>
+                      <Tag color="blue" style={{ fontSize: 11 }}>{t('copiper.check')}</Tag>
                       <Text style={{ fontSize: 12 }}>{s.checkInfo}</Text>
                     </div>
                   )}
                   {s.postProcessInfo && (
                     <div style={{ marginTop: 4 }}>
-                      <Tag color="purple" style={{ fontSize: 11 }}>后处理</Tag>
+                      <Tag color="purple" style={{ fontSize: 11 }}>{t('copiper.postProcess')}</Tag>
                       <Text style={{ fontSize: 12 }}>{s.postProcessInfo}</Text>
                     </div>
                   )}
@@ -274,8 +280,8 @@ const ExportModal: React.FC<ExportModalProps> = ({ open, onClose }) => {
           <Alert
             type="info"
             showIcon
-            message="未检测到检查或后处理脚本"
-            description="如需自动检查或后处理，请在 data/copiper/check/ 和 data/copiper/post_process/ 目录下添加对应脚本。"
+            message={t('copiper.noScriptsDetected')}
+            description={t('copiper.noScriptsDescription')}
             style={{ fontSize: 12 }}
           />
         )}

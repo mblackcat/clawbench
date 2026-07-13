@@ -4,6 +4,7 @@ import { RobotOutlined, FileOutlined, CheckCircleOutlined } from '@ant-design/ic
 import { useAIModelStore } from '../stores/useAIModelStore'
 import apiClient, { API_BASE_URL } from '../services/apiClient'
 import { SUBAPP_CODEGEN_SYSTEM_PROMPT } from '../skills/subappCreateSkill'
+import { useT } from '../i18n'
 
 const { TextArea } = Input
 const { Text, Paragraph } = Typography
@@ -205,6 +206,7 @@ const AIGenerateModal: React.FC<AIGenerateModalProps> = ({
 }) => {
   const { token } = theme.useToken()
   const { message, modal } = App.useApp()
+  const t = useT()
   const [instructions, setInstructions] = useState('')
   const [status, setStatus] = useState<GenerateStatus>('idle')
   const [statusText, setStatusText] = useState('')
@@ -233,11 +235,11 @@ const AIGenerateModal: React.FC<AIGenerateModalProps> = ({
     // Confirm before discarding non-empty input that hasn't been used yet.
     if (status === 'idle' && instructions.trim().length > 0) {
       modal.confirm({
-        title: '放弃已填写的内容？',
-        content: '你已填写了额外说明，关闭后将丢失这些内容。确定要关闭吗？',
-        okText: '关闭',
+        title: t('appEditor.aiGenDiscardTitle'),
+        content: t('appEditor.aiGenDiscardContent'),
+        okText: t('appEditor.aiGenClose'),
         okType: 'danger',
-        cancelText: '继续编辑',
+        cancelText: t('appEditor.aiGenContinueEdit'),
         onOk: () => {
           reset()
           onClose()
@@ -247,7 +249,7 @@ const AIGenerateModal: React.FC<AIGenerateModalProps> = ({
     }
     reset()
     onClose()
-  }, [status, instructions, reset, onClose, modal])
+  }, [status, instructions, reset, onClose, modal, t])
 
   const handleGenerate = async () => {
     // Re-fetch to ensure latest model state
@@ -258,9 +260,7 @@ const AIGenerateModal: React.FC<AIGenerateModalProps> = ({
     const { builtinModels, localModels } = useAIModelStore.getState()
 
     if (builtinModels.length === 0 && localModels.length === 0) {
-      setErrorMsg(
-        '未配置 AI 模型，无法自动生成代码。\n\n请在「设置 → AI 模型」标签页中添加模型配置后再试。'
-      )
+      setErrorMsg(t('appEditor.aiGenNoModelError'))
       setStatus('error')
       return
     }
@@ -286,33 +286,31 @@ const AIGenerateModal: React.FC<AIGenerateModalProps> = ({
     try {
       if (builtinModels.length > 0) {
         const model = builtinModels[0]
-        setStatusText(`正在调用服务端模型 ${model.name || model.id}...`)
+        setStatusText(t('appEditor.aiGenCallingServer', String(model.name || model.id)))
         await streamBuiltinModel(model.id, messages, (chunk) => {
           fullContent += chunk
-          setStatusText(`AI 正在生成代码... (${fullContent.length} 字符)`)
+          setStatusText(t('appEditor.aiGenStreaming', String(fullContent.length)))
         })
       } else {
         const config = localModels[0]
         const modelId = config.models[0] || config.name
-        setStatusText(`正在调用本地模型 ${config.name}...`)
+        setStatusText(t('appEditor.aiGenCallingLocal', String(config.name)))
         await streamLocalModel(config.id, messages, modelId, (chunk) => {
           fullContent += chunk
-          setStatusText(`AI 正在生成代码... (${fullContent.length} 字符)`)
+          setStatusText(t('appEditor.aiGenStreaming', String(fullContent.length)))
         })
       }
 
-      setStatusText('正在解析生成结果...')
+      setStatusText(t('appEditor.aiGenParsing'))
 
       const files = parseGeneratedFiles(fullContent)
       if (!files) {
-        setErrorMsg(
-          `AI 返回内容无法解析为文件列表，请重试。\n\n原始输出（前500字符）：\n${fullContent.slice(0, 500)}`
-        )
+        setErrorMsg(t('appEditor.aiGenParseError', String(fullContent.slice(0, 500))))
         setStatus('error')
         return
       }
 
-      setStatusText('正在写入文件...')
+      setStatusText(t('appEditor.aiGenWriting'))
       const appPath = (await window.api.developer.getAppPath(appId)) as string
       const fileNames: string[] = []
 
@@ -327,7 +325,7 @@ const AIGenerateModal: React.FC<AIGenerateModalProps> = ({
       const msg = err instanceof Error ? err.message : String(err)
       setErrorMsg(msg)
       setStatus('error')
-      message.error('AI 生成失败')
+      message.error(t('appEditor.aiGenFailed'))
     }
   }
 
@@ -342,14 +340,14 @@ const AIGenerateModal: React.FC<AIGenerateModalProps> = ({
         return (
           <>
             <Paragraph type="secondary" style={{ marginBottom: 16 }}>
-              AI 将根据应用的 manifest 信息自动生成完整的 Python 代码。
-              你也可以在下方补充额外说明（可选）。
+              {t('appEditor.aiGenDesc1')}
+              {t('appEditor.aiGenDesc2')}
             </Paragraph>
             <div style={{ paddingBottom: 24 }}>
               <TextArea
                 value={instructions}
                 onChange={(e) => setInstructions(e.target.value)}
-                placeholder="例如：需要生成 HTML 报告、调用外部 REST API、支持多线程处理、输出 CSV 文件..."
+                placeholder={t('appEditor.aiGenInstructionsPlaceholder')}
                 rows={4}
                 maxLength={500}
                 showCount
@@ -371,8 +369,8 @@ const AIGenerateModal: React.FC<AIGenerateModalProps> = ({
           <>
             <Alert
               type="success"
-              message="代码生成成功"
-              description={`已生成 ${generatedFiles.length} 个文件，将在代码编辑器中打开。`}
+              message={t('appEditor.aiGenSuccessTitle')}
+              description={t('appEditor.aiGenSuccessDesc', String(generatedFiles.length))}
               showIcon
               icon={<CheckCircleOutlined />}
               style={{ marginBottom: 16 }}
@@ -395,7 +393,7 @@ const AIGenerateModal: React.FC<AIGenerateModalProps> = ({
         return (
           <Alert
             type="error"
-            message="生成失败"
+            message={t('appEditor.aiGenErrorTitle')}
             description={
               <pre
                 style={{
@@ -420,31 +418,31 @@ const AIGenerateModal: React.FC<AIGenerateModalProps> = ({
       case 'idle':
         return [
           <Button key="cancel" onClick={handleClose}>
-            取消
+            {t('common.cancel')}
           </Button>,
           <Button key="generate" type="primary" icon={<RobotOutlined />} onClick={handleGenerate}>
-            开始生成
+            {t('appEditor.aiGenStart')}
           </Button>
         ]
 
       case 'generating':
         return [
           <Button key="wait" disabled>
-            生成中，请稍候...
+            {t('appEditor.aiGenInProgress')}
           </Button>
         ]
 
       case 'success':
         return [
           <Button key="done" type="primary" onClick={handleDone}>
-            完成
+            {t('appEditor.aiGenDone')}
           </Button>
         ]
 
       case 'error':
         return [
           <Button key="cancel" onClick={handleClose}>
-            关闭
+            {t('appEditor.aiGenClose')}
           </Button>,
           <Button
             key="retry"
@@ -454,7 +452,7 @@ const AIGenerateModal: React.FC<AIGenerateModalProps> = ({
               setErrorMsg('')
             }}
           >
-            重试
+            {t('appEditor.aiGenRetry')}
           </Button>
         ]
     }
@@ -465,7 +463,7 @@ const AIGenerateModal: React.FC<AIGenerateModalProps> = ({
       title={
         <Space>
           <RobotOutlined />
-          AI 自动生成代码
+          {t('appEditor.aiGenTitle')}
         </Space>
       }
       open={open}

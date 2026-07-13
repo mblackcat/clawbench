@@ -158,7 +158,7 @@ const EditDBConnectionModal: React.FC<Props> = ({ open, connection, onClose }) =
         ) : (
           <>
             <Form.Item name="host" label={t('terminal.host')} rules={[{ required: true, message: t('terminal.hostRequired') }]}>
-              <Input placeholder={isMongo ? 'mongodb://... 或 localhost' : '例如: localhost'} />
+              <Input placeholder={isMongo ? t('terminal.hostPlaceholderMongo') : t('terminal.hostPlaceholderLocal')} />
             </Form.Item>
 
             <Form.Item name="port" label={t('terminal.port')}>
