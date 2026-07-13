@@ -99,6 +99,16 @@ const MyContributionsPage: React.FC = () => {
       if (!isLocalMode) {
         const publishedApps = await applicationManager.fetchApplications(true);
         setAllApps(publishedApps);
+        // 治愈：以服务端为准回写本地 manifest 的 published 标记，修复旧版发布
+        // 流程未回写而残留的脏数据（published:false / 缺字段）。
+        const publishedNames = new Set(publishedApps.map(a => a.name));
+        const healed = await applicationManager.reconcilePublishedFlags(
+          useSubAppStore.getState().appInfos,
+          publishedNames
+        );
+        if (healed > 0) {
+          await fetchApps(); // 刷新，使治愈后的标记在 UI 反映
+        }
       }
     } catch (error) {
       console.error('Failed to load apps:', error);

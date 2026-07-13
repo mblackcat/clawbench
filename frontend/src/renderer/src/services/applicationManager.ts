@@ -279,6 +279,37 @@ class ApplicationManager {
   }
 
   /**
+   * 治愈本地 manifest 的 published 标记（以服务端为准）。
+   *
+   * 旧版发布流程在发布成功后未回写 published:true，导致部分已发布应用的本地
+   * manifest 仍残留 published:false / 缺字段（脏数据）。此处对凡服务端存在同名
+   * 应用、但本地 manifest.published !== true 的条目，回写为 true，使本地标记与
+   * 服务端一致，同时修复离线 / 本地模式下的显示。
+   *
+   * 幂等：仅在 !== true 时写入，写后即 true，不会重复触发。返回治愈数量，调用方
+   * 可据此决定是否需要重新 fetchApps() 刷新 UI。写盘失败不影响显示（服务端为准），
+   * 仅告警。
+   */
+  async reconcilePublishedFlags(
+    appInfos: { id: string; manifest: { name: string; published?: boolean } }[],
+    publishedAppNames: Set<string>
+  ): Promise<number> {
+    let healed = 0;
+    for (const info of appInfos) {
+      const { id, manifest } = info;
+      if (manifest.published === true) continue;
+      if (!publishedAppNames.has(manifest.name)) continue;
+      try {
+        await window.api.developer.updateApp(id, { published: true });
+        healed++;
+      } catch (e) {
+        console.warn(`Failed to reconcile published flag for ${id}:`, e);
+      }
+    }
+    return healed;
+  }
+
+  /**
    * 获取已安装应用列表
    */
   getLocalApplications(): InstalledApp[] {
