@@ -30,6 +30,28 @@ export interface SubAppManifest {
   published?: boolean // 是否已发布到服务端
 }
 
+/**
+ * 判定本地 app 是否已发布。
+ *
+ * 优先级：
+ * 1. manifest.published === true  → 已发布（发布成功后回写到 manifest）
+ * 2. manifest.published === false → 明确未发布，以此为准（即便服务端存在同名 app，
+ *    也不得覆盖本地的明确标记，避免“同名碰撞”被误标为已发布）
+ * 3. manifest.published === undefined（旧版 manifest 缺少该字段）→ 回退到服务端
+ *    已发布名字集合，作为跨机器 / 历史数据的兜底
+ *
+ * 服务端 publishedAppNames 仅在第 3 种情况下生效，绝不应盖过 manifest 中明确的
+ * published:false。
+ */
+export function resolveAppPublished(
+  manifest: Pick<SubAppManifest, 'name' | 'published'>,
+  publishedAppNames: Set<string>
+): boolean {
+  if (manifest.published === true) return true
+  if (manifest.published === false) return false
+  return publishedAppNames.has(manifest.name)
+}
+
 export interface SubAppOutput {
   taskId: string
   type: 'output' | 'progress' | 'result' | 'error'

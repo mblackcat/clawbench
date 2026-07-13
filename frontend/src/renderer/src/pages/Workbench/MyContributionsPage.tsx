@@ -18,6 +18,7 @@ import type { Application } from '../../types/api';
 import { useSubAppStore } from '../../stores/useSubAppStore';
 import { useAuthStore } from '../../stores/useAuthStore';
 import type { SubAppManifest } from '../../types/subapp';
+import { resolveAppPublished } from '../../types/subapp';
 import { useTaskStore } from '../../stores/useTaskStore';
 import { openExternalLink } from '../../utils/markdown-links';
 import SkillsManager, { type SelfSkill } from '../../components/SkillsManager';
@@ -113,7 +114,7 @@ const MyContributionsPage: React.FC = () => {
         const manifest = info.manifest;
         let appType: AppType = 'local';
 
-        if (publishedAppNames.has(manifest.name)) {
+        if (resolveAppPublished(manifest, publishedAppNames)) {
           appType = 'published';
         } else {
           const authorId = getAuthorId(manifest.author);

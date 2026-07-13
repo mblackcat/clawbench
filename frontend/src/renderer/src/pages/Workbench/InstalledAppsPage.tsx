@@ -43,6 +43,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useNavigate } from 'react-router-dom';
 import type { SubAppManifest } from '../../types/subapp';
+import { resolveAppPublished } from '../../types/subapp';
 import { useSubAppStore } from '../../stores/useSubAppStore';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useTaskStore } from '../../stores/useTaskStore';
@@ -74,8 +75,9 @@ interface SubAppInfo {
 
 // Publication status. Renamed from 'installed' (which was misleading — every
 // card here is favorited) to 'published' so the tag actually conveys useful
-// information. Determined authoritatively by the server-side published-name
-// set, with `manifest.published` as an offline / local-mode fallback.
+// information. Resolved by resolveAppPublished(): manifest.published is the
+// authoritative local record (true/false both win); the server-side
+// published-name set is only a fallback for legacy manifests lacking the field.
 type AppType = 'published' | 'draft' | 'local';
 
 interface AppWithType extends SubAppInfo {
@@ -720,10 +722,11 @@ const InstalledAppsPage: React.FC = () => {
   /**
    * 分类应用并按 appOrder 排序，再按类型分组
    *
-   * 发布状态判定优先级：
-   * 1. 服务端 publishedAppNames 集合命中（最权威，覆盖"别处发布"场景）
-   * 2. 本地 manifest.published === true（发布回写 / 离线场景的兜底）
-   * 3. 否则：作者是自己 → draft；否则 → local
+   * 发布状态判定优先级（见 resolveAppPublished）：
+   * 1. manifest.published === true  → 已发布（发布成功后回写）
+   * 2. manifest.published === false → 明确未发布，以此为准（不得被服务端同名 app 覆盖）
+   * 3. manifest.published === undefined → 回退到服务端 publishedAppNames 集合
+   * 4. 否则：作者是自己 → draft；否则 → local
    */
   const classifyApps = () => {
     const classified: AppWithType[] = appInfos
@@ -732,7 +735,7 @@ const InstalledAppsPage: React.FC = () => {
         const manifest = info.manifest;
         let appType: AppType = 'local';
 
-        const isPublished = publishedAppNames.has(manifest.name) || manifest.published === true;
+        const isPublished = resolveAppPublished(manifest, publishedAppNames);
 
         if (isPublished) {
           appType = 'published';
