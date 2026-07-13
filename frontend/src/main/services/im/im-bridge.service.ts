@@ -681,7 +681,9 @@ class IMBridgeService {
 
     executeSubAppWithCallbacks(
       taskId,
+      app.manifest.id,
       app.manifest.name,
+      app.manifest.version,
       appPath,
       app.manifest.entry,
       params,

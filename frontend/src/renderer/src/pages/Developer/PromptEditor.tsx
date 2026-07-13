@@ -96,7 +96,7 @@ const PromptEditor: React.FC = () => {
         message.success(t('promptEditor.promptCreated'));
       }
 
-      navigate('/workbench/my-contributions');
+      navigate(backTarget);
     } catch (error) {
       console.error('Failed to save prompt:', error);
       message.error(t('promptEditor.saveFailed'));

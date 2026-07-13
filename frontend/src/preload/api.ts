@@ -765,10 +765,26 @@ export const api = {
       ipcRenderer.invoke('scheduled-task:set-enabled', id, enabled),
     runNow: (id: string) => ipcRenderer.invoke('scheduled-task:run-now', id),
     getImStatus: () => ipcRenderer.invoke('scheduled-task:im-status') as Promise<{ connected: boolean }>,
-    onExecuted: (callback: (data: { taskId: string; taskName: string; status: string; result: string; prompt: string; keepInOneChat: boolean; conversationId?: string; timestamp: number }) => void) => {
+    onExecuted: (callback: (data: { taskId: string; taskName: string; status: string; result: string; prompt: string; keepInOneChat: boolean; conversationId?: string; modelId?: string; timestamp: number }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
       ipcRenderer.on('scheduled-task:executed', handler)
       return () => ipcRenderer.removeListener('scheduled-task:executed', handler)
+    }
+  },
+
+  appSchedule: {
+    list: () => ipcRenderer.invoke('app-schedule:list'),
+    getByApp: (appId: string) => ipcRenderer.invoke('app-schedule:get-by-app', appId),
+    save: (appId: string, data: Record<string, unknown>) =>
+      ipcRenderer.invoke('app-schedule:save', appId, data),
+    delete: (appId: string) => ipcRenderer.invoke('app-schedule:delete', appId),
+    setEnabled: (appId: string, enabled: boolean) =>
+      ipcRenderer.invoke('app-schedule:set-enabled', appId, enabled),
+    runNow: (appId: string) => ipcRenderer.invoke('app-schedule:run-now', appId),
+    onExecuted: (callback: (data: { scheduleId: string; appId: string; appName: string; status: string; summary: string; timestamp: number }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
+      ipcRenderer.on('app-schedule:executed', handler)
+      return () => ipcRenderer.removeListener('app-schedule:executed', handler)
     }
   },
 

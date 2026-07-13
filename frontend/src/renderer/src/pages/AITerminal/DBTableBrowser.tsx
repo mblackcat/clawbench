@@ -7,6 +7,7 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import type { FilterDropdownProps } from 'antd/es/table/interface'
 import { useAITerminalStore } from '../../stores/useAITerminalStore'
+import { useT } from '../../i18n'
 import type { DBTableColumn, DBQueryResult } from '../../types/ai-terminal'
 import DBRowDetailModal from './DBRowDetailModal'
 
@@ -24,6 +25,7 @@ interface Props {
 const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => {
   const { token } = theme.useToken()
   const { message, modal } = App.useApp()
+  const t = useT()
 
   // Remove table header border-radius globally for DB browser
   useEffect(() => {
@@ -116,11 +118,11 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
       setData(result)
       setTotalCount(count)
     } catch (err: any) {
-      message.error(`加载数据失败: ${err.message || String(err)}`)
+      message.error(t('db.loadFailed', err.message || String(err)))
     } finally {
       setLoading(false)
     }
-  }, [connectionId, tableName, currentPage, pageSize, queryDBPage, getDBTableCount, message])
+  }, [connectionId, tableName, currentPage, pageSize, queryDBPage, getDBTableCount, message, t])
 
   useEffect(() => {
     loadSchema()
@@ -177,17 +179,17 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
   // Delete row
   const handleDeleteRow = useCallback(async (row: Record<string, any>) => {
     if (pkColumns.length === 0) {
-      message.warning('该表没有主键，无法删除行')
+      message.warning(t('db.noPkDelete'))
       return
     }
     try {
       await deleteDBRow(connectionId, tableName, getRowPKs(row))
-      message.success('删除成功')
+      message.success(t('db.deleteSuccess'))
       loadData()
     } catch (err: any) {
-      message.error(`删除失败: ${err.message || String(err)}`)
+      message.error(t('db.deleteFailed', err.message || String(err)))
     }
-  }, [connectionId, tableName, pkColumns, deleteDBRow, getRowPKs, loadData, message])
+  }, [connectionId, tableName, pkColumns, deleteDBRow, getRowPKs, loadData, message, t])
 
   // Modal save handler
   const handleModalSave = useCallback(async (
@@ -200,7 +202,7 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
     } else {
       // Edit mode
       if (!primaryKeys || Object.keys(primaryKeys).length === 0) {
-        throw new Error('该表没有主键，无法编辑')
+        throw new Error(t('db.noPkEdit'))
       }
       await updateDBRow(connectionId, tableName, primaryKeys, rowDataOrChanges)
       loadData()
@@ -227,7 +229,7 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
     return ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: FilterDropdownProps) => (
       <div style={{ padding: 8, minWidth: 180 }} onKeyDown={e => e.stopPropagation()}>
         <Input
-          placeholder={`搜索 ${colName}`}
+          placeholder={t('db.searchColumn', colName)}
           value={selectedKeys[0] as string}
           onChange={e => setSelectedKeys(e.target.value ? [e.target.value] : [])}
           onPressEnter={() => {
@@ -249,7 +251,7 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
             size="small"
             style={{ width: 72 }}
           >
-            筛选
+            {t('db.filter')}
           </Button>
           <Button
             onClick={() => {
@@ -264,7 +266,7 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
             size="small"
             style={{ width: 72 }}
           >
-            重置
+            {t('db.reset')}
           </Button>
         </Space>
       </div>
@@ -307,22 +309,22 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
     // Action column
     if (pkColumns.length > 0) {
       cols.push({
-        title: '操作',
+        title: t('db.colActions'),
         key: '_actions',
         width: 120,
         fixed: 'right',
         render: (_: any, record: Record<string, any>) => (
           <Space size={4} onClick={e => e.stopPropagation()}>
-            <Tooltip title="查看详情">
+            <Tooltip title={t('db.viewDetail')}>
               <Button type="text" size="small" icon={<EyeOutlined />}
                 onClick={() => handleRowClick(record)} />
             </Tooltip>
-            <Tooltip title="复制行">
+            <Tooltip title={t('db.copyRow')}>
               <Button type="text" size="small" icon={<CopyOutlined />}
                 onClick={() => handleCopyRow(record)} />
             </Tooltip>
-            <Popconfirm title="确定删除此行？" onConfirm={() => handleDeleteRow(record)} okType="danger">
-              <Tooltip title="删除行">
+            <Popconfirm title={t('db.confirmDeleteRow')} onConfirm={() => handleDeleteRow(record)} okType="danger">
+              <Tooltip title={t('db.deleteRow')}>
                 <Button type="text" size="small" danger icon={<DeleteOutlined />} />
               </Tooltip>
             </Popconfirm>
@@ -335,24 +337,24 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
 
   // ── Schema table columns ──
   const schemaColumns: ColumnsType<DBTableColumn> = [
-    { title: '列名', dataIndex: 'name', key: 'name', width: 180,
+    { title: t('db.colName'), dataIndex: 'name', key: 'name', width: 180,
       render: (val: string, record: DBTableColumn) => (
         <Text strong={record.primaryKey}>{val}</Text>
       )
     },
-    { title: '类型', dataIndex: 'type', key: 'type', width: 160,
+    { title: t('db.colType'), dataIndex: 'type', key: 'type', width: 160,
       render: (val: string) => <Text type="secondary">{val}</Text>
     },
-    { title: '主键', dataIndex: 'primaryKey', key: 'primaryKey', width: 70, align: 'center',
+    { title: t('db.colPk'), dataIndex: 'primaryKey', key: 'primaryKey', width: 70, align: 'center',
       render: (val: boolean) => val ? '✓' : ''
     },
-    { title: '可空', dataIndex: 'nullable', key: 'nullable', width: 70, align: 'center',
+    { title: t('db.colNullable'), dataIndex: 'nullable', key: 'nullable', width: 70, align: 'center',
       render: (val: boolean) => val ? '✓' : ''
     },
-    { title: '默认值', dataIndex: 'defaultValue', key: 'defaultValue', width: 140,
+    { title: t('db.colDefault'), dataIndex: 'defaultValue', key: 'defaultValue', width: 140,
       render: (val: string) => <Text type="secondary">{val || ''}</Text>
     },
-    { title: '备注', dataIndex: 'extra', key: 'extra',
+    { title: t('db.colExtra'), dataIndex: 'extra', key: 'extra',
       render: (val: string) => <Text type="secondary">{val || ''}</Text>
     }
   ]
@@ -381,15 +383,15 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
           <Text strong style={{ fontSize: 13 }}>{tableName}</Text>
           {data && (
             <Text type="secondary" style={{ fontSize: 11 }}>
-              (共 {totalCount} 行, {data.executionTimeMs}ms)
+              {t('db.totalCountInfo', totalCount, data.executionTimeMs)}
             </Text>
           )}
         </Space>
         <Space size={4}>
-          <Tooltip title="新增行">
+          <Tooltip title={t('db.addRow')}>
             <Button type="text" size="small" icon={<PlusOutlined />} onClick={handleNewRow} />
           </Tooltip>
-          <Tooltip title="刷新数据">
+          <Tooltip title={t('db.refreshData')}>
             <Button type="text" size="small" icon={<ReloadOutlined />} onClick={handleRefresh} loading={loading} />
           </Tooltip>
         </Space>
@@ -418,7 +420,7 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
               userSelect: 'none',
             }}
           >
-            {tab === 'data' ? '表数据' : '表结构'}
+            {tab === 'data' ? t('db.tableData') : t('db.tableStructure')}
           </div>
         ))}
       </div>
@@ -444,7 +446,7 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
               showSizeChanger: true,
               showQuickJumper: true,
               pageSizeOptions: ['20', '50', '100', '200'],
-              showTotal: (total, range) => `${range[0]}-${range[1]} / ${total} 行`,
+              showTotal: (total, range) => t('db.paginationTotal', range[0], range[1], total),
               size: 'small',
               onChange: handlePageChange
             }}

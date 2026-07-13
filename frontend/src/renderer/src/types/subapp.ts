@@ -64,4 +64,6 @@ export interface TaskInfo {
   startedAt: number
   completedAt?: number
   result?: { success: boolean; summary: string; summaryI18nKey?: string; summaryI18nArgs?: string[] }
+  /** True when this task was triggered by the app scheduler (定时执行), not a manual run. */
+  scheduled?: boolean
 }

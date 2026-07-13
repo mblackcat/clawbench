@@ -16,7 +16,7 @@ import {
   SyncOutlined,
   CrownOutlined
 } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { applicationManager } from '../../services/applicationManager';
 import type { InstalledApp, UpdateInfo } from '../../services/applicationManager';
 import { localStorageManager } from '../../services/localStorageManager';
@@ -36,9 +36,13 @@ type AppStatus = 'owner' | 'installed' | 'update' | 'not_installed';
 
 const AppLibraryPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { token } = theme.useToken();
   const { message, modal } = App.useApp();
   const t = useT();
+  // Back button target. Default to 收藏栏 so direct URL entry into 发现
+  // doesn't strand the user with navigate(-1) → blank page.
+  const backTarget = (location.state as { from?: string } | null)?.from || '/workbench/installed';
   const [loading, setLoading] = useState(true);
   const [allApps, setAllApps] = useState<Application[]>([]);
   const [filteredApps, setFilteredApps] = useState<Application[]>([]);
@@ -461,7 +465,7 @@ const AppLibraryPage: React.FC = () => {
             <Button
               type="text"
               icon={<ArrowLeftOutlined />}
-              onClick={() => navigate(-1)}
+              onClick={() => navigate(backTarget)}
             >
               {t('discover.back')}
             </Button>
@@ -482,7 +486,7 @@ const AppLibraryPage: React.FC = () => {
         <Space.Compact size="large">
           <Button
             icon={<SnippetsOutlined />}
-            onClick={() => navigate('/workbench/my-contributions')}
+            onClick={() => navigate('/workbench/my-contributions', { state: { from: location.pathname } })}
           >
             {t('discover.mine')}
           </Button>

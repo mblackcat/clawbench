@@ -18,6 +18,7 @@ export interface Application {
   published: boolean;
   featured: boolean;
   downloadCount: number;
+  executionCount: number;
   metadata: Record<string, any> | null;
   createdAt: number;
   updatedAt: number;
@@ -45,6 +46,18 @@ export interface UpdateApplicationInput {
 }
 
 /**
+ * 应用版本历史条目（用于详情响应，不包含内部文件路径）
+ */
+export interface ApplicationVersionSummary {
+  versionId: string;
+  applicationId: string;
+  version: string;
+  changelog: string | null;
+  fileSize: number;
+  publishedAt: number;
+}
+
+/**
  * 应用响应
  */
 export interface ApplicationResponse {
@@ -60,6 +73,9 @@ export interface ApplicationResponse {
   /** 最新版本号（取自 application_versions 中 published_at 最新的一条） */
   version?: string;
   downloadCount: number;
+  executionCount: number;
+  /** 完整版本历史（仅详情接口附带，按发布时间倒序） */
+  versions?: ApplicationVersionSummary[];
   metadata: Record<string, any> | null;
   createdAt: number;
   updatedAt: number;
@@ -78,6 +94,7 @@ export interface ApplicationRow {
   published: number; // SQLite uses 0/1 for boolean
   featured: number; // SQLite uses 0/1 for boolean
   download_count: number;
+  execution_count: number;
   metadata: string | null; // JSON stored as string
   created_at: number;
   updated_at: number;
@@ -97,6 +114,7 @@ export function applicationRowToApplication(row: ApplicationRow): Application {
     published: row.published === 1,
     featured: row.featured === 1,
     downloadCount: row.download_count,
+    executionCount: row.execution_count,
     metadata: row.metadata ? JSON.parse(row.metadata) : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -108,11 +126,13 @@ export function applicationRowToApplication(row: ApplicationRow): Application {
  * @param app 应用对象
  * @param ownerName 所有者名称（可选）
  * @param latestVersion 最新版本号（可选，来自 application_versions）
+ * @param versions 完整版本历史（可选，仅详情接口传入）
  */
 export function applicationToResponse(
   app: Application,
   ownerName?: string,
-  latestVersion?: string
+  latestVersion?: string,
+  versions?: ApplicationVersionSummary[]
 ): ApplicationResponse {
   return {
     applicationId: app.applicationId,
@@ -126,6 +146,8 @@ export function applicationToResponse(
     featured: app.featured,
     version: latestVersion,
     downloadCount: app.downloadCount,
+    executionCount: app.executionCount,
+    versions,
     metadata: app.metadata,
     createdAt: app.createdAt,
     updatedAt: app.updatedAt,

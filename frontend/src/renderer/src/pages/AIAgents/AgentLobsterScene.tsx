@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef } from 'react'
 import { theme } from 'antd'
 import type { OpenClawAgent, LobsterAnimationState } from '../../types/openclaw'
+import { useT } from '../../i18n'
 import LobsterSVG from './LobsterSVG'
 
 interface AgentLobsterSceneProps {
@@ -20,6 +21,7 @@ const AgentLobsterScene: React.FC<AgentLobsterSceneProps> = ({
   containerHeight
 }) => {
   const { token } = theme.useToken()
+  const t = useT()
   const mainAgent = agents.find((a) => a.role === 'main')
   const subAgents = agents.filter((a) => a.role === 'sub')
   const hasSubAgents = subAgents.length > 0
@@ -95,7 +97,7 @@ const AgentLobsterScene: React.FC<AgentLobsterSceneProps> = ({
         <div
           style={{ cursor: mainAgent.state === 'idle' ? 'pointer' : 'default' }}
           onClick={handleMainClick}
-          title={mainAgent.state === 'idle' ? '点我！' : undefined}
+          title={mainAgent.state === 'idle' ? t('agents.clickMe') : undefined}
         >
           <LobsterSVG state={displayState} size={mainSize} variant="main" />
         </div>
@@ -138,7 +140,7 @@ const AgentLobsterScene: React.FC<AgentLobsterSceneProps> = ({
                 key={agent.id}
                 style={{ opacity: 0.85, cursor: agent.state === 'idle' ? 'pointer' : 'default' }}
                 onClick={() => handleSubClick(agent.id, agent.state)}
-                title={agent.state === 'idle' ? '点我！' : undefined}
+                title={agent.state === 'idle' ? t('agents.clickMe') : undefined}
               >
                 <LobsterSVG state={subState} size={subSize} variant="sub" />
               </div>
@@ -148,7 +150,7 @@ const AgentLobsterScene: React.FC<AgentLobsterSceneProps> = ({
           {/* "+N more" badge */}
           {hiddenCount > 0 && (
             <div
-              title={`还有 ${hiddenCount} 个子 Agent`}
+              title={t('agents.moreSubAgents', String(hiddenCount))}
               style={{
                 width: subSize,
                 height: subSize,

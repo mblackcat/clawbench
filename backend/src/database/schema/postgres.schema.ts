@@ -147,6 +147,21 @@ export async function initializePostgresSchema(database: DatabaseAdapter): Promi
   await database.run(`ALTER TABLE applications ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'app'`);
   // 应用表迁移：添加 featured 列（推荐字段，admin 可配置）
   await database.run(`ALTER TABLE applications ADD COLUMN IF NOT EXISTS featured INTEGER DEFAULT 0`);
+  // 应用表迁移：添加 execution_count 列（登录用户上报的执行次数）
+  await database.run(`ALTER TABLE applications ADD COLUMN IF NOT EXISTS execution_count INTEGER DEFAULT 0`);
+
+  // 应用执行错误日志表（登录用户上报，仅管理员可见）
+  await database.run(`
+    CREATE TABLE IF NOT EXISTS application_execution_errors (
+      error_id TEXT PRIMARY KEY,
+      application_id TEXT NOT NULL REFERENCES applications(application_id),
+      user_id TEXT NOT NULL REFERENCES users(user_id),
+      version TEXT,
+      message TEXT NOT NULL,
+      details TEXT,
+      created_at BIGINT NOT NULL
+    )
+  `);
 
   // 创建索引
   await database.run(`CREATE INDEX IF NOT EXISTS idx_applications_owner ON applications(owner_id)`);
@@ -161,6 +176,7 @@ export async function initializePostgresSchema(database: DatabaseAdapter): Promi
   await database.run(`CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id)`);
   await database.run(`CREATE INDEX IF NOT EXISTS idx_attachments_message ON chat_attachments(message_id)`);
   await database.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_feishu_open_id ON users(feishu_open_id)`);
+  await database.run(`CREATE INDEX IF NOT EXISTS idx_exec_errors_application ON application_execution_errors(application_id, created_at)`);
 
   logger.info('PostgreSQL schema initialized successfully');
 }

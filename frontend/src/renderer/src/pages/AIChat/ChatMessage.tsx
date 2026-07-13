@@ -38,25 +38,18 @@ function useIsZh(): boolean {
   return useSettingsStore((s) => (s.language || 'zh-CN').startsWith('zh'))
 }
 
-const STATUS_LABELS_ZH = [
-  '理解问题中',
-  '分析上下文',
-  '组织思路中',
-  '整理回答中',
-  '梳理细节中',
-]
-const STATUS_LABELS_EN = [
-  'Understanding',
-  'Analyzing',
-  'Organizing thoughts',
-  'Composing',
-  'Refining',
+const STATUS_LABEL_KEYS = [
+  'chat.thinkingUnderstand',
+  'chat.thinkingAnalyze',
+  'chat.thinkingOrganize',
+  'chat.thinkingCompose',
+  'chat.thinkingRefine',
 ]
 
 function StreamingStatus() {
   const { token } = theme.useToken()
-  const isZh = useIsZh()
-  const labels = isZh ? STATUS_LABELS_ZH : STATUS_LABELS_EN
+  const t = useT()
+  const labels = STATUS_LABEL_KEYS.map((key) => t(key))
   const [index, setIndex] = useState(0)
 
   useEffect(() => {
@@ -470,7 +463,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming, contain
                       img: ({ src, alt, ...props }) => {
                         const b64Match = src?.match(/^data:image\/[^;]+;base64,(.+)$/)
                         const menuItems = b64Match
-                          ? [{ key: 'save', icon: <DownloadOutlined />, label: '保存图片' }]
+                          ? [{ key: 'save', icon: <DownloadOutlined />, label: t('chat.saveImage') }]
                           : []
                         const handleMenuClick = ({ key }: { key: string }) => {
                           if (key === 'save' && b64Match) {

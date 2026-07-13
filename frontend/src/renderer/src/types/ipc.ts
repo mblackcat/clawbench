@@ -781,6 +781,25 @@ export interface ClawBenchAPI {
         prompt: string
         keepInOneChat: boolean
         conversationId?: string
+        modelId?: string
+        timestamp: number
+      }) => void
+    ) => () => void
+  }
+  appSchedule: {
+    list: () => Promise<import('./app-schedule').AppSchedule[]>
+    getByApp: (appId: string) => Promise<import('./app-schedule').AppSchedule | undefined>
+    save: (appId: string, data: import('./app-schedule').AppScheduleInput) => Promise<import('./app-schedule').AppSchedule>
+    delete: (appId: string) => Promise<boolean>
+    setEnabled: (appId: string, enabled: boolean) => Promise<import('./app-schedule').AppSchedule | undefined>
+    runNow: (appId: string) => Promise<{ success: boolean; error?: string }>
+    onExecuted: (
+      callback: (data: {
+        scheduleId: string
+        appId: string
+        appName: string
+        status: string
+        summary: string
         timestamp: number
       }) => void
     ) => () => void

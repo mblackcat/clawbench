@@ -8,6 +8,7 @@ import {
   deleteUserHandler,
   listAllApplicationsHandler,
   updateApplicationAdminHandler,
+  listExecutionErrorsHandler,
 } from '../controllers/adminController';
 
 /**
@@ -30,3 +31,6 @@ adminRouter.delete('/users/:userId', deleteUserHandler);
 // Application management (admin view — all apps including unpublished)
 adminRouter.get('/applications', listAllApplicationsHandler);
 adminRouter.put('/applications/:applicationId', updateApplicationAdminHandler);
+
+// Execution error logs (admin-only visibility)
+adminRouter.get('/applications/:applicationId/execution-errors', listExecutionErrorsHandler);

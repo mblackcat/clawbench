@@ -2,6 +2,7 @@ import React from 'react'
 import { Tabs, Button, Typography, theme } from 'antd'
 import { CloseOutlined } from '@ant-design/icons'
 import { useAITerminalStore } from '../../stores/useAITerminalStore'
+import { useT } from '../../i18n'
 import DBTableBrowser from './DBTableBrowser'
 import DBQueryEditor from './DBQueryEditor'
 
@@ -9,6 +10,7 @@ const { Text } = Typography
 
 const DBContentPanel: React.FC = () => {
   const { token } = theme.useToken()
+  const t = useT()
   const { openDBTabs, activeDBTabId, setActiveDBTab, closeDBTab } = useAITerminalStore()
 
   if (openDBTabs.length === 0) {
@@ -21,7 +23,7 @@ const DBContentPanel: React.FC = () => {
         color: token.colorTextTertiary,
         fontSize: 14
       }}>
-        双击左侧表名浏览数据，或右键连接打开 SQL 查询
+        {t('terminal.emptyDB')}
       </div>
     )
   }

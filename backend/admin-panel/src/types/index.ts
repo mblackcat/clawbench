@@ -14,6 +14,26 @@ export interface UserResponse {
   updatedAt: number;
 }
 
+export interface ApplicationVersionResponse {
+  versionId: string;
+  applicationId: string;
+  version: string;
+  changelog: string | null;
+  fileSize: number;
+  publishedAt: number;
+}
+
+export interface ExecutionErrorResponse {
+  errorId: string;
+  applicationId: string;
+  userId: string;
+  username?: string;
+  version: string | null;
+  message: string;
+  details: string | null;
+  createdAt: number;
+}
+
 export interface ApplicationResponse {
   applicationId: string;
   name: string;
@@ -27,6 +47,9 @@ export interface ApplicationResponse {
   /** Latest version number (from application_versions) */
   version?: string;
   downloadCount: number;
+  executionCount: number;
+  /** Full version history (detail endpoint only, newest first) */
+  versions?: ApplicationVersionResponse[];
   metadata: Record<string, unknown> | null;
   createdAt: number;
   updatedAt: number;

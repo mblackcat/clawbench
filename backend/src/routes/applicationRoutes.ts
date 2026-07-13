@@ -9,6 +9,7 @@ import {
   deleteApplicationHandler,
   uploadApplicationPackageHandler,
   downloadApplicationPackageHandler,
+  reportExecutionHandler,
 } from '../controllers/applicationController';
 import { authenticate } from '../middleware/auth';
 
@@ -71,3 +72,9 @@ applicationRouter.post(
   upload.single('file'),
   uploadApplicationPackageHandler
 );
+
+/**
+ * POST /api/v1/applications/:applicationId/executions
+ * 上报应用执行结果（需要认证；本地未登录时客户端不会调用此接口）
+ */
+applicationRouter.post('/:applicationId/executions', authenticate, reportExecutionHandler);

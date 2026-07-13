@@ -8,6 +8,7 @@ import {
   ExportOutlined
 } from '@ant-design/icons'
 import { useCopiperStore } from '../../stores/useCopiperStore'
+import { useT } from '../../i18n'
 
 interface CopiperToolbarProps {
   onOpenColumnEditor: () => void
@@ -18,6 +19,7 @@ const CopiperToolbar: React.FC<CopiperToolbarProps> = ({
   onOpenColumnEditor,
   onOpenExportModal
 }) => {
+  const t = useT()
   const { token } = theme.useToken()
   const { message } = App.useApp()
 
@@ -49,7 +51,7 @@ const CopiperToolbar: React.FC<CopiperToolbarProps> = ({
           disabled={disabled}
           onClick={addRow}
         >
-          添加行
+          {t('copiper.addRow')}
         </Button>
         <Button
           size="small"
@@ -57,7 +59,7 @@ const CopiperToolbar: React.FC<CopiperToolbarProps> = ({
           disabled={disabled || selectedRowIndices.length === 0}
           onClick={deleteSelectedRows}
         >
-          删除选中
+          {t('copiper.deleteSelected')}
         </Button>
         <Button
           size="small"
@@ -65,7 +67,7 @@ const CopiperToolbar: React.FC<CopiperToolbarProps> = ({
           disabled={disabled}
           onClick={onOpenColumnEditor}
         >
-          列管理
+          {t('copiper.columnManager')}
         </Button>
         <Button
           size="small"
@@ -75,15 +77,15 @@ const CopiperToolbar: React.FC<CopiperToolbarProps> = ({
             await validateCurrentTable()
             const issues = useCopiperStore.getState().validationIssues
             if (issues.length === 0) {
-              message.success('验证通过，无问题')
+              message.success(t('copiper.validationPassed'))
             } else {
               const errors = issues.filter(i => i.level === 'error').length
               const warnings = issues.filter(i => i.level === 'warning').length
-              message.warning(`发现 ${errors} 个错误, ${warnings} 个警告`)
+              message.warning(t('copiper.validationIssues', errors, warnings))
             }
           }}
         >
-          验证
+          {t('copiper.validate')}
         </Button>
         <Button
           size="small"
@@ -91,12 +93,12 @@ const CopiperToolbar: React.FC<CopiperToolbarProps> = ({
           disabled={disabled}
           onClick={onOpenExportModal}
         >
-          导出
+          {t('copiper.export')}
         </Button>
       </Space>
       <Input.Search
         size="small"
-        placeholder="搜索..."
+        placeholder={t('copiper.search')}
         value={searchText}
         onChange={(e) => setSearchText(e.target.value)}
         allowClear

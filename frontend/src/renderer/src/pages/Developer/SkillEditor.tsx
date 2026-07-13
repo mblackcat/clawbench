@@ -125,7 +125,7 @@ const SkillEditor: React.FC = () => {
         message.success(t('skillEditor.skillCreated'));
       }
 
-      navigate('/workbench/my-contributions');
+      navigate(backTarget);
     } catch (error) {
       console.error('Failed to save skill:', error);
       message.error(t('skillEditor.saveFailed'));

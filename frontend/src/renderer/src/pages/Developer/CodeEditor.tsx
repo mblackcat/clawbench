@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import {
   Layout,
   Tree,
@@ -83,11 +83,15 @@ function pathDirname(filePath: string): string {
 
 const CodeEditor: React.FC = () => {
   const navigate = useNavigate()
+  const location = useLocation()
   const { appId } = useParams<{ appId: string }>()
   const { token } = theme.useToken()
   const { message, modal } = App.useApp()
   const { theme: appTheme } = useSettingsStore()
   const t = useT()
+  // Where the Back button returns to. Default to 我的 so direct URL entry
+  // never strands the user with navigate(-1) → blank page.
+  const backTarget = (location.state as { from?: string } | null)?.from || '/workbench/my-contributions'
 
   const [files, setFiles] = useState<FileNode[]>([])
   const [tabs, setTabs] = useState<TabItem[]>([])
@@ -688,7 +692,7 @@ const CodeEditor: React.FC = () => {
             <Button
               type="text"
               icon={<ArrowLeftOutlined />}
-              onClick={() => navigate(-1)}
+              onClick={() => navigate(backTarget)}
             />
           </Tooltip>
           <Title level={5} style={{ margin: 0 }}>
@@ -728,7 +732,7 @@ const CodeEditor: React.FC = () => {
             <Button
               type="text"
               icon={<CloudUploadOutlined />}
-              onClick={() => navigate(`/developer/publish`, { state: { appId: appId || undefined } })}
+              onClick={() => navigate(`/developer/publish`, { state: { appId: appId || undefined, from: location.pathname } })}
             />
           </Tooltip>
         </Space>

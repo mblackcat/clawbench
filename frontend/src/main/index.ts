@@ -16,7 +16,9 @@ import { settingsStore } from './store/settings.store'
 import * as logger from './utils/logger'
 import { migrateSettings } from './utils/migrate-settings'
 import { initScheduler } from './services/scheduled-task.service'
+import { initAppScheduler } from './services/app-schedule.service'
 import { startMemoryUpdater } from './services/memory-updater.service'
+import { flushPendingUsageEvents } from './services/usage-tracking.service'
 
 const PROTOCOL = 'clawbench'
 let tray: Tray | null = null
@@ -270,6 +272,7 @@ app.whenReady().then(() => {
   registerGlobalShortcuts()
   initAutoUpdater()
   initScheduler()
+  initAppScheduler()
   // Long-term memory self-update (skipped when assistant master switch is off)
   startMemoryUpdater()
 
@@ -279,6 +282,11 @@ app.whenReady().then(() => {
       // Silently ignore startup check errors (dev mode, unsigned build, network, etc.)
     })
   }, 8000)
+
+  // Retry any execution reports that failed to upload last session (no-op if not logged in)
+  flushPendingUsageEvents().catch((err) => {
+    logger.warn('Failed to flush pending usage events:', err)
+  })
 
   logger.info('Application ready')
 

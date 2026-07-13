@@ -36,7 +36,19 @@ const AIChatPage: React.FC = () => {
     const unsubscribe = window.api.scheduledTask.onExecuted((data) => {
       // Refresh task list to show updated lastRunAt / nextRunAt
       useScheduledTaskStore.getState().fetchTasks()
-      // Refresh conversations in case backend created one
+      // Surface the AI result as a chat message pair (user prompt + assistant
+      // answer) so scheduled tasks actually produce visible output.
+      useChatStore.getState().appendScheduledResult({
+        taskId: data.taskId,
+        taskName: data.taskName,
+        status: data.status,
+        result: data.result,
+        prompt: data.prompt,
+        keepInOneChat: data.keepInOneChat,
+        conversationId: data.conversationId,
+        modelId: data.modelId
+      })
+      // Refresh conversations in case a new one was created
       fetchConversations()
     })
     return unsubscribe

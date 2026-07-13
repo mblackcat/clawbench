@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto'
 import { getTempDir } from '../utils/paths'
 import { settingsStore } from '../store/settings.store'
 import { mainT } from '../utils/i18n'
+import { recordExecutionResult } from './usage-tracking.service'
 import * as logger from '../utils/logger'
 
 /** Map of taskId to running child process */
@@ -16,6 +17,13 @@ const completedTasks = new Set<string>()
 
 /** Map of taskId to app display name */
 const taskAppNames = new Map<string, string>()
+
+/**
+ * Map of taskId to marketplace app identity, used only by `executeSubApp`
+ * (the primary workbench "run" path) to report execution results/errors to
+ * the backend for logged-in users. See usage-tracking.service.ts.
+ */
+const taskAppMeta = new Map<string, { appId: string; version?: string }>()
 
 interface SubAppParams {
   [key: string]: unknown
@@ -194,7 +202,9 @@ function sendTaskNotification(
  * Executes a sub-app Python script as a child process.
  *
  * @param taskId - Unique identifier for this task
+ * @param appId - Marketplace application id (used for usage/error reporting)
  * @param appName - Display name of the sub-app
+ * @param version - Installed manifest version (used for usage/error reporting)
  * @param appPath - Directory path of the sub-app
  * @param entryFile - Python entry file name (e.g., "main.py")
  * @param params - Parameters to pass to the sub-app
@@ -205,7 +215,9 @@ function sendTaskNotification(
  */
 export function executeSubApp(
   taskId: string,
+  appId: string,
   appName: string,
+  version: string | undefined,
   appPath: string,
   entryFile: string,
   params: SubAppParams,
@@ -217,6 +229,7 @@ export function executeSubApp(
   logger.info(`Starting task ${taskId}: ${entryFile} in ${appPath}`)
 
   taskAppNames.set(taskId, appName)
+  taskAppMeta.set(taskId, { appId, version })
 
   // Write params and workspace info to temp JSON files
   const tmpDir = ensureTempDir()
@@ -311,33 +324,55 @@ export function executeSubApp(
       stdoutBuffer = ''
     }
 
-    // Send final status if not already sent
-    if (!completedTasks.has(taskId) && !webContents.isDestroyed()) {
+    // Report final status + usage tracking if not already sent (e.g. via the
+    // 'result' JSON protocol message handled in processOutputLine).
+    if (!completedTasks.has(taskId)) {
       const success = code === 0
       const errorSummary = stderrBuffer.trim()
       const fallbackExitCode = String(code ?? 'unknown')
-      webContents.send('subapp:task-status', {
-        taskId,
-        status: success ? 'completed' : 'failed',
-        exitCode: code,
-        summary: success
-          ? undefined
-          : errorSummary || mainT('subapp.processExitedWithCode', fallbackExitCode),
-        summaryI18nKey: success || errorSummary ? undefined : 'subapp.processExitedWithCode',
-        summaryI18nArgs: success || errorSummary ? undefined : [fallbackExitCode]
-      })
-      sendTaskNotification(taskId, success, webContents)
+
+      const meta = taskAppMeta.get(taskId)
+      if (meta) {
+        recordExecutionResult(
+          meta.appId,
+          meta.version,
+          success,
+          success ? undefined : errorSummary || `Process exited with code ${fallbackExitCode}`
+        ).catch((err) => logger.warn(`Failed to record execution result for task ${taskId}:`, err))
+      }
+
+      if (!webContents.isDestroyed()) {
+        webContents.send('subapp:task-status', {
+          taskId,
+          status: success ? 'completed' : 'failed',
+          exitCode: code,
+          summary: success
+            ? undefined
+            : errorSummary || mainT('subapp.processExitedWithCode', fallbackExitCode),
+          summaryI18nKey: success || errorSummary ? undefined : 'subapp.processExitedWithCode',
+          summaryI18nArgs: success || errorSummary ? undefined : [fallbackExitCode]
+        })
+        sendTaskNotification(taskId, success, webContents)
+      }
     }
 
     // Cleanup
     runningTasks.delete(taskId)
     completedTasks.delete(taskId)
     taskAppNames.delete(taskId)
+    taskAppMeta.delete(taskId)
     cleanupTempFiles(paramsFile, workspaceFile)
   })
 
   proc.on('error', (err) => {
     logger.error(`Task ${taskId} process error:`, err.message)
+
+    const meta = taskAppMeta.get(taskId)
+    if (meta) {
+      recordExecutionResult(meta.appId, meta.version, false, err.message).catch((e) =>
+        logger.warn(`Failed to record execution result for task ${taskId}:`, e)
+      )
+    }
 
     if (!webContents.isDestroyed()) {
       const message = mainT('subapp.processStartFailed', err.message)
@@ -365,6 +400,7 @@ export function executeSubApp(
     completedTasks.add(taskId)
     runningTasks.delete(taskId)
     taskAppNames.delete(taskId)
+    taskAppMeta.delete(taskId)
     cleanupTempFiles(paramsFile, workspaceFile)
   })
 }
@@ -403,7 +439,7 @@ function processOutputLine(taskId: string, line: string, webContents: WebContent
       case 'progress':
         webContents.send('subapp:progress', { taskId, ...data })
         break
-      case 'result':
+      case 'result': {
         webContents.send('subapp:task-status', {
           taskId,
           status: data.success ? 'completed' : 'failed',
@@ -411,7 +447,18 @@ function processOutputLine(taskId: string, line: string, webContents: WebContent
         })
         completedTasks.add(taskId)
         sendTaskNotification(taskId, !!data.success, webContents)
+
+        const meta = taskAppMeta.get(taskId)
+        if (meta) {
+          const errorMessage = data.success
+            ? undefined
+            : String(data.message ?? data.summary ?? 'Sub-app reported failure')
+          recordExecutionResult(meta.appId, meta.version, !!data.success, errorMessage).catch((err) =>
+            logger.warn(`Failed to record execution result for task ${taskId}:`, err)
+          )
+        }
         break
+      }
       case 'error':
         webContents.send('subapp:output', { taskId, ...data })
         break
@@ -447,7 +494,9 @@ function processOutputLine(taskId: string, line: string, webContents: WebContent
  */
 export function executeSubAppWithCallbacks(
   taskId: string,
+  appId: string,
   appName: string,
+  version: string | undefined,
   appPath: string,
   entryFile: string,
   params: SubAppParams,
@@ -521,6 +570,12 @@ export function executeSubAppWithCallbacks(
             lastSummary = json.summary || mainT(json.success ? 'subapp.executionSucceeded' : 'subapp.executionFailed')
             callbacks.onComplete?.(!!json.success, lastSummary)
             completedTasks.add(taskId)
+            recordExecutionResult(
+              appId,
+              version,
+              !!json.success,
+              json.success ? undefined : String(json.message ?? lastSummary ?? 'Sub-app reported failure')
+            ).catch((err) => logger.warn(`Failed to record execution result for task ${taskId}:`, err))
             break
           default:
             callbacks.onOutput?.(json.message || line, 'info')
@@ -545,6 +600,12 @@ export function executeSubAppWithCallbacks(
         success,
         lastSummary || mainT(success ? 'subapp.executionCompleted' : 'subapp.executionFailed')
       )
+      recordExecutionResult(
+        appId,
+        version,
+        success,
+        success ? undefined : `Process exited with code ${String(code ?? 'unknown')}`
+      ).catch((err) => logger.warn(`Failed to record execution result for task ${taskId}:`, err))
     }
     runningTasks.delete(taskId)
     completedTasks.delete(taskId)
@@ -554,6 +615,9 @@ export function executeSubAppWithCallbacks(
 
   proc.on('error', (err) => {
     callbacks.onComplete?.(false, mainT('subapp.processStartFailed', err.message))
+    recordExecutionResult(appId, version, false, err.message).catch((e) =>
+      logger.warn(`Failed to record execution result for task ${taskId}:`, e)
+    )
     completedTasks.add(taskId)
     runningTasks.delete(taskId)
     taskAppNames.delete(taskId)

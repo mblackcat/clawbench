@@ -171,6 +171,25 @@ export async function initializeSqliteSchema(database: DatabaseAdapter): Promise
   if (!appColumnNames.includes('featured')) {
     await database.run(`ALTER TABLE applications ADD COLUMN featured INTEGER DEFAULT 0`);
   }
+  // 应用表迁移：添加 execution_count 列（登录用户上报的执行次数）
+  if (!appColumnNames.includes('execution_count')) {
+    await database.run(`ALTER TABLE applications ADD COLUMN execution_count INTEGER DEFAULT 0`);
+  }
+
+  // 应用执行错误日志表（登录用户上报，仅管理员可见）
+  await database.run(`
+    CREATE TABLE IF NOT EXISTS application_execution_errors (
+      error_id TEXT PRIMARY KEY,
+      application_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      version TEXT,
+      message TEXT NOT NULL,
+      details TEXT,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (application_id) REFERENCES applications(application_id),
+      FOREIGN KEY (user_id) REFERENCES users(user_id)
+    )
+  `);
 
   // 创建索引
   await database.run(`CREATE INDEX IF NOT EXISTS idx_applications_owner ON applications(owner_id)`);
@@ -186,6 +205,7 @@ export async function initializeSqliteSchema(database: DatabaseAdapter): Promise
   await database.run(`CREATE INDEX IF NOT EXISTS idx_attachments_message ON chat_attachments(message_id)`);
   await database.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_feishu_open_id ON users(feishu_open_id)`);
   await database.run(`CREATE INDEX IF NOT EXISTS idx_agent_memories_user ON agent_memories(user_id)`);
+  await database.run(`CREATE INDEX IF NOT EXISTS idx_exec_errors_application ON application_execution_errors(application_id, created_at)`);
 
   logger.info('SQLite schema initialized successfully');
 }

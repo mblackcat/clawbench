@@ -3,6 +3,7 @@ import { Input, Modal, Typography, theme } from 'antd'
 import { EditOutlined } from '@ant-design/icons'
 import type { ColDef } from '../../../types/copiper'
 import { MONO_FONT_STACK } from '../../../utils/mono-font'
+import { useT } from '../../../i18n'
 
 const { Text } = Typography
 
@@ -42,6 +43,7 @@ const toDisplayJson = (raw: unknown): string => {
 }
 
 const KVEditor: React.FC<KVEditorProps> = ({ value, onChange, onBlur }) => {
+  const t = useT()
   const { token } = theme.useToken()
   const [modalOpen, setModalOpen] = useState(false)
   const [editText, setEditText] = useState('')
@@ -88,7 +90,7 @@ const KVEditor: React.FC<KVEditorProps> = ({ value, onChange, onBlur }) => {
         <EditOutlined style={{ color: token.colorPrimary, flexShrink: 0 }} />
       </div>
       <Modal
-        title="编辑键值数据"
+        title={t('copiper.editKvData')}
         open={modalOpen}
         onOk={handleOk}
         onCancel={() => {

@@ -15,6 +15,7 @@ import {
 } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import type { ImageGenConfig } from '../../types/ipc'
+import { useT } from '../../i18n'
 
 const { Text } = Typography
 
@@ -32,21 +33,22 @@ const PROVIDER_PRESETS: Record<
     endpoint: 'http://127.0.0.1:7860',
   },
   custom: {
-    label: '自定义 (OpenAI 兼容)',
+    label: 'imageGen.providerCustom',
     endpoint: '',
   },
 }
 
 const SIZE_OPTIONS = [
   { label: '1024×1024', value: '1024x1024' },
-  { label: '1024×1792 (竖)', value: '1024x1792' },
-  { label: '1792×1024 (横)', value: '1792x1024' },
+  { label: 'imageGen.sizePortrait', value: '1024x1792' },
+  { label: 'imageGen.sizeLandscape', value: '1792x1024' },
   { label: '512×512', value: '512x512' },
   { label: '256×256', value: '256x256' },
 ]
 
 const ImageGenSettings: React.FC = () => {
   const { message } = App.useApp()
+  const t = useT()
   const [configs, setConfigs] = useState<ImageGenConfig[]>([])
   const [loading, setLoading] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
@@ -91,10 +93,10 @@ const ImageGenSettings: React.FC = () => {
   const handleDelete = async (id: string) => {
     try {
       await window.api.settings.deleteImageGenConfig(id)
-      message.success('已删除')
+      message.success(t('imageGen.deleted'))
       loadConfigs()
     } catch {
-      message.error('删除失败')
+      message.error(t('imageGen.deleteFailed'))
     }
   }
 
@@ -106,7 +108,7 @@ const ImageGenSettings: React.FC = () => {
         ...values,
       }
       await window.api.settings.saveImageGenConfig(config)
-      message.success('已保存')
+      message.success(t('common.saved'))
       setModalOpen(false)
       loadConfigs()
     } catch {
@@ -124,24 +126,29 @@ const ImageGenSettings: React.FC = () => {
     }
   }
 
+  const resolveProviderLabel = (label: string) =>
+    label.includes('.') ? t(label) : label
+
   const columns = [
     {
-      title: '名称',
+      title: t('aiModel.colName'),
       dataIndex: 'name',
       key: 'name',
       render: (name: string) => <Text strong>{name}</Text>,
     },
     {
-      title: '服务商',
+      title: t('imageGen.colProvider'),
       dataIndex: 'provider',
       key: 'provider',
       width: 160,
-      render: (p: string) => (
-        <Tag>{PROVIDER_PRESETS[p]?.label || p}</Tag>
-      ),
+      render: (p: string) => {
+        const preset = PROVIDER_PRESETS[p]
+        const label = preset ? resolveProviderLabel(preset.label) : p
+        return <Tag>{label}</Tag>
+      },
     },
     {
-      title: '端点',
+      title: t('imageGen.colEndpoint'),
       dataIndex: 'endpoint',
       key: 'endpoint',
       ellipsis: true,
@@ -152,15 +159,15 @@ const ImageGenSettings: React.FC = () => {
       ),
     },
     {
-      title: '启用',
+      title: t('aiModel.colEnabled'),
       dataIndex: 'enabled',
       key: 'enabled',
       width: 60,
       render: (enabled: boolean) =>
-        enabled ? <Tag color="green">是</Tag> : <Tag>否</Tag>,
+        enabled ? <Tag color="green">{t('aiModel.yes')}</Tag> : <Tag>{t('aiModel.no')}</Tag>,
     },
     {
-      title: '操作',
+      title: t('aiModel.colActions'),
       key: 'actions',
       width: 100,
       render: (_: unknown, record: ImageGenConfig) => (
@@ -172,7 +179,7 @@ const ImageGenSettings: React.FC = () => {
             onClick={() => handleEdit(record)}
           />
           <Popconfirm
-            title="确定删除？"
+            title={t('imageGen.confirmDelete')}
             onConfirm={() => handleDelete(record.id)}
           >
             <Button
@@ -198,10 +205,10 @@ const ImageGenSettings: React.FC = () => {
         }}
       >
         <Text type="secondary" style={{ fontSize: 13 }}>
-          配置图片生成服务（DALL-E、Stable Diffusion 等），为 AI 对话提供文生图和图生图能力
+          {t('imageGen.desc')}
         </Text>
         <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
-          添加配置
+          {t('imageGen.addConfig')}
         </Button>
       </div>
       <Table
@@ -214,7 +221,7 @@ const ImageGenSettings: React.FC = () => {
       />
 
       <Modal
-        title={editingConfig ? '编辑图片生成配置' : '添加图片生成配置'}
+        title={editingConfig ? t('imageGen.editTitle') : t('imageGen.addTitle')}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onOk={handleSave}
@@ -223,19 +230,19 @@ const ImageGenSettings: React.FC = () => {
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item
             name="name"
-            label="名称"
-            rules={[{ required: true, message: '请输入名称' }]}
+            label={t('aiModel.colName')}
+            rules={[{ required: true, message: t('aiModel.formNameRequired') }]}
           >
-            <Input placeholder="例如：DALL-E 3" />
+            <Input placeholder={t('imageGen.namePlaceholder')} />
           </Form.Item>
           <Form.Item
             name="provider"
-            label="服务商"
+            label={t('imageGen.colProvider')}
             rules={[{ required: true }]}
           >
             <Select
               options={Object.entries(PROVIDER_PRESETS).map(([key, val]) => ({
-                label: val.label,
+                label: resolveProviderLabel(val.label),
                 value: key,
               }))}
               onChange={handleProviderChange}
@@ -243,21 +250,26 @@ const ImageGenSettings: React.FC = () => {
           </Form.Item>
           <Form.Item
             name="endpoint"
-            label="API 端点"
-            rules={[{ required: true, message: '请输入端点地址' }]}
+            label={t('imageGen.endpointLabel')}
+            rules={[{ required: true, message: t('imageGen.endpointRequired') }]}
           >
             <Input placeholder="https://api.openai.com" />
           </Form.Item>
           <Form.Item name="apiKey" label="API Key">
             <Input.Password placeholder="sk-..." />
           </Form.Item>
-          <Form.Item name="defaultModel" label="默认模型">
-            <Input placeholder="例如：dall-e-3" />
+          <Form.Item name="defaultModel" label={t('imageGen.defaultModel')}>
+            <Input placeholder={t('imageGen.defaultModelPlaceholder')} />
           </Form.Item>
-          <Form.Item name="defaultSize" label="默认尺寸">
-            <Select options={SIZE_OPTIONS} />
+          <Form.Item name="defaultSize" label={t('imageGen.defaultSize')}>
+            <Select
+              options={SIZE_OPTIONS.map((opt) => ({
+                label: resolveProviderLabel(opt.label),
+                value: opt.value,
+              }))}
+            />
           </Form.Item>
-          <Form.Item name="enabled" label="启用" valuePropName="checked">
+          <Form.Item name="enabled" label={t('aiModel.formEnabled')} valuePropName="checked">
             <Switch />
           </Form.Item>
         </Form>

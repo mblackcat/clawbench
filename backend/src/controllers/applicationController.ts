@@ -10,12 +10,22 @@ import {
   deleteApplication,
   isApplicationOwner,
   setApplicationPublished,
+  incrementDownloadCount,
+  incrementExecutionCount,
 } from '../repositories/applicationRepository';
 import { getUserById } from '../repositories/userRepository';
 import { CreateApplicationInput, applicationToResponse, UpdateApplicationInput } from '../models/application';
 import { logger } from '../utils/logger';
 import { storageService } from '../services/storage';
-import { createApplicationVersion, versionExists, getLatestVersion, getVersionByNumber, getLatestVersionsByApplicationIds } from '../repositories/applicationVersionRepository';
+import {
+  createApplicationVersion,
+  versionExists,
+  getLatestVersion,
+  getVersionByNumber,
+  getLatestVersionsByApplicationIds,
+  getVersionsByApplicationId,
+} from '../repositories/applicationVersionRepository';
+import { createExecutionError } from '../repositories/applicationExecutionErrorRepository';
 
 /**
  * 应用控制器
@@ -256,10 +266,25 @@ export async function getApplicationDetailHandler(
     // 获取最新版本号（详情接口附带，供客户端比对更新）
     const latestVersion = await getLatestVersion(applicationId);
 
+    // 获取完整版本历史（供客户端/管理面板展示更新历史）
+    const versions = await getVersionsByApplicationId(applicationId);
+
     // 返回成功响应
     res.status(200).json({
       success: true,
-      data: applicationToResponse(application, owner?.username, latestVersion?.version),
+      data: applicationToResponse(
+        application,
+        owner?.username,
+        latestVersion?.version,
+        versions.map((v) => ({
+          versionId: v.versionId,
+          applicationId: v.applicationId,
+          version: v.version,
+          changelog: v.changelog,
+          fileSize: v.fileSize,
+          publishedAt: v.publishedAt,
+        }))
+      ),
     });
 
     logger.info(`Application detail queried: ${applicationId}`);
@@ -807,9 +832,87 @@ export async function downloadApplicationPackageHandler(
     res.setHeader('Content-Length', fileBuffer.length);
     res.status(200).send(fileBuffer);
 
+    // 下载量计数：公开计数，登录与否都计入（响应已发送，不阻塞客户端）
+    incrementDownloadCount(applicationId).catch((err) => {
+      logger.error(`Failed to increment download count for ${applicationId}:`, err);
+    });
+
     logger.info(`Application package downloaded: ${applicationId} version ${targetVersion.version}`);
   } catch (error) {
     logger.error('Error downloading application package:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Internal server error',
+      },
+    });
+  }
+}
+
+/**
+ * 上报应用执行结果（登录用户）
+ * POST /api/v1/applications/:applicationId/executions
+ *
+ * 桌面客户端在本地运行 app 类型子应用完成后调用（仅当用户已登录）。
+ * 每次调用都会增加 execution_count；若执行失败且带有错误信息，
+ * 同时写入一条执行错误日志（仅管理员可见）。
+ *
+ * Body: { version?: string, success: boolean, errorMessage?: string, errorDetails?: string }
+ */
+export async function reportExecutionHandler(
+  req: AuthRequest,
+  res: Response
+): Promise<void> {
+  try {
+    const { applicationId } = req.params;
+    const { version, success, errorMessage, errorDetails } = req.body as {
+      version?: unknown;
+      success?: unknown;
+      errorMessage?: unknown;
+      errorDetails?: unknown;
+    };
+
+    if (!req.userId) {
+      res.status(401).json({
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'Authentication required' },
+      });
+      return;
+    }
+
+    if (typeof success !== 'boolean') {
+      res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_INPUT', message: '"success" must be a boolean' },
+      });
+      return;
+    }
+
+    const application = await getApplicationById(applicationId);
+    if (!application) {
+      res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Application not found' },
+      });
+      return;
+    }
+
+    await incrementExecutionCount(applicationId);
+
+    if (!success && typeof errorMessage === 'string' && errorMessage.trim().length > 0) {
+      await createExecutionError({
+        applicationId,
+        userId: req.userId,
+        version: typeof version === 'string' ? version : undefined,
+        message: errorMessage,
+        details: typeof errorDetails === 'string' ? errorDetails : undefined,
+      });
+    }
+
+    res.status(200).json({ success: true, data: { recorded: true } });
+  } catch (error) {
+    logger.error('Error reporting application execution:', error);
     res.status(500).json({
       success: false,
       error: {

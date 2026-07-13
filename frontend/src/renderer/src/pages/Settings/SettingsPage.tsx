@@ -132,9 +132,12 @@ const SettingsPage: React.FC = () => {
     try {
       const result = await window.api.settings.validatePython(pythonPath)
       if (result && (result as any).valid) {
+        const version = (result as any).version
         setPythonValidation({
           status: 'success',
-          message: `Python ${(result as any).version || '验证通过'}`
+          message: version
+            ? t('settings.pythonValidated', version)
+            : t('settings.pythonValidatedPlain')
         })
       } else {
         setPythonValidation({ status: 'error', message: t('settings.pythonInvalid') })

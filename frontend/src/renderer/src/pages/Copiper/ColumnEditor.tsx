@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react'
 import { Modal, Table, Input, Select, Button, Space, App, theme, Typography } from 'antd'
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons'
 import { useCopiperStore } from '../../stores/useCopiperStore'
+import { useT } from '../../i18n'
 import type { ColDef } from '../../types/copiper'
 
 const { Text } = Typography
@@ -23,14 +24,15 @@ const cTypeOptions = [
   { label: 'rdesc', value: 'rdesc' }
 ]
 
-const reqOptOptions = [
-  { label: '必填', value: 'required' },
-  { label: '可选', value: 'optional' }
-]
-
 const ColumnEditor: React.FC<ColumnEditorProps> = ({ open, onClose }) => {
+  const t = useT()
   const { token } = theme.useToken()
   const { message } = App.useApp()
+
+  const reqOptOptions = [
+    { label: t('copiper.required'), value: 'required' },
+    { label: t('copiper.optional'), value: 'optional' }
+  ]
 
   const activeDatabase = useCopiperStore((s) => s.activeDatabase)
   const activeTableName = useCopiperStore((s) => s.activeTableName)
@@ -66,7 +68,7 @@ const ColumnEditor: React.FC<ColumnEditorProps> = ({ open, onClose }) => {
     const newCol: ColDef = {
       id: `col_${Date.now()}`,
       name: `new_field_${localColumns.length + 1}`,
-      rname: `新字段 ${localColumns.length + 1}`,
+      rname: t('copiper.newField', localColumns.length + 1),
       type: 'str',
       j_type: 'str',
       req_or_opt: 'optional',
@@ -88,11 +90,11 @@ const ColumnEditor: React.FC<ColumnEditorProps> = ({ open, onClose }) => {
     const names = localColumns.map((c) => c.name)
     const uniqueNames = new Set(names)
     if (names.some((n) => !n.trim())) {
-      message.error('字段名不能为空')
+      message.error(t('copiper.fieldNameEmpty'))
       return
     }
     if (uniqueNames.size !== names.length) {
-      message.error('字段名不能重复')
+      message.error(t('copiper.fieldNameDuplicate'))
       return
     }
 
@@ -120,13 +122,13 @@ const ColumnEditor: React.FC<ColumnEditorProps> = ({ open, onClose }) => {
       dirty: true
     })
 
-    message.success('列配置已更新')
+    message.success(t('copiper.columnConfigUpdated'))
     onClose()
   }
 
   const tableColumns = [
     {
-      title: '字段名',
+      title: t('copiper.colFieldName'),
       dataIndex: 'name',
       key: 'name',
       width: 130,
@@ -139,7 +141,7 @@ const ColumnEditor: React.FC<ColumnEditorProps> = ({ open, onClose }) => {
       )
     },
     {
-      title: '显示名',
+      title: t('copiper.colDisplayName'),
       dataIndex: 'rname',
       key: 'rname',
       width: 130,
@@ -152,7 +154,7 @@ const ColumnEditor: React.FC<ColumnEditorProps> = ({ open, onClose }) => {
       )
     },
     {
-      title: '类型',
+      title: t('copiper.colType'),
       dataIndex: 'type',
       key: 'type',
       width: 140,
@@ -166,7 +168,7 @@ const ColumnEditor: React.FC<ColumnEditorProps> = ({ open, onClose }) => {
       )
     },
     {
-      title: '必填',
+      title: t('copiper.colRequired'),
       dataIndex: 'req_or_opt',
       key: 'req_or_opt',
       width: 110,
@@ -181,7 +183,7 @@ const ColumnEditor: React.FC<ColumnEditorProps> = ({ open, onClose }) => {
       )
     },
     {
-      title: '分类',
+      title: t('copiper.colCategory'),
       dataIndex: 'c_type',
       key: 'c_type',
       width: 100,
@@ -196,7 +198,7 @@ const ColumnEditor: React.FC<ColumnEditorProps> = ({ open, onClose }) => {
       )
     },
     {
-      title: '数据源',
+      title: t('copiper.colSource'),
       dataIndex: 'src',
       key: 'src',
       width: 120,
@@ -206,7 +208,7 @@ const ColumnEditor: React.FC<ColumnEditorProps> = ({ open, onClose }) => {
           <Input
             size="small"
             value={localColumns[index]?.src}
-            placeholder="表名"
+            placeholder={t('copiper.tableName')}
             onChange={(e) => handleFieldChange(index, 'src', e.target.value)}
           />
         ) : (
@@ -215,7 +217,7 @@ const ColumnEditor: React.FC<ColumnEditorProps> = ({ open, onClose }) => {
       }
     },
     {
-      title: '选项',
+      title: t('copiper.colOptions'),
       dataIndex: 'options',
       key: 'options',
       width: 130,
@@ -229,7 +231,7 @@ const ColumnEditor: React.FC<ColumnEditorProps> = ({ open, onClose }) => {
                 : String(localColumns[index].options)
               : ''
           }
-          placeholder="选项1|选项2|..."
+          placeholder={t('copiper.optionsPlaceholder')}
           onChange={(e) => handleFieldChange(index, 'options', e.target.value)}
         />
       )
@@ -252,18 +254,18 @@ const ColumnEditor: React.FC<ColumnEditorProps> = ({ open, onClose }) => {
 
   return (
     <Modal
-      title="列管理"
+      title={t('copiper.columnManager')}
       open={open}
       onOk={handleOk}
       onCancel={onClose}
-      okText="确定"
-      cancelText="取消"
+      okText={t('common.confirm')}
+      cancelText={t('common.cancel')}
       width={960}
       destroyOnHidden
     >
       <div style={{ marginBottom: 12 }}>
         <Button size="small" icon={<PlusOutlined />} onClick={handleAddColumn}>
-          添加列
+          {t('copiper.addColumn')}
         </Button>
       </div>
       <Table

@@ -1,11 +1,13 @@
 import React from 'react'
 import { theme } from 'antd'
 import ChatInput from './ChatInput'
+import { useT } from '../../i18n'
 import appIcon from '../../../../../resources/icon.svg'
 import './welcome-chat.css'
 
 const WelcomeChatView: React.FC = () => {
   const { token } = theme.useToken()
+  const t = useT()
 
   return (
     <div
@@ -42,7 +44,7 @@ const WelcomeChatView: React.FC = () => {
             color: token.colorTextSecondary
           }}
         >
-          好好学习，天天向上
+          {t('chat.welcomeSlogan')}
         </span>
       </div>
       <div className="welcome-chat-input" style={{ width: 600, maxWidth: '90%' }}>

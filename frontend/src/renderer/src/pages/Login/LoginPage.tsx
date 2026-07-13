@@ -4,12 +4,14 @@ import { UserOutlined, LockOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { localStorageManager } from '../../services/localStorageManager'
+import { useT } from '../../i18n'
 
 const { Title, Text } = Typography
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate()
   const { message } = App.useApp()
+  const t = useT()
   const loggedIn = useAuthStore((state) => state.loggedIn)
   const loading = useAuthStore((state) => state.loading)
   const error = useAuthStore((state) => state.error)
@@ -67,7 +69,7 @@ const LoginPage: React.FC = () => {
 
   const handlePasswordSubmit = async (): Promise<void> => {
     if (!username || !password) {
-      message.error('请输入用户名和密码')
+      message.error(t('login.needCredentials'))
       return
     }
     try {
@@ -99,7 +101,7 @@ const LoginPage: React.FC = () => {
           ClawBench
         </Title>
         <Text style={{ color: 'rgba(255, 255, 255, 0.85)', fontSize: 16 }}>
-          ClawBench 桌面应用
+          {t('login.appName')}
         </Text>
       </div>
 
@@ -125,7 +127,7 @@ const LoginPage: React.FC = () => {
                 loading={loading}
                 onClick={handleFeishuLogin}
               >
-                飞书登录
+                {t('login.feishuLogin')}
               </Button>
               {enableAccountLogin && (
                 <div style={{ marginTop: 16 }}>
@@ -133,22 +135,22 @@ const LoginPage: React.FC = () => {
                     onClick={() => setShowPasswordLogin(true)}
                     style={{ fontSize: 14 }}
                   >
-                    切换登录方式
+                    {t('login.switchMethod')}
                   </a>
                 </div>
               )}
               {enableLocalMode && (
                 <div style={{ marginTop: enableAccountLogin ? 8 : 16 }}>
-                  <Divider plain style={{ marginTop: 0 }}>或</Divider>
+                  <Divider plain style={{ marginTop: 0 }}>{t('login.or')}</Divider>
                   <Button
                     block
                     size="large"
                     onClick={loginWithLocalMode}
                   >
-                    本地模式
+                    {t('login.localMode')}
                   </Button>
                   <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>
-                    无需登录，仅限本地功能
+                    {t('login.localModeDesc')}
                   </Text>
                 </div>
               )}
@@ -159,7 +161,7 @@ const LoginPage: React.FC = () => {
               <Input
                 size="large"
                 prefix={<UserOutlined />}
-                placeholder="用户名"
+                placeholder={t('login.usernamePlaceholder')}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 onPressEnter={handlePasswordSubmit}
@@ -168,7 +170,7 @@ const LoginPage: React.FC = () => {
               <Input.Password
                 size="large"
                 prefix={<LockOutlined />}
-                placeholder="密码"
+                placeholder={t('login.passwordPlaceholder')}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 onPressEnter={handlePasswordSubmit}
@@ -181,23 +183,23 @@ const LoginPage: React.FC = () => {
                 loading={loading}
                 onClick={handlePasswordSubmit}
               >
-                {isRegister ? '注册' : '登录'}
+                {isRegister ? t('login.register') : t('login.login')}
               </Button>
               <div style={{ marginTop: 12, textAlign: 'center' }}>
                 {isRegister ? (
-                  <a onClick={() => setIsRegister(false)}>已有账号？登录</a>
+                  <a onClick={() => setIsRegister(false)}>{t('login.hasAccountLogin')}</a>
                 ) : (
-                  <a onClick={() => setIsRegister(true)}>没有账号？注册</a>
+                  <a onClick={() => setIsRegister(true)}>{t('login.noAccountRegister')}</a>
                 )}
               </div>
-              <Divider plain>或</Divider>
+              <Divider plain>{t('login.or')}</Divider>
               <Button
                 block
                 type="default"
                 loading={loading}
                 onClick={handleFeishuLogin}
               >
-                飞书登录
+                {t('login.feishuLogin')}
               </Button>
             </div>
           )}

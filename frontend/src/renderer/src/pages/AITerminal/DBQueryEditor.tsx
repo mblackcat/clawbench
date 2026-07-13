@@ -5,6 +5,7 @@ import { HotTable } from '@handsontable/react'
 import { registerAllModules } from 'handsontable/registry'
 import 'handsontable/dist/handsontable.full.min.css'
 import { useAITerminalStore } from '../../stores/useAITerminalStore'
+import { useT } from '../../i18n'
 import { MONO_FONT_STACK } from '../../utils/mono-font'
 import type { DBQueryResult } from '../../types/ai-terminal'
 
@@ -21,6 +22,7 @@ interface Props {
 const DBQueryEditor: React.FC<Props> = ({ tabId, connectionId }) => {
   const { token } = theme.useToken()
   const { message } = App.useApp()
+  const t = useT()
   const [sql, setSql] = useState('')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<DBQueryResult | null>(null)
@@ -83,10 +85,10 @@ const DBQueryEditor: React.FC<Props> = ({ tabId, connectionId }) => {
           const parsed = JSON.parse(sqlToRun.trim() || '{}')
           const collectionMatch = sqlToRun.match(/^(\w+)\.find\(/)
           // Simple: treat entire input as collection name or filter
-          message.info('MongoDB 请在表浏览模式中操作，或使用 AI 助手查询')
+          message.info(t('db.mongoHint'))
           return
         } catch {
-          message.info('MongoDB 查询请使用 AI 助手或表浏览模式')
+          message.info(t('db.mongoHint2'))
           return
         }
       }
@@ -107,7 +109,7 @@ const DBQueryEditor: React.FC<Props> = ({ tabId, connectionId }) => {
           affectedRows: data.affectedRows,
           executionTimeMs: data.executionTimeMs
         })
-        message.success(`执行成功，影响 ${data.affectedRows} 行`)
+        message.success(t('db.executeSuccessRows', data.affectedRows))
       }
     } catch (err: any) {
       setError(err.message || String(err))
@@ -115,7 +117,7 @@ const DBQueryEditor: React.FC<Props> = ({ tabId, connectionId }) => {
     } finally {
       setLoading(false)
     }
-  }, [sql, connectionId, message])
+  }, [sql, connectionId, message, t])
 
   // Keep executeRef in sync
   executeRef.current = handleExecute
@@ -155,7 +157,7 @@ const DBQueryEditor: React.FC<Props> = ({ tabId, connectionId }) => {
           value={sql}
           onChange={e => setSql(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="输入 SQL 查询... (Ctrl+Enter 执行)"
+          placeholder={t('db.sqlQueryPlaceholder')}
           autoSize={{ minRows: 3, maxRows: 10 }}
           style={{ fontFamily: MONO_FONT_STACK, fontSize: 13 }}
         />
@@ -169,7 +171,7 @@ const DBQueryEditor: React.FC<Props> = ({ tabId, connectionId }) => {
               loading={loading}
               disabled={!sql.trim()}
             >
-              执行
+              {t('db.execute')}
             </Button>
             <Button
               type="text"
@@ -177,13 +179,13 @@ const DBQueryEditor: React.FC<Props> = ({ tabId, connectionId }) => {
               icon={<ClearOutlined />}
               onClick={() => { setSql(''); setResult(null); setError(null) }}
             >
-              清空
+              {t('db.clear')}
             </Button>
           </Space>
           {result && (
             <Text type="secondary" style={{ fontSize: 11 }}>
-              {result.rows.length} 行 · {result.executionTimeMs}ms
-              {result.affectedRows !== undefined && ` · 影响 ${result.affectedRows} 行`}
+              {result.rows.length} {t('db.rowUnit')} · {result.executionTimeMs}ms
+              {result.affectedRows !== undefined && ` · ${t('db.affectedRowsPrefix', result.affectedRows)} ${t('db.rowUnit')}`}
             </Text>
           )}
         </div>
@@ -223,14 +225,14 @@ const DBQueryEditor: React.FC<Props> = ({ tabId, connectionId }) => {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             height: '100%', color: token.colorTextTertiary, fontSize: 13
           }}>
-            查询结果为空
+            {t('db.queryEmpty')}
           </div>
         ) : (
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             height: '100%', color: token.colorTextTertiary, fontSize: 13
           }}>
-            输入 SQL 并按 Ctrl+Enter 执行
+            {t('db.inputSqlHint')}
           </div>
         )}
       </div>

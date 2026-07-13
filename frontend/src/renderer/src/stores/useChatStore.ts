@@ -268,6 +268,22 @@ interface ChatState {
   toggleFavorite: (id: string) => Promise<void>
   selectConversation: (id: string) => Promise<void>
   clearActiveConversation: () => void
+  /**
+   * Surface a scheduled-task AI result as a conversation message pair
+   * (user prompt + assistant result). Reuses `conversationId` when the task is
+   * configured to keep results in one chat, otherwise creates a new conversation
+   * named after the task.
+   */
+  appendScheduledResult: (data: {
+    taskId: string
+    taskName: string
+    status: string
+    result: string
+    prompt: string
+    keepInOneChat: boolean
+    conversationId?: string
+    modelId?: string
+  }) => Promise<void>
 
   // Message actions
   sendMessage: (
@@ -909,6 +925,96 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   clearActiveConversation: () => {
     set({ activeConversationId: null, messages: [], pendingToolCalls: [], activeIsIm: false })
+  },
+
+  appendScheduledResult: async (data) => {
+    const { taskId, taskName, status, result, prompt, keepInOneChat, conversationId, modelId } = data
+    try {
+      // 1. Resolve the target conversation id.
+      let targetId = keepInOneChat && conversationId ? conversationId : ''
+      let createdNew = false
+      if (!targetId) {
+        if (isLocal()) {
+          targetId = localId('conv')
+          const conv: Conversation = {
+            conversationId: targetId,
+            title: taskName,
+            modelId: modelId || null,
+            favorited: false,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            source: 'local'
+          }
+          saveLocalConversations([conv, ...loadLocalConversations()])
+          set((state) => ({ conversations: [conv, ...state.conversations] }))
+        } else {
+          const conv = await apiClient.createConversation(taskName, modelId)
+          targetId = conv.conversationId
+          set((state) => ({ conversations: [conv, ...state.conversations] }))
+        }
+        createdNew = true
+        // Remember the conversation so future runs of a "keep in one chat" task append here
+        if (keepInOneChat) {
+          window.api.scheduledTask.update(taskId, { conversationId: targetId }).catch(() => {})
+        }
+      }
+
+      if (!targetId) return
+
+      // 2. Build the message pair.
+      const assistantContent = status === 'success' ? result : `⚠️ ${result}`
+      const now = Date.now()
+      const userMsg: Message = {
+        messageId: isLocal() ? localId('msg') : 'temp-' + now,
+        conversationId: targetId,
+        role: 'user',
+        content: prompt,
+        modelId: null,
+        createdAt: now
+      }
+      const assistantMsg: Message = {
+        messageId: isLocal() ? localId('msg') : 'temp-a-' + now,
+        conversationId: targetId,
+        role: 'assistant',
+        content: assistantContent,
+        modelId: modelId || null,
+        createdAt: now + 1
+      }
+
+      // 3. Persist.
+      if (isLocal()) {
+        const existing = loadLocalMessages(targetId)
+        const next = [...existing, userMsg, assistantMsg]
+        saveLocalMessages(targetId, next)
+      } else {
+        const savedUser = await apiClient.sendMessage(targetId, { role: 'user', content: prompt })
+        userMsg.messageId = savedUser.messageId
+        const savedAssistant = await apiClient.sendMessage(targetId, {
+          role: 'assistant',
+          content: assistantContent,
+          modelId
+        })
+        assistantMsg.messageId = savedAssistant.messageId
+      }
+
+      // 4. Update reactive state.
+      const isActive = get().activeConversationId === targetId
+      set((state) => ({
+        conversations: state.conversations.map((c) =>
+          c.conversationId === targetId ? { ...c, updatedAt: Date.now() } : c
+        ),
+        // Only splice into the visible message list if the user is currently
+        // viewing this conversation; otherwise leave their view untouched.
+        messages: isActive ? [...state.messages, userMsg, assistantMsg] : state.messages
+      }))
+
+      // Refresh sidebar ordering/preview if the user is viewing something else.
+      if (!isActive || createdNew) {
+        get().fetchConversations().catch(() => {})
+      }
+    } catch (err) {
+      console.error('Failed to surface scheduled task result in chat:', err)
+    }
   },
 
   deleteMessages: async (messageId, mode) => {

@@ -21,6 +21,7 @@ import { registerAgentMemoryIpc } from './agent-memory.ipc'
 import { registerInternalToolsIpc } from './internal-tools.ipc'
 import { registerFeishuToolsIpc } from './feishu-tools.ipc'
 import { registerScheduledTaskIpc } from './scheduled-task.ipc'
+import { registerAppScheduleIpc } from './app-schedule.ipc'
 
 export function registerAllIpcHandlers(): void {
   registerWorkspaceIpc()
@@ -46,4 +47,5 @@ export function registerAllIpcHandlers(): void {
   registerInternalToolsIpc()
   registerFeishuToolsIpc()
   registerScheduledTaskIpc()
+  registerAppScheduleIpc()
 }

@@ -2,6 +2,7 @@ import React from 'react'
 import { Tag, Typography, Tooltip, theme } from 'antd'
 import { PlayCircleOutlined } from '@ant-design/icons'
 import type { SubAppManifest } from '../types/subapp'
+import { useT } from '../i18n'
 
 const { Text } = Typography
 
@@ -14,6 +15,7 @@ interface SubAppCardProps {
 const SubAppCard: React.FC<SubAppCardProps> = ({ manifest, onRun, onDetail }) => {
   const { id, name, version } = manifest
   const { token } = theme.useToken()
+  const t = useT()
 
   return (
     <div
@@ -54,7 +56,7 @@ const SubAppCard: React.FC<SubAppCardProps> = ({ manifest, onRun, onDetail }) =>
           fontSize: 13
         }}
       >
-        <PlayCircleOutlined /> 运行
+        <PlayCircleOutlined /> {t('workbench.run')}
       </div>
     </div>
   )

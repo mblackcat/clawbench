@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { Typography, Tag, Spin, Button, Descriptions, Timeline, Divider, Switch, App } from 'antd';
+import { Typography, Tag, Spin, Button, Descriptions, Timeline, Switch, App, Empty, List } from 'antd';
 import {
   ArrowLeftOutlined,
   DownloadOutlined,
@@ -11,11 +11,12 @@ import {
   CalendarOutlined,
   TagOutlined,
   StarOutlined,
+  WarningOutlined,
 } from '@ant-design/icons';
 import { useApi } from '../hooks/useApi';
 import InstallButton from '../components/InstallButton';
 import GlassCard from '../components/GlassCard';
-import type { ApplicationResponse } from '../types';
+import type { ApplicationResponse, ExecutionErrorResponse } from '../types';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -36,6 +37,8 @@ const AppDetailPage: React.FC = () => {
   const [app, setApp] = useState<ApplicationResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [togglingFeatured, setTogglingFeatured] = useState(false);
+  const [executionErrors, setExecutionErrors] = useState<ExecutionErrorResponse[]>([]);
+  const [loadingErrors, setLoadingErrors] = useState(false);
   const { fetchApi } = useApi();
   const { message } = App.useApp();
   const navigate = useNavigate();
@@ -46,6 +49,13 @@ const AppDetailPage: React.FC = () => {
     if (!appId) return;
     loadApp();
   }, [appId]);
+
+  // Admin-only: execution error logs are never fetched (or rendered) on the
+  // public /store page — this call only fires once the admin view has an appId.
+  useEffect(() => {
+    if (!appId || !isAdmin) return;
+    loadExecutionErrors(appId);
+  }, [appId, isAdmin]);
 
   const loadApp = async () => {
     setLoading(true);
@@ -58,6 +68,20 @@ const AppDetailPage: React.FC = () => {
       // Handle error
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadExecutionErrors = async (id: string) => {
+    setLoadingErrors(true);
+    try {
+      const res = await fetchApi<{ success: boolean; data: { errors: ExecutionErrorResponse[]; total: number } }>(
+        `/api/v1/admin/applications/${id}/execution-errors?limit=20`
+      );
+      setExecutionErrors(res.data.errors);
+    } catch {
+      // Non-admin or network error — leave the list empty, section renders its empty state.
+    } finally {
+      setLoadingErrors(false);
     }
   };
 
@@ -167,6 +191,12 @@ const AppDetailPage: React.FC = () => {
             </Text>
           </div>
           <div>
+            <Text type="secondary" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Executions</Text>
+            <Text strong style={{ fontSize: 24, display: 'block', marginTop: 4 }}>
+              {app.executionCount?.toLocaleString() || 0}
+            </Text>
+          </div>
+          <div>
             <Text type="secondary" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Category</Text>
             <Text strong style={{ fontSize: 16, display: 'block', marginTop: 4 }}>
               {app.category || 'Uncategorized'}
@@ -231,6 +261,90 @@ const AppDetailPage: React.FC = () => {
           </Descriptions.Item>
         </Descriptions>
       </GlassCard>
+
+      {/* Version History — visible to everyone, mirrors the desktop client's update-history view */}
+      <GlassCard className="" style={{ padding: 24, marginBottom: 24 }}>
+        <Title level={4} style={{ marginBottom: 16, letterSpacing: '-0.01em' }}>
+          Version History
+        </Title>
+        {app.versions && app.versions.length > 0 ? (
+          <Timeline
+            items={app.versions.map((v) => ({
+              key: v.versionId,
+              children: (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Text strong>v{v.version}</Text>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {new Date(v.publishedAt).toLocaleString('en-US', {
+                        year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+                      })}
+                    </Text>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {(v.fileSize / 1024 / 1024).toFixed(2)} MB
+                    </Text>
+                  </div>
+                  {v.changelog && (
+                    <Text type="secondary" style={{ display: 'block', marginTop: 4, fontSize: 13 }}>
+                      {v.changelog}
+                    </Text>
+                  )}
+                </div>
+              ),
+            }))}
+          />
+        ) : (
+          <Empty description="No versions published yet" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        )}
+      </GlassCard>
+
+      {/* Execution Errors — admin-only. Never fetched or rendered on the public /store page. */}
+      {isAdmin && (
+        <GlassCard className="" style={{ padding: 24, marginBottom: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+            <WarningOutlined style={{ fontSize: 18, color: '#FF3B30' }} />
+            <Title level={4} style={{ margin: 0, letterSpacing: '-0.01em' }}>
+              Execution Errors
+            </Title>
+          </div>
+          {loadingErrors ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}>
+              <Spin />
+            </div>
+          ) : executionErrors.length > 0 ? (
+            <List
+              itemLayout="vertical"
+              dataSource={executionErrors}
+              renderItem={(err) => (
+                <List.Item key={err.errorId}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                    <Text strong>{err.username || err.userId}</Text>
+                    {err.version && <Tag style={{ margin: 0 }}>v{err.version}</Tag>}
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {new Date(err.createdAt).toLocaleString('en-US', {
+                        year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+                      })}
+                    </Text>
+                  </div>
+                  <Text type="danger" style={{ display: 'block', fontSize: 13, whiteSpace: 'pre-wrap' }}>
+                    {err.message}
+                  </Text>
+                  {err.details && (
+                    <Text
+                      type="secondary"
+                      style={{ display: 'block', fontSize: 12, marginTop: 4, whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}
+                    >
+                      {err.details}
+                    </Text>
+                  )}
+                </List.Item>
+              )}
+            />
+          ) : (
+            <Empty description="No execution errors reported" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          )}
+        </GlassCard>
+      )}
 
       {/* Install CTA */}
       <div
