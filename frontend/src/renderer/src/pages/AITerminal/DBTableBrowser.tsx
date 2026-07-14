@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { Button, Space, Typography, App, Tooltip, theme, Pagination } from 'antd'
-import { ReloadOutlined, PlusOutlined } from '@ant-design/icons'
+import { ReloadOutlined, PlusOutlined, EditOutlined } from '@ant-design/icons'
 import { HotTable } from '@handsontable/react'
 import { registerAllModules } from 'handsontable/registry'
 import { registerLanguageDictionary, zhCN } from 'handsontable/i18n'
@@ -11,9 +11,23 @@ import { useT, getT } from '../../i18n'
 import { useHandsontableTheme, HOT_MAIN_ATTR } from '../../utils/handsontable-theme'
 import type { DBTableColumn, DBQueryResult } from '../../types/ai-terminal'
 import DBRowDetailModal from './DBRowDetailModal'
+import { registerDBCellEditors } from './db-cell-editors'
 
 registerAllModules()
 registerLanguageDictionary(zhCN)
+registerDBCellEditors()
+
+/** Classify a column's SQL type into an editor category for the data grid. */
+type CellKind = 'bool' | 'datetime' | 'number' | 'text' | 'string'
+function classifyColumn(sqlType?: string): CellKind {
+  const tp = (sqlType || '').toLowerCase()
+  if (tp.includes('tinyint(1)') || tp === 'bool' || tp === 'boolean' || tp === 'bit') return 'bool'
+  if (tp.includes('date') || tp.includes('time') || tp.includes('timestamp')) return 'datetime'
+  if (tp.includes('text') || tp.includes('json') || tp.includes('blob') || tp.includes('clob')) return 'text'
+  if (tp.includes('int') || tp.includes('float') || tp.includes('double') ||
+      tp.includes('decimal') || tp.includes('numeric') || tp.includes('real')) return 'number'
+  return 'string'
+}
 
 const { Text } = Typography
 
@@ -46,6 +60,9 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
   const [activeTab, setActiveTab] = useState<'data' | 'structure'>('data')
+  // Read-only vs. inline-edit mode for the data grid (toggled from the toolbar)
+  const [editMode, setEditMode] = useState(false)
+  const hotRef = useRef<{ hotInstance: Handsontable | null } | null>(null)
 
   // Dynamic grid height
   const gridContainerRef = useRef<HTMLDivElement>(null)
@@ -74,6 +91,13 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
     if (data?.columns?.includes('_id')) return ['_id']
     return []
   }, [schema, data?.columns])
+
+  // Column name → schema, for per-column editor typing in the data grid
+  const schemaByName = useMemo(() => {
+    const m: Record<string, DBTableColumn> = {}
+    for (const c of schema) m[c.name] = c
+    return m
+  }, [schema])
 
   const loadSchema = useCallback(async () => {
     setSchemaLoading(true)
@@ -217,8 +241,69 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
 
   const gridColumns = useMemo((): Handsontable.ColumnSettings[] => {
     if (!data?.columns) return []
-    return data.columns.map(col => ({ data: col, title: col, readOnly: true }))
-  }, [data?.columns])
+    return data.columns.map(col => {
+      const colSchema = schemaByName[col]
+      const isPk = pkColumns.includes(col)
+      // PKs stay read-only even in edit mode (they're the WHERE key)
+      const cellReadOnly = !editMode || isPk
+      const config: Handsontable.ColumnSettings = {
+        data: col,
+        title: col,
+        readOnly: cellReadOnly
+      }
+      if (!editMode) return config
+
+      switch (classifyColumn(colSchema?.type)) {
+        case 'bool':
+          config.type = 'dropdown'
+          config.source = ['true', 'false']
+          config.allowInvalid = false
+          break
+        case 'datetime':
+          config.editor = 'db-datetime' as any
+          break
+        case 'text':
+          config.editor = 'db-text-expand' as any
+          break
+        case 'number':
+          config.type = 'numeric'
+          break
+        default:
+          config.editor = 'db-text-expand' as any
+          break
+      }
+      return config
+    })
+  }, [data?.columns, editMode, schemaByName, pkColumns])
+
+  // Persist a single inline cell edit back to the DB
+  const handleAfterChange = useCallback(
+    async (changes: Handsontable.CellChange[] | null, source: string) => {
+      if (!changes || source === 'loadData' || source === 'updateData') return
+      if (pkColumns.length === 0) {
+        message.warning(t('db.noPkEdit'))
+        return
+      }
+      for (const [rowIdx, prop, oldVal, newVal] of changes) {
+        if (String(oldVal ?? '') === String(newVal ?? '')) continue
+        const row = data?.rows?.[rowIdx as number]
+        if (!row) continue
+        const col = String(prop)
+        try {
+          await updateDBRow(connectionId, tableName, getRowPKs(row), {
+            [col]: newVal === '' ? null : newVal
+          })
+          // Keep local copy in sync so re-opening the detail view is correct
+          row[col] = newVal === '' ? null : newVal
+          message.success(t('db.saveSuccess'))
+        } catch (err: any) {
+          message.error(t('db.operateFailed', err.message || String(err)))
+          loadData()
+        }
+      }
+    },
+    [pkColumns, data?.rows, connectionId, tableName, getRowPKs, updateDBRow, loadData, message, t]
+  )
 
   // ── Structure grid: schema rows ──
   const structureData = useMemo(() => {
@@ -246,12 +331,14 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
     t('db.colNullable'), t('db.colDefault'), t('db.colExtra')
   ], [t])
 
-  // Double click on a data cell opens the row detail drawer (Copiper pattern)
+  // Double click on a data cell: in read-only mode opens the row detail modal;
+  // in edit mode we let Handsontable open its inline cell editor instead.
   const handleDblClick = useCallback(
     (_event: MouseEvent, coords: { row: number; col: number }) => {
+      if (editMode) return
       if (coords.row >= 0) openRowDetail(coords.row)
     },
-    [openRowDetail]
+    [editMode, openRowDetail]
   )
 
   // Row operations exposed through the context menu (replaces the old action column)
@@ -305,6 +392,14 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
           )}
         </Space>
         <Space size={4}>
+          <Tooltip title={editMode ? t('db.editModeOn') : t('db.editModeOff')}>
+            <Button
+              type={editMode ? 'primary' : 'text'}
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => setEditMode(v => !v)}
+            />
+          </Tooltip>
           <Tooltip title={t('db.addRow')}>
             <Button type="text" size="small" icon={<PlusOutlined />} onClick={handleNewRow} />
           </Tooltip>
@@ -353,6 +448,7 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
             >
               {gridSize.width > 0 && gridSize.height > 0 && data && gridData.length > 0 ? (
                 <HotTable
+                  ref={hotRef as any}
                   data={gridData}
                   columns={gridColumns}
                   colHeaders={data.columns}
@@ -360,7 +456,8 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
                   width={gridSize.width}
                   height={gridSize.height}
                   stretchH="all"
-                  readOnly
+                  readOnly={!editMode}
+                  rowHeights={22}
                   manualColumnResize={true}
                   manualColumnFreeze={true}
                   contextMenu={contextMenuItems as any}
@@ -370,6 +467,7 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
                   outsideClickDeselects={false}
                   language={zhCN.languageCode}
                   licenseKey="non-commercial-and-evaluation"
+                  afterChange={handleAfterChange as any}
                   afterOnCellDoubleClick={handleDblClick as any}
                 />
               ) : (

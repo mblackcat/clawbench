@@ -376,6 +376,92 @@ export function useHandsontableTheme(): void {
       [${HOT_MAIN_ATTR}] .ht_master .area td {
         background-color: ${token.colorPrimaryBgHover} !important;
       }
+
+      /* ── AI Terminal DB grid: custom cell editors ── */
+      /* Magnifier button floating over a text cell being edited */
+      .db-textexpand-icon {
+        position: absolute;
+        z-index: 10001;
+        width: 18px;
+        height: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 4px;
+        cursor: pointer;
+        color: ${token.colorTextSecondary};
+        background-color: ${token.colorBgContainer};
+        border: 1px solid ${token.colorBorder};
+      }
+      .db-textexpand-icon:hover {
+        color: ${token.colorPrimary};
+        border-color: ${token.colorPrimary};
+      }
+      /* Expanded multi-line text panel */
+      .db-textexpand-panel {
+        position: absolute;
+        z-index: 10002;
+        flex-direction: column;
+        gap: 8px;
+        padding: 8px;
+        background-color: ${token.colorBgElevated};
+        border: 1px solid ${token.colorBorderSecondary};
+        border-radius: 8px;
+        box-shadow: ${token.boxShadow};
+      }
+      .db-textexpand-textarea {
+        min-width: 300px;
+        min-height: 140px;
+        resize: both;
+        padding: 6px 8px;
+        font-size: ${token.fontSize}px;
+        color: ${token.colorText};
+        background-color: ${token.colorBgContainer};
+        border: 1px solid ${token.colorBorder};
+        border-radius: 6px;
+        outline: none;
+      }
+      .db-textexpand-textarea:focus {
+        border-color: ${token.colorPrimary};
+      }
+      .db-textexpand-bar {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+      .db-textexpand-btn {
+        padding: 3px 14px;
+        font-size: ${token.fontSize}px;
+        color: ${token.colorText};
+        background-color: ${token.colorBgContainer};
+        border: 1px solid ${token.colorBorder};
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .db-textexpand-btn:hover {
+        border-color: ${token.colorPrimary};
+        color: ${token.colorPrimary};
+      }
+      .db-textexpand-btn-primary {
+        color: #fff;
+        background-color: ${token.colorPrimary};
+        border-color: ${token.colorPrimary};
+      }
+      .db-textexpand-btn-primary:hover {
+        color: #fff;
+        opacity: 0.85;
+      }
+      /* Native datetime editor input */
+      .db-datetime-input {
+        height: 24px;
+        padding: 0 6px;
+        font-size: ${token.fontSize}px;
+        color: ${token.colorText};
+        background-color: ${token.colorBgContainer};
+        border: 1px solid ${token.colorPrimary};
+        border-radius: 4px;
+        outline: none;
+      }
     `
 
     return () => {

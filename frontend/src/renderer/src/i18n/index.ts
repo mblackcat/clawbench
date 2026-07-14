@@ -2003,6 +2003,12 @@ const translations: Record<Lang, Record<string, string>> = {
     'db.addSuccess': '新增成功',
     'db.saveSuccess': '保存成功',
     'db.operateFailed': '操作失败: {0}',
+    'db.cancel': '取消',
+    'db.editModeOn': '编辑模式（双击单元格编辑，再次点击关闭）',
+    'db.editModeOff': '只读模式（点击进入编辑模式）',
+    'db.tabCloseCurrent': '关闭当前',
+    'db.tabCloseOthers': '关闭其他',
+    'db.tabCloseAll': '全部关闭',
 
     // AICoding（输入框 / 标签 / 侧栏）
     'coding.slashCompactDesc': '压缩对话上下文',
@@ -4196,6 +4202,12 @@ const translations: Record<Lang, Record<string, string>> = {
     'db.addSuccess': 'Added successfully',
     'db.saveSuccess': 'Saved successfully',
     'db.operateFailed': 'Operation failed: {0}',
+    'db.cancel': 'Cancel',
+    'db.editModeOn': 'Edit mode (double-click a cell to edit; click to turn off)',
+    'db.editModeOff': 'Read-only (click to enter edit mode)',
+    'db.tabCloseCurrent': 'Close',
+    'db.tabCloseOthers': 'Close others',
+    'db.tabCloseAll': 'Close all',
 
     // AICoding (input / tabs / sidebar)
     'coding.slashCompactDesc': 'Compact conversation context',

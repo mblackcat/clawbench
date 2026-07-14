@@ -37,11 +37,22 @@ const DBConnectionList: React.FC<Props> = ({ onNew, onEdit }) => {
   const t = useT()
   const {
     dbConnections, dbConnectionStatus, dbTables, dbDatabases, dbSelectedDatabase,
+    openDBTabs, activeDBTabId,
     connectDB, disconnectDB, deleteDBConnection,
     openDBTable, openDBQuery, fetchDBTables, fetchDBDatabases,
     // store action, not a React hook — rename so lint can tell the difference
     useDBDatabase: switchDBDatabase
   } = useAITerminalStore()
+
+  // The table shown in the currently active DB tab — used to highlight its
+  // entry in the sidebar tree.
+  const activeTable = React.useMemo(() => {
+    const tab = openDBTabs.find(tb => tb.id === activeDBTabId)
+    if (tab && tab.type === 'table' && tab.tableName) {
+      return { connectionId: tab.connectionId, tableName: tab.tableName }
+    }
+    return null
+  }, [openDBTabs, activeDBTabId])
 
   // Expanded state: connections and databases
   const [expandedConns, setExpandedConns] = useState<Set<string>>(new Set())
@@ -275,22 +286,26 @@ const DBConnectionList: React.FC<Props> = ({ onNew, onEdit }) => {
                           tables.length === 0 ? (
                             <Text type="secondary" style={{ fontSize: 11, paddingLeft: 16, display: 'block', padding: '2px 16px' }}>{t('terminal.noTables')}</Text>
                           ) : (
-                            tables.map(table => (
+                            tables.map(table => {
+                              const isActiveTable = activeTable?.connectionId === conn.id && activeTable?.tableName === table
+                              return (
                               <div
                                 key={table}
                                 onClick={() => handleTableClick(conn.id, table)}
                                 style={{
                                   display: 'flex', alignItems: 'center', gap: 4,
                                   padding: '3px 8px', cursor: 'pointer',
-                                  borderRadius: token.borderRadiusSM, fontSize: 11
+                                  borderRadius: token.borderRadiusSM, fontSize: 11,
+                                  background: isActiveTable ? token.colorPrimaryBg : undefined
                                 }}
-                                onMouseEnter={(e) => { e.currentTarget.style.background = token.colorFillTertiary }}
-                                onMouseLeave={(e) => { e.currentTarget.style.background = '' }}
+                                onMouseEnter={(e) => { if (!isActiveTable) e.currentTarget.style.background = token.colorFillTertiary }}
+                                onMouseLeave={(e) => { if (!isActiveTable) e.currentTarget.style.background = '' }}
                               >
-                                <TableOutlined style={{ fontSize: 10, color: token.colorTextTertiary }} />
-                                <Text ellipsis style={{ fontSize: 11 }}>{table}</Text>
+                                <TableOutlined style={{ fontSize: 10, color: isActiveTable ? token.colorPrimary : token.colorTextTertiary }} />
+                                <Text ellipsis style={{ fontSize: 11, fontWeight: isActiveTable ? 500 : 400 }}>{table}</Text>
                               </div>
-                            ))
+                              )
+                            })
                           )
                         ) : (
                           /* MySQL/PG/Mongo: show databases list */
@@ -332,22 +347,26 @@ const DBConnectionList: React.FC<Props> = ({ onNew, onEdit }) => {
                                       {tables.length === 0 ? (
                                         <Text type="secondary" style={{ fontSize: 11, display: 'block', padding: '2px 8px' }}>{t('terminal.noTables')}</Text>
                                       ) : (
-                                        tables.map(table => (
+                                        tables.map(table => {
+                                          const isActiveTable = activeTable?.connectionId === conn.id && activeTable?.tableName === table
+                                          return (
                                           <div
                                             key={table}
                                             onClick={() => handleTableClick(conn.id, table)}
                                             style={{
                                               display: 'flex', alignItems: 'center', gap: 4,
                                               padding: '3px 8px', cursor: 'pointer',
-                                              borderRadius: token.borderRadiusSM, fontSize: 11
+                                              borderRadius: token.borderRadiusSM, fontSize: 11,
+                                              background: isActiveTable ? token.colorPrimaryBg : undefined
                                             }}
-                                            onMouseEnter={(e) => { e.currentTarget.style.background = token.colorFillTertiary }}
-                                            onMouseLeave={(e) => { e.currentTarget.style.background = '' }}
+                                            onMouseEnter={(e) => { if (!isActiveTable) e.currentTarget.style.background = token.colorFillTertiary }}
+                                            onMouseLeave={(e) => { if (!isActiveTable) e.currentTarget.style.background = '' }}
                                           >
-                                            <TableOutlined style={{ fontSize: 10, color: token.colorTextTertiary }} />
-                                            <Text ellipsis style={{ fontSize: 11 }}>{table}</Text>
+                                            <TableOutlined style={{ fontSize: 10, color: isActiveTable ? token.colorPrimary : token.colorTextTertiary }} />
+                                            <Text ellipsis style={{ fontSize: 11, fontWeight: isActiveTable ? 500 : 400 }}>{table}</Text>
                                           </div>
-                                        ))
+                                          )
+                                        })
                                       )}
                                     </div>
                                   )}

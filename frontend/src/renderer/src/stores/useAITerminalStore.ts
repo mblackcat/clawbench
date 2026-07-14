@@ -85,6 +85,8 @@ interface AITerminalState {
   openDBTable: (connId: string, tableName: string) => void
   openDBQuery: (connId: string, initialSQL?: string) => void
   closeDBTab: (tabId: string) => void
+  closeOtherDBTabs: (tabId: string) => void
+  closeAllDBTabs: () => void
   setActiveDBTab: (tabId: string | null) => void
   queryDB: (tabId: string, sql: string) => Promise<DBQueryResult>
   executeDBSql: (tabId: string, sql: string) => Promise<{ affectedRows: number; executionTimeMs: number }>
@@ -427,6 +429,15 @@ export const useAITerminalStore = create<AITerminalState>((set, get) => ({
   },
 
   openDBTable: (connId, tableName) => {
+    // Don't reopen a table tab that's already open for this connection —
+    // just re-activate it (avoids duplicate tabs on repeated clicks).
+    const existing = get().openDBTabs.find(
+      t => t.connectionId === connId && t.type === 'table' && t.tableName === tableName
+    )
+    if (existing) {
+      set({ activeDBTabId: existing.id })
+      return
+    }
     const tabId = `db-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     const conn = get().dbConnections.find(c => c.id === connId)
     const tab: DBTab = {
@@ -488,6 +499,23 @@ export const useAITerminalStore = create<AITerminalState>((set, get) => ({
         dbTableData: newData
       }
     })
+  },
+
+  closeOtherDBTabs: (tabId) => {
+    set(state => {
+      const kept = state.openDBTabs.filter(t => t.id === tabId)
+      const newData: Record<string, DBQueryResult> = {}
+      if (state.dbTableData[tabId]) newData[tabId] = state.dbTableData[tabId]
+      return {
+        openDBTabs: kept,
+        activeDBTabId: kept.length > 0 ? tabId : null,
+        dbTableData: newData
+      }
+    })
+  },
+
+  closeAllDBTabs: () => {
+    set({ openDBTabs: [], activeDBTabId: null, dbTableData: {} })
   },
 
   setActiveDBTab: (tabId) => set({ activeDBTabId: tabId }),
