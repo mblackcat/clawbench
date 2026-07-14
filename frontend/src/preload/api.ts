@@ -694,8 +694,6 @@ export const api = {
       ipcRenderer.invoke('ai-terminal:query-db', id, sql),
     executeDB: (id: string, sql: string) =>
       ipcRenderer.invoke('ai-terminal:execute-db', id, sql),
-    updateDBTableData: (id: string, tableName: string, changes: any[]) =>
-      ipcRenderer.invoke('ai-terminal:update-db-table-data', id, tableName, changes),
     queryMongoCollection: (id: string, collection: string, filter: any, projection: any, limit: number) =>
       ipcRenderer.invoke('ai-terminal:query-mongo-collection', id, collection, filter, projection, limit),
     updateMongoDocument: (id: string, collection: string, filter: any, update: any) =>
@@ -703,13 +701,7 @@ export const api = {
     insertMongoDocument: (id: string, collection: string, doc: any) =>
       ipcRenderer.invoke('ai-terminal:insert-mongo-document', id, collection, doc),
     deleteMongoDocuments: (id: string, collection: string, filter: any) =>
-      ipcRenderer.invoke('ai-terminal:delete-mongo-documents', id, collection, filter),
-    addDBColumn: (id: string, tableName: string, columnName: string, columnType: string, nullable: boolean, defaultValue?: string) =>
-      ipcRenderer.invoke('ai-terminal:add-db-column', id, tableName, columnName, columnType, nullable, defaultValue),
-    dropDBColumn: (id: string, tableName: string, columnName: string) =>
-      ipcRenderer.invoke('ai-terminal:drop-db-column', id, tableName, columnName),
-    renameDBColumn: (id: string, tableName: string, oldName: string, newName: string) =>
-      ipcRenderer.invoke('ai-terminal:rename-db-column', id, tableName, oldName, newName)
+      ipcRenderer.invoke('ai-terminal:delete-mongo-documents', id, collection, filter)
   },
 
   internalTools: {

@@ -683,11 +683,6 @@ export interface ClawBenchAPI {
     getDBTableSchema: (id: string, tableName: string) => Promise<import('./ai-terminal').DBTableColumn[]>
     queryDB: (id: string, sql: string) => Promise<import('./ai-terminal').DBQueryResult>
     executeDB: (id: string, sql: string) => Promise<{ affectedRows: number; executionTimeMs: number }>
-    updateDBTableData: (
-      id: string,
-      tableName: string,
-      changes: Array<{ row: Record<string, any>; column: string; oldValue: any; newValue: any; primaryKeys: Record<string, any> }>
-    ) => Promise<{ affectedRows: number }>
     queryMongoCollection: (
       id: string,
       collection: string,
@@ -711,9 +706,6 @@ export interface ClawBenchAPI {
       collection: string,
       filter: Record<string, any>
     ) => Promise<{ deletedCount: number }>
-    addDBColumn: (id: string, tableName: string, columnName: string, columnType: string, nullable: boolean, defaultValue?: string) => Promise<void>
-    dropDBColumn: (id: string, tableName: string, columnName: string) => Promise<void>
-    renameDBColumn: (id: string, tableName: string, oldName: string, newName: string) => Promise<void>
   }
   credentials: {
     saveApiToken: (token: string) => Promise<void>

@@ -66,17 +66,10 @@ const DBQueryEditor: React.FC<Props> = ({ tabId, connectionId }) => {
       const isMongo = conn?.type === 'mongodb'
 
       if (isMongo) {
-        // For MongoDB, try to parse as JSON filter
-        try {
-          const parsed = JSON.parse(sqlToRun.trim() || '{}')
-          const collectionMatch = sqlToRun.match(/^(\w+)\.find\(/)
-          // Simple: treat entire input as collection name or filter
-          message.info(t('db.mongoHint'))
-          return
-        } catch {
-          message.info(t('db.mongoHint2'))
-          return
-        }
+        // The SQL editor doesn't speak Mongo — open the collection via the
+        // table browser instead.
+        message.info(t('db.mongoHint'))
+        return
       }
 
       // Determine if query or execute

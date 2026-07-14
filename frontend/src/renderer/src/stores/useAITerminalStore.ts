@@ -33,7 +33,6 @@ interface AITerminalState {
   dbConnectionStatus: Record<string, 'connected' | 'disconnected' | 'testing'>
   openDBTabs: DBTab[]
   activeDBTabId: string | null
-  dbTableData: Record<string, DBQueryResult>
   dbTableSchemas: Record<string, DBTableColumn[]>
   dbTables: Record<string, string[]>
   dbDatabases: Record<string, string[]>
@@ -65,7 +64,6 @@ interface AITerminalState {
   addAIMessage: (tabId: string, msg: TerminalAIMessage) => void
   setAIStreaming: (streaming: boolean) => void
   setAITaskId: (taskId: string | null) => void
-  clearAIMessages: (tabId: string) => void
 
   // Side mode
   setSideMode: (mode: SidePanelMode) => void
@@ -88,9 +86,6 @@ interface AITerminalState {
   closeOtherDBTabs: (tabId: string) => void
   closeAllDBTabs: () => void
   setActiveDBTab: (tabId: string | null) => void
-  queryDB: (tabId: string, sql: string) => Promise<DBQueryResult>
-  executeDBSql: (tabId: string, sql: string) => Promise<{ affectedRows: number; executionTimeMs: number }>
-  updateDBCellData: (tabId: string, changes: any[]) => Promise<void>
 
   // ── Row-level DB Actions ──
   getDBTableCount: (connId: string, tableName: string) => Promise<number>
@@ -119,7 +114,6 @@ export const useAITerminalStore = create<AITerminalState>((set, get) => ({
   dbConnectionStatus: {},
   openDBTabs: [],
   activeDBTabId: null,
-  dbTableData: {},
   dbTableSchemas: {},
   dbTables: {},
   dbDatabases: {},
@@ -305,15 +299,6 @@ export const useAITerminalStore = create<AITerminalState>((set, get) => ({
   setAIStreaming: (streaming) => set({ aiStreaming: streaming }),
   setAITaskId: (taskId) => set({ aiTaskId: taskId }),
 
-  clearAIMessages: (tabId) => {
-    set(state => ({
-      aiMessages: {
-        ...state.aiMessages,
-        [tabId]: []
-      }
-    }))
-  },
-
   setSideMode: (mode) => set({ sideMode: mode }),
 
   // ══════════════════════════════════════════════════════
@@ -491,12 +476,9 @@ export const useAITerminalStore = create<AITerminalState>((set, get) => ({
       const newActiveId = state.activeDBTabId === tabId
         ? (newTabs.length > 0 ? newTabs[newTabs.length - 1].id : null)
         : state.activeDBTabId
-      const newData = { ...state.dbTableData }
-      delete newData[tabId]
       return {
         openDBTabs: newTabs,
-        activeDBTabId: newActiveId,
-        dbTableData: newData
+        activeDBTabId: newActiveId
       }
     })
   },
@@ -504,43 +486,18 @@ export const useAITerminalStore = create<AITerminalState>((set, get) => ({
   closeOtherDBTabs: (tabId) => {
     set(state => {
       const kept = state.openDBTabs.filter(t => t.id === tabId)
-      const newData: Record<string, DBQueryResult> = {}
-      if (state.dbTableData[tabId]) newData[tabId] = state.dbTableData[tabId]
       return {
         openDBTabs: kept,
-        activeDBTabId: kept.length > 0 ? tabId : null,
-        dbTableData: newData
+        activeDBTabId: kept.length > 0 ? tabId : null
       }
     })
   },
 
   closeAllDBTabs: () => {
-    set({ openDBTabs: [], activeDBTabId: null, dbTableData: {} })
+    set({ openDBTabs: [], activeDBTabId: null })
   },
 
   setActiveDBTab: (tabId) => set({ activeDBTabId: tabId }),
-
-  queryDB: async (tabId, sql) => {
-    const tab = get().openDBTabs.find(t => t.id === tabId)
-    if (!tab) throw new Error('Tab not found')
-    const result = await window.api.aiTerminal.queryDB(tab.connectionId, sql)
-    set(state => ({
-      dbTableData: { ...state.dbTableData, [tabId]: result }
-    }))
-    return result
-  },
-
-  executeDBSql: async (tabId, sql) => {
-    const tab = get().openDBTabs.find(t => t.id === tabId)
-    if (!tab) throw new Error('Tab not found')
-    return window.api.aiTerminal.executeDB(tab.connectionId, sql)
-  },
-
-  updateDBCellData: async (tabId, changes) => {
-    const tab = get().openDBTabs.find(t => t.id === tabId)
-    if (!tab || !tab.tableName) return
-    await window.api.aiTerminal.updateDBTableData(tab.connectionId, tab.tableName, changes)
-  },
 
   // ── Row-level DB Actions ──
 

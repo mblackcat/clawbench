@@ -123,6 +123,3 @@ export interface DBTab {
   status: DBTabStatus
   createdAt: number
 }
-
-/** DB connection status */
-export type DBConnectionStatus = 'connected' | 'disconnected' | 'testing'
