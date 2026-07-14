@@ -289,12 +289,20 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
         const row = data?.rows?.[rowIdx as number]
         if (!row) continue
         const col = String(prop)
+        // Coerce the raw grid value to what the column's SQL type expects.
+        // Booleans (incl. MySQL tinyint(1)) must go in as numeric 1/0 — the
+        // dropdown yields the strings 'true'/'false', which would otherwise be
+        // quoted and rejected by an integer column.
+        let coerced: any = newVal === '' ? null : newVal
+        if (coerced !== null && classifyColumn(schemaByName[col]?.type) === 'bool') {
+          coerced = (coerced === true || coerced === 'true' || coerced === 1 || coerced === '1') ? 1 : 0
+        }
         try {
           await updateDBRow(connectionId, tableName, getRowPKs(row), {
-            [col]: newVal === '' ? null : newVal
+            [col]: coerced
           })
           // Keep local copy in sync so re-opening the detail view is correct
-          row[col] = newVal === '' ? null : newVal
+          row[col] = coerced
           message.success(t('db.saveSuccess'))
         } catch (err: any) {
           message.error(t('db.operateFailed', err.message || String(err)))
@@ -302,7 +310,7 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
         }
       }
     },
-    [pkColumns, data?.rows, connectionId, tableName, getRowPKs, updateDBRow, loadData, message, t]
+    [pkColumns, data?.rows, connectionId, tableName, getRowPKs, updateDBRow, loadData, message, t, schemaByName]
   )
 
   // ── Structure grid: schema rows ──

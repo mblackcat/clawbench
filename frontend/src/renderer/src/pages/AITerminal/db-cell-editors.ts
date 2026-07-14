@@ -156,6 +156,50 @@ class TextExpandEditor extends Handsontable.editors.TextEditor {
   }
 }
 
+/**
+ * Coerce an arbitrary stored datetime value into the "YYYY-MM-DDTHH:mm:ss"
+ * shape a native `datetime-local` input expects.
+ *
+ * Handles the common shapes a DB driver hands back:
+ *   • "2026-07-07 00:00:07"            (MySQL DATETIME string)
+ *   • "2026-07-07T00:00:07.583Z"       (ISO, e.g. mysql2 Date→JSON)
+ *   • a real Date object
+ *   • JSON-quoted variants of the above ('"...Z"')
+ *
+ * The literal wall-clock digits are preserved (no timezone shifting): a stored
+ * "00:00:07" shows as "00:00:07". When the value is empty/unparseable we
+ * default to the current local time so the user isn't handed a blank picker.
+ */
+function toDateTimeLocal(value: unknown): string {
+  let str = String(value ?? '').trim()
+  // Strip surrounding JSON quotes if present
+  if (str.length >= 2 && str.startsWith('"') && str.endsWith('"')) {
+    str = str.slice(1, -1).trim()
+  }
+
+  if (str) {
+    // Pull the first "YYYY-MM-DD[ T]HH:mm[:ss]" run of digits, ignoring the
+    // trailing ".sssZ"/timezone — we want the literal wall-clock, un-shifted.
+    const m = str.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/)
+    if (m) {
+      const [, y, mo, d, h, mi, s] = m
+      return `${y}-${mo}-${d}T${h}:${mi}:${s ?? '00'}`
+    }
+    // Date-only value → midnight
+    const dOnly = str.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+    if (dOnly) {
+      const [, y, mo, d] = dOnly
+      return `${y}-${mo}-${d}T00:00:00`
+    }
+  }
+
+  // Empty or unrecognized → default to current local time
+  const now = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}` +
+    `T${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`
+}
+
 // ── Native datetime-local editor emitting "YYYY-MM-DD HH:mm:ss" ──
 class DateTimeEditor extends Handsontable.editors.BaseEditor {
   private input!: HTMLInputElement
@@ -185,14 +229,7 @@ class DateTimeEditor extends Handsontable.editors.BaseEditor {
   }
 
   setValue(value: unknown): void {
-    const str = String(value ?? '').trim()
-    if (!str) {
-      this.input.value = ''
-      return
-    }
-    // Accept "YYYY-MM-DD HH:mm:ss" or ISO; feed datetime-local a "T"-joined value
-    const iso = str.replace(' ', 'T')
-    this.input.value = iso.length >= 16 ? iso.slice(0, 19) : iso
+    this.input.value = toDateTimeLocal(value)
   }
 
   open(): void {
