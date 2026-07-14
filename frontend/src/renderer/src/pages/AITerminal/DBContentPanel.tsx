@@ -1,5 +1,5 @@
 import React from 'react'
-import { Tabs, Button, Typography, theme } from 'antd'
+import { Dropdown, Typography, theme } from 'antd'
 import { CloseOutlined } from '@ant-design/icons'
 import { useAITerminalStore } from '../../stores/useAITerminalStore'
 import { useT } from '../../i18n'
@@ -11,7 +11,10 @@ const { Text } = Typography
 const DBContentPanel: React.FC = () => {
   const { token } = theme.useToken()
   const t = useT()
-  const { openDBTabs, activeDBTabId, setActiveDBTab, closeDBTab } = useAITerminalStore()
+  const {
+    openDBTabs, activeDBTabId, setActiveDBTab,
+    closeDBTab, closeOtherDBTabs, closeAllDBTabs
+  } = useAITerminalStore()
 
   if (openDBTabs.length === 0) {
     return (
@@ -40,28 +43,45 @@ const DBContentPanel: React.FC = () => {
         flexShrink: 0
       }}>
         {openDBTabs.map(tab => (
-          <div
+          <Dropdown
             key={tab.id}
-            onClick={() => setActiveDBTab(tab.id)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '6px 12px',
-              cursor: 'pointer',
-              borderBottom: tab.id === activeDBTabId ? `2px solid ${token.colorPrimary}` : '2px solid transparent',
-              background: tab.id === activeDBTabId ? token.colorBgContainer : 'transparent',
-              fontSize: 12,
-              whiteSpace: 'nowrap',
-              flexShrink: 0
+            trigger={['contextMenu']}
+            menu={{
+              items: [
+                { key: 'close', label: t('db.tabCloseCurrent') },
+                { key: 'closeOthers', label: t('db.tabCloseOthers'), disabled: openDBTabs.length <= 1 },
+                { key: 'closeAll', label: t('db.tabCloseAll') }
+              ],
+              onClick: ({ key, domEvent }) => {
+                domEvent.stopPropagation()
+                if (key === 'close') closeDBTab(tab.id)
+                else if (key === 'closeOthers') closeOtherDBTabs(tab.id)
+                else if (key === 'closeAll') closeAllDBTabs()
+              }
             }}
           >
-            <Text ellipsis style={{ fontSize: 12, maxWidth: 160 }}>{tab.title}</Text>
-            <CloseOutlined
-              onClick={(e) => { e.stopPropagation(); closeDBTab(tab.id) }}
-              style={{ fontSize: 10, color: token.colorTextTertiary }}
-            />
-          </div>
+            <div
+              onClick={() => setActiveDBTab(tab.id)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 12px',
+                cursor: 'pointer',
+                borderBottom: tab.id === activeDBTabId ? `2px solid ${token.colorPrimary}` : '2px solid transparent',
+                background: tab.id === activeDBTabId ? token.colorBgContainer : 'transparent',
+                fontSize: 12,
+                whiteSpace: 'nowrap',
+                flexShrink: 0
+              }}
+            >
+              <Text ellipsis style={{ fontSize: 12, maxWidth: 160 }}>{tab.title}</Text>
+              <CloseOutlined
+                onClick={(e) => { e.stopPropagation(); closeDBTab(tab.id) }}
+                style={{ fontSize: 10, color: token.colorTextTertiary }}
+              />
+            </div>
+          </Dropdown>
         ))}
       </div>
 

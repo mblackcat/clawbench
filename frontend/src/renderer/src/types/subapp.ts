@@ -30,6 +30,24 @@ export interface SubAppManifest {
   published?: boolean // 是否已发布到服务端
 }
 
+/**
+ * 判定本地 app 是否已发布。
+ *
+ * 以服务端为准：服务端 publishedAppNames 命中即为已发布；本地的 manifest.published
+ * 仅作为离线 / 本地模式下的正向兜底（发布成功后会回写为 true）。
+ *
+ * 注意：本地的 published 字段可能因旧版发布流程未回写而遗留为 false（脏数据），
+ * 因此绝不能让本地的 false 否决服务端的命中——服务端才是唯一真相。脏数据由
+ * reconcilePublishedFlags() 在加载时治愈。
+ */
+export function resolveAppPublished(
+  manifest: Pick<SubAppManifest, 'name' | 'published'>,
+  publishedAppNames: Set<string>
+): boolean {
+  if (publishedAppNames.has(manifest.name)) return true
+  return manifest.published === true
+}
+
 export interface SubAppOutput {
   taskId: string
   type: 'output' | 'progress' | 'result' | 'error'

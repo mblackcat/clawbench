@@ -43,6 +43,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useNavigate } from 'react-router-dom';
 import type { SubAppManifest } from '../../types/subapp';
+import { resolveAppPublished } from '../../types/subapp';
 import { useSubAppStore } from '../../stores/useSubAppStore';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useTaskStore } from '../../stores/useTaskStore';
@@ -74,8 +75,10 @@ interface SubAppInfo {
 
 // Publication status. Renamed from 'installed' (which was misleading — every
 // card here is favorited) to 'published' so the tag actually conveys useful
-// information. Determined authoritatively by the server-side published-name
-// set, with `manifest.published` as an offline / local-mode fallback.
+// information. Server-authoritative via resolveAppPublished(): the server-side
+// published-name set is the single source of truth; manifest.published is only
+// a positive offline fallback. (Stale local published:false from old publish
+// flows must never override the server — see reconcilePublishedFlags.)
 type AppType = 'published' | 'draft' | 'local';
 
 interface AppWithType extends SubAppInfo {
@@ -670,11 +673,20 @@ const InstalledAppsPage: React.FC = () => {
       if (!isLocalMode) {
         checkForUpdates().catch(() => { /* 非关键路径 */ });
         // Fetch published app names from server so we can correctly mark apps
-        // as 已发布 even when the local manifest.published flag wasn't
-        // written back (older clients, web-side publishing, etc.).
+        // as 已发布 — the server is the single source of truth (the local
+        // manifest.published may be stale false from old publish flows).
         try {
           const published = await applicationManager.fetchApplications(true);
-          setPublishedAppNames(new Set(published.map((a) => a.name)));
+          const publishedNames = new Set(published.map((a) => a.name));
+          setPublishedAppNames(publishedNames);
+          // 治愈：以服务端为准回写本地 manifest 的 published，修复旧版未回写的脏数据。
+          const healed = await applicationManager.reconcilePublishedFlags(
+            useSubAppStore.getState().appInfos,
+            publishedNames
+          );
+          if (healed > 0) {
+            await loadApps(); // 重新扫描磁盘，使治愈后的标记在 UI 反映
+          }
         } catch {
           // 非关键路径：网络异常时回退到 manifest.published
         }
@@ -720,10 +732,9 @@ const InstalledAppsPage: React.FC = () => {
   /**
    * 分类应用并按 appOrder 排序，再按类型分组
    *
-   * 发布状态判定优先级：
-   * 1. 服务端 publishedAppNames 集合命中（最权威，覆盖"别处发布"场景）
-   * 2. 本地 manifest.published === true（发布回写 / 离线场景的兜底）
-   * 3. 否则：作者是自己 → draft；否则 → local
+   * 发布状态以服务端为准（见 resolveAppPublished）：服务端 publishedAppNames 命中
+   * 即为已发布；manifest.published 仅作离线正向兜底。本地的 false 不得否决服务端。
+   * 否则：作者是自己 → draft；否则 → local。
    */
   const classifyApps = () => {
     const classified: AppWithType[] = appInfos
@@ -732,7 +743,7 @@ const InstalledAppsPage: React.FC = () => {
         const manifest = info.manifest;
         let appType: AppType = 'local';
 
-        const isPublished = publishedAppNames.has(manifest.name) || manifest.published === true;
+        const isPublished = resolveAppPublished(manifest, publishedAppNames);
 
         if (isPublished) {
           appType = 'published';

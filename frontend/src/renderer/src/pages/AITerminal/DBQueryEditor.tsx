@@ -7,6 +7,7 @@ import 'handsontable/dist/handsontable.full.min.css'
 import { useAITerminalStore } from '../../stores/useAITerminalStore'
 import { useT } from '../../i18n'
 import { MONO_FONT_STACK } from '../../utils/mono-font'
+import { useHandsontableTheme, HOT_MAIN_ATTR } from '../../utils/handsontable-theme'
 import type { DBQueryResult } from '../../types/ai-terminal'
 
 registerAllModules()
@@ -51,23 +52,8 @@ const DBQueryEditor: React.FC<Props> = ({ tabId, connectionId }) => {
     }
   }, [pendingSQL, tabId])
 
-  // Inject theme CSS
-  useEffect(() => {
-    const styleId = 'db-query-hot-theme'
-    let style = document.getElementById(styleId) as HTMLStyleElement
-    if (!style) {
-      style = document.createElement('style')
-      style.id = styleId
-      document.head.appendChild(style)
-    }
-    style.textContent = `
-      .dbq-hot-container .ht_master table { color: ${token.colorText}; font-size: ${token.fontSize}px; }
-      .dbq-hot-container .handsontable th { background: ${token.colorBgLayout}; color: ${token.colorText}; border-color: ${token.colorBorderSecondary} !important; }
-      .dbq-hot-container .handsontable td { background: ${token.colorBgContainer}; border-color: ${token.colorBorderSecondary} !important; }
-      .dbq-hot-container .handsontable td.current, .dbq-hot-container .handsontable td.area { background: ${token.colorPrimaryBg} !important; }
-    `
-    return () => { style.textContent = '' }
-  }, [token])
+  // Shared Handsontable theming (unified with Copiper's handsome table scheme)
+  useHandsontableTheme()
 
   const handleExecute = useCallback(async (overrideSQL?: string) => {
     const sqlToRun = overrideSQL ?? sql
@@ -192,7 +178,7 @@ const DBQueryEditor: React.FC<Props> = ({ tabId, connectionId }) => {
       </div>
 
       {/* Results */}
-      <div className="dbq-hot-container" style={{ flex: 1, overflow: 'hidden' }}>
+      <div className="dbq-hot-container" {...{ [HOT_MAIN_ATTR]: '' }} style={{ flex: 1, overflow: 'hidden' }}>
         {loading ? (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
             <Spin />
