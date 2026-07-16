@@ -10,7 +10,7 @@ import './types/ipc'
 /**
  * App UI face: Inter for Latin, then system UI / CJK stacks.
  * Inter is loaded via @fontsource in main.tsx (weights 300/400/500).
- * Prefer light optical weight for a thinner, airier look.
+ * Default UI weight is Light (300) for thinner strokes; strong text stays 400.
  */
 const FONT_FAMILY =
   "'Inter', 'Segoe UI Variable Text', 'Segoe UI Variable', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', system-ui, sans-serif"
@@ -33,7 +33,7 @@ const lightTokens = {
   boxShadow: '0 1px 4px rgba(0, 0, 0, 0.04)',
   boxShadowSecondary: '0 1px 2px rgba(0, 0, 0, 0.03)',
   fontFamily: FONT_FAMILY,
-  fontWeightStrong: 500,
+  fontWeightStrong: 400,
 }
 
 const darkTokens = {
@@ -57,7 +57,7 @@ const darkTokens = {
   boxShadow: '0 2px 12px rgba(0, 0, 0, 0.30)',
   boxShadowSecondary: '0 1px 6px rgba(0, 0, 0, 0.25)',
   fontFamily: FONT_FAMILY,
-  fontWeightStrong: 500,
+  fontWeightStrong: 400,
 }
 
 const componentOverrides = {
@@ -66,7 +66,7 @@ const componentOverrides = {
     borderRadiusLG: 10,
     borderRadiusSM: 6,
     paddingInline: 16,
-    fontWeight: 400,
+    fontWeight: 300,
   },
   Menu: {
     itemBorderRadius: 8,

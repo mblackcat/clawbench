@@ -2,22 +2,57 @@
    ClawBench Theme — Fresh Clean Palette
    Light: #F5F6F8 (bg), #EDEEF0 (sidebar), #fff (container), #1F2329 (text), #4F8CFF (accent)
    Dark:  #17171A (bg), #232326 (container), #E8E9ED (text), #6BA1FF (accent)
-   Font: Inter (bundled) + system CJK — weight 300–500 for a thinner, airy feel
+   Font: Inter (bundled) + system CJK — default Light 300, strong 400
    Code / terminal mono: Consolas → Monaco → Menlo (see mono-font.ts)
    ========================================================================== */
 
-/* --- Global Font Weight Override --- */
+/* --- Global Font Weight Override (Light 300 baseline) --- */
 
 body,
 html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  font-weight: 400;
+  font-weight: 300;
   margin: 0;
   overflow: hidden;
   /* Thinner Latin strokes when Inter is active */
   font-feature-settings: "cv11", "ss01", "ss03";
+}
+
+/* Push Ant Design defaults down from Regular/Medium to Light */
+body,
+.ant-typography,
+.ant-btn,
+.ant-menu,
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-select,
+.ant-select-item,
+.ant-dropdown,
+.ant-dropdown-menu-item,
+.ant-tabs,
+.ant-table,
+.ant-form,
+.ant-form-item-label > label,
+.ant-tag,
+.ant-modal,
+.ant-drawer,
+.ant-card,
+.ant-list,
+.ant-breadcrumb,
+.ant-pagination,
+.ant-segmented,
+.ant-radio-wrapper,
+.ant-checkbox-wrapper,
+.ant-statistic,
+.ant-descriptions,
+.ant-empty,
+.ant-tooltip,
+.ant-popover,
+.ant-message,
+.ant-notification {
+  font-weight: 300;
 }
 
 /* 根据主题同步 body 背景色，防止路由切换白屏闪烁 */
@@ -35,18 +70,18 @@ body[data-theme="dark"] {
   caret-color: #E8E9ED;
 }
 
-/* Lighter font weight for general text */
+/* Light optical weight for general text */
 [data-theme="light"] {
-  font-weight: 400;
-  letter-spacing: 0.01em;
+  font-weight: 300;
+  letter-spacing: 0.015em;
   --cb-text: #1F2329;
   --cb-text-secondary: #5C6370;
   --cb-caret: #1F2329;
 }
 
 [data-theme="dark"] {
-  font-weight: 400;
-  letter-spacing: 0.015em;
+  font-weight: 300;
+  letter-spacing: 0.02em;
   --cb-text: #E8E9ED;
   --cb-text-secondary: #A8ABB4;
   --cb-caret: #E8E9ED;
@@ -152,12 +187,12 @@ textarea,
 
 .cb-sidebar .ant-menu-item {
   transition: all 0.15s ease;
-  font-weight: 400;
+  font-weight: 300;
 }
 
 .cb-sidebar .ant-menu-item-selected {
   background: var(--cb-menu-selected-bg) !important;
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .cb-sidebar .ant-menu-item:not(.ant-menu-item-selected):hover {
@@ -372,7 +407,7 @@ textarea,
 
 [data-theme="light"] .ant-tabs .ant-tabs-tab {
   font-size: 14px;
-  font-weight: 400;
+  font-weight: 300;
   padding: 8px 4px;
   color: #A8ABB3;
   transition: color 0.15s;
@@ -384,12 +419,12 @@ textarea,
 
 [data-theme="light"] .ant-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
   color: #1F2329 !important;
-  font-weight: 500;
+  font-weight: 400;
 }
 
 /* Dark mode: tab selected text */
 [data-theme="dark"] .ant-tabs .ant-tabs-tab {
-  font-weight: 400;
+  font-weight: 300;
   color: #7E818C;
 }
 
@@ -399,7 +434,7 @@ textarea,
 
 [data-theme="dark"] .ant-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
   color: #E8E9ED !important;
-  font-weight: 500;
+  font-weight: 400;
 }
 
 /* --- Buttons --- */
@@ -407,7 +442,7 @@ textarea,
 .ant-btn-primary,
 .ant-btn-default {
   box-shadow: none !important;
-  font-weight: 400;
+  font-weight: 300;
 }
 
 [data-theme="light"] .ant-btn-primary {
@@ -433,7 +468,7 @@ textarea,
 
 [data-theme="light"] .ant-btn-text {
   color: #1F2329;
-  font-weight: 400;
+  font-weight: 300;
 }
 
 [data-theme="light"] .ant-btn-text:hover {
@@ -467,7 +502,7 @@ textarea,
 [data-theme="light"] .ant-input-affix-wrapper {
   border-color: rgba(0, 0, 0, 0.06);
   box-shadow: none !important;
-  font-weight: 400;
+  font-weight: 300;
 }
 
 [data-theme="light"] .ant-input:hover,
@@ -522,7 +557,7 @@ textarea,
 
 [data-theme="light"] .ant-dropdown .ant-dropdown-menu-item {
   border-radius: 6px;
-  font-weight: 400;
+  font-weight: 300;
 }
 
 /* --- Popover: clean style --- */
@@ -541,7 +576,7 @@ textarea,
 [data-theme="light"] .ant-tag {
   border-radius: 4px;
   border: 1px solid rgba(0, 0, 0, 0.05);
-  font-weight: 400;
+  font-weight: 300;
 }
 
 /*
@@ -552,7 +587,7 @@ textarea,
  */
 [data-theme="dark"] .ant-tag {
   border-radius: 4px;
-  font-weight: 400;
+  font-weight: 300;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.08);
   color: #C9CCD4;
@@ -641,7 +676,7 @@ textarea,
 
 [data-theme="light"] .ant-table-thead > tr > th {
   background: #F5F6F8 !important;
-  font-weight: 500;
+  font-weight: 400;
   font-size: 13px;
   color: #747A84;
   border-bottom: 1px solid rgba(0, 0, 0, 0.04);
@@ -649,7 +684,7 @@ textarea,
 
 [data-theme="light"] .ant-table-tbody > tr > td {
   border-bottom: 1px solid rgba(0, 0, 0, 0.03);
-  font-weight: 400;
+  font-weight: 300;
 }
 
 [data-theme="light"] .ant-table-tbody > tr:hover > td {
@@ -663,7 +698,7 @@ textarea,
 
 [data-theme="dark"] .ant-table-thead > tr > th {
   background: #2A2A2E !important;
-  font-weight: 500;
+  font-weight: 400;
   font-size: 13px;
   color: #8B8D98;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
@@ -671,7 +706,7 @@ textarea,
 
 [data-theme="dark"] .ant-table-tbody > tr > td {
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-  font-weight: 400;
+  font-weight: 300;
 }
 
 [data-theme="dark"] .ant-table-tbody > tr:hover > td {
@@ -693,7 +728,7 @@ textarea,
 /* --- Tooltip: clean --- */
 [data-theme="light"] .ant-tooltip-inner {
   border-radius: 6px;
-  font-weight: 400;
+  font-weight: 300;
 }
 
 /* --- Badge: cleaner --- */
@@ -701,35 +736,40 @@ textarea,
   box-shadow: none;
 }
 
-/* --- Global heading weight reduction (thin / airy) --- */
+/* --- Global heading weight (thin / airy) --- */
 h1, h2, h3, h4, h5, h6,
 .ant-typography h1,
 .ant-typography h2,
 .ant-typography h3,
 .ant-typography h4 {
-  font-weight: 500 !important;
-  letter-spacing: 0.005em;
+  font-weight: 400 !important;
+  letter-spacing: 0.01em;
 }
 
-/* Prefer Inter Light for large display titles where used */
+/* Large display titles: extra light */
 .cb-display-title {
   font-weight: 300 !important;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.005em;
 }
 
-/* --- Menu text lighter --- */
+/* Strong text only one step above body (400 vs 300) */
+.ant-typography strong,
+.ant-typography b,
+b, strong {
+  font-weight: 400 !important;
+}
+
+/* --- Menu / form / breadcrumb stay Light --- */
 .ant-menu-item .ant-menu-title-content {
-  font-weight: 400;
+  font-weight: 300;
 }
 
-/* --- Form label lighter --- */
 .ant-form-item-label > label {
-  font-weight: 400;
+  font-weight: 300;
 }
 
-/* --- Breadcrumb lighter --- */
 .ant-breadcrumb {
-  font-weight: 400;
+  font-weight: 300;
 }
 
 /* --- Typography secondary/tertiary contrast (dark) --- */
