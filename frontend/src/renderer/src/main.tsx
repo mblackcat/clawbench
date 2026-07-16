@@ -1,5 +1,9 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+// Inter: lighter UI face (weights 300–500). Bundled for offline Electron use.
+import '@fontsource/inter/300.css'
+import '@fontsource/inter/400.css'
+import '@fontsource/inter/500.css'
 import 'antd/dist/reset.css'
 import './styles/theme-overhaul.css'
 import App from './App'

@@ -197,7 +197,7 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
                   fontWeight: 600,
                   lineHeight: '18px',
                   whiteSpace: 'nowrap',
-                  fontFamily: 'system-ui, -apple-system, sans-serif'
+                  fontFamily: 'inherit'
                 }}
               >
                 {shortcutLabel}

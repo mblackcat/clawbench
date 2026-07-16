@@ -1,8 +1,9 @@
 /* ==========================================================================
    ClawBench Theme — Fresh Clean Palette
-   Light: #F5F6F8 (bg), #EDEEF0 (sidebar), #fff (container), #2E3038 (text), #4F8CFF (accent)
-   Dark:  #17171A (bg), #232326 (container), #F0F0F3 (text), #6BA1FF (accent)
-   Font: Inter, system-ui — weight 300–500 for a lighter, airy feel
+   Light: #F5F6F8 (bg), #EDEEF0 (sidebar), #fff (container), #1F2329 (text), #4F8CFF (accent)
+   Dark:  #17171A (bg), #232326 (container), #E8E9ED (text), #6BA1FF (accent)
+   Font: Inter (bundled) + system CJK — weight 300–500 for a thinner, airy feel
+   Code / terminal mono: Consolas → Monaco → Menlo (see mono-font.ts)
    ========================================================================== */
 
 /* --- Global Font Weight Override --- */
@@ -15,28 +16,81 @@ html {
   font-weight: 400;
   margin: 0;
   overflow: hidden;
+  /* Thinner Latin strokes when Inter is active */
+  font-feature-settings: "cv11", "ss01", "ss03";
 }
 
 /* 根据主题同步 body 背景色，防止路由切换白屏闪烁 */
 [data-theme="light"] body,
 body[data-theme="light"] {
   background: #F5F6F8;
+  color: #1F2329;
+  caret-color: #1F2329;
 }
 
 [data-theme="dark"] body,
 body[data-theme="dark"] {
   background: #17171A;
+  color: #E8E9ED;
+  caret-color: #E8E9ED;
 }
 
 /* Lighter font weight for general text */
 [data-theme="light"] {
   font-weight: 400;
   letter-spacing: 0.01em;
+  --cb-text: #1F2329;
+  --cb-text-secondary: #5C6370;
+  --cb-caret: #1F2329;
 }
 
 [data-theme="dark"] {
   font-weight: 400;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.015em;
+  --cb-text: #E8E9ED;
+  --cb-text-secondary: #A8ABB4;
+  --cb-caret: #E8E9ED;
+}
+
+/* --- Caret (text insertion cursor "I") — always match readable text color --- */
+input,
+textarea,
+.ant-input,
+.ant-input-affix-wrapper input,
+.ant-input-textarea textarea,
+.ant-mentions,
+.ant-select-selection-search-input,
+.ant-picker-input > input,
+[contenteditable="true"] {
+  caret-color: var(--cb-caret, currentColor) !important;
+}
+
+[data-theme="light"] input,
+[data-theme="light"] textarea,
+[data-theme="light"] .ant-input,
+[data-theme="light"] .ant-input-affix-wrapper,
+[data-theme="light"] .ant-input-affix-wrapper input,
+[data-theme="light"] .ant-input-textarea textarea,
+[data-theme="light"] .ant-mentions,
+[data-theme="light"] .ant-select-selection-search-input,
+[data-theme="light"] .ant-picker-input > input,
+[data-theme="light"] [contenteditable="true"] {
+  color: #1F2329;
+  caret-color: #1F2329 !important;
+}
+
+[data-theme="dark"] input,
+[data-theme="dark"] textarea,
+[data-theme="dark"] .ant-input,
+[data-theme="dark"] .ant-input-affix-wrapper,
+[data-theme="dark"] .ant-input-affix-wrapper input,
+[data-theme="dark"] .ant-input-textarea textarea,
+[data-theme="dark"] .ant-mentions,
+[data-theme="dark"] .ant-select-selection-search-input,
+[data-theme="dark"] .ant-picker-input > input,
+[data-theme="dark"] [contenteditable="true"] {
+  color: #E8E9ED;
+  caret-color: #E8E9ED !important;
 }
 
 /* --- Theme Variables --- */
@@ -329,18 +383,22 @@ body[data-theme="dark"] {
 }
 
 [data-theme="light"] .ant-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: #2E3038 !important;
+  color: #1F2329 !important;
   font-weight: 500;
 }
 
 /* Dark mode: tab selected text */
 [data-theme="dark"] .ant-tabs .ant-tabs-tab {
   font-weight: 400;
-  color: #6B7280;
+  color: #7E818C;
+}
+
+[data-theme="dark"] .ant-tabs .ant-tabs-tab:hover {
+  color: #A8ABB4;
 }
 
 [data-theme="dark"] .ant-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: #F0F0F3 !important;
+  color: #E8E9ED !important;
   font-weight: 500;
 }
 
@@ -364,23 +422,44 @@ body[data-theme="dark"] {
 /* Default button: subtle border */
 [data-theme="light"] .ant-btn-default {
   border-color: rgba(0, 0, 0, 0.08);
-  color: #2E3038;
+  color: #1F2329;
 }
 
 [data-theme="light"] .ant-btn-default:hover {
   background: rgba(0, 0, 0, 0.03) !important;
   border-color: rgba(0, 0, 0, 0.12) !important;
-  color: #2E3038 !important;
+  color: #1F2329 !important;
 }
 
 [data-theme="light"] .ant-btn-text {
-  color: #2E3038;
+  color: #1F2329;
   font-weight: 400;
 }
 
 [data-theme="light"] .ant-btn-text:hover {
   background: rgba(0, 0, 0, 0.03) !important;
-  color: #2E3038 !important;
+  color: #1F2329 !important;
+}
+
+/* Dark buttons: ensure text stays bright */
+[data-theme="dark"] .ant-btn-default {
+  color: #E8E9ED;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+[data-theme="dark"] .ant-btn-default:hover {
+  color: #F0F0F3 !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+[data-theme="dark"] .ant-btn-text {
+  color: #E8E9ED;
+}
+
+[data-theme="dark"] .ant-btn-text:hover {
+  color: #F0F0F3 !important;
+  background: rgba(255, 255, 255, 0.06) !important;
 }
 
 /* --- Input / TextArea: clean light border --- */
@@ -465,6 +544,96 @@ body[data-theme="dark"] {
   font-weight: 400;
 }
 
+/*
+ * Dark-mode tags: Ant Design preset colors use near-black purple/blue chips
+ * (e.g. #120338 / #111a2c) that disappear into the dark chrome. Soften every
+ * preset to a translucent tint + readable foreground so tags stay legible
+ * and visually consistent with the rest of the app.
+ */
+[data-theme="dark"] .ant-tag {
+  border-radius: 4px;
+  font-weight: 400;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.08);
+  color: #C9CCD4;
+}
+
+[data-theme="dark"] .ant-tag-blue,
+[data-theme="dark"] .ant-tag-processing {
+  color: #9EC5FF;
+  background: rgba(107, 161, 255, 0.16);
+  border-color: rgba(107, 161, 255, 0.28);
+}
+
+[data-theme="dark"] .ant-tag-geekblue {
+  color: #A8B8FF;
+  background: rgba(114, 132, 255, 0.16);
+  border-color: rgba(114, 132, 255, 0.28);
+}
+
+[data-theme="dark"] .ant-tag-purple {
+  color: #D4B8F5;
+  background: rgba(162, 112, 230, 0.16);
+  border-color: rgba(162, 112, 230, 0.28);
+}
+
+[data-theme="dark"] .ant-tag-magenta {
+  color: #F0A8D8;
+  background: rgba(235, 120, 190, 0.16);
+  border-color: rgba(235, 120, 190, 0.28);
+}
+
+[data-theme="dark"] .ant-tag-cyan {
+  color: #7EDDE0;
+  background: rgba(54, 186, 190, 0.16);
+  border-color: rgba(54, 186, 190, 0.28);
+}
+
+[data-theme="dark"] .ant-tag-green,
+[data-theme="dark"] .ant-tag-success {
+  color: #8FDBA8;
+  background: rgba(73, 170, 100, 0.16);
+  border-color: rgba(73, 170, 100, 0.28);
+}
+
+[data-theme="dark"] .ant-tag-lime {
+  color: #C4E06A;
+  background: rgba(160, 200, 40, 0.14);
+  border-color: rgba(160, 200, 40, 0.26);
+}
+
+[data-theme="dark"] .ant-tag-gold {
+  color: #E8C96A;
+  background: rgba(212, 168, 40, 0.16);
+  border-color: rgba(212, 168, 40, 0.28);
+}
+
+[data-theme="dark"] .ant-tag-orange,
+[data-theme="dark"] .ant-tag-warning {
+  color: #F0B070;
+  background: rgba(230, 140, 50, 0.16);
+  border-color: rgba(230, 140, 50, 0.28);
+}
+
+[data-theme="dark"] .ant-tag-volcano {
+  color: #F09A7A;
+  background: rgba(230, 100, 60, 0.16);
+  border-color: rgba(230, 100, 60, 0.28);
+}
+
+[data-theme="dark"] .ant-tag-red,
+[data-theme="dark"] .ant-tag-error {
+  color: #F09090;
+  background: rgba(220, 80, 80, 0.16);
+  border-color: rgba(220, 80, 80, 0.28);
+}
+
+/* Soften filled status tags (has-color uses solid bg + white text) */
+[data-theme="dark"] .ant-tag-has-color {
+  border-color: transparent;
+  opacity: 0.95;
+}
+
 /* --- Table: clean light borders --- */
 [data-theme="light"] .ant-table {
   border-radius: 8px;
@@ -532,13 +701,20 @@ body[data-theme="dark"] {
   box-shadow: none;
 }
 
-/* --- Global heading weight reduction --- */
+/* --- Global heading weight reduction (thin / airy) --- */
 h1, h2, h3, h4, h5, h6,
 .ant-typography h1,
 .ant-typography h2,
 .ant-typography h3,
 .ant-typography h4 {
   font-weight: 500 !important;
+  letter-spacing: 0.005em;
+}
+
+/* Prefer Inter Light for large display titles where used */
+.cb-display-title {
+  font-weight: 300 !important;
+  letter-spacing: -0.01em;
 }
 
 /* --- Menu text lighter --- */
@@ -556,6 +732,46 @@ h1, h2, h3, h4, h5, h6,
   font-weight: 400;
 }
 
+/* --- Typography secondary/tertiary contrast (dark) --- */
+[data-theme="dark"] .ant-typography,
+[data-theme="dark"] .ant-typography p {
+  color: #E8E9ED;
+}
+
+[data-theme="dark"] .ant-typography.ant-typography-secondary {
+  color: #A8ABB4 !important;
+}
+
+[data-theme="dark"] .ant-empty-description {
+  color: #7E818C;
+}
+
+/* --- Select / dropdown text readability --- */
+[data-theme="dark"] .ant-select-selection-item,
+[data-theme="dark"] .ant-select-selection-placeholder,
+[data-theme="dark"] .ant-dropdown .ant-dropdown-menu-item {
+  color: #E8E9ED;
+}
+
+[data-theme="dark"] .ant-select-selection-placeholder {
+  color: #7E818C !important;
+}
+
+/* --- Placeholder always softer than caret/text --- */
+[data-theme="light"] ::placeholder,
+[data-theme="light"] .ant-input::placeholder,
+[data-theme="light"] .ant-select-selection-placeholder {
+  color: #A8AEB8 !important;
+  opacity: 1;
+}
+
+[data-theme="dark"] ::placeholder,
+[data-theme="dark"] .ant-input::placeholder,
+[data-theme="dark"] .ant-select-selection-placeholder {
+  color: #5C5E68 !important;
+  opacity: 1;
+}
+
 /* --- CodeEditor file tree: tighter left alignment --- */
 .code-editor-file-tree .ant-tree {
   padding-left: 2px;
@@ -571,4 +787,39 @@ h1, h2, h3, h4, h5, h6,
 @keyframes cb-update-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.55; }
+}
+
+/* --- Dark mode secondary UI text that often goes too dim --- */
+[data-theme="dark"] .ant-menu-item,
+[data-theme="dark"] .ant-menu-submenu-title {
+  color: #C9CCD4;
+}
+
+[data-theme="dark"] .ant-menu-item-selected {
+  color: #E8E9ED !important;
+}
+
+[data-theme="dark"] .ant-form-item-label > label {
+  color: #A8ABB4;
+}
+
+[data-theme="dark"] .ant-descriptions-item-label {
+  color: #A8ABB4 !important;
+}
+
+[data-theme="dark"] .ant-descriptions-item-content {
+  color: #E8E9ED !important;
+}
+
+[data-theme="dark"] .ant-statistic-content {
+  color: #E8E9ED;
+}
+
+[data-theme="dark"] .ant-list-item-meta-description {
+  color: #A8ABB4 !important;
+}
+
+/* Keep mono / code chips readable in both themes */
+code, kbd, samp, pre {
+  font-family: 'Consolas', 'Monaco', 'Menlo', 'Courier New', monospace;
 }

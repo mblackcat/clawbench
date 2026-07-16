@@ -54,6 +54,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@electron-toolkit/preload": "^3.0.0",
     "@electron-toolkit/utils": "^3.0.0",
+    "@fontsource/inter": "^5.2.8",
     "@handsontable/react": "^16.2.0",
     "@monaco-editor/react": "^4.7.0",
     "@types/better-sqlite3": "^7.6.13",

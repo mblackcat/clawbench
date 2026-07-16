@@ -89,7 +89,7 @@
   word-break: break-word;
 }
 
-/* Consolas on Windows, Monaco on macOS (first installed family wins). */
+/* Keep in sync with utils/mono-font.ts MONO_FONT_STACK */
 .markdown-body pre,
 .markdown-body code,
 .markdown-body kbd,
