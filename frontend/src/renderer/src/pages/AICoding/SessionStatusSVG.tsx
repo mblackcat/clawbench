@@ -105,7 +105,7 @@ const SessionStatusSVG: React.FC<SessionStatusSVGProps> = ({ status, activity, s
   if (activity === 'waiting_input') {
     return (
       <svg width={size} height={size} viewBox="0 0 40 40" fill="none">
-        <text x="7" y="25" fontSize="14" fill={token.colorTextTertiary} fontFamily="'Consolas', 'Monaco', 'Menlo', monospace">&#x276F;</text>
+        <text x="7" y="25" fontSize="14" fill={token.colorTextTertiary} fontFamily="'Consolas', 'Monaco', 'Menlo', 'Microsoft YaHei UI', 'PingFang SC', sans-serif">&#x276F;</text>
         <line x1="22" y1="14" x2="22" y2="28" stroke={token.colorPrimary} strokeWidth="2.5" strokeLinecap="round">
           <animate attributeName="opacity" values="1;0;1" dur="1s" repeatCount="indefinite" />
         </line>

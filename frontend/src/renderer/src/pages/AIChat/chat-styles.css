@@ -94,7 +94,7 @@
 .markdown-body code,
 .markdown-body kbd,
 .markdown-body samp {
-  font-family: 'Consolas', 'Monaco', 'Menlo', 'Courier New', monospace;
+  font-family: 'Consolas', 'Monaco', 'Menlo', 'Courier New', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC', 'Source Han Sans SC', sans-serif;
 }
 
 .markdown-body pre {

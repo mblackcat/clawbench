@@ -3,7 +3,7 @@
    Light: #F5F6F8 (bg), #EDEEF0 (sidebar), #fff (container), #1F2329 (text), #4F8CFF (accent)
    Dark:  #17171A (bg), #232326 (container), #E8E9ED (text), #6BA1FF (accent)
    Font: Inter (bundled) + system CJK — default Light 300, strong 400
-   Code / terminal mono: Consolas → Monaco → Menlo (see mono-font.ts)
+   Code / terminal mono: Consolas → Monaco → Menlo + YaHei/PingFang CJK (see mono-font.ts)
    ========================================================================== */
 
 /* --- Global Font Weight Override (Light 300 baseline) --- */
@@ -859,7 +859,7 @@ b, strong {
   color: #A8ABB4 !important;
 }
 
-/* Keep mono / code chips readable in both themes */
+/* Keep mono / code chips readable in both themes (sync: mono-font.ts) */
 code, kbd, samp, pre {
-  font-family: 'Consolas', 'Monaco', 'Menlo', 'Courier New', monospace;
+  font-family: 'Consolas', 'Monaco', 'Menlo', 'Courier New', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC', 'Source Han Sans SC', sans-serif;
 }
