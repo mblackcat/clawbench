@@ -158,11 +158,19 @@ export function getToolCommand(toolType: AIToolType): { command: string; args: s
 export function getResumeArgs(toolType: AIToolType, toolSessionId: string): string[] {
   switch (toolType) {
     case 'claude':
+    case 'gemini':
+    case 'qoder':
+    case 'zcode':
+    case 'kimi':
+    case 'mimo':
       return ['--resume', toolSessionId]
     case 'codex':
       return ['resume', toolSessionId]
-    case 'gemini':
-      return ['--resume', toolSessionId]
+    case 'grok':
+      // Grok Build CLI: --session / -s <session-id>
+      return ['--session', toolSessionId]
+    case 'opencode':
+      return ['--session', toolSessionId]
     default:
       return []
   }

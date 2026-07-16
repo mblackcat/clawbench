@@ -2,6 +2,23 @@ import React from 'react'
 import { ProviderIcon } from '../../components/ProviderIcons'
 import type { AIToolType } from '../../types/ai-coding'
 
+/**
+ * Coding tools whose native CLI session history can be listed in the sidebar / tab history.
+ * Keep in sync with providers registered in main/services/native-sessions.service.ts.
+ */
+export const TOOLS_WITH_NATIVE_SESSIONS: AIToolType[] = [
+  'claude',
+  'codex',
+  'gemini',
+  'grok',
+  'opencode',
+  'qoder',
+  'kimi',
+  'zcode',
+  'trae',
+  'mimo'
+]
+
 export const AI_TOOL_TAG_COLORS: Partial<Record<AIToolType, string>> = {
   claude: 'purple',
   codex: 'green',

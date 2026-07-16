@@ -72,7 +72,8 @@ interface SettingsSchema {
   setupRole: string
   /**
    * Per-tool enablement for AI Coding (keyed by Local Env toolId, e.g. 'claude-code').
-   * Missing keys default to true. Disabled tools are hidden from AI Coding tool pickers.
+   * Missing keys: claude-code + codex-cli default ON; all other coding tools default OFF.
+   * Explicit user toggles are persisted and take precedence.
    */
   codingToolsEnabled: Record<string, boolean>
 }
@@ -290,14 +291,21 @@ export const settingsStore = new Store<SettingsSchema>({
   }
 })
 
-/** Default: tools are enabled unless explicitly set to false */
+/** Coding tools enabled by default when the user has not set an explicit preference */
+export const DEFAULT_ENABLED_CODING_TOOL_IDS = new Set(['claude-code', 'codex-cli'])
+
+/** Raw stored map (only explicit user overrides). Missing keys use defaults. */
 export function getCodingToolsEnabled(): Record<string, boolean> {
   return settingsStore.get('codingToolsEnabled') ?? {}
 }
 
+/** Resolve enablement for a Local Env coding toolId */
 export function isCodingToolEnabled(toolId: string): boolean {
   const map = getCodingToolsEnabled()
-  return map[toolId] !== false
+  if (Object.prototype.hasOwnProperty.call(map, toolId)) {
+    return map[toolId] === true
+  }
+  return DEFAULT_ENABLED_CODING_TOOL_IDS.has(toolId)
 }
 
 export function setCodingToolEnabled(toolId: string, enabled: boolean): Record<string, boolean> {

@@ -5,7 +5,7 @@ import { useLocalEnvStore } from '../../stores/useLocalEnvStore'
 import EnvCard from './EnvCard'
 import PackageListDrawer from './PackageListDrawer'
 import { useT } from '../../i18n'
-import { AI_CODING_TOOL_IDS, AI_CODING_TOOL_ID_SET } from '../../types/local-env'
+import { AI_CODING_TOOL_IDS, AI_CODING_TOOL_ID_SET, isCodingToolEnabledInMap } from '../../types/local-env'
 import { invalidateCodingToolsCache } from '../AICoding/AICodingNewSessionDialog'
 
 const { Title, Text } = Typography
@@ -42,7 +42,7 @@ const LocalEnvPage: React.FC = () => {
   const checkLatestVersions = useLocalEnvStore((s) => s.checkLatestVersions)
 
   const [packageDrawer, setPackageDrawer] = useState<PackageDrawerState | null>(null)
-  /** Missing keys default to enabled (true) */
+  /** Explicit user overrides only; missing keys use DEFAULT_ENABLED_CODING_TOOL_IDS */
   const [codingToolsEnabled, setCodingToolsEnabled] = useState<Record<string, boolean>>({})
 
   // Load from cache on mount; force re-detect if the AI coding tool set is stale
@@ -157,7 +157,7 @@ const LocalEnvPage: React.FC = () => {
               uninstalling={uninstalling[tool.toolId] || false}
               upgrading={upgrading[tool.toolId] || false}
               latestVersion={latestVersions[tool.toolId]}
-              codingEnabled={codingToolsEnabled[tool.toolId] !== false}
+              codingEnabled={isCodingToolEnabledInMap(codingToolsEnabled, tool.toolId)}
               onInstall={handleInstall}
               onRefresh={handleRefreshOne}
               onUninstall={handleUninstall}

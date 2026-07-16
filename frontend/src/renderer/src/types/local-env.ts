@@ -23,6 +23,20 @@ export const AI_CODING_TOOL_IDS: ToolId[] = [
 
 export const AI_CODING_TOOL_ID_SET = new Set<string>(AI_CODING_TOOL_IDS)
 
+/**
+ * Default ON when the user has not toggled the switch yet.
+ * Matches main-process `DEFAULT_ENABLED_CODING_TOOL_IDS` in settings.store.ts.
+ */
+export const DEFAULT_ENABLED_CODING_TOOL_IDS = new Set<string>(['claude-code', 'codex-cli'])
+
+/** Resolve enablement from a stored map (missing key → default) */
+export function isCodingToolEnabledInMap(map: Record<string, boolean>, toolId: string): boolean {
+  if (Object.prototype.hasOwnProperty.call(map, toolId)) {
+    return map[toolId] === true
+  }
+  return DEFAULT_ENABLED_CODING_TOOL_IDS.has(toolId)
+}
+
 /** Map Local Env toolId → AI Coding toolType */
 export const TOOL_ID_TO_AI_TYPE: Record<string, string> = {
   'claude-code': 'claude',
