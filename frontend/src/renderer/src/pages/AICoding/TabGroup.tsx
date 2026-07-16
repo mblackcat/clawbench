@@ -1,5 +1,6 @@
-import React, { useMemo, useCallback, useRef, useState } from 'react'
+import React, { useMemo, useCallback, useEffect, useRef, useState } from 'react'
 import { Allotment } from 'allotment'
+import type { AllotmentHandle } from 'allotment'
 import { App, Button, Tooltip, Typography, theme } from 'antd'
 import { CloseOutlined, MessageOutlined, PlusOutlined } from '@ant-design/icons'
 import PaneTabBar from './PaneTabBar'
@@ -370,13 +371,36 @@ const TabGroup: React.FC<TabGroupProps> = ({
     </div>
   ) : null
 
+  const terminalAllotmentRef = useRef<AllotmentHandle>(null)
+
+  // Re-measure the chat/terminal split after the pane becomes visible again
+  // (route re-entry or toggling the bottom terminal panel).
+  useEffect(() => {
+    if (!terminalVisible) return
+    const remeasure = (): void => {
+      try {
+        terminalAllotmentRef.current?.reset()
+      } catch {
+        // ignore until allotment is ready
+      }
+    }
+    const raf = requestAnimationFrame(() => {
+      requestAnimationFrame(remeasure)
+    })
+    const t = window.setTimeout(remeasure, 80)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.clearTimeout(t)
+    }
+  }, [terminalVisible, activeTerminalSessionId, activeTabId])
+
   const contentWithTerminal = terminalVisible && activeTerminalSessionId && activeSession ? (
-    <Allotment vertical defaultSizes={[70, 30]}>
+    <Allotment ref={terminalAllotmentRef} vertical defaultSizes={[70, 30]}>
       <Allotment.Pane minSize={180}>
         {activeContent}
       </Allotment.Pane>
       <Allotment.Pane minSize={120}>
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', minHeight: 0, overflow: 'hidden' }}>
           {terminalTabBar}
           <CodingTerminalView
             key={activeTerminalSessionId}
@@ -392,7 +416,7 @@ const TabGroup: React.FC<TabGroupProps> = ({
 
   return (
     <div
-      style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}
+      style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', minHeight: 0, minWidth: 0, overflow: 'hidden' }}
       onClick={handlePaneClick}
     >
       <PaneTabBar
@@ -419,7 +443,7 @@ const TabGroup: React.FC<TabGroupProps> = ({
 
       <div
         ref={contentRef}
-        style={{ flex: 1, overflow: 'hidden', position: 'relative' }}
+        style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden', position: 'relative' }}
         onDragOver={handleContentDragOver}
         onDrop={handleContentDrop}
         onDragLeave={handleContentDragLeave}

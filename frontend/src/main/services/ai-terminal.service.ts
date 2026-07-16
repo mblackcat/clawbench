@@ -813,56 +813,7 @@ export async function executeDB(
   }
 }
 
-export async function updateDBTableData(
-  id: string,
-  tableName: string,
-  changes: Array<{ row: Record<string, any>; column: string; oldValue: any; newValue: any; primaryKeys: Record<string, any> }>
-): Promise<{ affectedRows: number }> {
-  const entry = dbPools.get(id)
-  if (!entry) throw new Error('数据库未连接')
-
-  let totalAffected = 0
-
-  for (const change of changes) {
-    const pkEntries = Object.entries(change.primaryKeys)
-    if (pkEntries.length === 0) throw new Error('更新需要主键信息')
-
-    switch (entry.type) {
-      case 'mysql': {
-        const whereClause = pkEntries.map(([k]) => `\`${k}\` = ?`).join(' AND ')
-        const sql = `UPDATE \`${tableName}\` SET \`${change.column}\` = ? WHERE ${whereClause}`
-        const params = [change.newValue, ...pkEntries.map(([, v]) => v)]
-        const [result] = await entry.pool.execute(sql, params)
-        totalAffected += (result as any).affectedRows || 0
-        break
-      }
-      case 'postgres': {
-        const whereClause = pkEntries.map(([k], i) => `"${k}" = $${i + 2}`).join(' AND ')
-        const sql = `UPDATE "${tableName}" SET "${change.column}" = $1 WHERE ${whereClause}`
-        const params = [change.newValue, ...pkEntries.map(([, v]) => v)]
-        const result = await entry.pool.query(sql, params)
-        totalAffected += result.rowCount || 0
-        break
-      }
-      case 'sqlite': {
-        const whereClause = pkEntries.map(([k]) => `"${k}" = ?`).join(' AND ')
-        const sql = `UPDATE "${tableName}" SET "${change.column}" = ? WHERE ${whereClause}`
-        const params = [change.newValue, ...pkEntries.map(([, v]) => v)]
-        const info = entry.db.prepare(sql).run(...params)
-        totalAffected += info.changes
-        break
-      }
-    }
-  }
-
-  return { affectedRows: totalAffected }
-}
-
 // ── MongoDB specific ──
-
-export async function getDBCollections(id: string): Promise<string[]> {
-  return getDBTables(id) // Same implementation for MongoDB
-}
 
 export async function queryMongoCollection(
   id: string,
@@ -936,85 +887,6 @@ export async function deleteMongoDocuments(
   const db = entry.client.db(entry.database)
   const result = await db.collection(collection).deleteMany(filter)
   return { deletedCount: result.deletedCount }
-}
-
-// ── Relational Schema Modification ──
-
-export async function addDBColumn(
-  id: string,
-  tableName: string,
-  columnName: string,
-  columnType: string,
-  nullable = true,
-  defaultValue?: string
-): Promise<void> {
-  const entry = dbPools.get(id)
-  if (!entry) throw new Error('数据库未连接')
-
-  const nullStr = nullable ? 'NULL' : 'NOT NULL'
-  const defStr = defaultValue !== undefined ? ` DEFAULT ${defaultValue}` : ''
-
-  switch (entry.type) {
-    case 'mysql':
-      await entry.pool.execute(`ALTER TABLE \`${tableName}\` ADD COLUMN \`${columnName}\` ${columnType} ${nullStr}${defStr}`)
-      break
-    case 'postgres':
-      await entry.pool.query(`ALTER TABLE "${tableName}" ADD COLUMN "${columnName}" ${columnType} ${nullStr}${defStr}`)
-      break
-    case 'sqlite':
-      entry.db.prepare(`ALTER TABLE "${tableName}" ADD COLUMN "${columnName}" ${columnType}${defStr}`).run()
-      break
-    default:
-      throw new Error('MongoDB 不支持 ALTER TABLE')
-  }
-}
-
-export async function dropDBColumn(
-  id: string,
-  tableName: string,
-  columnName: string
-): Promise<void> {
-  const entry = dbPools.get(id)
-  if (!entry) throw new Error('数据库未连接')
-
-  switch (entry.type) {
-    case 'mysql':
-      await entry.pool.execute(`ALTER TABLE \`${tableName}\` DROP COLUMN \`${columnName}\``)
-      break
-    case 'postgres':
-      await entry.pool.query(`ALTER TABLE "${tableName}" DROP COLUMN "${columnName}"`)
-      break
-    case 'sqlite':
-      entry.db.prepare(`ALTER TABLE "${tableName}" DROP COLUMN "${columnName}"`).run()
-      break
-    default:
-      throw new Error('MongoDB 不支持 ALTER TABLE')
-  }
-}
-
-export async function renameDBColumn(
-  id: string,
-  tableName: string,
-  oldName: string,
-  newName: string
-): Promise<void> {
-  const entry = dbPools.get(id)
-  if (!entry) throw new Error('数据库未连接')
-
-  switch (entry.type) {
-    case 'mysql':
-      // MySQL 8.0+ supports RENAME COLUMN
-      await entry.pool.execute(`ALTER TABLE \`${tableName}\` RENAME COLUMN \`${oldName}\` TO \`${newName}\``)
-      break
-    case 'postgres':
-      await entry.pool.query(`ALTER TABLE "${tableName}" RENAME COLUMN "${oldName}" TO "${newName}"`)
-      break
-    case 'sqlite':
-      entry.db.prepare(`ALTER TABLE "${tableName}" RENAME COLUMN "${oldName}" TO "${newName}"`).run()
-      break
-    default:
-      throw new Error('MongoDB 不支持 ALTER TABLE')
-  }
 }
 
 /** Check if a DB connection is active */

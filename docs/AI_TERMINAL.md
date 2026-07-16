@@ -275,7 +275,6 @@ connectDB(id)
 | `ai-terminal:get-db-table-schema` | id, tableName | 获取表结构 |
 | `ai-terminal:query-db` | id, sql | 执行只读查询 |
 | `ai-terminal:execute-db` | id, sql | 执行写操作 |
-| `ai-terminal:update-db-table-data` | id, tableName, changes | 按主键更新单元格数据 |
 
 ### MongoDB 专用
 
@@ -285,14 +284,6 @@ connectDB(id)
 | `ai-terminal:update-mongo-document` | id, collection, filter, update | 更新文档（$set） |
 | `ai-terminal:insert-mongo-document` | id, collection, doc | 插入文档 |
 | `ai-terminal:delete-mongo-documents` | id, collection, filter | 删除文档 |
-
-### 表结构修改（关系型）
-
-| 通道 | 参数 | 说明 |
-|------|------|------|
-| `ai-terminal:add-db-column` | id, tableName, columnName, columnType, nullable, defaultValue | 添加列 |
-| `ai-terminal:drop-db-column` | id, tableName, columnName | 删除列 |
-| `ai-terminal:rename-db-column` | id, tableName, oldName, newName | 重命名列 |
 
 ### Push 事件（主进程 → 渲染进程）
 

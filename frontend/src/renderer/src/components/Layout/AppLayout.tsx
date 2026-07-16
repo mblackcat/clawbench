@@ -1,7 +1,7 @@
-import React, { useState, useCallback, useEffect } from 'react'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { Layout, Tooltip, theme as antTheme } from 'antd'
 import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons'
-import { Outlet } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import TopBar from './TopBar'
 import StatusBar from './StatusBar'
@@ -20,6 +20,8 @@ const { Header, Sider, Content, Footer } = Layout
 const AppLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(() => localStorageManager.getSidebarCollapsed())
   const [errorLogOpen, setErrorLogOpen] = useState(false)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const location = useLocation()
 
   const activeTaskId = useTaskStore((state) => state.activeTaskId)
   const { token } = antTheme.useToken()
@@ -45,6 +47,18 @@ const AppLayout: React.FC = () => {
     const cleanup = store.initListeners()
     return cleanup
   }, [])
+
+  // Reset residual scroll from the previous route. A non-zero scrollLeft on
+  // `.cb-content` after navigating back into full-height modules (AI Coding /
+  // Terminal) looks exactly like a broken width until the window is resized.
+  useEffect(() => {
+    const el = contentRef.current
+    if (!el) return
+    if (el.scrollLeft !== 0 || el.scrollTop !== 0) {
+      el.scrollLeft = 0
+      el.scrollTop = 0
+    }
+  }, [location.pathname])
 
   const toggleErrorLog = useCallback(() => {
     setErrorLogOpen((prev) => !prev)
@@ -110,13 +124,21 @@ const AppLayout: React.FC = () => {
           </div>
         </Sider>
 
-        <Layout style={{ display: 'flex', flexDirection: 'column', background: 'transparent' }}>
+        <Layout style={{ display: 'flex', flexDirection: 'column', background: 'transparent', minHeight: 0, minWidth: 0 }}>
           <Content
+            ref={contentRef}
             className="cb-content"
             style={{
               flex: 1,
+              minHeight: 0,
+              minWidth: 0,
               overflow: 'auto',
-              padding: 0
+              padding: 0,
+              // Flex column so full-height pages (AI Coding / Terminal / Chat)
+              // receive a definite height and can measure panes/terminals
+              // correctly after route re-entry.
+              display: 'flex',
+              flexDirection: 'column'
             }}
           >
             <Outlet />

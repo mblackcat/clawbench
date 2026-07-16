@@ -6,7 +6,13 @@ import { useT } from '../../i18n'
 import type { AIToolType, DetectedCLI } from '../../types/ai-coding'
 
 // Module-level cache so tools are only detected once per app session
+// Cleared when Local Env coding-tool enablement changes (enable/disable switch)
 let toolsCache: DetectedCLI[] | null = null
+
+/** Call after toggling coding-tool enablement so the picker reflects the new set */
+export function invalidateCodingToolsCache(): void {
+  toolsCache = null
+}
 
 interface AICodingNewSessionDialogProps {
   open: boolean
@@ -44,7 +50,8 @@ const AICodingNewSessionDialog: React.FC<AICodingNewSessionDialogProps> = ({
 
   useEffect(() => {
     if (!open) return
-    fetchTools(true)
+    // Always re-detect on open so enablement toggles are reflected immediately
+    fetchTools(false)
   }, [open])
 
   const handleRefresh = (): void => {

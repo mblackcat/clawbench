@@ -119,13 +119,32 @@ export function getToolCommand(toolType: AIToolType): { command: string; args: s
       return { command: 'codex', args: [] }
     case 'gemini':
       return { command: 'gemini', args: [] }
+    case 'grok':
+      // Force fullscreen alt-screen TUI. Grok otherwise auto-detects the host
+      // terminal and may fall into a sticky "minimal"/inline mode that breaks
+      // width and panel backgrounds when hosted inside Electron xterm.
+      return { command: 'grok', args: ['--fullscreen'] }
+    case 'opencode':
+      return { command: 'opencode', args: [] }
+    case 'trae':
+      return { command: 'trae', args: [] }
+    case 'qoder':
+      return { command: 'qodercli', args: [] }
+    case 'kimi':
+      return { command: 'kimi', args: [] }
+    case 'zcode':
+      return { command: 'zcode', args: [] }
+    case 'mimo':
+      return { command: 'mimo', args: [] }
+    case 'qwen':
+      // Legacy sessions: fall back to qwen binary if still installed
+      return { command: 'qwen', args: [] }
     case 'terminal':
       return {
         command: process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash'),
         args: []
       }
     default:
-      // AIToolType may grow (e.g. opencode); fall back to a plain shell
       return {
         command: process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash'),
         args: []
@@ -139,11 +158,21 @@ export function getToolCommand(toolType: AIToolType): { command: string; args: s
 export function getResumeArgs(toolType: AIToolType, toolSessionId: string): string[] {
   switch (toolType) {
     case 'claude':
+    case 'gemini':
+    case 'qoder':
+    case 'zcode':
+    case 'kimi':
+    case 'mimo':
+    case 'grok':
+      // Grok Build CLI: -r / --resume [<SESSION_ID>]
+      // Note: --session-id is for *new* sessions only; does not resume existing ones.
       return ['--resume', toolSessionId]
     case 'codex':
+      // Codex uses a subcommand: codex resume <session-id>
       return ['resume', toolSessionId]
-    case 'gemini':
-      return ['--resume', toolSessionId]
+    case 'opencode':
+      // OpenCode: -s / --session <id>
+      return ['--session', toolSessionId]
     default:
       return []
   }
@@ -181,21 +210,37 @@ export function createPtySession(
   outputBuffers.delete(sessionId)
   pendingLines.delete(sessionId)
 
-  // Ensure UTF-8 locale and true-colour support regardless of user shell config
+  const cols = initialSize?.cols || 80
+  const rows = initialSize?.rows || 24
+
+  // Ensure UTF-8 locale and true-colour support regardless of user shell config.
+  // COLUMNS/LINES help TUIs (Grok, Ink-based apps) that also read env size at boot.
   const baseEnv: Record<string, string> = {
     LANG: 'en_US.UTF-8',
     LC_ALL: 'en_US.UTF-8',
     LC_CTYPE: 'en_US.UTF-8',
     TERM: 'xterm-256color',
-    COLORTERM: 'truecolor'
+    COLORTERM: 'truecolor',
+    FORCE_COLOR: '3',
+    COLUMNS: String(cols),
+    LINES: String(rows)
   }
 
   let spawnCommand = command
   let spawnArgs = args
 
+  // Windows: only route through cmd.exe for shell scripts / bare names that
+  // need PATH + .cmd shim resolution. Spawning .exe directly via ConPTY is
+  // required for fullscreen TUIs (Grok, etc.) — wrapping them in `cmd /c`
+  // breaks alt-screen, size detection, and cell-background painting.
   if (process.platform === 'win32') {
     const lowerCmd = command.toLowerCase()
-    if (!lowerCmd.endsWith('cmd.exe') && !lowerCmd.endsWith('powershell.exe') && !lowerCmd.endsWith('pwsh.exe')) {
+    const isShell =
+      lowerCmd.endsWith('cmd.exe') ||
+      lowerCmd.endsWith('powershell.exe') ||
+      lowerCmd.endsWith('pwsh.exe')
+    const isNativeExe = lowerCmd.endsWith('.exe')
+    if (!isShell && !isNativeExe) {
       spawnCommand = 'cmd.exe'
       spawnArgs = ['/c', command, ...args]
     }
@@ -205,8 +250,8 @@ export function createPtySession(
   try {
     ptyProcess = pty.spawn(spawnCommand, spawnArgs, {
       name: 'xterm-256color',
-      cols: initialSize?.cols || 80,
-      rows: initialSize?.rows || 24,
+      cols,
+      rows,
       cwd,
       env: { ...(env ?? process.env), ...baseEnv } as Record<string, string>
     })
@@ -215,7 +260,7 @@ export function createPtySession(
     throw err
   }
 
-  logger.info(`[pty] Session created: ${sessionId} cmd=${spawnCommand}`)
+  logger.info(`[pty] Session created: ${sessionId} cmd=${spawnCommand} size=${cols}x${rows}`)
   ptySessions.set(sessionId, ptyProcess)
   if (onExit) exitCallbacks.set(sessionId, onExit)
 

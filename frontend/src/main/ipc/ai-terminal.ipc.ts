@@ -150,10 +150,6 @@ export function registerAITerminalIpc(): void {
     return aiTerminalService.executeDB(id, sql)
   })
 
-  ipcMain.handle('ai-terminal:update-db-table-data', async (_event, id: string, tableName: string, changes: any[]) => {
-    return aiTerminalService.updateDBTableData(id, tableName, changes)
-  })
-
   // MongoDB specific
   ipcMain.handle('ai-terminal:query-mongo-collection', async (_event, id: string, collection: string, filter: any, projection: any, limit: number) => {
     return aiTerminalService.queryMongoCollection(id, collection, filter, projection, limit)
@@ -169,18 +165,5 @@ export function registerAITerminalIpc(): void {
 
   ipcMain.handle('ai-terminal:delete-mongo-documents', async (_event, id: string, collection: string, filter: any) => {
     return aiTerminalService.deleteMongoDocuments(id, collection, filter)
-  })
-
-  // Schema modification
-  ipcMain.handle('ai-terminal:add-db-column', async (_event, id: string, tableName: string, columnName: string, columnType: string, nullable: boolean, defaultValue?: string) => {
-    await aiTerminalService.addDBColumn(id, tableName, columnName, columnType, nullable, defaultValue)
-  })
-
-  ipcMain.handle('ai-terminal:drop-db-column', async (_event, id: string, tableName: string, columnName: string) => {
-    await aiTerminalService.dropDBColumn(id, tableName, columnName)
-  })
-
-  ipcMain.handle('ai-terminal:rename-db-column', async (_event, id: string, tableName: string, oldName: string, newName: string) => {
-    await aiTerminalService.renameDBColumn(id, tableName, oldName, newName)
   })
 }

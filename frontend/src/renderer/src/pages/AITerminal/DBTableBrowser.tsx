@@ -3,18 +3,26 @@ import { Button, Space, Typography, App, Tooltip, theme, Pagination } from 'antd
 import { ReloadOutlined, PlusOutlined, EditOutlined } from '@ant-design/icons'
 import { HotTable } from '@handsontable/react'
 import { registerAllModules } from 'handsontable/registry'
-import { registerLanguageDictionary, zhCN } from 'handsontable/i18n'
+import { registerLanguageDictionary, zhCN, enUS } from 'handsontable/i18n'
 import Handsontable from 'handsontable'
 import 'handsontable/dist/handsontable.full.min.css'
 import { useAITerminalStore } from '../../stores/useAITerminalStore'
+import { useSettingsStore } from '../../stores/useSettingsStore'
 import { useT, getT } from '../../i18n'
 import { useHandsontableTheme, HOT_MAIN_ATTR } from '../../utils/handsontable-theme'
 import type { DBTableColumn, DBQueryResult } from '../../types/ai-terminal'
 import DBRowDetailModal from './DBRowDetailModal'
-import { registerDBCellEditors } from './db-cell-editors'
+import DBColumnEditModal, { type ColumnDraft } from './DBColumnEditModal'
+import {
+  registerDBCellEditors,
+  openDBTextExpandPanel,
+  closeDBTextExpandPanel,
+  DB_GRID_MAX_COL_WIDTH
+} from './db-cell-editors'
 
 registerAllModules()
 registerLanguageDictionary(zhCN)
+registerLanguageDictionary(enUS)
 registerDBCellEditors()
 
 /** Classify a column's SQL type into an editor category for the data grid. */
@@ -41,15 +49,20 @@ interface Props {
 
 const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => {
   const { token } = theme.useToken()
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const t = useT()
+
+  // Handsontable UI language follows the app's locale
+  const language = useSettingsStore(s => s.language)
+  const hotLang = language === 'en' ? enUS.languageCode : zhCN.languageCode
 
   // Shared Handsontable theming (unified with Copiper's handsome table scheme)
   useHandsontableTheme()
 
   const {
     fetchDBTableSchema, queryDBPage, getDBTableCount,
-    insertDBRow, deleteDBRow, updateDBRow
+    insertDBRow, deleteDBRow, updateDBRow,
+    addDBColumn, deleteDBColumn
   } = useAITerminalStore()
 
   const [loading, setLoading] = useState(false)
@@ -79,10 +92,22 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
     return () => observer.disconnect()
   }, [])
 
-  // Row detail modal
+  // Row detail modal (used only for new-row / copy-row inserts now — the
+  // read-only "view" flow was replaced by the hover/click cell popup below)
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailRow, setDetailRow] = useState<Record<string, any> | null>(null)
-  const [detailMode, setDetailMode] = useState<'view' | 'edit' | 'new'>('view')
+  const [detailMode, setDetailMode] = useState<'view' | 'edit' | 'new'>('new')
+
+  // Read-only cell content popup (hover / left-click on truncated cells).
+  // Imperative DOM updates avoid React re-renders that would close Handsontable's
+  // context menu when the mouse moves across cells.
+  const cellPopupRef = useRef<HTMLDivElement>(null)
+  const cellPopupKeyRef = useRef<string | null>(null)
+
+  // Column add / copy modal (Structure page)
+  const [colModalOpen, setColModalOpen] = useState(false)
+  const [colModalMode, setColModalMode] = useState<'add' | 'copy'>('add')
+  const [colModalInitial, setColModalInitial] = useState<ColumnDraft | null>(null)
 
   const pkColumns = useMemo(() => {
     const pks = schema.filter(c => c.primaryKey).map(c => c.name)
@@ -161,15 +186,6 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
     setDetailMode('new')
     setDetailOpen(true)
   }, [])
-
-  // Open detail (view) for a given row index into the current page
-  const openRowDetail = useCallback((rowIndex: number) => {
-    const row = data?.rows?.[rowIndex]
-    if (!row) return
-    setDetailRow(row)
-    setDetailMode('view')
-    setDetailOpen(true)
-  }, [data?.rows])
 
   // Copy row -> open modal with pre-filled data (new mode)
   const copyRowByIndex = useCallback((rowIndex: number) => {
@@ -339,26 +355,250 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
     t('db.colNullable'), t('db.colDefault'), t('db.colExtra')
   ], [t])
 
-  // Double click on a data cell: in read-only mode opens the row detail modal;
-  // in edit mode we let Handsontable open its inline cell editor instead.
-  const handleDblClick = useCallback(
-    (_event: MouseEvent, coords: { row: number; col: number }) => {
-      if (editMode) return
-      if (coords.row >= 0) openRowDetail(coords.row)
+  // ── Read-only cell content popup (hover only, quick glance) ──
+  // Full cell value in a floating box when text is ellipsis-truncated.
+  // For select/copy use double-click → enlarge panel (see openCellExpand).
+  // Skipped in edit mode and while Handsontable's context menu is open.
+  const hideCellPopup = useCallback(() => {
+    const el = cellPopupRef.current
+    if (el) el.style.display = 'none'
+    cellPopupKeyRef.current = null
+  }, [])
+
+  // Cap auto-sized column widths so long text doesn't force huge horizontal scroll.
+  // Ellipsis + double-click enlarge already cover reading the full value.
+  const handleModifyColWidth = useCallback((width: number) => {
+    return Math.min(width, DB_GRID_MAX_COL_WIDTH)
+  }, [])
+
+  useEffect(() => {
+    return () => closeDBTextExpandPanel()
+  }, [])
+
+  const isOverlayMenuOpen = useCallback(() => {
+    // Handsontable context / column dropdown menus share this open pattern.
+    const menus = document.querySelectorAll('.htContextMenu, .htDropdownMenu')
+    for (let i = 0; i < menus.length; i++) {
+      const m = menus[i]
+      if (!(m instanceof HTMLElement)) continue
+      if (m.classList.contains('htGhostTable') || m.classList.contains('htHidden')) continue
+      if (window.getComputedStyle(m).display === 'none') continue
+      return true
+    }
+    return false
+  }, [])
+
+  /** True when the cell paints with overflow ellipsis (single-line compact grid). */
+  const isCellTruncated = useCallback((td: HTMLElement) => {
+    // Sub-pixel rounding can make scrollWidth slightly larger without real overflow.
+    return td.scrollWidth > td.clientWidth + 1 || td.scrollHeight > td.clientHeight + 1
+  }, [])
+
+  /** Format a raw cell value for display in hover / expand panels. */
+  const formatCellText = useCallback((raw: unknown): string => {
+    if (raw === null || raw === undefined) return 'NULL'
+    if (typeof raw === 'object') return JSON.stringify(raw, null, 2)
+    return String(raw)
+  }, [])
+
+  /**
+   * Double-click enlarge: reuse the edit magnifier panel.
+   * Read-only mode (or PK cells) → read-only textarea for easy select/copy.
+   * Edit mode on writable cells → editable panel with Save that commits via the grid.
+   */
+  const openCellExpand = useCallback((row: number, col: number, td: HTMLElement) => {
+    if (row < 0 || col < 0) return
+    const colName = data?.columns?.[col]
+    if (!colName) return
+    const raw = data?.rows?.[row]?.[colName]
+    const text = formatCellText(raw)
+    hideCellPopup()
+
+    const isPk = pkColumns.includes(colName)
+    const canEdit = editMode && !isPk
+    // Value shown in the editable panel: NULL → empty so save can clear / set properly
+    const editValue = raw === null || raw === undefined
+      ? ''
+      : (typeof raw === 'object' ? JSON.stringify(raw) : String(raw))
+
+    openDBTextExpandPanel({
+      value: canEdit ? editValue : text,
+      anchorEl: td,
+      readOnly: !canEdit,
+      onSave: canEdit
+        ? (value) => {
+            const hot = hotRef.current?.hotInstance
+            if (!hot) return
+            // Cancel any inline editor Handsontable may have opened on dblclick
+            const editor = hot.getActiveEditor?.() as { isOpened?: () => boolean; cancelChanges?: () => void } | undefined
+            if (editor?.isOpened?.()) editor.cancelChanges?.()
+            // setDataAtCell → afterChange → updateDBRow
+            hot.setDataAtCell(row, col, value)
+          }
+        : undefined
+    })
+
+    // If Handsontable started the built-in editor on the second click, dismiss it
+    // so only the enlarge panel remains.
+    if (canEdit) {
+      requestAnimationFrame(() => {
+        const hot = hotRef.current?.hotInstance
+        const editor = hot?.getActiveEditor?.() as { isOpened?: () => boolean; cancelChanges?: () => void } | undefined
+        if (editor?.isOpened?.()) editor.cancelChanges?.()
+      })
+    }
+  }, [data?.columns, data?.rows, editMode, pkColumns, formatCellText, hideCellPopup])
+
+  const showCellPopup = useCallback((td: HTMLElement, row: number, col: number) => {
+    if (editMode || row < 0 || col < 0 || isOverlayMenuOpen()) {
+      hideCellPopup()
+      return
+    }
+    if (!isCellTruncated(td)) {
+      hideCellPopup()
+      return
+    }
+    const colName = data?.columns?.[col]
+    if (!colName) return
+    const text = formatCellText(data?.rows?.[row]?.[colName])
+    // Empty / whitespace-only values are never useful as a popup
+    if (!text || !String(text).trim()) {
+      hideCellPopup()
+      return
+    }
+    const key = `${row}:${col}`
+    const el = cellPopupRef.current
+    if (!el) return
+    // Avoid reflow when still hovering the same truncated cell
+    if (cellPopupKeyRef.current === key && el.style.display !== 'none') return
+    cellPopupKeyRef.current = key
+    const rect = td.getBoundingClientRect()
+    el.textContent = text
+    el.style.left = `${rect.left}px`
+    el.style.top = `${rect.bottom + 2}px`
+    el.style.display = 'block'
+  }, [editMode, data?.columns, data?.rows, isOverlayMenuOpen, isCellTruncated, hideCellPopup, formatCellText])
+
+  const handleCellMouseOver = useCallback(
+    (_event: MouseEvent, coords: { row: number; col: number }, td: HTMLElement) => {
+      showCellPopup(td, coords.row, coords.col)
     },
-    [editMode, openRowDetail]
+    [showCellPopup]
   )
 
-  // Row operations exposed through the context menu (replaces the old action column)
+  const handleCellMouseDown = useCallback(
+    (event: MouseEvent, coords: { row: number; col: number }, td: HTMLElement) => {
+      // Right / middle click: keep context menu usable; hide any open popup.
+      if (event.button !== 0) {
+        hideCellPopup()
+        return
+      }
+      // Double-click → enlarge panel (select/copy in read-only; edit+save when editable)
+      if (event.detail === 2) {
+        openCellExpand(coords.row, coords.col, td)
+        return
+      }
+      showCellPopup(td, coords.row, coords.col)
+    },
+    [showCellPopup, hideCellPopup, openCellExpand]
+  )
+
+  // ── Structure page: column operations ──
+  const isMongo = useMemo(
+    () => useAITerminalStore.getState().dbConnections.find(c => c.id === connectionId)?.type === 'mongodb',
+    [connectionId]
+  )
+
+  const openAddColumn = useCallback(() => {
+    setColModalMode('add')
+    setColModalInitial(null)
+    setColModalOpen(true)
+  }, [])
+
+  const copyColumnByIndex = useCallback((rowIndex: number) => {
+    const c = schema[rowIndex]
+    if (!c) return
+    setColModalMode('copy')
+    setColModalInitial({
+      name: `${c.name}_copy`,
+      type: c.type,
+      nullable: c.nullable,
+      defaultValue: c.defaultValue ?? ''
+    })
+    setColModalOpen(true)
+  }, [schema])
+
+  const deleteColumnByIndex = useCallback((rowIndex: number) => {
+    const c = schema[rowIndex]
+    if (!c) return
+    if (isMongo) {
+      message.warning(t('db.columnOpUnsupported'))
+      return
+    }
+    modal.confirm({
+      title: t('db.deleteColumn'),
+      content: t('db.confirmDeleteColumn', c.name),
+      okType: 'danger',
+      okText: t('db.deleteColumn'),
+      cancelText: t('db.cancel'),
+      onOk: async () => {
+        try {
+          await deleteDBColumn(connectionId, tableName, c.name)
+          message.success(t('db.deleteColumnSuccess'))
+          await loadSchema()
+          loadData()
+        } catch (err: any) {
+          message.error(t('db.operateFailed', err.message || String(err)))
+        }
+      }
+    })
+  }, [schema, isMongo, modal, connectionId, tableName, deleteDBColumn, loadSchema, loadData, message, t])
+
+  const handleColumnSubmit = useCallback(async (col: ColumnDraft) => {
+    if (isMongo) throw new Error(t('db.columnOpUnsupported'))
+    await addDBColumn(connectionId, tableName, col)
+    await loadSchema()
+    loadData()
+  }, [isMongo, addDBColumn, connectionId, tableName, loadSchema, loadData, t])
+
+  // Structure grid context menu: copy / copy column / add column / delete column
+  const structureContextMenu = useMemo(() => {
+    const tt = getT()
+    return {
+      items: {
+        copy: {},
+        sep1: { name: '---------' },
+        copy_column: {
+          name: () => tt('db.copyColumn'),
+          callback: (_key: string, selection: any[]) => {
+            const r = selection?.[0]?.start?.row
+            if (typeof r === 'number' && r >= 0) copyColumnByIndex(r)
+          }
+        },
+        add_column: {
+          name: () => tt('db.addColumn'),
+          callback: () => openAddColumn()
+        },
+        delete_column: {
+          name: () => tt('db.deleteColumn'),
+          disabled: () => isMongo,
+          callback: (_key: string, selection: any[]) => {
+            const r = selection?.[0]?.start?.row
+            if (typeof r === 'number' && r >= 0) deleteColumnByIndex(r)
+          }
+        }
+      }
+    }
+  }, [copyColumnByIndex, openAddColumn, deleteColumnByIndex, isMongo])
+
+  // Row operations exposed through the context menu (replaces the old action column).
+  // The detail "view" option is gone — the edit/read-only toggle takes its place.
   const contextMenuItems = useMemo(() => {
     const tt = getT()
     const items: Record<string, any> = {
-      view_detail: {
-        name: () => tt('db.viewDetail'),
-        callback: (_key: string, selection: any[]) => {
-          const r = selection?.[0]?.start?.row
-          if (typeof r === 'number' && r >= 0) openRowDetail(r)
-        }
+      toggle_edit: {
+        name: () => (editMode ? tt('db.toggleReadonly') : tt('db.toggleEdit')),
+        callback: () => setEditMode(v => !v)
       },
       copy_row: {
         name: () => tt('db.copyRow'),
@@ -377,10 +617,10 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
         }
       },
       sep1: { name: '---------' },
-      copy: {}
+      copy: { name: () => tt('db.copyCell') }
     }
     return { items }
-  }, [pkColumns, openRowDetail, copyRowByIndex, deleteRowByIndex])
+  }, [editMode, pkColumns, copyRowByIndex, deleteRowByIndex])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -400,17 +640,25 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
           )}
         </Space>
         <Space size={4}>
-          <Tooltip title={editMode ? t('db.editModeOn') : t('db.editModeOff')}>
-            <Button
-              type={editMode ? 'primary' : 'text'}
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => setEditMode(v => !v)}
-            />
-          </Tooltip>
-          <Tooltip title={t('db.addRow')}>
-            <Button type="text" size="small" icon={<PlusOutlined />} onClick={handleNewRow} />
-          </Tooltip>
+          {activeTab === 'data' ? (
+            <>
+              <Tooltip title={editMode ? t('db.editModeOn') : t('db.editModeOff')}>
+                <Button
+                  type={editMode ? 'primary' : 'text'}
+                  size="small"
+                  icon={<EditOutlined />}
+                  onClick={() => setEditMode(v => !v)}
+                />
+              </Tooltip>
+              <Tooltip title={t('db.addRow')}>
+                <Button type="text" size="small" icon={<PlusOutlined />} onClick={handleNewRow} />
+              </Tooltip>
+            </>
+          ) : (
+            <Tooltip title={t('db.addColumn')}>
+              <Button type="text" size="small" icon={<PlusOutlined />} onClick={openAddColumn} disabled={isMongo} />
+            </Tooltip>
+          )}
           <Tooltip title={t('db.refreshData')}>
             <Button type="text" size="small" icon={<ReloadOutlined />} onClick={handleRefresh} loading={loading} />
           </Tooltip>
@@ -452,6 +700,7 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
             <div
               ref={gridContainerRef}
               {...{ [HOT_MAIN_ATTR]: '' }}
+              onMouseLeave={hideCellPopup}
               style={{ flex: 1, position: 'relative', overflow: 'hidden' }}
             >
               {gridSize.width > 0 && gridSize.height > 0 && data && gridData.length > 0 ? (
@@ -473,10 +722,14 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
                   dropdownMenu={true}
                   search={true}
                   outsideClickDeselects={false}
-                  language={zhCN.languageCode}
+                  wordWrap={false}
+                  className="db-grid-compact"
+                  language={hotLang}
                   licenseKey="non-commercial-and-evaluation"
                   afterChange={handleAfterChange as any}
-                  afterOnCellDoubleClick={handleDblClick as any}
+                  afterOnCellMouseOver={handleCellMouseOver as any}
+                  afterOnCellMouseDown={handleCellMouseDown as any}
+                  modifyColWidth={handleModifyColWidth as any}
                 />
               ) : (
                 <div style={{
@@ -523,9 +776,9 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
                 stretchH="all"
                 readOnly
                 manualColumnResize={true}
-                contextMenu={['copy']}
+                contextMenu={structureContextMenu as any}
                 outsideClickDeselects={false}
-                language={zhCN.languageCode}
+                language={hotLang}
                 licenseKey="non-commercial-and-evaluation"
               />
             ) : (
@@ -552,6 +805,41 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
         mode={detailMode}
         onSave={handleModalSave}
         onDelete={handleModalDelete}
+      />
+
+      {/* Hover glance popup for truncated cells (not selectable — dblclick enlarge for copy) */}
+      <div
+        ref={cellPopupRef}
+        style={{
+          display: 'none',
+          position: 'fixed',
+          left: 0,
+          top: 0,
+          // Below Handsontable context/dropdown menus (z-index 1060)
+          zIndex: 1050,
+          maxWidth: 480,
+          maxHeight: 320,
+          overflow: 'auto',
+          padding: '6px 10px',
+          fontSize: 12,
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+          color: token.colorText,
+          background: token.colorBgElevated,
+          border: `1px solid ${token.colorBorderSecondary}`,
+          borderRadius: 6,
+          boxShadow: token.boxShadow,
+          pointerEvents: 'none'
+        }}
+      />
+
+      {/* Add / copy column modal (Structure page) */}
+      <DBColumnEditModal
+        open={colModalOpen}
+        onClose={() => setColModalOpen(false)}
+        initial={colModalInitial}
+        mode={colModalMode}
+        onSubmit={handleColumnSubmit}
       />
     </div>
   )

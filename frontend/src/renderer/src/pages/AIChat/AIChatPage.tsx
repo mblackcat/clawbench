@@ -60,7 +60,7 @@ const AIChatPage: React.FC = () => {
   const showWelcome = conversationsLoaded && !activeConversationId && messages.length === 0 && !hasHistory
 
   return (
-    <div data-theme={theme} style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+    <div data-theme={theme} style={{ display: 'flex', flex: 1, minHeight: 0, minWidth: 0, width: '100%', height: '100%', overflow: 'hidden' }}>
       {showWelcome && mainView !== 'task' ? (
         <WelcomeChatView />
       ) : (

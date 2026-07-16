@@ -2,31 +2,66 @@ import React from 'react'
 import { ProviderIcon } from '../../components/ProviderIcons'
 import type { AIToolType } from '../../types/ai-coding'
 
+/**
+ * Coding tools whose native CLI session history can be listed in the sidebar / tab history.
+ * Keep in sync with providers registered in main/services/native-sessions.service.ts.
+ */
+export const TOOLS_WITH_NATIVE_SESSIONS: AIToolType[] = [
+  'claude',
+  'codex',
+  'gemini',
+  'grok',
+  'opencode',
+  'qoder',
+  'kimi',
+  'zcode',
+  'trae',
+  'mimo'
+]
+
 export const AI_TOOL_TAG_COLORS: Partial<Record<AIToolType, string>> = {
   claude: 'purple',
   codex: 'green',
   gemini: 'blue',
+  grok: 'default',
   opencode: 'default',
-  qwen: 'gold',
-  terminal: 'default'
+  trae: 'cyan',
+  qoder: 'gold',
+  kimi: 'blue',
+  zcode: 'blue',
+  mimo: 'orange',
+  terminal: 'default',
+  qwen: 'gold'
 }
 
 export const AI_TOOL_NAMES: Record<AIToolType, string> = {
   claude: 'Claude',
   codex: 'Codex',
   gemini: 'Gemini',
+  grok: 'Grok',
   opencode: 'OpenCode',
-  qwen: 'Qwen Code',
-  terminal: 'Terminal'
+  trae: 'Trae CLI',
+  qoder: 'Qoder CLI',
+  kimi: 'Kimi Code',
+  zcode: 'ZCode',
+  mimo: 'MiMo Code',
+  terminal: 'Terminal',
+  qwen: 'Qwen Code'
 }
 
 export const AI_TOOL_SHORT_NAMES: Record<AIToolType, string> = {
   claude: 'Claude',
   codex: 'Codex',
   gemini: 'Gemini',
+  grok: 'Grok',
   opencode: 'OpenCode',
-  qwen: 'Qwen',
-  terminal: 'Term'
+  trae: 'Trae',
+  qoder: 'Qoder',
+  kimi: 'Kimi',
+  zcode: 'ZCode',
+  mimo: 'MiMo',
+  terminal: 'Term',
+  qwen: 'Qwen'
 }
 
 export const AI_TOOL_TAG_STYLE: React.CSSProperties = {
@@ -39,9 +74,15 @@ const AI_TOOL_ICON_PROVIDERS: Partial<Record<AIToolType, string | null>> = {
   claude: 'claude',
   codex: 'openai',
   gemini: 'google',
-  opencode: '',
-  qwen: 'qwen',
-  terminal: null
+  grok: 'grok',
+  opencode: 'opencode',
+  trae: 'trae',
+  qoder: 'qoder',
+  kimi: 'kimi',
+  zcode: 'zhipu',
+  mimo: 'mimo',
+  terminal: null,
+  qwen: 'qwen'
 }
 
 export function getAIToolIcon(toolType: AIToolType, size = 12): React.ReactNode {

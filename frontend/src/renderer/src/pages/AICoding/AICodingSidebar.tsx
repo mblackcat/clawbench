@@ -10,7 +10,7 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined
 } from '@ant-design/icons'
-import { AI_TOOL_SHORT_NAMES, AI_TOOL_TAG_COLORS, AI_TOOL_TAG_STYLE, renderAIToolTagLabel } from './aiToolMeta'
+import { AI_TOOL_SHORT_NAMES, AI_TOOL_TAG_COLORS, AI_TOOL_TAG_STYLE, renderAIToolTagLabel, TOOLS_WITH_NATIVE_SESSIONS } from './aiToolMeta'
 import { useT } from '../../i18n'
 import { useAICodingStore } from '../../stores/useAICodingStore'
 import { MONO_FONT_STACK } from '../../utils/mono-font'
@@ -22,8 +22,6 @@ interface AICodingSidebarProps {
   onSelectSession: (sessionId: string) => void
 }
 
-/** Tool types that support native session history listing */
-const TOOLS_WITH_NATIVE_SESSIONS: AIToolType[] = ['claude', 'codex', 'gemini']
 const NATIVE_HISTORY_PAGE_SIZE = 5
 const WORKSPACE_COLLAPSE_STORAGE_KEY = 'cb-workbench-collapsed-workspaces'
 

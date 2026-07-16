@@ -195,12 +195,18 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
   fetchGroups: async () => { try { set({ groups: await window.api.aiCoding.getGroups() }) } catch (e) { console.error('fetch groups:', e) } },
   fetchIMConfig: async () => { try { set({ imConfig: await window.api.aiCoding.getIMConfig() }) } catch (e) { console.error('fetch IM config:', e) } },
   fetchAll: async () => {
-    set({ loading: true })
+    // Only show the full-page spinner on the very first load. Refetching after
+    // route re-entry used to flip loading→true and unmount the entire coding
+    // layout (Allotment + xterm), which left panes/terminals measured against a
+    // transient size until the user manually resized the window.
+    const { workspaces, sessions, groups } = get()
+    const isInitial = workspaces.length === 0 && sessions.length === 0 && groups.length === 0
+    if (isInitial) set({ loading: true })
     try {
-      const [workspaces, sessions, groups, imConfig, imStatus] = await Promise.all([
+      const [nextWorkspaces, nextSessions, nextGroups, imConfig, imStatus] = await Promise.all([
         window.api.aiCoding.getWorkspaces(), window.api.aiCoding.getSessions(),
         window.api.aiCoding.getGroups(), window.api.aiCoding.getIMConfig(), window.api.aiCoding.imGetStatus()])
-      set({ workspaces, sessions, groups, imConfig, imStatus, loading: false })
+      set({ workspaces: nextWorkspaces, sessions: nextSessions, groups: nextGroups, imConfig, imStatus, loading: false })
     } catch (e) { console.error('fetch all:', e); set({ loading: false }) }
   },
   createWorkspace: async (wd, gid) => { const w = await window.api.aiCoding.createWorkspace(wd, gid); set({ workspaces: await window.api.aiCoding.getWorkspaces() }); return w },

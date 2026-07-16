@@ -2,10 +2,15 @@
  * Generic service for listing native CLI tool session history.
  *
  * Each AI coding tool stores sessions differently:
- * - Claude: ~/.claude/projects/<hash>/*.jsonl  (project-scoped)
- * - Codex:  ~/.codex/sessions/ + ~/.codex/archived_sessions/ (global, with cwd in session_meta)
- * - Gemini: ~/.gemini/tmp/<hash-or-project-name>/chats/  (project-scoped JSON/JSONL files)
- * - OpenCode: ~/.local/share/opencode/opencode.db (SQLite)
+ * - Claude:  ~/.claude/projects/<hash>/*.jsonl  (project-scoped)
+ * - Codex:   ~/.codex/sessions/ + archived_sessions/ (global, cwd in session_meta)
+ * - Gemini:  ~/.gemini/tmp/<hash-or-project-name>/chats/
+ * - Grok:    ~/.grok/sessions/<url-encoded-cwd>/<session-id>/
+ * - OpenCode: `opencode session list` CLI (or SQLite under XDG data)
+ * - Qoder:   ~/.qoderworkcn/projects/<hash>/*.jsonl  (Claude-like)
+ * - ZCode:   ~/.zclaude/projects/<hash>/*.jsonl  (Claude-like)
+ * - Kimi:    ~/.kimi/sessions/<workdir-hash>/<session-id>/
+ * - Trae/MiMo: best-effort (empty when no known local store)
  *
  * This service provides a unified interface for listing sessions per tool type.
  */
@@ -129,29 +134,80 @@ function claudeProjectHashCandidates(dirPath: string): string[] {
   return [...candidates]
 }
 
-function resolveClaudeProjectDirs(workingDir: string): string[] {
-  const projectsDir = path.join(os.homedir(), '.claude', 'projects')
-  if (!fs.existsSync(projectsDir)) return []
-
+/** Resolve Claude-style project dirs under one or more roots (e.g. ~/.claude/projects). */
+function resolveClaudeStyleProjectDirs(workingDir: string, projectsRoots: string[]): string[] {
   const candidates = claudeProjectHashCandidates(workingDir)
   const dirs = new Set<string>()
-  for (const candidate of candidates) {
-    const projectDir = path.join(projectsDir, candidate)
-    if (fs.existsSync(projectDir)) dirs.add(projectDir)
-  }
 
-  if (process.platform === 'win32') {
-    try {
-      const lowerCandidates = new Set(candidates.map((c) => c.toLowerCase()))
-      for (const entry of fs.readdirSync(projectsDir, { withFileTypes: true })) {
-        if (entry.isDirectory() && lowerCandidates.has(entry.name.toLowerCase())) {
-          dirs.add(path.join(projectsDir, entry.name))
+  for (const projectsDir of projectsRoots) {
+    if (!fs.existsSync(projectsDir)) continue
+
+    for (const candidate of candidates) {
+      const projectDir = path.join(projectsDir, candidate)
+      if (fs.existsSync(projectDir)) dirs.add(projectDir)
+    }
+
+    if (process.platform === 'win32') {
+      try {
+        const lowerCandidates = new Set(candidates.map((c) => c.toLowerCase()))
+        for (const entry of fs.readdirSync(projectsDir, { withFileTypes: true })) {
+          if (entry.isDirectory() && lowerCandidates.has(entry.name.toLowerCase())) {
+            dirs.add(path.join(projectsDir, entry.name))
+          }
         }
-      }
-    } catch { /* skip */ }
+      } catch { /* skip */ }
+    }
   }
 
   return [...dirs]
+}
+
+function resolveClaudeProjectDirs(workingDir: string): string[] {
+  return resolveClaudeStyleProjectDirs(workingDir, [
+    path.join(os.homedir(), '.claude', 'projects')
+  ])
+}
+
+/** List sessions from Claude-style project dirs (*.jsonl next to optional subdirs). */
+async function listClaudeStyleSessions(projectDirs: string[]): Promise<NativeSession[]> {
+  if (projectDirs.length === 0) return []
+
+  const fileInfos: Array<{ path: string; name: string; mtime: number; size: number }> = []
+  for (const projectDir of projectDirs) {
+    let files: string[]
+    try { files = fs.readdirSync(projectDir).filter((f) => f.endsWith('.jsonl')) }
+    catch { continue }
+    for (const file of files) {
+      try {
+        const filePath = path.join(projectDir, file)
+        const stat = fs.statSync(filePath)
+        fileInfos.push({ path: filePath, name: file, mtime: stat.mtimeMs, size: stat.size })
+      } catch { /* skip */ }
+    }
+  }
+  fileInfos.sort((a, b) => b.mtime - a.mtime)
+
+  const sessions: NativeSession[] = []
+  const seenSessionIds = new Set<string>()
+  for (let i = 0; i < fileInfos.length; i += 10) {
+    const batch = fileInfos.slice(i, i + 10)
+    const results = await Promise.all(batch.map(async (info) => {
+      const sessionId = info.name.replace('.jsonl', '')
+      if (seenSessionIds.has(sessionId)) return null
+      seenSessionIds.add(sessionId)
+      const { title, slug } = await parseClaudeSession(info.path)
+      const displayTitle = title || slug || `Session ${sessionId.slice(0, 8)}`
+      if (!isValidSessionTitle(displayTitle)) return null
+      return {
+        sessionId,
+        title: displayTitle,
+        modifiedAt: info.mtime,
+        sizeBytes: info.size
+      }
+    }))
+    sessions.push(...results.filter(Boolean) as NativeSession[])
+  }
+  return sessions
 }
 
 /** Extract title and slug from a Claude session JSONL (reads first ~1MB). */
@@ -215,47 +271,7 @@ function isValidSessionTitle(title: string): boolean {
 
 const claudeProvider: NativeSessionProvider = {
   async listSessions(workingDir: string): Promise<NativeSession[]> {
-    const projectDirs = resolveClaudeProjectDirs(workingDir)
-    if (projectDirs.length === 0) return []
-
-    // Get stats and sort by mtime (newest first)
-    const fileInfos: Array<{ path: string; name: string; mtime: number; size: number }> = []
-    for (const projectDir of projectDirs) {
-      let files: string[]
-      try { files = fs.readdirSync(projectDir).filter((f) => f.endsWith('.jsonl')) }
-      catch { continue }
-      for (const file of files) {
-        try {
-          const filePath = path.join(projectDir, file)
-          const stat = fs.statSync(filePath)
-          fileInfos.push({ path: filePath, name: file, mtime: stat.mtimeMs, size: stat.size })
-        } catch { /* skip */ }
-      }
-    }
-    fileInfos.sort((a, b) => b.mtime - a.mtime)
-
-    const sessions: NativeSession[] = []
-    const seenSessionIds = new Set<string>()
-    for (let i = 0; i < fileInfos.length; i += 10) {
-      const batch = fileInfos.slice(i, i + 10)
-      const results = await Promise.all(batch.map(async (info) => {
-        const sessionId = info.name.replace('.jsonl', '')
-        if (seenSessionIds.has(sessionId)) return null
-        seenSessionIds.add(sessionId)
-        const { title, slug } = await parseClaudeSession(info.path)
-        const displayTitle = title || slug || `Session ${sessionId.slice(0, 8)}`
-        // Skip sessions without a meaningful title
-        if (!isValidSessionTitle(displayTitle)) return null
-        return {
-          sessionId,
-          title: displayTitle,
-          modifiedAt: info.mtime,
-          sizeBytes: info.size
-        }
-      }))
-      sessions.push(...results.filter(Boolean) as NativeSession[])
-    }
-    return sessions
+    return listClaudeStyleSessions(resolveClaudeProjectDirs(workingDir))
   }
 }
 
@@ -839,11 +855,157 @@ const geminiProvider: NativeSessionProvider = {
 }
 
 // ════════════════════════════════════════════════════════════════
+// Grok provider
+// ════════════════════════════════════════════════════════════════
+
+/**
+ * Grok stores sessions under ~/.grok/sessions/<url-encoded-cwd>/<session-id>/.
+ * Each session dir has summary.json (title/cwd/mtime) and chat_history.jsonl.
+ * Project-level prompt_history.jsonl maps session_id → first prompt for titles.
+ */
+function grokProjectDirCandidates(workingDir: string): string[] {
+  const resolved = path.resolve(workingDir)
+  const candidates = new Set<string>()
+  // encodeURIComponent keeps drive letter + backslashes on Windows (matches Grok)
+  candidates.add(encodeURIComponent(resolved))
+  candidates.add(encodeURIComponent(resolved.replace(/\\/g, '/')))
+  if (process.platform === 'win32') {
+    // Alternate drive letter casing
+    if (/^[A-Za-z]:/.test(resolved)) {
+      const flipped = resolved.charAt(0) === resolved.charAt(0).toUpperCase()
+        ? resolved.charAt(0).toLowerCase() + resolved.slice(1)
+        : resolved.charAt(0).toUpperCase() + resolved.slice(1)
+      candidates.add(encodeURIComponent(flipped))
+      candidates.add(encodeURIComponent(flipped.replace(/\\/g, '/')))
+    }
+  }
+  return [...candidates]
+}
+
+function resolveGrokProjectDirs(workingDir: string): string[] {
+  const sessionsRoot = path.join(os.homedir(), '.grok', 'sessions')
+  if (!fs.existsSync(sessionsRoot)) return []
+
+  const dirs = new Set<string>()
+  for (const name of grokProjectDirCandidates(workingDir)) {
+    const dir = path.join(sessionsRoot, name)
+    if (fs.existsSync(dir)) dirs.add(dir)
+  }
+
+  // Fallback: scan for summary.json whose cwd matches the workspace
+  if (dirs.size === 0) {
+    try {
+      for (const entry of fs.readdirSync(sessionsRoot, { withFileTypes: true })) {
+        if (!entry.isDirectory() || entry.name === 'session_search.sqlite') continue
+        const projectDir = path.join(sessionsRoot, entry.name)
+        // Sample one session's summary for cwd match
+        try {
+          const children = fs.readdirSync(projectDir, { withFileTypes: true })
+          for (const child of children) {
+            if (!child.isDirectory()) continue
+            const summaryPath = path.join(projectDir, child.name, 'summary.json')
+            if (!fs.existsSync(summaryPath)) continue
+            const summary = JSON.parse(fs.readFileSync(summaryPath, 'utf-8'))
+            const cwd = summary?.info?.cwd || summary?.cwd
+            if (cwd && isSameOrChildPath(cwd, workingDir)) {
+              dirs.add(projectDir)
+            }
+            break
+          }
+        } catch { /* skip */ }
+      }
+    } catch { /* skip */ }
+  }
+
+  return [...dirs]
+}
+
+function readGrokPromptTitleMap(projectDir: string): Map<string, string> {
+  const map = new Map<string, string>()
+  const historyFile = path.join(projectDir, 'prompt_history.jsonl')
+  if (!fs.existsSync(historyFile)) return map
+  try {
+    const content = fs.readFileSync(historyFile, 'utf-8')
+    for (const line of content.split('\n')) {
+      if (!line.trim()) continue
+      try {
+        const entry = JSON.parse(line) as { session_id?: string; prompt?: string; is_bash?: boolean }
+        if (!entry.session_id || !entry.prompt || entry.is_bash) continue
+        if (map.has(entry.session_id)) continue
+        const title = truncateTitle(entry.prompt)
+        if (title) map.set(entry.session_id, title)
+      } catch { /* skip */ }
+    }
+  } catch { /* skip */ }
+  return map
+}
+
+const grokProvider: NativeSessionProvider = {
+  async listSessions(workingDir: string): Promise<NativeSession[]> {
+    const projectDirs = resolveGrokProjectDirs(workingDir)
+    if (projectDirs.length === 0) return []
+
+    const sessions: NativeSession[] = []
+    const seen = new Set<string>()
+
+    for (const projectDir of projectDirs) {
+      const titleMap = readGrokPromptTitleMap(projectDir)
+      let entries: fs.Dirent[]
+      try { entries = fs.readdirSync(projectDir, { withFileTypes: true }) }
+      catch { continue }
+
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue
+        const sessionId = entry.name
+        if (seen.has(sessionId)) continue
+        const sessionDir = path.join(projectDir, sessionId)
+        const summaryPath = path.join(sessionDir, 'summary.json')
+
+        try {
+          let title = titleMap.get(sessionId) || ''
+          let modifiedAt = 0
+          let sizeBytes = 0
+
+          if (fs.existsSync(summaryPath)) {
+            const summary = JSON.parse(fs.readFileSync(summaryPath, 'utf-8'))
+            const cwd = summary?.info?.cwd || summary?.cwd
+            if (cwd && !isSameOrChildPath(cwd, workingDir)) continue
+            title = summary.generated_title || summary.session_summary || title
+            const updated = summary.last_active_at || summary.updated_at || summary.created_at
+            if (updated) modifiedAt = new Date(updated).getTime()
+          }
+
+          try {
+            const stat = fs.statSync(sessionDir)
+            if (!modifiedAt) modifiedAt = stat.mtimeMs
+            // Prefer chat_history size when available
+            const chatPath = path.join(sessionDir, 'chat_history.jsonl')
+            if (fs.existsSync(chatPath)) sizeBytes = fs.statSync(chatPath).size
+          } catch { /* skip */ }
+
+          if (!title) title = `Session ${sessionId.slice(0, 8)}`
+          seen.add(sessionId)
+          sessions.push({
+            sessionId,
+            title: truncateTitle(title),
+            modifiedAt: modifiedAt || Date.now(),
+            sizeBytes: sizeBytes || undefined
+          })
+        } catch { /* skip */ }
+      }
+    }
+
+    sessions.sort((a, b) => b.modifiedAt - a.modifiedAt)
+    return sessions
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
 // OpenCode provider
 // ════════════════════════════════════════════════════════════════
 
 /**
- * OpenCode uses SQLite for session storage (~/.local/share/opencode/opencode.db).
+ * OpenCode uses SQLite for session storage (~/.local/share/opencode/).
  * We use the `opencode session list` CLI command for portability.
  */
 const opencodeProvider: NativeSessionProvider = {
@@ -852,25 +1014,27 @@ const opencodeProvider: NativeSessionProvider = {
       try {
         execFile('opencode', ['session', 'list'], {
           timeout: 5000,
-          env: { ...process.env }
+          env: { ...process.env },
+          windowsHide: true
         }, (err, stdout) => {
           if (err || !stdout.trim()) { resolve([]); return }
 
-          // Parse CLI output into sessions
           const sessions: NativeSession[] = []
           const lines = stdout.trim().split('\n')
           for (const line of lines) {
             const trimmed = line.trim()
             if (!trimmed) continue
-            // Try to extract session ID and title from tabular output
+            // Skip header-like lines
+            if (/^id\b/i.test(trimmed) || /^session/i.test(trimmed)) continue
             const parts = trimmed.split(/\s{2,}/)
-            if (parts.length >= 2) {
+            if (parts.length >= 1) {
               const sessionId = parts[0].trim()
+              if (!sessionId || sessionId.length < 4) continue
               const title = parts[1]?.trim() || `Session ${sessionId.slice(0, 8)}`
               sessions.push({
                 sessionId,
                 title,
-                modifiedAt: Date.now() // CLI doesn't provide timestamps easily
+                modifiedAt: Date.now()
               })
             }
           }
@@ -882,15 +1046,226 @@ const opencodeProvider: NativeSessionProvider = {
 }
 
 // ════════════════════════════════════════════════════════════════
+// Qoder provider (Claude-like JSONL under ~/.qoderworkcn or ~/.qoder)
+// ════════════════════════════════════════════════════════════════
+
+const qoderProvider: NativeSessionProvider = {
+  async listSessions(workingDir: string): Promise<NativeSession[]> {
+    const home = os.homedir()
+    const roots = [
+      path.join(home, '.qoderworkcn', 'projects'),
+      path.join(home, '.qoder', 'projects'),
+      path.join(home, '.qoder-cn', 'projects')
+    ]
+    return listClaudeStyleSessions(resolveClaudeStyleProjectDirs(workingDir, roots))
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// ZCode provider (Claude-compatible under ~/.zclaude/projects)
+// ════════════════════════════════════════════════════════════════
+
+const zcodeProvider: NativeSessionProvider = {
+  async listSessions(workingDir: string): Promise<NativeSession[]> {
+    return listClaudeStyleSessions(resolveClaudeStyleProjectDirs(workingDir, [
+      path.join(os.homedir(), '.zclaude', 'projects')
+    ]))
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// Kimi provider (~/.kimi/sessions/<workdir-hash>/<session-id>/)
+// ════════════════════════════════════════════════════════════════
+
+function kimiWorkDirHash(dirPath: string): string {
+  return crypto.createHash('md5').update(path.resolve(dirPath), 'utf8').digest('hex')
+}
+
+function resolveKimiSessionDirs(workingDir: string): string[] {
+  const sessionsRoot = path.join(os.homedir(), '.kimi', 'sessions')
+  if (!fs.existsSync(sessionsRoot)) return []
+
+  const dirs: string[] = []
+  const hash = kimiWorkDirHash(workingDir)
+  const direct = path.join(sessionsRoot, hash)
+  if (fs.existsSync(direct)) dirs.push(direct)
+
+  // Also match KAOS-prefixed hashes and resolve via kimi.json work_dirs when present
+  try {
+    const configPath = path.join(os.homedir(), '.kimi', 'kimi.json')
+    if (fs.existsSync(configPath)) {
+      const raw = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+      const workDirs = Array.isArray(raw.work_dirs) ? raw.work_dirs : []
+      for (const item of workDirs) {
+        const wdPath = typeof item === 'string' ? item : item?.path
+        if (!wdPath || !isSameOrChildPath(wdPath, workingDir)) continue
+        const md5 = kimiWorkDirHash(wdPath)
+        const candidates = [md5]
+        const kaos = typeof item === 'object' ? item?.kaos : undefined
+        if (kaos && String(kaos).toLowerCase() !== 'local') {
+          candidates.push(`${kaos}_${md5}`)
+        }
+        for (const name of candidates) {
+          const d = path.join(sessionsRoot, name)
+          if (fs.existsSync(d) && !dirs.includes(d)) dirs.push(d)
+        }
+      }
+    }
+  } catch { /* skip */ }
+
+  // Fallback scan: any workdir hash folder that has sessions with matching cwd in state
+  if (dirs.length === 0) {
+    try {
+      for (const entry of fs.readdirSync(sessionsRoot, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue
+        const workDirPath = path.join(sessionsRoot, entry.name)
+        // Check first session state for cwd
+        try {
+          const children = fs.readdirSync(workDirPath, { withFileTypes: true })
+          for (const child of children) {
+            if (!child.isDirectory()) continue
+            const statePath = path.join(workDirPath, child.name, 'state.json')
+            const metaPath = path.join(workDirPath, child.name, 'metadata.json')
+            for (const p of [statePath, metaPath]) {
+              if (!fs.existsSync(p)) continue
+              const data = JSON.parse(fs.readFileSync(p, 'utf-8'))
+              const cwd = data.cwd || data.work_dir || data.workdir
+              if (cwd && isSameOrChildPath(cwd, workingDir)) {
+                dirs.push(workDirPath)
+              }
+              break
+            }
+            break
+          }
+        } catch { /* skip */ }
+      }
+    } catch { /* skip */ }
+  }
+
+  return dirs
+}
+
+const kimiProvider: NativeSessionProvider = {
+  async listSessions(workingDir: string): Promise<NativeSession[]> {
+    const workDirFolders = resolveKimiSessionDirs(workingDir)
+    if (workDirFolders.length === 0) return []
+
+    const sessions: NativeSession[] = []
+    const seen = new Set<string>()
+
+    for (const workDirFolder of workDirFolders) {
+      let entries: fs.Dirent[]
+      try { entries = fs.readdirSync(workDirFolder, { withFileTypes: true }) }
+      catch { continue }
+
+      for (const entry of entries) {
+        try {
+          if (entry.isDirectory()) {
+            const sessionDir = path.join(workDirFolder, entry.name)
+            const contextPath = path.join(sessionDir, 'context.jsonl')
+            if (!fs.existsSync(contextPath)) continue
+
+            let sessionId = entry.name
+            let title = ''
+            let modifiedAt = fs.statSync(contextPath).mtimeMs
+            let sizeBytes = fs.statSync(contextPath).size
+
+            for (const metaName of ['state.json', 'metadata.json']) {
+              const metaPath = path.join(sessionDir, metaName)
+              if (!fs.existsSync(metaPath)) continue
+              try {
+                const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'))
+                if (meta.archived === true) { sessionId = ''; break }
+                if (meta.session_id) sessionId = meta.session_id
+                title = meta.custom_title || meta.title || title
+                if (meta.wire_mtime && typeof meta.wire_mtime === 'number') {
+                  modifiedAt = meta.wire_mtime * 1000
+                }
+              } catch { /* skip */ }
+            }
+            if (!sessionId || seen.has(sessionId)) continue
+
+            if (!title || title === 'Untitled') {
+              // First user message from context.jsonl (first ~64KB)
+              try {
+                const fd = fs.openSync(contextPath, 'r')
+                const buf = Buffer.alloc(Math.min(65536, sizeBytes))
+                fs.readSync(fd, buf, 0, buf.length, 0)
+                fs.closeSync(fd)
+                for (const line of buf.toString('utf-8').split('\n')) {
+                  if (!line.trim()) continue
+                  try {
+                    const data = JSON.parse(line)
+                    if (data.role === 'user') {
+                      const text = extractTextFromContent(data.content)
+                      if (text) { title = truncateTitle(text); break }
+                    }
+                  } catch { /* skip */ }
+                }
+              } catch { /* skip */ }
+            }
+
+            seen.add(sessionId)
+            sessions.push({
+              sessionId,
+              title: title || `Session ${sessionId.slice(0, 8)}`,
+              modifiedAt,
+              sizeBytes
+            })
+          } else if (entry.isFile() && entry.name.endsWith('.jsonl')) {
+            // Legacy flat layout
+            const sessionId = entry.name.replace(/\.jsonl$/, '')
+            if (seen.has(sessionId)) continue
+            const filePath = path.join(workDirFolder, entry.name)
+            const stat = fs.statSync(filePath)
+            seen.add(sessionId)
+            sessions.push({
+              sessionId,
+              title: `Session ${sessionId.slice(0, 8)}`,
+              modifiedAt: stat.mtimeMs,
+              sizeBytes: stat.size
+            })
+          }
+        } catch { /* skip */ }
+      }
+    }
+
+    sessions.sort((a, b) => b.modifiedAt - a.modifiedAt)
+    return sessions
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// Trae / MiMo — no stable public local session layout yet
+// ════════════════════════════════════════════════════════════════
+
+const emptyProvider: NativeSessionProvider = {
+  async listSessions(): Promise<NativeSession[]> {
+    return []
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
 // Provider registry
 // ════════════════════════════════════════════════════════════════
 
 const providers: Partial<Record<AIToolType, NativeSessionProvider>> = {
   claude: claudeProvider,
   codex: codexProvider,
-  gemini: geminiProvider
-  // opencode: opencodeProvider  // TODO: enable after testing
+  gemini: geminiProvider,
+  grok: grokProvider,
+  opencode: opencodeProvider,
+  qoder: qoderProvider,
+  zcode: zcodeProvider,
+  kimi: kimiProvider,
+  trae: emptyProvider,
+  mimo: emptyProvider
 }
+
+/** Tool types that have a native session list provider (used by sidebar / tab history). */
+export const NATIVE_SESSION_TOOL_TYPES: AIToolType[] = (
+  Object.keys(providers) as AIToolType[]
+).filter((t) => t !== 'terminal' && t !== 'qwen')
 
 /**
  * List native CLI tool sessions for a given workspace and tool type.

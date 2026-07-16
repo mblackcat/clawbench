@@ -1,17 +1,18 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Row, Col, Spin, Button, Typography, App, theme, Divider } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
 import { useLocalEnvStore } from '../../stores/useLocalEnvStore'
 import EnvCard from './EnvCard'
 import PackageListDrawer from './PackageListDrawer'
 import { useT } from '../../i18n'
+import { AI_CODING_TOOL_IDS, AI_CODING_TOOL_ID_SET, isCodingToolEnabledInMap } from '../../types/local-env'
+import { invalidateCodingToolsCache } from '../AICoding/AICodingNewSessionDialog'
 
 const { Title, Text } = Typography
 
 const BASE_DEV_IDS = new Set(['homebrew', 'python', 'nodejs', 'go', 'java', 'docker'])
 const DATABASE_IDS = new Set(['mysql', 'postgresql', 'mongodb', 'redis'])
 const VCS_IDS = new Set(['git', 'svn', 'perforce'])
-const AI_TOOL_IDS = new Set(['claude-code', 'gemini-cli', 'codex-cli', 'opencode', 'traecli', 'qwen-code', 'qoder-cli'])
 
 interface PackageDrawerState {
   kind: 'pip' | 'npm'
@@ -41,21 +42,33 @@ const LocalEnvPage: React.FC = () => {
   const checkLatestVersions = useLocalEnvStore((s) => s.checkLatestVersions)
 
   const [packageDrawer, setPackageDrawer] = useState<PackageDrawerState | null>(null)
+  /** Explicit user overrides only; missing keys use DEFAULT_ENABLED_CODING_TOOL_IDS */
+  const [codingToolsEnabled, setCodingToolsEnabled] = useState<Record<string, boolean>>({})
 
-  // Load from cache on mount; only fetches if no cached data exists
+  // Load from cache on mount; force re-detect if the AI coding tool set is stale
+  // (new tools added, or removed tools like qwen-code still in cache)
   useEffect(() => {
-    detectAll()
-    checkLatestVersions(Array.from(AI_TOOL_IDS))
+    const cached = useLocalEnvStore.getState().tools
+    const knownIds = new Set(cached.map((t) => t.toolId))
+    const missingNew = AI_CODING_TOOL_IDS.some((id) => !knownIds.has(id))
+    const hasLegacy = knownIds.has('qwen-code' as never)
+    detectAll(missingNew || hasLegacy)
+    checkLatestVersions([...AI_CODING_TOOL_IDS], missingNew || hasLegacy)
+    window.api.localEnv.getCodingToolsEnabled().then(setCodingToolsEnabled).catch(() => {})
   }, [])
 
   const { baseTools, dbTools, vcsTools, aiTools } = useMemo(() => {
     const isMac = platform === 'darwin'
+    const aiOrder = new Map(AI_CODING_TOOL_IDS.map((id, i) => [id, i]))
     return {
       // Show homebrew only on Mac; filter it out on other platforms
       baseTools: tools.filter((t) => BASE_DEV_IDS.has(t.toolId) && (t.toolId !== 'homebrew' || isMac)),
       dbTools: tools.filter((t) => DATABASE_IDS.has(t.toolId)),
       vcsTools: tools.filter((t) => VCS_IDS.has(t.toolId)),
-      aiTools: tools.filter((t) => AI_TOOL_IDS.has(t.toolId))
+      // Stable user-facing order (Claude → … → MiMo); drop removed tools e.g. qwen-code
+      aiTools: tools
+        .filter((t) => AI_CODING_TOOL_ID_SET.has(t.toolId))
+        .sort((a, b) => (aiOrder.get(a.toolId as typeof AI_CODING_TOOL_IDS[number]) ?? 99) - (aiOrder.get(b.toolId as typeof AI_CODING_TOOL_IDS[number]) ?? 99))
     }
   }, [tools, platform])
 
@@ -102,15 +115,30 @@ const LocalEnvPage: React.FC = () => {
 
   const handleRefresh = () => {
     detectAll(true)
-    checkLatestVersions(Array.from(AI_TOOL_IDS), true)
+    checkLatestVersions([...AI_CODING_TOOL_IDS], true)
   }
 
   const handleRefreshOne = (toolId: string) => {
     detectOne(toolId)
-    if (AI_TOOL_IDS.has(toolId)) {
+    if (AI_CODING_TOOL_ID_SET.has(toolId)) {
       checkLatestVersions([toolId], true)
     }
   }
+
+  const handleCodingEnabledChange = useCallback(async (toolId: string, enabled: boolean) => {
+    // Optimistic UI update
+    setCodingToolsEnabled((prev) => ({ ...prev, [toolId]: enabled }))
+    try {
+      const next = await window.api.localEnv.setCodingToolEnabled(toolId, enabled)
+      setCodingToolsEnabled(next)
+      // AI Coding tool pickers cache detect results — force a refresh next open
+      invalidateCodingToolsCache()
+    } catch (err) {
+      console.error('Failed to update coding tool enablement:', err)
+      // Revert on failure
+      setCodingToolsEnabled((prev) => ({ ...prev, [toolId]: !enabled }))
+    }
+  }, [])
 
   const renderGroup = (title: string, groupTools: typeof tools) => (
     <>
@@ -129,11 +157,13 @@ const LocalEnvPage: React.FC = () => {
               uninstalling={uninstalling[tool.toolId] || false}
               upgrading={upgrading[tool.toolId] || false}
               latestVersion={latestVersions[tool.toolId]}
+              codingEnabled={isCodingToolEnabledInMap(codingToolsEnabled, tool.toolId)}
               onInstall={handleInstall}
               onRefresh={handleRefreshOne}
               onUninstall={handleUninstall}
               onUpgrade={handleUpgrade}
               onOpenPackages={handleOpenPackages}
+              onCodingEnabledChange={handleCodingEnabledChange}
             />
           </Col>
         ))}

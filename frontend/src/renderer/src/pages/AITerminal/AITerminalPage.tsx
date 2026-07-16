@@ -104,7 +104,7 @@ const AITerminalPage: React.FC = () => {
   const hasContent = showTerminalContent || showDBContent
 
   return (
-    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flex: 1, minHeight: 0, minWidth: 0, width: '100%', height: '100%', overflow: 'hidden' }}>
       {/* Left sidebar */}
       <div style={{
         width: sidebarCollapsed ? COLLAPSED_SIDEBAR_WIDTH : sidebarWidth,

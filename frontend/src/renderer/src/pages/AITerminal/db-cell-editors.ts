@@ -19,6 +19,10 @@ import { getT } from '../../i18n'
  * needed for those.
  *
  * Register once (idempotent) via `registerDBCellEditors()`.
+ *
+ * Standalone expand panel (`openDBTextExpandPanel`) is shared by the inline
+ * editor's magnifier button and by double-click on cells (read-only enlarge
+ * for easy select/copy, or editable with save when the grid is in edit mode).
  */
 
 // ── Shared theme class names (styled in handsontable-theme.ts) ──
@@ -27,6 +31,170 @@ const EXPAND_TEXTAREA = 'db-textexpand-textarea'
 const EXPAND_BAR = 'db-textexpand-bar'
 const EXPAND_BTN = 'db-textexpand-btn'
 const EXPAND_ICON = 'db-textexpand-icon'
+
+/** Cap auto-sized / stretched column width so long cell text doesn't force huge horizontal scroll. */
+export const DB_GRID_MAX_COL_WIDTH = 280
+
+export interface DBTextExpandOptions {
+  /** Full cell text to show. */
+  value: string
+  /** Anchor element (usually the TD) used for positioning. */
+  anchorEl: HTMLElement
+  /** When true, textarea is not editable and only a Close button is shown. */
+  readOnly?: boolean
+  /** Called with the final textarea value when the user clicks Save (edit mode only). */
+  onSave?: (value: string) => void
+  /** Called after the panel is closed (any path). */
+  onClose?: () => void
+}
+
+// Singleton expand panel so only one is open at a time (editor magnifier + dblclick share it).
+let standalonePanel: HTMLDivElement | null = null
+let standaloneTextarea: HTMLTextAreaElement | null = null
+let standaloneOutsideHandler: ((e: MouseEvent) => void) | null = null
+let standaloneKeyHandler: ((e: KeyboardEvent) => void) | null = null
+let standaloneOnClose: (() => void) | null = null
+
+/** Close the standalone text-expand panel if open. */
+export function closeDBTextExpandPanel(): void {
+  if (standaloneOutsideHandler) {
+    document.removeEventListener('mousedown', standaloneOutsideHandler, true)
+    standaloneOutsideHandler = null
+  }
+  if (standaloneKeyHandler) {
+    document.removeEventListener('keydown', standaloneKeyHandler, true)
+    standaloneKeyHandler = null
+  }
+  if (standalonePanel) {
+    standalonePanel.remove()
+    standalonePanel = null
+    standaloneTextarea = null
+  }
+  const cb = standaloneOnClose
+  standaloneOnClose = null
+  cb?.()
+}
+
+/**
+ * Open a floating multi-line text panel anchored under a cell.
+ * Reuses the same chrome as the inline editor's magnifier expand dialog.
+ * Safe to call repeatedly — previous panel is closed first.
+ */
+export function openDBTextExpandPanel(opts: DBTextExpandOptions): void {
+  closeDBTextExpandPanel()
+
+  const doc = opts.anchorEl.ownerDocument || document
+  const win = doc.defaultView || window
+  const readOnly = !!opts.readOnly
+  const t = getT()
+
+  const panel = doc.createElement('div')
+  panel.className = EXPAND_PANEL
+  panel.style.display = 'flex'
+
+  const textarea = doc.createElement('textarea')
+  textarea.className = EXPAND_TEXTAREA
+  textarea.value = opts.value ?? ''
+  textarea.readOnly = readOnly
+  // Keep Handsontable from eating keys while the panel is focused
+  textarea.addEventListener('keydown', (e) => {
+    e.stopPropagation()
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      closeDBTextExpandPanel()
+    }
+  })
+
+  const bar = doc.createElement('div')
+  bar.className = EXPAND_BAR
+
+  if (readOnly) {
+    const closeBtn = doc.createElement('button')
+    closeBtn.type = 'button'
+    closeBtn.className = EXPAND_BTN
+    closeBtn.textContent = t('db.close')
+    closeBtn.addEventListener('mousedown', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      closeDBTextExpandPanel()
+    })
+    bar.appendChild(closeBtn)
+  } else {
+    const cancelBtn = doc.createElement('button')
+    cancelBtn.type = 'button'
+    cancelBtn.className = EXPAND_BTN
+    cancelBtn.textContent = t('db.cancel')
+    cancelBtn.addEventListener('mousedown', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      closeDBTextExpandPanel()
+    })
+
+    const saveBtn = doc.createElement('button')
+    saveBtn.type = 'button'
+    saveBtn.className = `${EXPAND_BTN} ${EXPAND_BTN}-primary`
+    saveBtn.textContent = t('db.save')
+    saveBtn.addEventListener('mousedown', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      opts.onSave?.(textarea.value)
+      closeDBTextExpandPanel()
+    })
+
+    bar.appendChild(cancelBtn)
+    bar.appendChild(saveBtn)
+  }
+
+  panel.appendChild(textarea)
+  panel.appendChild(bar)
+  panel.addEventListener('mousedown', (e) => e.stopPropagation())
+
+  const rect = opts.anchorEl.getBoundingClientRect()
+  panel.style.left = `${rect.left + win.scrollX}px`
+  panel.style.top = `${rect.bottom + win.scrollY + 2}px`
+  panel.style.minWidth = `${Math.max(rect.width, 320)}px`
+
+  // Keep panel on-screen vertically when near the bottom
+  doc.body.appendChild(panel)
+  const panelRect = panel.getBoundingClientRect()
+  if (panelRect.bottom > win.innerHeight - 8) {
+    const above = rect.top + win.scrollY - panelRect.height - 2
+    if (above > win.scrollY + 8) {
+      panel.style.top = `${above}px`
+    }
+  }
+  if (panelRect.right > win.innerWidth - 8) {
+    panel.style.left = `${Math.max(8, win.innerWidth - panelRect.width - 8 + win.scrollX)}px`
+  }
+
+  standalonePanel = panel
+  standaloneTextarea = textarea
+  standaloneOnClose = opts.onClose ?? null
+
+  // Outside click closes (capture so Handsontable grid clicks also dismiss)
+  standaloneOutsideHandler = (e: MouseEvent) => {
+    const target = e.target as Node | null
+    if (standalonePanel && target && !standalonePanel.contains(target)) {
+      closeDBTextExpandPanel()
+    }
+  }
+  // Defer so the opening click doesn't immediately close
+  setTimeout(() => {
+    if (standalonePanel) {
+      doc.addEventListener('mousedown', standaloneOutsideHandler!, true)
+    }
+  }, 0)
+
+  standaloneKeyHandler = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation()
+      closeDBTextExpandPanel()
+    }
+  }
+  doc.addEventListener('keydown', standaloneKeyHandler, true)
+
+  setTimeout(() => textarea.focus(), 0)
+}
 
 // ── Text editor with an expand-to-textarea magnifier button ──
 class TextExpandEditor extends Handsontable.editors.TextEditor {
@@ -105,6 +273,8 @@ class TextExpandEditor extends Handsontable.editors.TextEditor {
   open(...args: unknown[]): void {
     // @ts-expect-error — passthrough to base open(event?)
     super.open(...args)
+    // Close any standalone expand panel so the two don't stack
+    closeDBTextExpandPanel()
     // Float the magnifier over the top-right corner of the edited cell
     const rect = this.TD.getBoundingClientRect()
     const win = this.hot.rootWindow

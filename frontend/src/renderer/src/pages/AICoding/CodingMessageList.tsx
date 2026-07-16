@@ -102,8 +102,13 @@ const CodingMessageList: React.FC<CodingMessageListProps> = ({
   // scrollbar appear/disappear → width change → ReactMarkdown remount loops)
   // does NOT trigger constant expensive remounts. Only update after resize
   // settles for 200ms, which covers genuine window/pane resize events.
+  //
+  // `listLayoutKey` re-attaches the observer when the empty-state / message-list
+  // branch swaps the DOM node under containerRef (empty deps would leave the
+  // observer on a detached element after transcript hydrate).
   const [containerWidth, setContainerWidth] = useState(0)
   const [renderKey, setRenderKey] = useState(0)
+  const hasMessages = messages.length > 0 || isStreaming
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
@@ -112,8 +117,11 @@ const CodingMessageList: React.FC<CodingMessageListProps> = ({
       if (width !== undefined && width > 0) setContainerWidth(width)
     })
     ro.observe(el)
+    // Seed immediately so route re-entry remounts markdown at the real width
+    // without waiting for a spurious size delta.
+    if (el.clientWidth > 0) setContainerWidth(el.clientWidth)
     return () => ro.disconnect()
-  }, [])
+  }, [hasMessages, sessionId])
   useEffect(() => {
     if (containerWidth <= 0) return
     const timer = setTimeout(() => {

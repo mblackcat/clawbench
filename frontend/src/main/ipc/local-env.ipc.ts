@@ -11,6 +11,10 @@ import {
   listNpmGlobalPackages,
   uninstallNpmGlobalPackage
 } from '../services/local-env.service'
+import {
+  getCodingToolsEnabled,
+  setCodingToolEnabled
+} from '../store/settings.store'
 
 export function registerLocalEnvIpc(): void {
   ipcMain.handle('local-env:detect-all', async () => {
@@ -51,5 +55,13 @@ export function registerLocalEnvIpc(): void {
 
   ipcMain.handle('local-env:uninstall-npm-package', async (_event, packageName: string) => {
     return uninstallNpmGlobalPackage(packageName)
+  })
+
+  ipcMain.handle('local-env:get-coding-tools-enabled', async () => {
+    return getCodingToolsEnabled()
+  })
+
+  ipcMain.handle('local-env:set-coding-tool-enabled', async (_event, toolId: string, enabled: boolean) => {
+    return setCodingToolEnabled(toolId, enabled)
   })
 }

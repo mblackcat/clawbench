@@ -14,7 +14,9 @@ type ToolId =
   | 'python' | 'nodejs' | 'go' | 'java' | 'docker'
   | 'mysql' | 'postgresql' | 'mongodb' | 'redis'
   | 'git' | 'svn' | 'perforce'
-  | 'claude-code' | 'gemini-cli' | 'codex-cli' | 'opencode' | 'traecli' | 'qwen-code' | 'qoder-cli'
+  | 'claude-code' | 'codex-cli' | 'gemini-cli' | 'grok-cli'
+  | 'opencode' | 'traecli' | 'qoder-cli'
+  | 'kimi-code' | 'zcode' | 'mimo-code'
   | 'homebrew'
 
 interface ToolInstallation {
@@ -680,16 +682,48 @@ async function detectClaudeCode(env: NodeJS.ProcessEnv): Promise<ToolDetectionRe
   return result
 }
 
-async function detectGeminiCli(env: NodeJS.ProcessEnv): Promise<ToolDetectionResult> {
-  return detectNpmGlobalTool('gemini-cli', 'Gemini CLI', 'gemini', /(\d+\.\d+\.\d+)/, env)
-}
-
 async function detectCodexCli(env: NodeJS.ProcessEnv): Promise<ToolDetectionResult> {
   return detectNpmGlobalTool('codex-cli', 'Codex CLI', 'codex', /(\d+\.\d+\.\d+)/, env)
 }
 
-async function detectQwenCode(env: NodeJS.ProcessEnv): Promise<ToolDetectionResult> {
-  return detectNpmGlobalTool('qwen-code', 'Qwen Code', 'qwen', /(\d+\.\d+\.\d+)/, env)
+async function detectGeminiCli(env: NodeJS.ProcessEnv): Promise<ToolDetectionResult> {
+  return detectNpmGlobalTool('gemini-cli', 'Gemini CLI', 'gemini', /(\d+\.\d+\.\d+)/, env)
+}
+
+async function detectGrokCli(env: NodeJS.ProcessEnv): Promise<ToolDetectionResult> {
+  const result: ToolDetectionResult = { toolId: 'grok-cli', name: 'Grok CLI', installed: false, installations: [] }
+
+  // The official xAI Grok CLI ("Grok Build") is distributed via a native
+  // installer (curl https://x.ai/cli/install.sh | bash) — NOT an npm package.
+  // The installer places the `grok` binary in ~/.local/bin/ (POSIX), the same
+  // convention as Claude Code's native installer.
+  const candidates: string[] = []
+
+  // Preferred location for the native installer (POSIX only — install.sh is Unix-only)
+  if (process.platform !== 'win32') {
+    const nativePath = path.join(os.homedir(), '.local', 'bin', 'grok')
+    candidates.push(nativePath)
+  }
+
+  // Also check PATH for other install locations (e.g. npm-global shims on Windows)
+  const whichPaths = await whichAll('grok', env)
+  for (const p of whichPaths) {
+    if (!candidates.includes(p)) candidates.push(p)
+  }
+
+  for (const binPath of candidates) {
+    try {
+      const raw = await getVersion(binPath, ['--version'], env)
+      if (!raw) continue
+      const m = raw.match(/(\d+\.\d+\.\d+)/)
+      result.installations.push({ path: binPath, version: m ? m[1] : raw })
+    } catch {
+      // Binary not found or not executable
+    }
+  }
+
+  result.installed = result.installations.length > 0
+  return result
 }
 
 async function detectOpenCode(env: NodeJS.ProcessEnv): Promise<ToolDetectionResult> {
@@ -701,7 +735,103 @@ async function detectTraeCli(env: NodeJS.ProcessEnv): Promise<ToolDetectionResul
 }
 
 async function detectQoderCli(env: NodeJS.ProcessEnv): Promise<ToolDetectionResult> {
+  // Official package ships bin as `qodercli`; also accept legacy `qoder`
+  const primary = await detectNpmGlobalTool('qoder-cli', 'Qoder CLI', 'qodercli', /(\d+\.\d+\.\d+)/, env)
+  if (primary.installed) return primary
   return detectNpmGlobalTool('qoder-cli', 'Qoder CLI', 'qoder', /(\d+\.\d+\.\d+)/, env)
+}
+
+async function detectKimiCode(env: NodeJS.ProcessEnv): Promise<ToolDetectionResult> {
+  // Official: npm @moonshot-ai/kimi-code or native install script → binary `kimi`
+  const result: ToolDetectionResult = { toolId: 'kimi-code', name: 'Kimi Code', installed: false, installations: [] }
+  const candidates: string[] = []
+  if (process.platform !== 'win32') {
+    candidates.push(path.join(os.homedir(), '.local', 'bin', 'kimi'))
+  }
+  for (const p of await whichAll('kimi', env)) {
+    if (!candidates.includes(p)) candidates.push(p)
+  }
+  for (const binPath of candidates) {
+    try {
+      const raw = await getVersion(binPath, ['--version'], env)
+      if (!raw) continue
+      const m = raw.match(/(\d+\.\d+\.\d+)/)
+      result.installations.push({ path: binPath, version: m ? m[1] : raw })
+    } catch { /* skip */ }
+  }
+  result.installed = result.installations.length > 0
+  return result
+}
+
+async function detectZCode(env: NodeJS.ProcessEnv): Promise<ToolDetectionResult> {
+  // ZCode is primarily a desktop app (Z.ai / Zhipu). Detect CLI binary and app install.
+  const result: ToolDetectionResult = { toolId: 'zcode', name: 'ZCode', installed: false, installations: [] }
+  const candidates: string[] = []
+
+  if (process.platform === 'darwin') {
+    const appBin = '/Applications/ZCode.app/Contents/MacOS/ZCode'
+    if (fs.existsSync(appBin)) candidates.push(appBin)
+    if (fs.existsSync('/Applications/ZCode.app')) {
+      // App present even if we cannot resolve the MacOS binary path
+      candidates.push('/Applications/ZCode.app')
+    }
+  } else if (process.platform === 'win32') {
+    const roots = [process.env['LOCALAPPDATA'], process.env['ProgramFiles'], process.env['ProgramFiles(x86)']].filter(Boolean) as string[]
+    for (const root of roots) {
+      const exe = path.join(root, 'ZCode', 'ZCode.exe')
+      if (fs.existsSync(exe)) candidates.push(exe)
+    }
+  }
+
+  for (const p of await whichAll('zcode', env)) {
+    if (!candidates.includes(p)) candidates.push(p)
+  }
+
+  for (const binPath of candidates) {
+    // .app bundle path — mark installed without version probe
+    if (binPath.endsWith('.app')) {
+      result.installations.push({ path: binPath, version: 'app' })
+      continue
+    }
+    try {
+      const raw = await getVersion(binPath, ['--version'], env)
+      if (raw) {
+        const m = raw.match(/(\d+\.\d+\.\d+)/)
+        result.installations.push({ path: binPath, version: m ? m[1] : raw })
+      } else if (fs.existsSync(binPath)) {
+        result.installations.push({ path: binPath, version: 'installed' })
+      }
+    } catch {
+      if (fs.existsSync(binPath)) {
+        result.installations.push({ path: binPath, version: 'installed' })
+      }
+    }
+  }
+
+  result.installed = result.installations.length > 0
+  return result
+}
+
+async function detectMimoCode(env: NodeJS.ProcessEnv): Promise<ToolDetectionResult> {
+  // Xiaomi MiMo Code: npm @mimo-ai/cli or curl install script → binary `mimo`
+  const result: ToolDetectionResult = { toolId: 'mimo-code', name: 'MiMo Code', installed: false, installations: [] }
+  const candidates: string[] = []
+  if (process.platform !== 'win32') {
+    candidates.push(path.join(os.homedir(), '.local', 'bin', 'mimo'))
+  }
+  for (const p of await whichAll('mimo', env)) {
+    if (!candidates.includes(p)) candidates.push(p)
+  }
+  for (const binPath of candidates) {
+    try {
+      const raw = await getVersion(binPath, ['--version'], env)
+      if (!raw) continue
+      const m = raw.match(/(\d+\.\d+\.\d+)/)
+      result.installations.push({ path: binPath, version: m ? m[1] : raw })
+    } catch { /* skip */ }
+  }
+  result.installed = result.installations.length > 0
+  return result
 }
 
 // ── Package Managers / System Tools ──
@@ -750,7 +880,8 @@ export async function detectAll(): Promise<LocalEnvDetectionResult> {
     python, nodejs, go, java, docker,
     mysql, postgresql, mongodb, redis,
     git, svn, perforce,
-    claudeCode, geminiCli, codexCli, openCode, traeCli, qwenCode, qoderCli,
+    claudeCode, codexCli, geminiCli, grokCli,
+    openCode, traeCli, qoderCli, kimiCode, zcode, mimoCode,
     homebrew,
     packageManagers
   ] = await Promise.all([
@@ -767,21 +898,26 @@ export async function detectAll(): Promise<LocalEnvDetectionResult> {
     detectSvn(env),
     detectPerforce(env),
     detectClaudeCode(env),
-    detectGeminiCli(env),
     detectCodexCli(env),
+    detectGeminiCli(env),
+    detectGrokCli(env),
     detectOpenCode(env),
     detectTraeCli(env),
-    detectQwenCode(env),
     detectQoderCli(env),
+    detectKimiCode(env),
+    detectZCode(env),
+    detectMimoCode(env),
     process.platform === 'darwin' ? detectBrew(env) : Promise.resolve<ToolDetectionResult>({ toolId: 'homebrew', name: 'Homebrew', installed: false, installations: [] }),
     detectPackageManagers(env)
   ])
 
+  // AI tools kept in user-facing order: Claude → Codex → Gemini → Grok → OpenCode → Trae → Qoder → Kimi → ZCode → MiMo
   const tools: ToolDetectionResult[] = [
     python, nodejs, go, java, docker,
     mysql, postgresql, mongodb, redis,
     git, svn, perforce,
-    claudeCode, geminiCli, codexCli, openCode, traeCli, qwenCode, qoderCli
+    claudeCode, codexCli, geminiCli, grokCli,
+    openCode, traeCli, qoderCli, kimiCode, zcode, mimoCode
   ]
 
   // Include Homebrew only on macOS
@@ -810,12 +946,15 @@ const DETECT_FN_MAP: Partial<Record<ToolId, (env: NodeJS.ProcessEnv) => Promise<
   svn: detectSvn,
   perforce: detectPerforce,
   'claude-code': detectClaudeCode,
-  'gemini-cli': detectGeminiCli,
   'codex-cli': detectCodexCli,
+  'gemini-cli': detectGeminiCli,
+  'grok-cli': detectGrokCli,
   opencode: detectOpenCode,
   traecli: detectTraeCli,
-  'qwen-code': detectQwenCode,
   'qoder-cli': detectQoderCli,
+  'kimi-code': detectKimiCode,
+  zcode: detectZCode,
+  'mimo-code': detectMimoCode,
   homebrew: detectBrew,
 }
 
@@ -846,12 +985,15 @@ const DOWNLOAD_URLS: Partial<Record<ToolId, string>> = {
     : 'https://subversion.apache.org/packages.html',
   perforce: 'https://www.perforce.com/downloads/helix-command-line-client-p4',
   'claude-code': 'https://docs.anthropic.com/en/docs/claude-code',
-  'gemini-cli': 'https://github.com/google-gemini/gemini-cli',
   'codex-cli': 'https://github.com/openai/codex',
-  'opencode': 'https://opencode.ai',
-  'traecli': 'https://www.trae.ai',
-  'qwen-code': 'https://github.com/QwenLM/qwen-code',
-  'qoder-cli': 'https://qodo.ai'
+  'gemini-cli': 'https://github.com/google-gemini/gemini-cli',
+  'grok-cli': 'https://x.ai/cli',
+  opencode: 'https://opencode.ai',
+  traecli: 'https://www.trae.ai',
+  'qoder-cli': 'https://docs.qoder.com/cli/install',
+  'kimi-code': 'https://code.kimi.com',
+  zcode: 'https://zcode.z.ai/en',
+  'mimo-code': 'https://mimo.xiaomi.com/mimocode/start'
 }
 
 const BREW_PACKAGES: Partial<Record<ToolId, string>> = {
@@ -922,13 +1064,13 @@ async function maybeLaunchPostInstallSetup(id: ToolId): Promise<boolean> {
 
 /** AI coding tools installed via npm install -g */
 const NPM_PACKAGES: Partial<Record<ToolId, string>> = {
-  // NOTE: claude-code removed — Anthropic deprecated the npm package; native installer only
+  // NOTE: claude-code / grok-cli / zcode use native installers or desktop download
   'gemini-cli': '@google/gemini-cli',
   'codex-cli': '@openai/codex',
-  'opencode': 'opencode-ai',
-  'traecli': '@trae-ai/trae-cli',
-  'qwen-code': '@qwen-code/qwen-code',
-  'qoder-cli': '@qodo-ai/qoder'
+  opencode: 'opencode-ai',
+  'qoder-cli': '@qoder-ai/qodercli',
+  'kimi-code': '@moonshot-ai/kimi-code',
+  'mimo-code': '@mimo-ai/cli'
 }
 
 /** Brew fallback for tools that also support brew (macOS only) */
@@ -967,6 +1109,74 @@ export async function installTool(toolId: string): Promise<ToolInstallResult> {
       await shell.openExternal('https://docs.anthropic.com/en/docs/claude-code')
       return { success: true, openedBrowser: true }
     }
+  }
+
+  // Grok CLI — install via official xAI native installer (not an npm package)
+  if (id === 'grok-cli') {
+    if (process.platform === 'win32') {
+      // Windows: native installer guidance; open the install page
+      await shell.openExternal('https://x.ai/cli')
+      return { success: true, openedBrowser: true }
+    }
+    try {
+      await execAsync('curl -fsSL https://x.ai/cli/install.sh | bash', { timeout: 600000, env })
+      logger.info(`[local-env] Tool installed: ${id}`)
+      return { success: true }
+    } catch (err: any) {
+      logger.error('Failed to install Grok CLI via native installer:', err)
+      await shell.openExternal('https://x.ai/cli')
+      return { success: true, openedBrowser: true }
+    }
+  }
+
+  // Kimi Code — prefer official install script (no Node required); npm as fallback
+  if (id === 'kimi-code') {
+    if (process.platform === 'win32') {
+      try {
+        await execAsync(
+          'powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://code.kimi.com/kimi-code/install.ps1 | iex"',
+          { timeout: 600000, env }
+        )
+        logger.info(`[local-env] Tool installed: ${id}`)
+        return { success: true }
+      } catch (err: any) {
+        logger.error('Failed to install Kimi Code via PowerShell script:', err)
+        // fall through to npm
+      }
+    } else {
+      try {
+        await execAsync('curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash', { timeout: 600000, env })
+        logger.info(`[local-env] Tool installed: ${id}`)
+        return { success: true }
+      } catch (err: any) {
+        logger.error('Failed to install Kimi Code via install script:', err)
+        // fall through to npm
+      }
+    }
+  }
+
+  // MiMo Code — official script on POSIX; npm on all platforms
+  if (id === 'mimo-code' && process.platform !== 'win32') {
+    try {
+      await execAsync('curl -fsSL https://mimo.xiaomi.com/install | bash', { timeout: 600000, env })
+      logger.info(`[local-env] Tool installed: ${id}`)
+      return { success: true }
+    } catch (err: any) {
+      logger.error('Failed to install MiMo Code via install script:', err)
+      // fall through to npm
+    }
+  }
+
+  // ZCode is a desktop app — open official download page
+  if (id === 'zcode') {
+    await shell.openExternal('https://zcode.z.ai/en')
+    return { success: true, openedBrowser: true }
+  }
+
+  // Trae CLI — no reliable npm package; open official site
+  if (id === 'traecli') {
+    await shell.openExternal('https://www.trae.ai')
+    return { success: true, openedBrowser: true }
   }
 
   // AI coding tools — install via npm install -g
@@ -1080,6 +1290,54 @@ export async function uninstallTool(toolId: string): Promise<ToolInstallResult> 
     }
   }
 
+  // Grok CLI — native installer; remove the binaries it placed in ~/.local/bin
+  if (id === 'grok-cli') {
+    if (process.platform === 'win32') {
+      return { success: false, error: 'Windows 上请手动卸载 Grok CLI' }
+    }
+    try {
+      // The installer ships `grok` plus an `agent` helper binary
+      for (const bin of ['grok', 'agent']) {
+        const binPath = path.join(os.homedir(), '.local', 'bin', bin)
+        if (fs.existsSync(binPath)) {
+          fs.unlinkSync(binPath)
+        }
+      }
+      logger.info(`[local-env] Tool uninstalled: ${id}`)
+      return { success: true }
+    } catch (err: any) {
+      logger.error(`Failed to uninstall ${id}:`, err)
+      return { success: false, error: err.message }
+    }
+  }
+
+  // ZCode desktop app — no safe programmatic uninstall
+  if (id === 'zcode') {
+    return { success: false, error: '请通过系统方式卸载 ZCode 桌面应用' }
+  }
+
+  // Trae — no package manager path
+  if (id === 'traecli') {
+    return { success: false, error: '请手动卸载 Trae CLI' }
+  }
+
+  // Native-script installs (kimi / mimo) — try removing local bin first, then npm
+  if (id === 'kimi-code' || id === 'mimo-code') {
+    const binName = id === 'kimi-code' ? 'kimi' : 'mimo'
+    if (process.platform !== 'win32') {
+      const binPath = path.join(os.homedir(), '.local', 'bin', binName)
+      if (fs.existsSync(binPath)) {
+        try {
+          fs.unlinkSync(binPath)
+          logger.info(`[local-env] Tool uninstalled: ${id}`)
+          return { success: true }
+        } catch (err: any) {
+          logger.error(`Failed to uninstall ${id} native binary:`, err)
+        }
+      }
+    }
+  }
+
   // npm-managed AI CLI tools
   const npmPkg = NPM_PACKAGES[id]
   if (npmPkg) {
@@ -1156,6 +1414,22 @@ export async function upgradeTool(toolId: string): Promise<ToolInstallResult> {
     }
   }
 
+  // Grok CLI — re-run the native installer to pull the latest build
+  if (id === 'grok-cli') {
+    if (process.platform === 'win32') {
+      await shell.openExternal('https://x.ai/cli')
+      return { success: true, openedBrowser: true }
+    }
+    try {
+      await execAsync('curl -fsSL https://x.ai/cli/install.sh | bash', { timeout: 600000, env })
+      logger.info(`[local-env] Tool upgraded: ${id}`)
+      return { success: true }
+    } catch (err: any) {
+      logger.error(`Failed to upgrade ${id} via native installer:`, err)
+      return { success: false, error: err.stderr || err.message }
+    }
+  }
+
   // Other AI CLIs — reinstall the npm package at @latest
   const npmPkg = NPM_PACKAGES[id]
   if (npmPkg) {
@@ -1183,6 +1457,7 @@ export async function upgradeTool(toolId: string): Promise<ToolInstallResult> {
  */
 const VERSION_CHECK_PACKAGES: Partial<Record<ToolId, string>> = {
   'claude-code': '@anthropic-ai/claude-code',
+  // Grok/ZCode/Trae have no reliable npm version channel
   ...NPM_PACKAGES
 }
 

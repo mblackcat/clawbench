@@ -16,7 +16,36 @@ interface CodingTerminalViewProps {
 }
 
 /**
- * Terminal view for non-Claude AI tools (Gemini, Codex, OpenCode, Qwen, etc.).
+ * Default dark palette aligned with Windows Terminal / VS Code Dark+.
+ * `black` matches `background` so TUI tools that paint "default bg" vs
+ * "ANSI black" (Grok panels / input chrome) don't leave mismatched bands.
+ */
+const XTERM_DARK_THEME = {
+  background: '#0c0c0c',
+  foreground: '#cccccc',
+  cursor: '#ffffff',
+  cursorAccent: '#0c0c0c',
+  selectionBackground: '#264f78',
+  black: '#0c0c0c',
+  red: '#c50f1f',
+  green: '#13a10e',
+  yellow: '#c19c00',
+  blue: '#0037da',
+  magenta: '#881798',
+  cyan: '#3a96dd',
+  white: '#cccccc',
+  brightBlack: '#767676',
+  brightRed: '#e74856',
+  brightGreen: '#16c60c',
+  brightYellow: '#f9f1a5',
+  brightBlue: '#3b78ff',
+  brightMagenta: '#b4009e',
+  brightCyan: '#61d6d6',
+  brightWhite: '#f2f2f2'
+}
+
+/**
+ * Terminal view for non-Claude AI tools (Gemini, Codex, OpenCode, Grok, etc.).
  *
  * These tools are TUI-based applications that require a real PTY to function.
  * This component renders the raw PTY output via xterm.js and sends keyboard
@@ -38,35 +67,19 @@ const CodingTerminalView: React.FC<CodingTerminalViewProps> = ({ sessionId }) =>
     if (!containerRef.current) return
 
     const term = new Terminal({
-      fontFamily: '"Cascadia Code", "Fira Code", "JetBrains Mono", monospace',
+      fontFamily: '"Cascadia Code", "Cascadia Mono", "Fira Code", "JetBrains Mono", Consolas, monospace',
       fontSize: 13,
-      lineHeight: 1.4,
-      cursorBlink: false,
+      lineHeight: 1.2,
+      letterSpacing: 0,
+      cursorBlink: true,
       cursorStyle: 'bar',
-      theme: {
-        background: '#1e1e1e',
-        foreground: '#d4d4d4',
-        cursor: '#d4d4d4',
-        selectionBackground: '#264f78',
-        black: '#1e1e1e',
-        red: '#f44747',
-        green: '#6a9955',
-        yellow: '#dcdcaa',
-        blue: '#569cd6',
-        magenta: '#c678dd',
-        cyan: '#56b6c2',
-        white: '#d4d4d4',
-        brightBlack: '#808080',
-        brightRed: '#f44747',
-        brightGreen: '#6a9955',
-        brightYellow: '#dcdcaa',
-        brightBlue: '#569cd6',
-        brightMagenta: '#c678dd',
-        brightCyan: '#56b6c2',
-        brightWhite: '#ffffff',
-      },
+      // Fullscreen TUIs (Grok) draw to every cell — don't add visual padding
+      // that makes cols measure different from the painted surface.
+      theme: XTERM_DARK_THEME,
       scrollback: 5000,
       allowProposedApi: true,
+      // Avoid converting lone \n → \r\n which some ConPTY-hosted TUIs already emit correctly
+      convertEol: false
     })
 
     const fitAddon = new FitAddon()
@@ -158,8 +171,11 @@ const CodingTerminalView: React.FC<CodingTerminalViewProps> = ({ sessionId }) =>
     // before it's included in the selection).
     document.fonts.ready.then(() => {
       if (termRef.current !== term) return
-      fitAddon.fit()
-      term.refresh(0, term.rows - 1)
+      try {
+        fitAddon.fit()
+        term.refresh(0, term.rows - 1)
+        window.api.aiCoding.resizePty(sessionIdRef.current, term.cols, term.rows)
+      } catch { /* ignore */ }
     })
 
     term.attachCustomKeyEventHandler((event) => {
@@ -199,18 +215,61 @@ const CodingTerminalView: React.FC<CodingTerminalViewProps> = ({ sessionId }) =>
       }
     })
 
+    let lastCols = 0
+    let lastRows = 0
     const fitAndResize = (): void => {
       try {
         fitAddon.fit()
-        window.api.aiCoding.resizePty(sessionIdRef.current, term.cols, term.rows)
+        if (term.cols > 0 && term.rows > 0) {
+          // Always tell the PTY when the measured size changes. Also re-notify
+          // on equal sizes after a delayed re-fit so TUIs that missed the first
+          // SIGWINCH (common after route re-entry) still reflow.
+          const sizeChanged = term.cols !== lastCols || term.rows !== lastRows
+          lastCols = term.cols
+          lastRows = term.rows
+          if (sizeChanged) {
+            window.api.aiCoding.resizePty(sessionIdRef.current, term.cols, term.rows)
+          }
+        }
       } catch {
         // xterm-fit can throw while the container is not measurable.
       }
     }
 
-    const startOrAttach = async (): Promise<void> => {
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    /** Force PTY resize even when cols/rows are unchanged (post-visibility). */
+    const forceFitAndResize = (): void => {
+      try {
+        fitAddon.fit()
+        if (term.cols > 0 && term.rows > 0) {
+          lastCols = term.cols
+          lastRows = term.rows
+          window.api.aiCoding.resizePty(sessionIdRef.current, term.cols, term.rows)
+          term.refresh(0, term.rows - 1)
+        }
+      } catch {
+        // ignore until measurable
+      }
+    }
+
+    /** Wait until the container has a real layout size (not 0×0). */
+    const waitForLayout = async (maxFrames = 30): Promise<void> => {
+      for (let i = 0; i < maxFrames; i++) {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+        const el = containerRef.current
+        if (el && el.clientWidth > 40 && el.clientHeight > 40) {
+          fitAndResize()
+          // Require a non-default cols measurement (FitAddon needs measurable font metrics)
+          if (term.cols >= 20 && term.rows >= 5) return
+        }
+      }
       fitAndResize()
+    }
+
+    const startOrAttach = async (): Promise<void> => {
+      // Critical for Grok/fullscreen TUIs: spawn with the *actual* panel size,
+      // not the 80×24 default — many TUIs only layout once at boot.
+      await waitForLayout()
+      forceFitAndResize()
 
       const currentSession = useAICodingStore.getState().sessions.find(s => s.id === sessionId)
       const needsForcedPty = currentSession?.toolType === 'claude' || currentSession?.toolType === 'codex'
@@ -255,6 +314,12 @@ const CodingTerminalView: React.FC<CodingTerminalViewProps> = ({ sessionId }) =>
         if (buffered) term.write(buffered)
       }
 
+      // Push follow-up resizes so TUIs that only reflow on SIGWINCH pick up the
+      // final panel size after React/Allotment layout settles (route re-entry).
+      window.setTimeout(() => forceFitAndResize(), 50)
+      window.setTimeout(() => forceFitAndResize(), 250)
+      window.setTimeout(() => forceFitAndResize(), 500)
+
       replayed = true
       for (const data of queuedData.splice(0)) term.write(data)
     }
@@ -264,6 +329,26 @@ const CodingTerminalView: React.FC<CodingTerminalViewProps> = ({ sessionId }) =>
       fitAndResize()
     })
     resizeObserver.observe(containerRef.current)
+
+    // Window resize (also fired by AICodingPage after route re-entry) and
+    // visibility restore — covers cases where the container box is correct but
+    // xterm/PTY still hold a stale col count from a prior measurement.
+    const onWindowResize = (): void => { forceFitAndResize() }
+    window.addEventListener('resize', onWindowResize)
+
+    const onVisibility = (): void => {
+      if (document.visibilityState === 'visible') forceFitAndResize()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+
+    const intersectionObserver = typeof IntersectionObserver !== 'undefined'
+      ? new IntersectionObserver((entries) => {
+          if (entries.some((e) => e.isIntersecting && e.intersectionRatio > 0)) {
+            forceFitAndResize()
+          }
+        }, { threshold: [0, 0.01, 1] })
+      : null
+    intersectionObserver?.observe(containerRef.current)
 
     // During IME composition (Chinese input with candidate popup), xterm
     // repositions its hidden helper textarea to the cursor and grows its
@@ -294,6 +379,9 @@ const CodingTerminalView: React.FC<CodingTerminalViewProps> = ({ sessionId }) =>
     return () => {
       unsubData()
       resizeObserver.disconnect()
+      intersectionObserver?.disconnect()
+      window.removeEventListener('resize', onWindowResize)
+      document.removeEventListener('visibilitychange', onVisibility)
       helperTextarea?.removeEventListener('compositionstart', handleCompositionStart, true)
       helperTextarea?.removeEventListener('compositionupdate', handleCompositionUpdate)
       styleObserver?.disconnect()
@@ -312,14 +400,25 @@ const CodingTerminalView: React.FC<CodingTerminalViewProps> = ({ sessionId }) =>
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'clip' }}>
-      <div style={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative', background: '#1e1e1e', overflow: 'clip' }}>
+      <div
+        style={{
+          flex: 1,
+          minWidth: 0,
+          minHeight: 0,
+          position: 'relative',
+          // Match xterm theme background so letterbox edges don't flash a different color
+          background: XTERM_DARK_THEME.background,
+          overflow: 'clip'
+        }}
+      >
         <div
           ref={containerRef}
           style={{
             position: 'absolute',
             inset: 0,
             overflow: 'clip',
-            padding: '4px 0 0 4px',
+            // No padding: fullscreen TUIs measure cols against the full area
+            padding: 0
           }}
         />
       </div>

@@ -4,13 +4,13 @@ import {
   PlusOutlined, CodeOutlined, HistoryOutlined, CloseOutlined,
   DollarOutlined, BranchesOutlined, MessageOutlined
 } from '@ant-design/icons'
-import { getAIToolIcon } from './aiToolMeta'
+import { getAIToolIcon, TOOLS_WITH_NATIVE_SESSIONS as NATIVE_SESSION_TOOLS } from './aiToolMeta'
 import { useT, getT } from '../../i18n'
 import type { AIToolType, AICodingSession, ClaudeViewMode } from '../../types/ai-coding'
 
 const { Text } = Typography
 
-const TOOLS_WITH_NATIVE_SESSIONS: Set<AIToolType> = new Set(['claude', 'codex', 'gemini'])
+const TOOLS_WITH_NATIVE_SESSIONS: Set<AIToolType> = new Set(NATIVE_SESSION_TOOLS)
 const TOOLS_WITH_CHAT_VIEW: Set<AIToolType> = new Set(['claude', 'codex'])
 const NATIVE_HISTORY_PAGE_SIZE = 5
 

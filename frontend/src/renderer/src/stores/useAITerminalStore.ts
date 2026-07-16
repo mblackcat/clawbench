@@ -33,7 +33,6 @@ interface AITerminalState {
   dbConnectionStatus: Record<string, 'connected' | 'disconnected' | 'testing'>
   openDBTabs: DBTab[]
   activeDBTabId: string | null
-  dbTableData: Record<string, DBQueryResult>
   dbTableSchemas: Record<string, DBTableColumn[]>
   dbTables: Record<string, string[]>
   dbDatabases: Record<string, string[]>
@@ -65,7 +64,6 @@ interface AITerminalState {
   addAIMessage: (tabId: string, msg: TerminalAIMessage) => void
   setAIStreaming: (streaming: boolean) => void
   setAITaskId: (taskId: string | null) => void
-  clearAIMessages: (tabId: string) => void
 
   // Side mode
   setSideMode: (mode: SidePanelMode) => void
@@ -88,9 +86,6 @@ interface AITerminalState {
   closeOtherDBTabs: (tabId: string) => void
   closeAllDBTabs: () => void
   setActiveDBTab: (tabId: string | null) => void
-  queryDB: (tabId: string, sql: string) => Promise<DBQueryResult>
-  executeDBSql: (tabId: string, sql: string) => Promise<{ affectedRows: number; executionTimeMs: number }>
-  updateDBCellData: (tabId: string, changes: any[]) => Promise<void>
 
   // ── Row-level DB Actions ──
   getDBTableCount: (connId: string, tableName: string) => Promise<number>
@@ -98,6 +93,10 @@ interface AITerminalState {
   insertDBRow: (connId: string, tableName: string, rowData: Record<string, any>) => Promise<void>
   deleteDBRow: (connId: string, tableName: string, primaryKeys: Record<string, any>) => Promise<void>
   updateDBRow: (connId: string, tableName: string, primaryKeys: Record<string, any>, changes: Record<string, any>) => Promise<void>
+
+  // ── Column-level DB Actions (structure editing) ──
+  addDBColumn: (connId: string, tableName: string, column: { name: string; type: string; nullable: boolean; defaultValue?: string }) => Promise<void>
+  deleteDBColumn: (connId: string, tableName: string, columnName: string) => Promise<void>
 
   // Listeners
   initListeners: () => () => void
@@ -119,7 +118,6 @@ export const useAITerminalStore = create<AITerminalState>((set, get) => ({
   dbConnectionStatus: {},
   openDBTabs: [],
   activeDBTabId: null,
-  dbTableData: {},
   dbTableSchemas: {},
   dbTables: {},
   dbDatabases: {},
@@ -305,15 +303,6 @@ export const useAITerminalStore = create<AITerminalState>((set, get) => ({
   setAIStreaming: (streaming) => set({ aiStreaming: streaming }),
   setAITaskId: (taskId) => set({ aiTaskId: taskId }),
 
-  clearAIMessages: (tabId) => {
-    set(state => ({
-      aiMessages: {
-        ...state.aiMessages,
-        [tabId]: []
-      }
-    }))
-  },
-
   setSideMode: (mode) => set({ sideMode: mode }),
 
   // ══════════════════════════════════════════════════════
@@ -491,12 +480,9 @@ export const useAITerminalStore = create<AITerminalState>((set, get) => ({
       const newActiveId = state.activeDBTabId === tabId
         ? (newTabs.length > 0 ? newTabs[newTabs.length - 1].id : null)
         : state.activeDBTabId
-      const newData = { ...state.dbTableData }
-      delete newData[tabId]
       return {
         openDBTabs: newTabs,
-        activeDBTabId: newActiveId,
-        dbTableData: newData
+        activeDBTabId: newActiveId
       }
     })
   },
@@ -504,43 +490,18 @@ export const useAITerminalStore = create<AITerminalState>((set, get) => ({
   closeOtherDBTabs: (tabId) => {
     set(state => {
       const kept = state.openDBTabs.filter(t => t.id === tabId)
-      const newData: Record<string, DBQueryResult> = {}
-      if (state.dbTableData[tabId]) newData[tabId] = state.dbTableData[tabId]
       return {
         openDBTabs: kept,
-        activeDBTabId: kept.length > 0 ? tabId : null,
-        dbTableData: newData
+        activeDBTabId: kept.length > 0 ? tabId : null
       }
     })
   },
 
   closeAllDBTabs: () => {
-    set({ openDBTabs: [], activeDBTabId: null, dbTableData: {} })
+    set({ openDBTabs: [], activeDBTabId: null })
   },
 
   setActiveDBTab: (tabId) => set({ activeDBTabId: tabId }),
-
-  queryDB: async (tabId, sql) => {
-    const tab = get().openDBTabs.find(t => t.id === tabId)
-    if (!tab) throw new Error('Tab not found')
-    const result = await window.api.aiTerminal.queryDB(tab.connectionId, sql)
-    set(state => ({
-      dbTableData: { ...state.dbTableData, [tabId]: result }
-    }))
-    return result
-  },
-
-  executeDBSql: async (tabId, sql) => {
-    const tab = get().openDBTabs.find(t => t.id === tabId)
-    if (!tab) throw new Error('Tab not found')
-    return window.api.aiTerminal.executeDB(tab.connectionId, sql)
-  },
-
-  updateDBCellData: async (tabId, changes) => {
-    const tab = get().openDBTabs.find(t => t.id === tabId)
-    if (!tab || !tab.tableName) return
-    await window.api.aiTerminal.updateDBTableData(tab.connectionId, tab.tableName, changes)
-  },
 
   // ── Row-level DB Actions ──
 
@@ -632,6 +593,34 @@ export const useAITerminalStore = create<AITerminalState>((set, get) => ({
       return `${q}${k}${q} = '${String(v).replace(/'/g, "''")}'`
     }).join(' AND ')
     await window.api.aiTerminal.executeDB(connId, `UPDATE ${q}${tableName}${q} SET ${setClause} WHERE ${where}`)
+  },
+
+  // ── Column-level DB Actions (structure editing) ──
+
+  addDBColumn: async (connId, tableName, column) => {
+    const conn = get().dbConnections.find(c => c.id === connId)
+    if (!conn) throw new Error('Connection not found')
+    if (conn.type === 'mongodb') throw new Error('unsupported')
+    const q = conn.type === 'mysql' ? '`' : '"'
+    let sql = `ALTER TABLE ${q}${tableName}${q} ADD COLUMN ${q}${column.name}${q} ${column.type}`
+    if (!column.nullable) sql += ' NOT NULL'
+    if (column.defaultValue !== undefined && column.defaultValue !== '') {
+      // Numeric defaults go unquoted; everything else is quoted
+      const dv = column.defaultValue
+      sql += /^-?\d+(\.\d+)?$/.test(dv) ? ` DEFAULT ${dv}` : ` DEFAULT '${dv.replace(/'/g, "''")}'`
+    }
+    await window.api.aiTerminal.executeDB(connId, sql)
+    // Refresh cached schema for this table
+    await get().fetchDBTableSchema(connId, tableName)
+  },
+
+  deleteDBColumn: async (connId, tableName, columnName) => {
+    const conn = get().dbConnections.find(c => c.id === connId)
+    if (!conn) throw new Error('Connection not found')
+    if (conn.type === 'mongodb') throw new Error('unsupported')
+    const q = conn.type === 'mysql' ? '`' : '"'
+    await window.api.aiTerminal.executeDB(connId, `ALTER TABLE ${q}${tableName}${q} DROP COLUMN ${q}${columnName}${q}`)
+    await get().fetchDBTableSchema(connId, tableName)
   },
 
   initListeners: () => {

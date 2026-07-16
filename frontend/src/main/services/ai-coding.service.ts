@@ -55,9 +55,12 @@ async function resolveCommandPath(binary: string, env: Record<string, string>): 
       const { stdout } = await execFileAsync('where', [binary], { timeout: 3000, env })
       const lines = stdout.trim().split(/\r?\n/).filter(Boolean)
       if (lines.length > 0) {
-        // Prefer .cmd, .bat, or .exe shims over extensionless files
-        const exec = lines.find((p) => /\.(cmd|bat|exe)$/i.test(p))
-        return exec || lines[0]
+        // Prefer native .exe first (better ConPTY for fullscreen TUIs like Grok),
+        // then .cmd/.bat shims for npm-global CLIs, then extensionless paths.
+        const exe = lines.find((p) => /\.exe$/i.test(p))
+        if (exe) return exe
+        const shim = lines.find((p) => /\.(cmd|bat)$/i.test(p))
+        return shim || lines[0]
       }
     } catch {
       // Fall back to original binary
@@ -113,11 +116,16 @@ function buildToolEnv(toolType: AIToolType): Record<string, string> {
   const isDark = appTheme === 'dark'
 
   if (toolType === 'claude') {
-    // Claude Code: CLAUDE_CODE_THEME env var
+    // Claude Code: CLAUDE_CODE_THEME env var (chat/SDK mode respects app theme)
     env.CLAUDE_CODE_THEME = isDark ? 'dark' : 'light'
   }
-  // Gemini / Codex: COLORFGBG hint for terminal dark/light detection
-  env.COLORFGBG = isDark ? '15;0' : '0;15'
+
+  // CodingTerminalView is always a dark xterm surface (#0c0c0c / #1e1e1e).
+  // Advertise a dark terminal to every TUI tool so panel/input backgrounds
+  // match what the user sees in a local Windows Terminal / iTerm session.
+  // (Previously COLORFGBG followed the app light theme, which made Grok paint
+  // light-mode panels onto a dark xterm and look "broken".)
+  env.COLORFGBG = '15;0'
 
   return env
 }
