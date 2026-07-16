@@ -58,10 +58,11 @@ const MyContributionsPage: React.FC = () => {
   const [localApps, setLocalApps] = useState<LocalAppWithType[]>([]);
   const [allApps, setAllApps] = useState<Application[]>([]);
 
-  // 长按已发布卡片进入"抖动"模式（类似 iOS 桌面图标长按），卡片左上角浮出
-  // 一个小圆形 X 按钮，点击后走下架流程。同一时间只会有一张卡片处于抖动态，
-  // 所以用单个 ref 记时器即可，无需按卡片 id 建 Map。
-  const [jigglingId, setJigglingId] = useState<string | null>(null);
+  // 长按任意一张卡片进入全局"抖动"模式（类似 iOS 桌面图标长按）：本 Tab 下
+  // 所有卡片一起抖动，每张卡片左上角浮出一个圆形 X 按钮——已发布的走下架
+  // 流程，草稿/本地的走本地文件删除流程。抖动是全局态而非某张卡片的私有态，
+  // 所以用一个 boolean 即可。
+  const [isJiggleMode, setIsJiggleMode] = useState(false);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cancelLongPress = () => {
@@ -71,27 +72,27 @@ const MyContributionsPage: React.FC = () => {
     }
   };
 
-  const startLongPress = (appWithType: LocalAppWithType) => {
-    if (appWithType.appType !== 'published') return;
+  const startLongPress = () => {
     cancelLongPress();
     longPressTimer.current = setTimeout(() => {
-      setJigglingId(appWithType.id);
+      setIsJiggleMode(true);
     }, 550);
   };
 
-  // 抖动态下，在卡片之外任意位置按下即退出抖动（关闭 X 按钮）——但要放过
-  // X 按钮自身的按下事件，否则 X 会在它自己的 click 事件触发前就被卸载，
-  // 导致下架流程点不动。
+  // 抖动态下，在卡片之外任意位置按下即退出抖动——但要放过 X 按钮自身、以及
+  // 二次确认弹窗（modal.confirm 挂载在 document.body 下的 .ant-modal-root，
+  // 不在卡片 DOM 内）的按下事件，否则点击"取消"也会连带关闭抖动，或者 X
+  // 按钮在它自己的 click 事件触发前就被卸载导致点不动。
   useEffect(() => {
-    if (!jigglingId) return;
+    if (!isJiggleMode) return;
     const closeJiggle = (e: PointerEvent) => {
       const target = e.target as HTMLElement | null;
-      if (target?.closest('.cb-card-close-btn')) return;
-      setJigglingId(null);
+      if (target?.closest('.cb-card-close-btn') || target?.closest('.ant-modal-root')) return;
+      setIsJiggleMode(false);
     };
     window.addEventListener('pointerdown', closeJiggle);
     return () => window.removeEventListener('pointerdown', closeJiggle);
-  }, [jigglingId]);
+  }, [isJiggleMode]);
 
   // Active category tab — restored from localStorage, overridable via navigation state.
   const [activeTab, setActiveTab] = useState<MineTabKey>(() => {
@@ -342,9 +343,40 @@ const MyContributionsPage: React.FC = () => {
 
           message.success(t('mine.unpublishSuccess'));
           await loadApps();
+          // 只有真正成功了才退出抖动态；取消或失败都保持抖动，方便用户重试/改选。
+          setIsJiggleMode(false);
         } catch (error) {
           console.error('Failed to unpublish app:', error);
           message.error(t('mine.unpublishFailed'));
+        }
+      }
+    });
+  };
+
+  /** 草稿 / 本地（从未发布过）资源没有"下架"概念，直接删除本地文件即可。 */
+  const handleDeleteLocal = (appWithType: LocalAppWithType) => {
+    const { id, manifest } = appWithType;
+
+    modal.confirm({
+      title: t('mine.deleteConfirmTitle'),
+      content: t('mine.deleteConfirmContent', manifest.name),
+      okText: t('mine.delete'),
+      okType: 'danger',
+      cancelText: t('common.cancel'),
+      onOk: async () => {
+        try {
+          const result = await window.api.subapp.uninstall(id);
+          if (!result.success) {
+            console.warn('Failed to delete local files:', result.error);
+            message.error(t('mine.deleteLocalFailed'));
+            return; // 失败保持抖动态，不刷新列表
+          }
+          message.success(t('mine.deleteLocalSuccess'));
+          await loadApps();
+          setIsJiggleMode(false);
+        } catch (error) {
+          console.error('Failed to delete local app:', error);
+          message.error(t('mine.deleteLocalFailed'));
         }
       }
     });
@@ -355,36 +387,42 @@ const MyContributionsPage: React.FC = () => {
     const app = manifest;
     const isApp = !app.type || app.type === 'app';
     const isLink = app.type === 'link';
-    const isJiggling = jigglingId === id;
+    const isPublished = appType === 'published';
+    const closeAction = isPublished ? t('mine.unpublish') : t('mine.delete');
 
     return (
-      <div key={id} style={{ position: 'relative' }}>
-        {isJiggling && (
-          <Tooltip title={t('mine.unpublish')}>
+      <div
+        key={id}
+        className={`cb-glass-card${isJiggleMode ? ' cb-glass-card--jiggling' : ''}`}
+        onPointerDown={startLongPress}
+        onPointerUp={cancelLongPress}
+        onPointerLeave={cancelLongPress}
+        onPointerCancel={cancelLongPress}
+      >
+        {isJiggleMode && (
+          // 放在 .cb-glass-card 内部作为其子元素，才能随卡片的 jiggle 变换
+          // 一起转动、缩放，视觉上"长在"卡片左上角，而不是独立抖动的贴纸。
+          <Tooltip title={closeAction}>
             <div
               className="cb-card-close-btn"
               onClick={(e) => {
                 e.stopPropagation();
-                setJigglingId(null);
-                handleUnpublish(appWithType);
+                if (isPublished) {
+                  handleUnpublish(appWithType);
+                } else {
+                  handleDeleteLocal(appWithType);
+                }
               }}
               style={{
                 background: token.colorError,
                 border: `2px solid ${token.colorBgContainer}`
               }}
             >
-              <CloseOutlined style={{ fontSize: 11, color: token.colorWhite }} />
+              <CloseOutlined style={{ fontSize: 13, color: token.colorWhite }} />
             </div>
           </Tooltip>
         )}
-        <div
-          className={`cb-glass-card${isJiggling ? ' cb-glass-card--jiggling' : ''}`}
-          onPointerDown={() => startLongPress(appWithType)}
-          onPointerUp={cancelLongPress}
-          onPointerLeave={cancelLongPress}
-          onPointerCancel={cancelLongPress}
-        >
-          <div style={{ padding: '12px 16px', minHeight: 72, flex: 1 }}>
+        <div style={{ padding: '12px 16px', minHeight: 72, flex: 1 }}>
             <div style={{
               display: 'flex',
               alignItems: 'flex-start',
@@ -525,7 +563,6 @@ const MyContributionsPage: React.FC = () => {
               </>
             )}
           </div>
-        </div>
       </div>
     );
   };

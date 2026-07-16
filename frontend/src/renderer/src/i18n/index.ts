@@ -1143,6 +1143,11 @@ const translations: Record<Lang, Record<string, string>> = {
     'mine.unpublishFailed': '下架失败',
     'mine.unpublishNotFound': '未找到对应的已发布应用',
     'mine.localFilesDeleteFailed': '本地文件删除失败',
+    'mine.delete': '删除',
+    'mine.deleteConfirmTitle': '确认删除',
+    'mine.deleteConfirmContent': '确定要删除「{0}」的本地文件吗？删除后无法恢复。',
+    'mine.deleteLocalSuccess': '删除成功',
+    'mine.deleteLocalFailed': '删除失败',
 
     // AI 技能管理（我的页面 / 发现市场）
     'skill.empty': '暂无 AI 技能。拖入文件夹或一键导入全局技能开始使用。',
@@ -3378,6 +3383,11 @@ const translations: Record<Lang, Record<string, string>> = {
     'mine.unpublishFailed': 'Failed to unpublish',
     'mine.unpublishNotFound': 'Could not find the matching published application',
     'mine.localFilesDeleteFailed': 'Failed to delete local files',
+    'mine.delete': 'Delete',
+    'mine.deleteConfirmTitle': 'Confirm delete',
+    'mine.deleteConfirmContent': 'Delete the local files for "{0}"? This cannot be undone.',
+    'mine.deleteLocalSuccess': 'Deleted successfully',
+    'mine.deleteLocalFailed': 'Failed to delete',
 
     // AI skill management (Mine page / discovery market)
     'skill.empty': 'No AI skills yet. Drop a folder or import global skills to get started.',
