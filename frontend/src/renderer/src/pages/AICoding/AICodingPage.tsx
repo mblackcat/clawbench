@@ -82,6 +82,25 @@ const AICodingPage: React.FC = () => {
     fetchAll()
   }, [fetchAll])
 
+  // After route re-entry, flex + Allotment + xterm may measure against a
+  // transient container size. Kick a couple of layout passes once paint settles
+  // so panes and terminals pick up the real width without a manual window resize.
+  useEffect(() => {
+    const forceLayout = (): void => {
+      window.dispatchEvent(new Event('resize'))
+    }
+    const raf = requestAnimationFrame(() => {
+      requestAnimationFrame(forceLayout)
+    })
+    const t1 = window.setTimeout(forceLayout, 50)
+    const t2 = window.setTimeout(forceLayout, 200)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.clearTimeout(t1)
+      window.clearTimeout(t2)
+    }
+  }, [])
+
   // Handle session selection from sidebar
   const handleSelectSession = useCallback((sessionId: string) => {
     setActiveSession(sessionId)
@@ -156,26 +175,28 @@ const AICodingPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
+      <div style={{ display: 'flex', flex: 1, justifyContent: 'center', alignItems: 'center', height: '100%', width: '100%' }}>
         <Spin />
       </div>
     )
   }
 
   return (
-    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flex: 1, minHeight: 0, minWidth: 0, width: '100%', height: '100%', overflow: 'hidden' }}>
       <AICodingSidebar
         onNewWorkspace={handleNewWorkspace}
         onNewSession={handleNewSession}
         onSelectSession={handleSelectSession}
       />
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {layout ? (
-          <SplitContainer
-            layout={layout}
-            gitPanelOpen={vcsPanelOpen}
-            onToggleGitPanel={toggleVcsPanel}
-          />
+          <div style={{ flex: 1, minHeight: 0, minWidth: 0, width: '100%', height: '100%' }}>
+            <SplitContainer
+              layout={layout}
+              gitPanelOpen={vcsPanelOpen}
+              onToggleGitPanel={toggleVcsPanel}
+            />
+          </div>
         ) : (
           <div style={{
             flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',

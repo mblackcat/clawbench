@@ -215,19 +215,44 @@ const CodingTerminalView: React.FC<CodingTerminalViewProps> = ({ sessionId }) =>
       }
     })
 
+    let lastCols = 0
+    let lastRows = 0
     const fitAndResize = (): void => {
       try {
         fitAddon.fit()
         if (term.cols > 0 && term.rows > 0) {
-          window.api.aiCoding.resizePty(sessionIdRef.current, term.cols, term.rows)
+          // Always tell the PTY when the measured size changes. Also re-notify
+          // on equal sizes after a delayed re-fit so TUIs that missed the first
+          // SIGWINCH (common after route re-entry) still reflow.
+          const sizeChanged = term.cols !== lastCols || term.rows !== lastRows
+          lastCols = term.cols
+          lastRows = term.rows
+          if (sizeChanged) {
+            window.api.aiCoding.resizePty(sessionIdRef.current, term.cols, term.rows)
+          }
         }
       } catch {
         // xterm-fit can throw while the container is not measurable.
       }
     }
 
+    /** Force PTY resize even when cols/rows are unchanged (post-visibility). */
+    const forceFitAndResize = (): void => {
+      try {
+        fitAddon.fit()
+        if (term.cols > 0 && term.rows > 0) {
+          lastCols = term.cols
+          lastRows = term.rows
+          window.api.aiCoding.resizePty(sessionIdRef.current, term.cols, term.rows)
+          term.refresh(0, term.rows - 1)
+        }
+      } catch {
+        // ignore until measurable
+      }
+    }
+
     /** Wait until the container has a real layout size (not 0×0). */
-    const waitForLayout = async (maxFrames = 20): Promise<void> => {
+    const waitForLayout = async (maxFrames = 30): Promise<void> => {
       for (let i = 0; i < maxFrames; i++) {
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
         const el = containerRef.current
@@ -244,7 +269,7 @@ const CodingTerminalView: React.FC<CodingTerminalViewProps> = ({ sessionId }) =>
       // Critical for Grok/fullscreen TUIs: spawn with the *actual* panel size,
       // not the 80×24 default — many TUIs only layout once at boot.
       await waitForLayout()
-      fitAndResize()
+      forceFitAndResize()
 
       const currentSession = useAICodingStore.getState().sessions.find(s => s.id === sessionId)
       const needsForcedPty = currentSession?.toolType === 'claude' || currentSession?.toolType === 'codex'
@@ -289,10 +314,11 @@ const CodingTerminalView: React.FC<CodingTerminalViewProps> = ({ sessionId }) =>
         if (buffered) term.write(buffered)
       }
 
-      // Push a couple of follow-up resizes so TUIs that only reflow on SIGWINCH
-      // pick up the final panel size after React layout settles.
-      window.setTimeout(() => fitAndResize(), 50)
-      window.setTimeout(() => fitAndResize(), 250)
+      // Push follow-up resizes so TUIs that only reflow on SIGWINCH pick up the
+      // final panel size after React/Allotment layout settles (route re-entry).
+      window.setTimeout(() => forceFitAndResize(), 50)
+      window.setTimeout(() => forceFitAndResize(), 250)
+      window.setTimeout(() => forceFitAndResize(), 500)
 
       replayed = true
       for (const data of queuedData.splice(0)) term.write(data)
@@ -303,6 +329,26 @@ const CodingTerminalView: React.FC<CodingTerminalViewProps> = ({ sessionId }) =>
       fitAndResize()
     })
     resizeObserver.observe(containerRef.current)
+
+    // Window resize (also fired by AICodingPage after route re-entry) and
+    // visibility restore — covers cases where the container box is correct but
+    // xterm/PTY still hold a stale col count from a prior measurement.
+    const onWindowResize = (): void => { forceFitAndResize() }
+    window.addEventListener('resize', onWindowResize)
+
+    const onVisibility = (): void => {
+      if (document.visibilityState === 'visible') forceFitAndResize()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+
+    const intersectionObserver = typeof IntersectionObserver !== 'undefined'
+      ? new IntersectionObserver((entries) => {
+          if (entries.some((e) => e.isIntersecting && e.intersectionRatio > 0)) {
+            forceFitAndResize()
+          }
+        }, { threshold: [0, 0.01, 1] })
+      : null
+    intersectionObserver?.observe(containerRef.current)
 
     // During IME composition (Chinese input with candidate popup), xterm
     // repositions its hidden helper textarea to the cursor and grows its
@@ -333,6 +379,9 @@ const CodingTerminalView: React.FC<CodingTerminalViewProps> = ({ sessionId }) =>
     return () => {
       unsubData()
       resizeObserver.disconnect()
+      intersectionObserver?.disconnect()
+      window.removeEventListener('resize', onWindowResize)
+      document.removeEventListener('visibilitychange', onVisibility)
       helperTextarea?.removeEventListener('compositionstart', handleCompositionStart, true)
       helperTextarea?.removeEventListener('compositionupdate', handleCompositionUpdate)
       styleObserver?.disconnect()
