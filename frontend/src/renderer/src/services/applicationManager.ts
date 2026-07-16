@@ -111,6 +111,16 @@ class ApplicationManager {
   }
 
   /**
+   * 下架应用（取消发布）。成功时后端返回更新后的应用对象；
+   * 失败会抛出 ApiClientError（非 2xx 响应），由调用方 catch。
+   */
+  async unpublishApplication(applicationId: string): Promise<boolean> {
+    await apiClient.unpublishApplication(applicationId);
+    this.clearCache();
+    return true;
+  }
+
+  /**
    * 上传应用包
    */
   async uploadApplication(

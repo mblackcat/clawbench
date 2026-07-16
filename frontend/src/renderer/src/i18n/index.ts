@@ -1135,6 +1135,14 @@ const translations: Record<Lang, Record<string, string>> = {
     'mine.run': '运行',
     'mine.appStarted': '应用 {0} 已开始执行',
     'mine.runFailed': '运行应用失败',
+    'mine.unpublish': '下架',
+    'mine.unpublishConfirmTitle': '确认下架',
+    'mine.unpublishConfirmContent': '下架后「{0}」将从市场移除，用户将无法再搜索或安装该资源。',
+    'mine.deleteLocalFilesOption': '同时删除此 app 的本地文件',
+    'mine.unpublishSuccess': '下架成功',
+    'mine.unpublishFailed': '下架失败',
+    'mine.unpublishNotFound': '未找到对应的已发布应用',
+    'mine.localFilesDeleteFailed': '本地文件删除失败',
 
     // AI 技能管理（我的页面 / 发现市场）
     'skill.empty': '暂无 AI 技能。拖入文件夹或一键导入全局技能开始使用。',
@@ -3362,6 +3370,14 @@ const translations: Record<Lang, Record<string, string>> = {
     'mine.run': 'Run',
     'mine.appStarted': 'App {0} started',
     'mine.runFailed': 'Failed to run app',
+    'mine.unpublish': 'Unpublish',
+    'mine.unpublishConfirmTitle': 'Confirm unpublish',
+    'mine.unpublishConfirmContent': 'Unpublishing "{0}" will remove it from the marketplace — users will no longer be able to find or install it.',
+    'mine.deleteLocalFilesOption': 'Also delete this app\'s local files',
+    'mine.unpublishSuccess': 'Unpublished successfully',
+    'mine.unpublishFailed': 'Failed to unpublish',
+    'mine.unpublishNotFound': 'Could not find the matching published application',
+    'mine.localFilesDeleteFailed': 'Failed to delete local files',
 
     // AI skill management (Mine page / discovery market)
     'skill.empty': 'No AI skills yet. Drop a folder or import global skills to get started.',

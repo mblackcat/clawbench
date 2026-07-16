@@ -21,6 +21,7 @@ import type {
   Application,
   ApplicationDetail,
   DeleteApplicationResponse,
+  UnpublishApplicationResponse,
   UploadApplicationResponse,
   ListVersionsResponse,
 } from '../types/api';
@@ -244,6 +245,34 @@ class HttpClient {
         method: 'PUT',
         headers: this.buildHeaders(requireAuth),
         body: JSON.stringify(body),
+      });
+      return this.handleResponse<T>(response, requireAuth);
+    } catch (error) {
+      if (error instanceof ApiClientError) {
+        throw error;
+      }
+      throw new ApiClientError(
+        'Network error occurred',
+        'NETWORK_ERROR',
+        0,
+        error
+      );
+    }
+  }
+
+  /**
+   * PATCH 请求
+   */
+  async patch<T>(
+    url: string,
+    body?: any,
+    requireAuth: boolean = false
+  ): Promise<T> {
+    try {
+      const response = await fetch(`${API_BASE_URL}${url}`, {
+        method: 'PATCH',
+        headers: this.buildHeaders(requireAuth),
+        body: body !== undefined ? JSON.stringify(body) : undefined,
       });
       return this.handleResponse<T>(response, requireAuth);
     } catch (error) {
@@ -565,6 +594,19 @@ class ApiClient {
   ): Promise<DeleteApplicationResponse> {
     return this.httpClient.delete<DeleteApplicationResponse>(
       `/applications/${applicationId}`,
+      true
+    );
+  }
+
+  /**
+   * 下架应用（取消发布，保留应用记录与已上传的包）
+   */
+  async unpublishApplication(
+    applicationId: string
+  ): Promise<UnpublishApplicationResponse> {
+    return this.httpClient.patch<UnpublishApplicationResponse>(
+      `/applications/${applicationId}/unpublish`,
+      undefined,
       true
     );
   }

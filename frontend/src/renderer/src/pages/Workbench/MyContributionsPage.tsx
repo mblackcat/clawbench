@@ -4,13 +4,14 @@
  */
 
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import { Typography, Tag, Tooltip, theme, Button, App, Tabs, Empty } from 'antd';
+import { Typography, Tag, Tooltip, theme, Button, App, Tabs, Empty, Checkbox } from 'antd';
 import {
   EditOutlined,
   CloudUploadOutlined,
   PlayCircleOutlined,
   ArrowLeftOutlined,
-  ExportOutlined
+  ExportOutlined,
+  CloseCircleOutlined
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { applicationManager } from '../../services/applicationManager';
@@ -49,7 +50,7 @@ const MyContributionsPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { token } = theme.useToken();
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const t = useT();
   // Back button target. Default to 收藏栏; if the user came from 发现
   // (injected via navigate state), return there instead.
@@ -245,6 +246,75 @@ const MyContributionsPage: React.FC = () => {
     openExternalLink(url);
   };
 
+  const handleUnpublish = (appWithType: LocalAppWithType) => {
+    const { id, manifest } = appWithType;
+    // 通过 name 匹配已发布应用的服务端记录（与 classifyLocalApps 的匹配方式一致）。
+    const target = allApps.find((a) => a.name === manifest.name);
+    if (!target) {
+      message.error(t('mine.unpublishNotFound'));
+      return;
+    }
+
+    // modal.confirm 的 content 只渲染一次，用闭包变量记录勾选状态即可，
+    // 无需 useState（避免为一次性弹窗引入额外重渲染）。
+    let deleteLocalFiles = false;
+
+    modal.confirm({
+      title: t('mine.unpublishConfirmTitle'),
+      content: (
+        <div>
+          <div>{t('mine.unpublishConfirmContent', manifest.name)}</div>
+          <Checkbox
+            style={{ marginTop: 12 }}
+            onChange={(e) => {
+              deleteLocalFiles = e.target.checked;
+            }}
+          >
+            {t('mine.deleteLocalFilesOption')}
+          </Checkbox>
+        </div>
+      ),
+      okText: t('mine.unpublish'),
+      okType: 'danger',
+      cancelText: t('common.cancel'),
+      onOk: async () => {
+        try {
+          await applicationManager.unpublishApplication(target.applicationId);
+
+          // 回写本地 manifest 的 published:false，避免 resolveAppPublished 依赖
+          // 本地残留的 published:true 脏标记继续误判为已发布（发布流程发布成功后
+          // 也会做对称的 published:true 回写，参见 AppPublisher.tsx）。
+          try {
+            await window.api.developer.updateApp(id, { ...manifest, published: false });
+          } catch (writebackErr) {
+            console.warn('Failed to write back unpublished flag:', writebackErr);
+          }
+
+          if (deleteLocalFiles) {
+            try {
+              const result = await window.api.subapp.uninstall(id);
+              if (!result.success) {
+                // 本地文件本就可能不存在（如仅在服务端发布过、本地已手动清理），
+                // 这里只提示，不影响下架本身已经成功。
+                console.warn('Failed to delete local files:', result.error);
+                message.warning(t('mine.localFilesDeleteFailed'));
+              }
+            } catch (deleteErr) {
+              console.warn('Failed to delete local files:', deleteErr);
+              message.warning(t('mine.localFilesDeleteFailed'));
+            }
+          }
+
+          message.success(t('mine.unpublishSuccess'));
+          await loadApps();
+        } catch (error) {
+          console.error('Failed to unpublish app:', error);
+          message.error(t('mine.unpublishFailed'));
+        }
+      }
+    });
+  };
+
   const renderLocalAppCard = (appWithType: LocalAppWithType) => {
     const { id, manifest, appType } = appWithType;
     const app = manifest;
@@ -347,6 +417,28 @@ const MyContributionsPage: React.FC = () => {
               >
                 <ExportOutlined /> {t('workbench.open')}
               </div>
+              {appType === 'published' && (
+                <>
+                  <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorderSecondary }} />
+                  <div
+                    onClick={() => handleUnpublish(appWithType)}
+                    style={{
+                      flex: 1,
+                      padding: '8px 0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      cursor: 'pointer',
+                      color: token.colorError,
+                      fontWeight: 500,
+                      fontSize: 13
+                    }}
+                  >
+                    <CloseCircleOutlined /> {t('mine.unpublish')}
+                  </div>
+                </>
+              )}
             </>
           ) : (
             <>
@@ -388,6 +480,29 @@ const MyContributionsPage: React.FC = () => {
                     }}
                   >
                     <PlayCircleOutlined /> {t('mine.run')}
+                  </div>
+                </>
+              )}
+
+              {appType === 'published' && (
+                <>
+                  <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorderSecondary }} />
+                  <div
+                    onClick={() => handleUnpublish(appWithType)}
+                    style={{
+                      flex: 1,
+                      padding: '8px 0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      cursor: 'pointer',
+                      color: token.colorError,
+                      fontWeight: 500,
+                      fontSize: 13
+                    }}
+                  >
+                    <CloseCircleOutlined /> {t('mine.unpublish')}
                   </div>
                 </>
               )}
