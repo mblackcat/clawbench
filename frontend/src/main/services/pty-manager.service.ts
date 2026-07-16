@@ -163,13 +163,15 @@ export function getResumeArgs(toolType: AIToolType, toolSessionId: string): stri
     case 'zcode':
     case 'kimi':
     case 'mimo':
+    case 'grok':
+      // Grok Build CLI: -r / --resume [<SESSION_ID>]
+      // Note: --session-id is for *new* sessions only; does not resume existing ones.
       return ['--resume', toolSessionId]
     case 'codex':
+      // Codex uses a subcommand: codex resume <session-id>
       return ['resume', toolSessionId]
-    case 'grok':
-      // Grok Build CLI: --session / -s <session-id>
-      return ['--session', toolSessionId]
     case 'opencode':
+      // OpenCode: -s / --session <id>
       return ['--session', toolSessionId]
     default:
       return []
