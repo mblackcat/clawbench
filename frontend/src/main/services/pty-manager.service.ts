@@ -119,6 +119,8 @@ export function getToolCommand(toolType: AIToolType): { command: string; args: s
       return { command: 'codex', args: [] }
     case 'gemini':
       return { command: 'gemini', args: [] }
+    case 'grok':
+      return { command: 'grok', args: [] }
     case 'terminal':
       return {
         command: process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash'),

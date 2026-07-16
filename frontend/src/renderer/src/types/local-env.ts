@@ -2,7 +2,7 @@ export type ToolId =
   | 'python' | 'nodejs' | 'go' | 'java' | 'docker'
   | 'mysql' | 'postgresql' | 'mongodb' | 'redis'
   | 'git' | 'svn' | 'perforce'
-  | 'claude-code' | 'gemini-cli' | 'codex-cli' | 'opencode' | 'traecli' | 'qwen-code' | 'qoder-cli'
+  | 'claude-code' | 'gemini-cli' | 'codex-cli' | 'opencode' | 'traecli' | 'qwen-code' | 'qoder-cli' | 'grok-cli'
   | 'homebrew'
 
 export interface ToolInstallation {

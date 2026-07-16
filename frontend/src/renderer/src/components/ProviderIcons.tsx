@@ -192,6 +192,7 @@ export function toolTypeToProvider(toolType: string): string {
     case 'codex': return 'codex'
     case 'gemini': return 'gemini'
     case 'qwen': return 'qwen'
+    case 'grok': return 'xai'
     case 'opencode': return 'openai'
     default: return 'openai'
   }

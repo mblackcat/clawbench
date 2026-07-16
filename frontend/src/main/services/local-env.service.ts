@@ -14,7 +14,7 @@ type ToolId =
   | 'python' | 'nodejs' | 'go' | 'java' | 'docker'
   | 'mysql' | 'postgresql' | 'mongodb' | 'redis'
   | 'git' | 'svn' | 'perforce'
-  | 'claude-code' | 'gemini-cli' | 'codex-cli' | 'opencode' | 'traecli' | 'qwen-code' | 'qoder-cli'
+  | 'claude-code' | 'gemini-cli' | 'codex-cli' | 'opencode' | 'traecli' | 'qwen-code' | 'qoder-cli' | 'grok-cli'
   | 'homebrew'
 
 interface ToolInstallation {
@@ -704,6 +704,42 @@ async function detectQoderCli(env: NodeJS.ProcessEnv): Promise<ToolDetectionResu
   return detectNpmGlobalTool('qoder-cli', 'Qoder CLI', 'qoder', /(\d+\.\d+\.\d+)/, env)
 }
 
+async function detectGrokCli(env: NodeJS.ProcessEnv): Promise<ToolDetectionResult> {
+  const result: ToolDetectionResult = { toolId: 'grok-cli', name: 'Grok CLI', installed: false, installations: [] }
+
+  // The official xAI Grok CLI ("Grok Build") is distributed via a native
+  // installer (curl https://x.ai/cli/install.sh | bash) — NOT an npm package.
+  // The installer places the `grok` binary in ~/.local/bin/ (POSIX), the same
+  // convention as Claude Code's native installer.
+  const candidates: string[] = []
+
+  // Preferred location for the native installer (POSIX only — install.sh is Unix-only)
+  if (process.platform !== 'win32') {
+    const nativePath = path.join(os.homedir(), '.local', 'bin', 'grok')
+    candidates.push(nativePath)
+  }
+
+  // Also check PATH for other install locations (e.g. npm-global shims on Windows)
+  const whichPaths = await whichAll('grok', env)
+  for (const p of whichPaths) {
+    if (!candidates.includes(p)) candidates.push(p)
+  }
+
+  for (const binPath of candidates) {
+    try {
+      const raw = await getVersion(binPath, ['--version'], env)
+      if (!raw) continue
+      const m = raw.match(/(\d+\.\d+\.\d+)/)
+      result.installations.push({ path: binPath, version: m ? m[1] : raw })
+    } catch {
+      // Binary not found or not executable
+    }
+  }
+
+  result.installed = result.installations.length > 0
+  return result
+}
+
 // ── Package Managers / System Tools ──
 
 async function detectBrew(env: NodeJS.ProcessEnv): Promise<ToolDetectionResult> {
@@ -750,7 +786,7 @@ export async function detectAll(): Promise<LocalEnvDetectionResult> {
     python, nodejs, go, java, docker,
     mysql, postgresql, mongodb, redis,
     git, svn, perforce,
-    claudeCode, geminiCli, codexCli, openCode, traeCli, qwenCode, qoderCli,
+    claudeCode, geminiCli, codexCli, openCode, traeCli, qwenCode, qoderCli, grokCli,
     homebrew,
     packageManagers
   ] = await Promise.all([
@@ -773,6 +809,7 @@ export async function detectAll(): Promise<LocalEnvDetectionResult> {
     detectTraeCli(env),
     detectQwenCode(env),
     detectQoderCli(env),
+    detectGrokCli(env),
     process.platform === 'darwin' ? detectBrew(env) : Promise.resolve<ToolDetectionResult>({ toolId: 'homebrew', name: 'Homebrew', installed: false, installations: [] }),
     detectPackageManagers(env)
   ])
@@ -781,7 +818,7 @@ export async function detectAll(): Promise<LocalEnvDetectionResult> {
     python, nodejs, go, java, docker,
     mysql, postgresql, mongodb, redis,
     git, svn, perforce,
-    claudeCode, geminiCli, codexCli, openCode, traeCli, qwenCode, qoderCli
+    claudeCode, geminiCli, codexCli, openCode, traeCli, qwenCode, qoderCli, grokCli
   ]
 
   // Include Homebrew only on macOS
@@ -816,6 +853,7 @@ const DETECT_FN_MAP: Partial<Record<ToolId, (env: NodeJS.ProcessEnv) => Promise<
   traecli: detectTraeCli,
   'qwen-code': detectQwenCode,
   'qoder-cli': detectQoderCli,
+  'grok-cli': detectGrokCli,
   homebrew: detectBrew,
 }
 
@@ -851,7 +889,8 @@ const DOWNLOAD_URLS: Partial<Record<ToolId, string>> = {
   'opencode': 'https://opencode.ai',
   'traecli': 'https://www.trae.ai',
   'qwen-code': 'https://github.com/QwenLM/qwen-code',
-  'qoder-cli': 'https://qodo.ai'
+  'qoder-cli': 'https://qodo.ai',
+  'grok-cli': 'https://x.ai/cli'
 }
 
 const BREW_PACKAGES: Partial<Record<ToolId, string>> = {
@@ -969,6 +1008,24 @@ export async function installTool(toolId: string): Promise<ToolInstallResult> {
     }
   }
 
+  // Grok CLI — install via official xAI native installer (not an npm package)
+  if (id === 'grok-cli') {
+    if (process.platform === 'win32') {
+      // Windows: native installer guidance; open the install page
+      await shell.openExternal('https://x.ai/cli')
+      return { success: true, openedBrowser: true }
+    }
+    try {
+      await execAsync('curl -fsSL https://x.ai/cli/install.sh | bash', { timeout: 600000, env })
+      logger.info(`[local-env] Tool installed: ${id}`)
+      return { success: true }
+    } catch (err: any) {
+      logger.error('Failed to install Grok CLI via native installer:', err)
+      await shell.openExternal('https://x.ai/cli')
+      return { success: true, openedBrowser: true }
+    }
+  }
+
   // AI coding tools — install via npm install -g
   const npmPkg = NPM_PACKAGES[id]
   if (npmPkg) {
@@ -1080,6 +1137,27 @@ export async function uninstallTool(toolId: string): Promise<ToolInstallResult> 
     }
   }
 
+  // Grok CLI — native installer; remove the binaries it placed in ~/.local/bin
+  if (id === 'grok-cli') {
+    if (process.platform === 'win32') {
+      return { success: false, error: 'Windows 上请手动卸载 Grok CLI' }
+    }
+    try {
+      // The installer ships `grok` plus an `agent` helper binary
+      for (const bin of ['grok', 'agent']) {
+        const binPath = path.join(os.homedir(), '.local', 'bin', bin)
+        if (fs.existsSync(binPath)) {
+          fs.unlinkSync(binPath)
+        }
+      }
+      logger.info(`[local-env] Tool uninstalled: ${id}`)
+      return { success: true }
+    } catch (err: any) {
+      logger.error(`Failed to uninstall ${id}:`, err)
+      return { success: false, error: err.message }
+    }
+  }
+
   // npm-managed AI CLI tools
   const npmPkg = NPM_PACKAGES[id]
   if (npmPkg) {
@@ -1152,6 +1230,22 @@ export async function upgradeTool(toolId: string): Promise<ToolInstallResult> {
       return { success: true }
     } catch (err: any) {
       logger.error(`Failed to upgrade ${id}:`, err)
+      return { success: false, error: err.stderr || err.message }
+    }
+  }
+
+  // Grok CLI — re-run the native installer to pull the latest build
+  if (id === 'grok-cli') {
+    if (process.platform === 'win32') {
+      await shell.openExternal('https://x.ai/cli')
+      return { success: true, openedBrowser: true }
+    }
+    try {
+      await execAsync('curl -fsSL https://x.ai/cli/install.sh | bash', { timeout: 600000, env })
+      logger.info(`[local-env] Tool upgraded: ${id}`)
+      return { success: true }
+    } catch (err: any) {
+      logger.error(`Failed to upgrade ${id} via native installer:`, err)
       return { success: false, error: err.stderr || err.message }
     }
   }

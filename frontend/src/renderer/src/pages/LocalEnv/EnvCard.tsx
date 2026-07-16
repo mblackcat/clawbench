@@ -39,7 +39,8 @@ const AI_TOOL_PROVIDERS: Record<string, string> = {
   'claude-code': 'claude',
   'codex-cli': 'codex',
   'gemini-cli': 'google',
-  'qwen-code': 'qwen'
+  'qwen-code': 'qwen',
+  'grok-cli': 'xai'
 }
 
 function renderToolIcon(toolId: string, size = 20) {
@@ -67,7 +68,7 @@ const NPM_TOOL_IDS = new Set(['gemini-cli', 'codex-cli', 'qwen-code'])
 
 // AI coding CLI tools support one-click "upgrade" (npm reinstall @latest, or `claude update`)
 const AI_TOOL_IDS = new Set([
-  'claude-code', 'gemini-cli', 'codex-cli', 'opencode', 'traecli', 'qwen-code', 'qoder-cli'
+  'claude-code', 'gemini-cli', 'codex-cli', 'opencode', 'traecli', 'qwen-code', 'qoder-cli', 'grok-cli'
 ])
 
 // Tools whose uninstall is intentionally not offered from this card (no safe
@@ -98,7 +99,7 @@ const EnvCard: React.FC<EnvCardProps> = ({
   )
 
   const getInstallLabel = (): { label: string; viaPkgMgr: boolean } => {
-    if (tool.toolId === 'claude-code') {
+    if (tool.toolId === 'claude-code' || tool.toolId === 'grok-cli') {
       return { label: t('localEnv.oneClickInstall'), viaPkgMgr: true }
     }
     if (NPM_TOOL_IDS.has(tool.toolId)) {

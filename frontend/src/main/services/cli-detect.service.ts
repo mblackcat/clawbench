@@ -8,7 +8,7 @@ import * as logger from '../utils/logger'
 const execFileAsync = promisify(execFile)
 
 export interface DetectedCLI {
-  toolType: 'claude' | 'codex' | 'gemini' | 'opencode' | 'qwen' | 'terminal'
+  toolType: 'claude' | 'codex' | 'gemini' | 'opencode' | 'qwen' | 'grok' | 'terminal'
   name: string
   installed: boolean
   version?: string
@@ -269,7 +269,8 @@ export async function detectAvailableCLIs(): Promise<DetectedCLI[]> {
 
   const tools: Array<{ binary: string; toolType: DetectedCLI['toolType']; name: string }> = [
     { binary: 'codex', toolType: 'codex', name: 'Codex CLI' },
-    { binary: 'gemini', toolType: 'gemini', name: 'Gemini CLI' }
+    { binary: 'gemini', toolType: 'gemini', name: 'Gemini CLI' },
+    { binary: 'grok', toolType: 'grok', name: 'Grok CLI' }
   ]
 
   const [claudeResult, ...otherResults] = await Promise.all([

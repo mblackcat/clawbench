@@ -1,4 +1,4 @@
-export type AIToolType = 'claude' | 'codex' | 'gemini' | 'opencode' | 'qwen' | 'terminal'
+export type AIToolType = 'claude' | 'codex' | 'gemini' | 'opencode' | 'qwen' | 'grok' | 'terminal'
 
 // ── AskUserQuestion types ──
 

@@ -11,7 +11,7 @@ const { Title, Text } = Typography
 const BASE_DEV_IDS = new Set(['homebrew', 'python', 'nodejs', 'go', 'java', 'docker'])
 const DATABASE_IDS = new Set(['mysql', 'postgresql', 'mongodb', 'redis'])
 const VCS_IDS = new Set(['git', 'svn', 'perforce'])
-const AI_TOOL_IDS = new Set(['claude-code', 'gemini-cli', 'codex-cli', 'opencode', 'traecli', 'qwen-code', 'qoder-cli'])
+const AI_TOOL_IDS = new Set(['claude-code', 'gemini-cli', 'codex-cli', 'opencode', 'traecli', 'qwen-code', 'qoder-cli', 'grok-cli'])
 
 interface PackageDrawerState {
   kind: 'pip' | 'npm'

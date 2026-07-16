@@ -7,7 +7,7 @@ import { migrateStoreFile } from '../utils/store-migration'
 // before instantiating, so existing workspaces/sessions/IM config are preserved.
 migrateStoreFile('ai-workbench', 'ai-coding')
 
-export type AIToolType = 'claude' | 'codex' | 'gemini' | 'opencode' | 'qwen' | 'terminal'
+export type AIToolType = 'claude' | 'codex' | 'gemini' | 'opencode' | 'qwen' | 'grok' | 'terminal'
 
 export interface AICodingWorkspace {
   id: string

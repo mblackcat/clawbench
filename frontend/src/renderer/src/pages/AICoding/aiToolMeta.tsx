@@ -8,6 +8,7 @@ export const AI_TOOL_TAG_COLORS: Partial<Record<AIToolType, string>> = {
   gemini: 'blue',
   opencode: 'default',
   qwen: 'gold',
+  grok: 'default',
   terminal: 'default'
 }
 
@@ -17,6 +18,7 @@ export const AI_TOOL_NAMES: Record<AIToolType, string> = {
   gemini: 'Gemini',
   opencode: 'OpenCode',
   qwen: 'Qwen Code',
+  grok: 'Grok',
   terminal: 'Terminal'
 }
 
@@ -26,6 +28,7 @@ export const AI_TOOL_SHORT_NAMES: Record<AIToolType, string> = {
   gemini: 'Gemini',
   opencode: 'OpenCode',
   qwen: 'Qwen',
+  grok: 'Grok',
   terminal: 'Term'
 }
 
@@ -41,6 +44,7 @@ const AI_TOOL_ICON_PROVIDERS: Partial<Record<AIToolType, string | null>> = {
   gemini: 'google',
   opencode: '',
   qwen: 'qwen',
+  grok: 'xai',
   terminal: null
 }
 
