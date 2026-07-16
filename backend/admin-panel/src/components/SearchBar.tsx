@@ -1,33 +1,29 @@
 import React from 'react';
+import { Input } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 
 interface Props {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  style?: React.CSSProperties;
 }
 
-const SearchBar: React.FC<Props> = ({ value, onChange, placeholder = 'Search...' }) => {
+const SearchBar: React.FC<Props> = ({
+  value,
+  onChange,
+  placeholder = 'Search...',
+  style,
+}) => {
   return (
-    <div className="ios-search-bar" style={{ position: 'relative' }}>
-      <SearchOutlined
-        style={{
-          position: 'absolute',
-          left: 16,
-          top: '50%',
-          transform: 'translateY(-50%)',
-          fontSize: 18,
-          color: 'var(--text-tertiary)',
-          zIndex: 1,
-        }}
-      />
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-      />
-    </div>
+    <Input
+      allowClear
+      prefix={<SearchOutlined style={{ color: 'var(--text-tertiary)' }} />}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      style={{ maxWidth: 320, ...style }}
+    />
   );
 };
 

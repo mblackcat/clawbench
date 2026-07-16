@@ -102,6 +102,7 @@ const AppEditor: React.FC = () => {
             name: manifest.name,
             description: manifest.description,
             version: manifest.version,
+            icon: manifest.icon || '',
             supported_workspace_types: manifest.supported_workspace_types || [],
             params: manifest.params || []
           })
@@ -164,6 +165,7 @@ const AppEditor: React.FC = () => {
       feishu_id: user.feishu_id || user.id
     } : { name: 'Unknown' }
 
+    const iconVal = typeof values.icon === 'string' ? values.icon.trim() : ''
     const manifest = {
       id: manifestId,
       name: values.name ?? '',
@@ -171,6 +173,7 @@ const AppEditor: React.FC = () => {
       description: values.description ?? '',
       author: author,
       entry: 'main.py',
+      ...(iconVal ? { icon: iconVal } : {}),
       supported_workspace_types: values.supported_workspace_types ?? [],
       params: (values.params ?? []).map((p: Record<string, unknown>) =>
             coerceParamDefault(p)
@@ -312,6 +315,14 @@ const AppEditor: React.FC = () => {
             rules={[{ required: true, message: t('appEditor.versionRequired') }]}
           >
             <Input placeholder="1.0.0" />
+          </Form.Item>
+
+          <Form.Item
+            name="icon"
+            label={t('appEditor.cover')}
+            extra={t('appEditor.coverHelp')}
+          >
+            <Input placeholder={t('appEditor.coverPlaceholder')} />
           </Form.Item>
 
           <Form.Item name="supported_workspace_types" label={t('appEditor.workspaceTypes')}>

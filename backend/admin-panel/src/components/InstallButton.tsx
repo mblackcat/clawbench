@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { Button, Modal, Typography, message } from 'antd';
+import { Button, Modal, Typography } from 'antd';
 import { DownloadOutlined, AppleOutlined, WindowsOutlined } from '@ant-design/icons';
 import { useApi } from '../hooks/useApi';
 import type { LatestRelease } from '../types';
 
-const { Text, Title } = Typography;
+const { Text } = Typography;
 
 interface Props {
   appId: string;
@@ -13,33 +13,35 @@ interface Props {
   size?: 'small' | 'middle' | 'large';
 }
 
-const InstallButton: React.FC<Props> = ({ appId, appName, type = 'primary', size = 'middle' }) => {
+const InstallButton: React.FC<Props> = ({
+  appId,
+  appName,
+  type = 'primary',
+  size = 'middle',
+}) => {
   const [showFallback, setShowFallback] = useState(false);
   const [release, setRelease] = useState<LatestRelease | null>(null);
   const [loadingRelease, setLoadingRelease] = useState(false);
   const { fetchApi } = useApi();
 
-  const APP_STORE_URL = typeof window !== 'undefined'
-    ? `${window.location.protocol}//${window.location.host}/store`
-    : '/store';
+  const APP_STORE_URL =
+    typeof window !== 'undefined'
+      ? `${window.location.protocol}//${window.location.host}/store`
+      : '/store';
 
   const handleInstall = () => {
     const protocolUrl = `clawbench://install/${encodeURIComponent(appId)}?name=${encodeURIComponent(appName)}`;
-    // Try opening the protocol handler
     try {
       window.location.href = protocolUrl;
     } catch {
-      // Fallback: try window.open
       window.open(protocolUrl, '_blank');
     }
 
-    // After 2 seconds, check if we're still on the page
     const timer = setTimeout(() => {
       setShowFallback(true);
       loadReleaseInfo();
     }, 2000);
 
-    // If the page blurs (user switched to app), clear the timer
     const onBlur = () => {
       clearTimeout(timer);
       window.removeEventListener('blur', onBlur);
@@ -50,7 +52,9 @@ const InstallButton: React.FC<Props> = ({ appId, appName, type = 'primary', size
   const loadReleaseInfo = async () => {
     setLoadingRelease(true);
     try {
-      const res = await fetchApi<{ success: boolean; data: LatestRelease }>('/api/v1/releases/latest');
+      const res = await fetchApi<{ success: boolean; data: LatestRelease }>(
+        '/api/v1/releases/latest'
+      );
       setRelease(res.data);
     } catch {
       // Release info not available
@@ -61,19 +65,7 @@ const InstallButton: React.FC<Props> = ({ appId, appName, type = 'primary', size
 
   return (
     <>
-      <Button
-        type={type}
-        size={size}
-        icon={<DownloadOutlined />}
-        onClick={handleInstall}
-        className={type === 'primary' ? 'ios-install-btn' : ''}
-        style={type !== 'primary' ? undefined : {
-          height: size === 'large' ? 48 : undefined,
-          paddingLeft: size === 'large' ? 32 : undefined,
-          paddingRight: size === 'large' ? 32 : undefined,
-          fontSize: size === 'large' ? 16 : undefined,
-        }}
-      >
+      <Button type={type} size={size} icon={<DownloadOutlined />} onClick={handleInstall}>
         Install
       </Button>
 
@@ -125,20 +117,23 @@ const InstallButton: React.FC<Props> = ({ appId, appName, type = 'primary', size
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <Text type="secondary">No release information available.</Text>
-              <Button
-                type="primary"
-                size="large"
-                href={`${APP_STORE_URL}`}
-                target="_blank"
-              >
+              <Button type="primary" size="large" href={APP_STORE_URL} target="_blank">
                 Visit Download Page
               </Button>
             </div>
           )}
 
-          <div style={{ marginTop: 24, padding: 12, background: 'var(--glass-surface-bg)', borderRadius: 12 }}>
+          <div
+            style={{
+              marginTop: 24,
+              padding: 12,
+              background: 'var(--bg-muted)',
+              borderRadius: 10,
+            }}
+          >
             <Text type="secondary" style={{ fontSize: 13 }}>
-              After installing, click <Text strong style={{ color: 'var(--ios-accent)' }}>Install</Text> again to add <Text strong>{appName}</Text> to your workspace.
+              After installing, click <Text strong>Install</Text> again to add{' '}
+              <Text strong>{appName}</Text> to your workspace.
             </Text>
           </div>
         </div>

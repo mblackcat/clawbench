@@ -1,6 +1,6 @@
 // Shared types for the admin panel
 
-export type ApplicationType = 'app' | 'ai-skill' | 'prompt';
+export type ApplicationType = 'app' | 'ai-skill' | 'prompt' | 'link';
 
 export interface UserResponse {
   userId: string;
@@ -34,6 +34,22 @@ export interface ExecutionErrorResponse {
   createdAt: number;
 }
 
+/** Common metadata keys used across resource types */
+export interface ApplicationMetadata {
+  entry?: string;
+  category?: string;
+  params?: unknown;
+  supported_workspace_types?: string[];
+  /** Cover image URL (app / ai-skill / prompt / link) */
+  coverUrl?: string;
+  /** Legacy / link icon URL */
+  icon?: string;
+  /** Link target URL */
+  url?: string;
+  mini?: boolean;
+  [key: string]: unknown;
+}
+
 export interface ApplicationResponse {
   applicationId: string;
   name: string;
@@ -50,7 +66,7 @@ export interface ApplicationResponse {
   executionCount: number;
   /** Full version history (detail endpoint only, newest first) */
   versions?: ApplicationVersionResponse[];
-  metadata: Record<string, unknown> | null;
+  metadata: ApplicationMetadata | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -97,3 +113,12 @@ export interface PaginatedData<T> {
   limit: number;
   offset: number;
 }
+
+export const APPLICATION_TYPES: ApplicationType[] = ['app', 'ai-skill', 'prompt', 'link'];
+
+export const TYPE_LABELS: Record<ApplicationType | string, string> = {
+  app: 'App',
+  'ai-skill': 'AI Skill',
+  prompt: 'Prompt',
+  link: 'Link',
+};

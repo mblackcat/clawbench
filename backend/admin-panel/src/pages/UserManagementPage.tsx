@@ -1,11 +1,11 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Table, Select, Button, Popconfirm, Typography, App, Tag } from 'antd';
+import { Table, Select, Button, Popconfirm, App, Tag } from 'antd';
 import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
+import type { ColumnsType } from 'antd/es/table';
 import { useApi } from '../hooks/useApi';
 import SearchBar from '../components/SearchBar';
-import type { UserResponse, ApiResponse, PaginatedData } from '../types';
-
-const { Title, Text } = Typography;
+import type { UserResponse } from '../types';
+import { formatDate } from '../utils/cover';
 
 const UserManagementPage: React.FC = () => {
   const [users, setUsers] = useState<UserResponse[]>([]);
@@ -25,9 +25,10 @@ const UserManagementPage: React.FC = () => {
       params.set('limit', String(pageSize));
       params.set('offset', String((page - 1) * pageSize));
 
-      const res = await fetchApi<{ success: boolean; data: { users: UserResponse[]; total: number } }>(
-        `/api/v1/admin/users?${params.toString()}`
-      );
+      const res = await fetchApi<{
+        success: boolean;
+        data: { users: UserResponse[]; total: number };
+      }>(`/api/v1/admin/users?${params.toString()}`);
       setUsers(res.data.users);
       setTotal(res.data.total);
     } catch (err: any) {
@@ -64,24 +65,25 @@ const UserManagementPage: React.FC = () => {
     }
   };
 
-  const columns = [
+  const columns: ColumnsType<UserResponse> = [
     {
       title: 'Username',
       dataIndex: 'username',
       key: 'username',
-      render: (text: string) => <Text strong>{text}</Text>,
+      render: (text: string) => <strong>{text}</strong>,
     },
     {
       title: 'Email',
       dataIndex: 'email',
       key: 'email',
-      render: (text?: string) => text || <Text type="secondary">—</Text>,
+      render: (text?: string) => text || <span className="muted">—</span>,
     },
     {
       title: 'Role',
       dataIndex: 'role',
       key: 'role',
-      render: (role: string, record: UserResponse) => (
+      width: 120,
+      render: (role: string, record) => (
         <Select
           value={role as 'admin' | 'user'}
           onChange={(v: 'admin' | 'user') => handleRoleChange(record.userId, v)}
@@ -99,27 +101,21 @@ const UserManagementPage: React.FC = () => {
       key: 'authProvider',
       width: 100,
       render: (text?: string) => (
-        <Tag color={text === 'feishu' ? 'blue' : 'default'}>
-          {text || 'local'}
-        </Tag>
+        <Tag color={text === 'feishu' ? 'blue' : 'default'}>{text || 'local'}</Tag>
       ),
     },
     {
       title: 'Created',
       dataIndex: 'createdAt',
       key: 'createdAt',
-      width: 180,
-      render: (ts: number) => new Date(ts).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      }),
+      width: 140,
+      render: (ts: number) => <span className="muted">{formatDate(ts)}</span>,
     },
     {
       title: 'Actions',
       key: 'actions',
       width: 80,
-      render: (_: unknown, record: UserResponse) => (
+      render: (_: unknown, record) => (
         <Popconfirm
           title="Delete this user?"
           description="This action cannot be undone."
@@ -135,32 +131,29 @@ const UserManagementPage: React.FC = () => {
   ];
 
   return (
-    <div className="ios-page-enter">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <Title level={3} style={{ margin: 0, letterSpacing: '-0.02em' }}>
-          User Management
-        </Title>
-        <Button icon={<ReloadOutlined />} onClick={loadUsers} style={{ borderRadius: 10 }}>
+    <div>
+      <div className="page-header">
+        <div>
+          <h1>Users</h1>
+          <p className="page-desc">Manage platform accounts and roles.</p>
+        </div>
+        <Button icon={<ReloadOutlined />} onClick={loadUsers}>
           Refresh
         </Button>
       </div>
 
-      <div style={{ marginBottom: 20, maxWidth: 400 }}>
+      <div className="page-toolbar">
         <SearchBar
           value={search}
-          onChange={(v) => { setSearch(v); setPage(1); }}
-          placeholder="Search by username or email..."
+          onChange={(v) => {
+            setSearch(v);
+            setPage(1);
+          }}
+          placeholder="Search by username or email…"
         />
       </div>
 
-      <div className="ios-table-container" style={{
-        background: 'var(--glass-surface-bg)',
-        backdropFilter: 'blur(20px) saturate(180%)',
-        WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-        borderRadius: 'var(--glass-radius-md)',
-        border: '1px solid var(--glass-surface-border)',
-        overflow: 'hidden',
-      }}>
+      <div className="panel console-table" style={{ overflow: 'hidden' }}>
         <Table
           columns={columns}
           dataSource={users}
@@ -172,6 +165,7 @@ const UserManagementPage: React.FC = () => {
             total,
             onChange: setPage,
             showTotal: (t) => `${t} users`,
+            showSizeChanger: false,
           }}
         />
       </div>
