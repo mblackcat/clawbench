@@ -1109,6 +1109,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'localEnv.updateAvailable': '有新版本 v{0}',
     'localEnv.installed': '已安装',
     'localEnv.codingEnabled': 'AI Coding 可用',
+    'localEnv.codingEnabledTip': '控制此工具是否出现在 AI Coding 模块中',
     'localEnv.codingEnabledOn': '已开启：此工具会出现在 AI Coding 模块中',
     'localEnv.codingEnabledOff': '已关闭：此工具将从 AI Coding 模块中隐藏',
 
@@ -3329,6 +3330,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'localEnv.updateAvailable': 'Update available: v{0}',
     'localEnv.installed': 'Installed',
     'localEnv.codingEnabled': 'Available in AI Coding',
+    'localEnv.codingEnabledTip': 'Control whether this tool appears in the AI Coding module',
     'localEnv.codingEnabledOn': 'On: this tool appears in the AI Coding module',
     'localEnv.codingEnabledOff': 'Off: this tool is hidden from the AI Coding module',
 

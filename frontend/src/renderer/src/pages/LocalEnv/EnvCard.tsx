@@ -143,6 +143,18 @@ const EnvCard: React.FC<EnvCardProps> = ({
         {renderToolIcon(tool.toolId)}
         <Text strong style={{ fontSize: 16 }}>{tool.name}</Text>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+          {/* AI Coding enable switch — only when installed */}
+          {tool.installed && isAiCodingTool && onCodingEnabledChange && (
+            <Tooltip title={t('localEnv.codingEnabledTip')}>
+              <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                <Switch
+                  size="small"
+                  checked={codingEnabled}
+                  onChange={(checked) => onCodingEnabledChange(tool.toolId, checked)}
+                />
+              </span>
+            </Tooltip>
+          )}
           {/* Only show upgrade when a newer version is known */}
           {tool.installed && isAiCodingTool && hasUpdate && onUpgrade && (
             <Tooltip title={t('localEnv.updateAvailable', latestVersion as string)}>
@@ -283,32 +295,6 @@ const EnvCard: React.FC<EnvCardProps> = ({
           </div>
         )}
       </div>
-
-      {/* AI Coding enable switch — only for coding tools */}
-      {isAiCodingTool && onCodingEnabledChange && (
-        <div
-          style={{
-            marginTop: 12,
-            paddingTop: 12,
-            borderTop: `1px solid ${token.colorBorderSecondary}`,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 8
-          }}
-        >
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            {t('localEnv.codingEnabled')}
-          </Text>
-          <Tooltip title={codingEnabled ? t('localEnv.codingEnabledOn') : t('localEnv.codingEnabledOff')}>
-            <Switch
-              size="small"
-              checked={codingEnabled}
-              onChange={(checked) => onCodingEnabledChange(tool.toolId, checked)}
-            />
-          </Tooltip>
-        </div>
-      )}
     </Card>
   )
 }
