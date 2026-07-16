@@ -3,7 +3,7 @@
  * 展示用户本地创建的所有 app/skill/prompt
  */
 
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { Typography, Tag, Tooltip, theme, Button, App, Tabs, Empty, Checkbox } from 'antd';
 import {
   EditOutlined,
@@ -11,7 +11,7 @@ import {
   PlayCircleOutlined,
   ArrowLeftOutlined,
   ExportOutlined,
-  CloseCircleOutlined
+  CloseOutlined
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { applicationManager } from '../../services/applicationManager';
@@ -57,6 +57,41 @@ const MyContributionsPage: React.FC = () => {
   const backTarget = (location.state as { from?: string } | null)?.from || '/workbench/installed';
   const [localApps, setLocalApps] = useState<LocalAppWithType[]>([]);
   const [allApps, setAllApps] = useState<Application[]>([]);
+
+  // 长按已发布卡片进入"抖动"模式（类似 iOS 桌面图标长按），卡片左上角浮出
+  // 一个小圆形 X 按钮，点击后走下架流程。同一时间只会有一张卡片处于抖动态，
+  // 所以用单个 ref 记时器即可，无需按卡片 id 建 Map。
+  const [jigglingId, setJigglingId] = useState<string | null>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelLongPress = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
+
+  const startLongPress = (appWithType: LocalAppWithType) => {
+    if (appWithType.appType !== 'published') return;
+    cancelLongPress();
+    longPressTimer.current = setTimeout(() => {
+      setJigglingId(appWithType.id);
+    }, 550);
+  };
+
+  // 抖动态下，在卡片之外任意位置按下即退出抖动（关闭 X 按钮）——但要放过
+  // X 按钮自身的按下事件，否则 X 会在它自己的 click 事件触发前就被卸载，
+  // 导致下架流程点不动。
+  useEffect(() => {
+    if (!jigglingId) return;
+    const closeJiggle = (e: PointerEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('.cb-card-close-btn')) return;
+      setJigglingId(null);
+    };
+    window.addEventListener('pointerdown', closeJiggle);
+    return () => window.removeEventListener('pointerdown', closeJiggle);
+  }, [jigglingId]);
 
   // Active category tab — restored from localStorage, overridable via navigation state.
   const [activeTab, setActiveTab] = useState<MineTabKey>(() => {
@@ -320,194 +355,176 @@ const MyContributionsPage: React.FC = () => {
     const app = manifest;
     const isApp = !app.type || app.type === 'app';
     const isLink = app.type === 'link';
+    const isJiggling = jigglingId === id;
 
     return (
-      <div key={id} className="cb-glass-card">
-        <div style={{ padding: '12px 16px', minHeight: 72, flex: 1 }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: 8,
-            marginBottom: 8,
-            minHeight: 44
-          }}>
-            <Tooltip title={app.name}>
-              <Text
-                strong
-                style={{
-                  flex: 1,
-                  display: '-webkit-box',
-                  WebkitLineClamp: 2,
-                  WebkitBoxOrient: 'vertical',
-                  overflow: 'hidden',
-                  wordBreak: 'break-word',
-                  lineHeight: '22px',
-                  minHeight: 44
-                }}
-              >
-                {app.name}
-              </Text>
-            </Tooltip>
-          </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Tag style={{ margin: 0 }}>v{app.version}</Tag>
-            {getManifestTypeTag(app.type)}
-            {getAppTypeTag(appType)}
-          </div>
-        </div>
+      <div key={id} style={{ position: 'relative' }}>
+        {isJiggling && (
+          <Tooltip title={t('mine.unpublish')}>
+            <div
+              className="cb-card-close-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                setJigglingId(null);
+                handleUnpublish(appWithType);
+              }}
+              style={{
+                background: token.colorError,
+                border: `2px solid ${token.colorBgContainer}`
+              }}
+            >
+              <CloseOutlined style={{ fontSize: 11, color: token.colorWhite }} />
+            </div>
+          </Tooltip>
+        )}
         <div
-          style={{
-            display: 'flex',
-            borderTop: `1px solid ${token.colorBorderSecondary}`
-          }}
+          className={`cb-glass-card${isJiggling ? ' cb-glass-card--jiggling' : ''}`}
+          onPointerDown={() => startLongPress(appWithType)}
+          onPointerUp={cancelLongPress}
+          onPointerLeave={cancelLongPress}
+          onPointerCancel={cancelLongPress}
         >
-          <div
-            onClick={() => handleEdit(id, app.type)}
-            style={{
-              flex: 1,
-              padding: '8px 0',
+          <div style={{ padding: '12px 16px', minHeight: 72, flex: 1 }}>
+            <div style={{
               display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 6,
-              cursor: 'pointer',
-              color: token.colorTextSecondary,
-              fontWeight: 500,
-              fontSize: 13
+              alignItems: 'flex-start',
+              gap: 8,
+              marginBottom: 8,
+              minHeight: 44
+            }}>
+              <Tooltip title={app.name}>
+                <Text
+                  strong
+                  style={{
+                    flex: 1,
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
+                    wordBreak: 'break-word',
+                    lineHeight: '22px',
+                    minHeight: 44
+                  }}
+                >
+                  {app.name}
+                </Text>
+              </Tooltip>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <Tag style={{ margin: 0 }}>v{app.version}</Tag>
+              {getManifestTypeTag(app.type)}
+              {getAppTypeTag(appType)}
+            </div>
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              borderTop: `1px solid ${token.colorBorderSecondary}`
             }}
           >
-            <EditOutlined /> {t('mine.edit')}
+            <div
+              onClick={() => handleEdit(id, app.type)}
+              style={{
+                flex: 1,
+                padding: '8px 0',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                cursor: 'pointer',
+                color: token.colorTextSecondary,
+                fontWeight: 500,
+                fontSize: 13
+              }}
+            >
+              <EditOutlined /> {t('mine.edit')}
+            </div>
+
+            {isLink ? (
+              <>
+                <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorderSecondary }} />
+                <div
+                  onClick={() => handlePublish(id)}
+                  style={{
+                    flex: 1,
+                    padding: '8px 0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    cursor: 'pointer',
+                    color: token.colorPrimary,
+                    fontWeight: 500,
+                    fontSize: 13
+                  }}
+                >
+                  <CloudUploadOutlined /> {appType === 'published' ? t('mine.republish') : t('mine.publish')}
+                </div>
+                <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorderSecondary }} />
+                <div
+                  onClick={() => handleOpenLink(app)}
+                  style={{
+                    flex: 1,
+                    padding: '8px 0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    cursor: 'pointer',
+                    color: token.colorPrimary,
+                    fontWeight: 500,
+                    fontSize: 13
+                  }}
+                >
+                  <ExportOutlined /> {t('workbench.open')}
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorderSecondary }} />
+                <div
+                  onClick={() => handlePublish(id)}
+                  style={{
+                    flex: 1,
+                    padding: '8px 0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    cursor: 'pointer',
+                    color: token.colorPrimary,
+                    fontWeight: 500,
+                    fontSize: 13
+                  }}
+                >
+                  <CloudUploadOutlined /> {appType === 'published' ? t('mine.republish') : t('mine.publish')}
+                </div>
+
+                {isApp && (
+                  <>
+                    <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorderSecondary }} />
+                    <div
+                      onClick={() => handleRun(id, app.name)}
+                      style={{
+                        flex: 1,
+                        padding: '8px 0',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 6,
+                        cursor: 'pointer',
+                        color: token.colorSuccess,
+                        fontWeight: 500,
+                        fontSize: 13
+                      }}
+                    >
+                      <PlayCircleOutlined /> {t('mine.run')}
+                    </div>
+                  </>
+                )}
+              </>
+            )}
           </div>
-
-          {isLink ? (
-            <>
-              <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorderSecondary }} />
-              <div
-                onClick={() => handlePublish(id)}
-                style={{
-                  flex: 1,
-                  padding: '8px 0',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6,
-                  cursor: 'pointer',
-                  color: token.colorPrimary,
-                  fontWeight: 500,
-                  fontSize: 13
-                }}
-              >
-                <CloudUploadOutlined /> {appType === 'published' ? t('mine.republish') : t('mine.publish')}
-              </div>
-              <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorderSecondary }} />
-              <div
-                onClick={() => handleOpenLink(app)}
-                style={{
-                  flex: 1,
-                  padding: '8px 0',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6,
-                  cursor: 'pointer',
-                  color: token.colorPrimary,
-                  fontWeight: 500,
-                  fontSize: 13
-                }}
-              >
-                <ExportOutlined /> {t('workbench.open')}
-              </div>
-              {appType === 'published' && (
-                <>
-                  <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorderSecondary }} />
-                  <div
-                    onClick={() => handleUnpublish(appWithType)}
-                    style={{
-                      flex: 1,
-                      padding: '8px 0',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 6,
-                      cursor: 'pointer',
-                      color: token.colorError,
-                      fontWeight: 500,
-                      fontSize: 13
-                    }}
-                  >
-                    <CloseCircleOutlined /> {t('mine.unpublish')}
-                  </div>
-                </>
-              )}
-            </>
-          ) : (
-            <>
-              <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorderSecondary }} />
-              <div
-                onClick={() => handlePublish(id)}
-                style={{
-                  flex: 1,
-                  padding: '8px 0',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6,
-                  cursor: 'pointer',
-                  color: token.colorPrimary,
-                  fontWeight: 500,
-                  fontSize: 13
-                }}
-              >
-                <CloudUploadOutlined /> {appType === 'published' ? t('mine.republish') : t('mine.publish')}
-              </div>
-
-              {isApp && (
-                <>
-                  <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorderSecondary }} />
-                  <div
-                    onClick={() => handleRun(id, app.name)}
-                    style={{
-                      flex: 1,
-                      padding: '8px 0',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 6,
-                      cursor: 'pointer',
-                      color: token.colorSuccess,
-                      fontWeight: 500,
-                      fontSize: 13
-                    }}
-                  >
-                    <PlayCircleOutlined /> {t('mine.run')}
-                  </div>
-                </>
-              )}
-
-              {appType === 'published' && (
-                <>
-                  <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorderSecondary }} />
-                  <div
-                    onClick={() => handleUnpublish(appWithType)}
-                    style={{
-                      flex: 1,
-                      padding: '8px 0',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 6,
-                      cursor: 'pointer',
-                      color: token.colorError,
-                      fontWeight: 500,
-                      fontSize: 13
-                    }}
-                  >
-                    <CloseCircleOutlined /> {t('mine.unpublish')}
-                  </div>
-                </>
-              )}
-            </>
-          )}
         </div>
       </div>
     );

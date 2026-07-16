@@ -205,6 +205,34 @@ body[data-theme="dark"] {
   box-shadow: var(--cb-card-shadow-hover);
 }
 
+/* --- Long-press jiggle + corner close button (我的页面：下架) --- */
+
+@keyframes cb-card-jiggle {
+  0%, 100% { transform: rotate(-1.2deg); }
+  50% { transform: rotate(1.2deg); }
+}
+
+.cb-glass-card--jiggling {
+  animation: cb-card-jiggle 0.2s ease-in-out infinite;
+}
+
+.cb-card-close-btn {
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 2;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  animation: cb-card-jiggle 0.2s ease-in-out infinite;
+  animation-direction: reverse;
+}
+
 /* --- Custom Scrollbar --- */
 
 [data-theme="light"] ::-webkit-scrollbar {
