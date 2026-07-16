@@ -44,7 +44,7 @@ const AI_TOOL_ICON_PROVIDERS: Partial<Record<AIToolType, string | null>> = {
   gemini: 'google',
   opencode: '',
   qwen: 'qwen',
-  grok: 'xai',
+  grok: 'grok',
   terminal: null
 }
 

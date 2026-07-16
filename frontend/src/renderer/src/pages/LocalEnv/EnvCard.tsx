@@ -40,7 +40,7 @@ const AI_TOOL_PROVIDERS: Record<string, string> = {
   'codex-cli': 'codex',
   'gemini-cli': 'google',
   'qwen-code': 'qwen',
-  'grok-cli': 'xai'
+  'grok-cli': 'grok'
 }
 
 function renderToolIcon(toolId: string, size = 20) {

@@ -62,6 +62,15 @@ const KimiSvg: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   </svg>
 )
 
+// xAI / Grok brand mark — the 𝕏 glyph. currentColor so it stays visible in
+// both light and dark themes (the brand's own mark is pure black, which would
+// disappear on dark backgrounds — same issue JavaSvg documents).
+const GrokSvg: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  <svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" {...props}>
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+  </svg>
+)
+
 const AzureOpenAISvg: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" {...props}>
     <path clipRule="evenodd" d="M16.233 0c.713 0 1.345.551 1.572 1.329.227.778 1.555 5.59 1.555 5.59v9.562h-4.813L14.645 0h1.588z" fill="url(#pi_azure_g0)" fillRule="evenodd" />
@@ -114,6 +123,7 @@ const PROVIDER_ICONS: ProviderIconMap = {
   doubao: DoubaoSvg,
   ark: DoubaoSvg,
   kimi: KimiSvg,
+  grok: GrokSvg,
   moonshot: KimiSvg,
   minimax: MinimaxSvg,
   glm: ZhipuSvg,
@@ -149,6 +159,7 @@ const PROVIDER_BRAND_COLORS: Record<string, string> = {
   doubao: '#FA541C',
   ark: '#FA541C',
   kimi: '#1783FF',
+  grok: '#000000',
   moonshot: '#1783FF',
   minimax: '#1a1a1a',
   glm: '#3B82F6',
@@ -192,7 +203,7 @@ export function toolTypeToProvider(toolType: string): string {
     case 'codex': return 'codex'
     case 'gemini': return 'gemini'
     case 'qwen': return 'qwen'
-    case 'grok': return 'xai'
+    case 'grok': return 'grok'
     case 'opencode': return 'openai'
     default: return 'openai'
   }
