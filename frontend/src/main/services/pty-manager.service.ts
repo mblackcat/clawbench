@@ -120,7 +120,10 @@ export function getToolCommand(toolType: AIToolType): { command: string; args: s
     case 'gemini':
       return { command: 'gemini', args: [] }
     case 'grok':
-      return { command: 'grok', args: [] }
+      // Force fullscreen alt-screen TUI. Grok otherwise auto-detects the host
+      // terminal and may fall into a sticky "minimal"/inline mode that breaks
+      // width and panel backgrounds when hosted inside Electron xterm.
+      return { command: 'grok', args: ['--fullscreen'] }
     case 'opencode':
       return { command: 'opencode', args: [] }
     case 'trae':
@@ -197,21 +200,37 @@ export function createPtySession(
   outputBuffers.delete(sessionId)
   pendingLines.delete(sessionId)
 
-  // Ensure UTF-8 locale and true-colour support regardless of user shell config
+  const cols = initialSize?.cols || 80
+  const rows = initialSize?.rows || 24
+
+  // Ensure UTF-8 locale and true-colour support regardless of user shell config.
+  // COLUMNS/LINES help TUIs (Grok, Ink-based apps) that also read env size at boot.
   const baseEnv: Record<string, string> = {
     LANG: 'en_US.UTF-8',
     LC_ALL: 'en_US.UTF-8',
     LC_CTYPE: 'en_US.UTF-8',
     TERM: 'xterm-256color',
-    COLORTERM: 'truecolor'
+    COLORTERM: 'truecolor',
+    FORCE_COLOR: '3',
+    COLUMNS: String(cols),
+    LINES: String(rows)
   }
 
   let spawnCommand = command
   let spawnArgs = args
 
+  // Windows: only route through cmd.exe for shell scripts / bare names that
+  // need PATH + .cmd shim resolution. Spawning .exe directly via ConPTY is
+  // required for fullscreen TUIs (Grok, etc.) — wrapping them in `cmd /c`
+  // breaks alt-screen, size detection, and cell-background painting.
   if (process.platform === 'win32') {
     const lowerCmd = command.toLowerCase()
-    if (!lowerCmd.endsWith('cmd.exe') && !lowerCmd.endsWith('powershell.exe') && !lowerCmd.endsWith('pwsh.exe')) {
+    const isShell =
+      lowerCmd.endsWith('cmd.exe') ||
+      lowerCmd.endsWith('powershell.exe') ||
+      lowerCmd.endsWith('pwsh.exe')
+    const isNativeExe = lowerCmd.endsWith('.exe')
+    if (!isShell && !isNativeExe) {
       spawnCommand = 'cmd.exe'
       spawnArgs = ['/c', command, ...args]
     }
@@ -221,8 +240,8 @@ export function createPtySession(
   try {
     ptyProcess = pty.spawn(spawnCommand, spawnArgs, {
       name: 'xterm-256color',
-      cols: initialSize?.cols || 80,
-      rows: initialSize?.rows || 24,
+      cols,
+      rows,
       cwd,
       env: { ...(env ?? process.env), ...baseEnv } as Record<string, string>
     })
@@ -231,7 +250,7 @@ export function createPtySession(
     throw err
   }
 
-  logger.info(`[pty] Session created: ${sessionId} cmd=${spawnCommand}`)
+  logger.info(`[pty] Session created: ${sessionId} cmd=${spawnCommand} size=${cols}x${rows}`)
   ptySessions.set(sessionId, ptyProcess)
   if (onExit) exitCallbacks.set(sessionId, onExit)
 
