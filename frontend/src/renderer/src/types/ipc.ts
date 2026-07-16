@@ -658,6 +658,7 @@ export interface ClawBenchAPI {
     onPtyData: (callback: (data: { sessionId: string; data: string }) => void) => () => void
     onPtyExit: (callback: (data: { sessionId: string; exitCode: number }) => void) => () => void
     onTerminalExit: (callback: (data: { sessionId: string; exitCode: number }) => void) => () => void
+    onDBIdleDisconnected: (callback: (data: { id: string }) => void) => () => void
     getQuickCommands: () => Promise<import('./ai-terminal').QuickCommand[]>
     saveQuickCommand: (data: Partial<import('./ai-terminal').QuickCommand>) => Promise<import('./ai-terminal').QuickCommand>
     deleteQuickCommand: (id: string) => Promise<boolean>

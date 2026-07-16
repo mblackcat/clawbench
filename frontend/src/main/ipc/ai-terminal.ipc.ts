@@ -7,6 +7,17 @@ export function registerAITerminalIpc(): void {
   // Pre-load shell environment so SSH inherits user profile variables
   // (SSH_AUTH_SOCK, full PATH, custom env from .zshrc/.bashrc)
   loadShellEnv().catch(() => { /* fallback to process.env */ })
+
+  // Long-idle DB connections are auto-disconnected in the service layer to release
+  // pooled connections (mysql/pg pools otherwise never get released). Broadcast the
+  // event so open renderer windows can flip the connection's UI state to disconnected —
+  // the user reconnects manually next time they need it.
+  aiTerminalService.setDBIdleDisconnectHandler((id: string) => {
+    BrowserWindow.getAllWindows().forEach(win => {
+      win.webContents.send('ai-terminal:db-idle-disconnected', { id })
+    })
+  })
+
   // ── Terminal Connections ──
 
   ipcMain.handle('ai-terminal:get-connections', () => {

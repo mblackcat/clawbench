@@ -655,6 +655,11 @@ export const api = {
       ipcRenderer.on('ai-terminal:exit', handler)
       return () => ipcRenderer.removeListener('ai-terminal:exit', handler)
     },
+    onDBIdleDisconnected: (callback: (data: { id: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
+      ipcRenderer.on('ai-terminal:db-idle-disconnected', handler)
+      return () => ipcRenderer.removeListener('ai-terminal:db-idle-disconnected', handler)
+    },
 
     // Quick commands
     getQuickCommands: () => ipcRenderer.invoke('ai-terminal:get-quick-commands'),
