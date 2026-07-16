@@ -93,8 +93,11 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
   const [detailRow, setDetailRow] = useState<Record<string, any> | null>(null)
   const [detailMode, setDetailMode] = useState<'view' | 'edit' | 'new'>('new')
 
-  // Read-only cell content popup (shown on hover / single click)
-  const [cellPopup, setCellPopup] = useState<{ x: number; y: number; text: string } | null>(null)
+  // Read-only cell content popup (hover / left-click on truncated cells).
+  // Imperative DOM updates avoid React re-renders that would close Handsontable's
+  // context menu when the mouse moves across cells.
+  const cellPopupRef = useRef<HTMLDivElement>(null)
+  const cellPopupKeyRef = useRef<string | null>(null)
 
   // Column add / copy modal (Structure page)
   const [colModalOpen, setColModalOpen] = useState(false)
@@ -347,20 +350,66 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
     t('db.colNullable'), t('db.colDefault'), t('db.colExtra')
   ], [t])
 
-  // ── Read-only cell content popup (hover / single click) ──
-  // Shows the full, untruncated cell value in a floating box anchored to the
-  // cell. Only active in read-only mode; edit mode uses inline cell editors.
+  // ── Read-only cell content popup (hover / left-click) ──
+  // Full cell value in a floating box, only when text is ellipsis-truncated.
+  // Skipped in edit mode and while Handsontable's context menu is open.
+  const hideCellPopup = useCallback(() => {
+    const el = cellPopupRef.current
+    if (el) el.style.display = 'none'
+    cellPopupKeyRef.current = null
+  }, [])
+
+  const isOverlayMenuOpen = useCallback(() => {
+    // Handsontable context / column dropdown menus share this open pattern.
+    const menus = document.querySelectorAll('.htContextMenu, .htDropdownMenu')
+    for (let i = 0; i < menus.length; i++) {
+      const m = menus[i]
+      if (!(m instanceof HTMLElement)) continue
+      if (m.classList.contains('htGhostTable') || m.classList.contains('htHidden')) continue
+      if (window.getComputedStyle(m).display === 'none') continue
+      return true
+    }
+    return false
+  }, [])
+
+  /** True when the cell paints with overflow ellipsis (single-line compact grid). */
+  const isCellTruncated = useCallback((td: HTMLElement) => {
+    // Sub-pixel rounding can make scrollWidth slightly larger without real overflow.
+    return td.scrollWidth > td.clientWidth + 1 || td.scrollHeight > td.clientHeight + 1
+  }, [])
+
   const showCellPopup = useCallback((td: HTMLElement, row: number, col: number) => {
-    if (editMode || row < 0 || col < 0) return
+    if (editMode || row < 0 || col < 0 || isOverlayMenuOpen()) {
+      hideCellPopup()
+      return
+    }
+    if (!isCellTruncated(td)) {
+      hideCellPopup()
+      return
+    }
     const colName = data?.columns?.[col]
     if (!colName) return
     const raw = data?.rows?.[row]?.[colName]
     const text = raw === null || raw === undefined
       ? 'NULL'
       : (typeof raw === 'object' ? JSON.stringify(raw, null, 2) : String(raw))
+    // Empty / whitespace-only values are never useful as a popup
+    if (!text || !String(text).trim()) {
+      hideCellPopup()
+      return
+    }
+    const key = `${row}:${col}`
+    const el = cellPopupRef.current
+    if (!el) return
+    // Avoid reflow when still hovering the same truncated cell
+    if (cellPopupKeyRef.current === key && el.style.display !== 'none') return
+    cellPopupKeyRef.current = key
     const rect = td.getBoundingClientRect()
-    setCellPopup({ x: rect.left, y: rect.bottom + 2, text })
-  }, [editMode, data?.columns, data?.rows])
+    el.textContent = text
+    el.style.left = `${rect.left}px`
+    el.style.top = `${rect.bottom + 2}px`
+    el.style.display = 'block'
+  }, [editMode, data?.columns, data?.rows, isOverlayMenuOpen, isCellTruncated, hideCellPopup])
 
   const handleCellMouseOver = useCallback(
     (_event: MouseEvent, coords: { row: number; col: number }, td: HTMLElement) => {
@@ -370,15 +419,16 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
   )
 
   const handleCellMouseDown = useCallback(
-    (_event: MouseEvent, coords: { row: number; col: number }, td: HTMLElement) => {
+    (event: MouseEvent, coords: { row: number; col: number }, td: HTMLElement) => {
+      // Right / middle click: keep context menu usable; hide any open popup.
+      if (event.button !== 0) {
+        hideCellPopup()
+        return
+      }
       showCellPopup(td, coords.row, coords.col)
     },
-    [showCellPopup]
+    [showCellPopup, hideCellPopup]
   )
-
-  const hideCellPopup = useCallback(() => {
-    setCellPopup(null)
-  }, [])
 
   // ── Structure page: column operations ──
   const isMongo = useMemo(
@@ -683,32 +733,31 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
         onDelete={handleModalDelete}
       />
 
-      {/* Read-only cell content popup (hover / single click) */}
-      {cellPopup && (
-        <div
-          style={{
-            position: 'fixed',
-            left: cellPopup.x,
-            top: cellPopup.y,
-            zIndex: 10050,
-            maxWidth: 480,
-            maxHeight: 320,
-            overflow: 'auto',
-            padding: '6px 10px',
-            fontSize: 12,
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-            color: token.colorText,
-            background: token.colorBgElevated,
-            border: `1px solid ${token.colorBorderSecondary}`,
-            borderRadius: 6,
-            boxShadow: token.boxShadow,
-            pointerEvents: 'none'
-          }}
-        >
-          {cellPopup.text}
-        </div>
-      )}
+      {/* Read-only cell content popup — always mounted; visibility via display */}
+      <div
+        ref={cellPopupRef}
+        style={{
+          display: 'none',
+          position: 'fixed',
+          left: 0,
+          top: 0,
+          // Below Handsontable context/dropdown menus (z-index 1060)
+          zIndex: 1050,
+          maxWidth: 480,
+          maxHeight: 320,
+          overflow: 'auto',
+          padding: '6px 10px',
+          fontSize: 12,
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+          color: token.colorText,
+          background: token.colorBgElevated,
+          border: `1px solid ${token.colorBorderSecondary}`,
+          borderRadius: 6,
+          boxShadow: token.boxShadow,
+          pointerEvents: 'none'
+        }}
+      />
 
       {/* Add / copy column modal (Structure page) */}
       <DBColumnEditModal
