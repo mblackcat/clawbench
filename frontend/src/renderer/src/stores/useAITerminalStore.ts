@@ -94,6 +94,10 @@ interface AITerminalState {
   deleteDBRow: (connId: string, tableName: string, primaryKeys: Record<string, any>) => Promise<void>
   updateDBRow: (connId: string, tableName: string, primaryKeys: Record<string, any>, changes: Record<string, any>) => Promise<void>
 
+  // ── Column-level DB Actions (structure editing) ──
+  addDBColumn: (connId: string, tableName: string, column: { name: string; type: string; nullable: boolean; defaultValue?: string }) => Promise<void>
+  deleteDBColumn: (connId: string, tableName: string, columnName: string) => Promise<void>
+
   // Listeners
   initListeners: () => () => void
 }
@@ -589,6 +593,34 @@ export const useAITerminalStore = create<AITerminalState>((set, get) => ({
       return `${q}${k}${q} = '${String(v).replace(/'/g, "''")}'`
     }).join(' AND ')
     await window.api.aiTerminal.executeDB(connId, `UPDATE ${q}${tableName}${q} SET ${setClause} WHERE ${where}`)
+  },
+
+  // ── Column-level DB Actions (structure editing) ──
+
+  addDBColumn: async (connId, tableName, column) => {
+    const conn = get().dbConnections.find(c => c.id === connId)
+    if (!conn) throw new Error('Connection not found')
+    if (conn.type === 'mongodb') throw new Error('unsupported')
+    const q = conn.type === 'mysql' ? '`' : '"'
+    let sql = `ALTER TABLE ${q}${tableName}${q} ADD COLUMN ${q}${column.name}${q} ${column.type}`
+    if (!column.nullable) sql += ' NOT NULL'
+    if (column.defaultValue !== undefined && column.defaultValue !== '') {
+      // Numeric defaults go unquoted; everything else is quoted
+      const dv = column.defaultValue
+      sql += /^-?\d+(\.\d+)?$/.test(dv) ? ` DEFAULT ${dv}` : ` DEFAULT '${dv.replace(/'/g, "''")}'`
+    }
+    await window.api.aiTerminal.executeDB(connId, sql)
+    // Refresh cached schema for this table
+    await get().fetchDBTableSchema(connId, tableName)
+  },
+
+  deleteDBColumn: async (connId, tableName, columnName) => {
+    const conn = get().dbConnections.find(c => c.id === connId)
+    if (!conn) throw new Error('Connection not found')
+    if (conn.type === 'mongodb') throw new Error('unsupported')
+    const q = conn.type === 'mysql' ? '`' : '"'
+    await window.api.aiTerminal.executeDB(connId, `ALTER TABLE ${q}${tableName}${q} DROP COLUMN ${q}${columnName}${q}`)
+    await get().fetchDBTableSchema(connId, tableName)
   },
 
   initListeners: () => {

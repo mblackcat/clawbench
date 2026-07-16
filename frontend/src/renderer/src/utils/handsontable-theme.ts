@@ -451,6 +451,13 @@ export function useHandsontableTheme(): void {
         color: #fff;
         opacity: 0.85;
       }
+      /* Compact single-line data grid: no wrapping, ellipsis truncation */
+      .db-grid-compact .ht_master td,
+      [${HOT_MAIN_ATTR}] .ht_master td {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
       /* Native datetime editor input */
       .db-datetime-input {
         height: 24px;
