@@ -71,6 +71,45 @@ const GrokSvg: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   </svg>
 )
 
+// OpenCode brand mark — simple geometric "O" monogram (opencode.ai)
+const OpenCodeSvg: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" {...props}>
+    <rect x="2" y="2" width="20" height="20" rx="5" fill="#1a1a1a" />
+    <path d="M12 6.5c-3.04 0-5.5 2.46-5.5 5.5s2.46 5.5 5.5 5.5 5.5-2.46 5.5-5.5S15.04 6.5 12 6.5zm0 8.75a3.25 3.25 0 110-6.5 3.25 3.25 0 010 6.5z" fill="#fff" />
+    <path d="M15.8 15.8l2.4 2.4" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" />
+  </svg>
+)
+
+// Trae (ByteDance) brand mark — simplified teal diamond
+const TraeSvg: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" {...props}>
+    <rect x="2" y="2" width="20" height="20" rx="5" fill="#00C8B3" />
+    <path d="M7 8.5h10M12 8.5v7.5M8.5 16h7" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
+// Qoder (Alibaba) brand mark — purple hexagon (aligned with Qwen family identity)
+const QoderSvg: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" {...props}>
+    <path d="M12 2.2l7.5 4.3v8.6L12 19.4l-7.5-4.3V6.5L12 2.2z" fill="url(#pi_qoder_g)" />
+    <path d="M9.2 9.2l2.8 5.6 2.8-5.6" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    <defs>
+      <linearGradient id="pi_qoder_g" x1="0%" x2="100%" y1="0%" y2="100%">
+        <stop offset="0%" stopColor="#6336E7" />
+        <stop offset="100%" stopColor="#6F69F7" />
+      </linearGradient>
+    </defs>
+  </svg>
+)
+
+// Xiaomi MiMo Code — orange square with white "M"
+const MimoSvg: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" {...props}>
+    <rect x="2" y="2" width="20" height="20" rx="5" fill="#FF6900" />
+    <path d="M6.5 16.5V8.2l3.4 5.3 3.4-5.3v8.3M17.5 8.2v8.3" stroke="#fff" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
 const AzureOpenAISvg: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" {...props}>
     <path clipRule="evenodd" d="M16.233 0c.713 0 1.345.551 1.572 1.329.227.778 1.555 5.59 1.555 5.59v9.562h-4.813L14.645 0h1.588z" fill="url(#pi_azure_g0)" fillRule="evenodd" />
@@ -134,6 +173,11 @@ const PROVIDER_ICONS: ProviderIconMap = {
   ollama: DefaultAISvg,
   'other-compatible': DefaultAISvg,
   'custom-openai-compatible': OpenAISvg,
+  opencode: OpenCodeSvg,
+  trae: TraeSvg,
+  qoder: QoderSvg,
+  mimo: MimoSvg,
+  zcode: ZhipuSvg,
 }
 
 const PROVIDER_BRAND_COLORS: Record<string, string> = {
@@ -170,6 +214,11 @@ const PROVIDER_BRAND_COLORS: Record<string, string> = {
   ollama: '#111111',
   'other-compatible': '#8c8c8c',
   'custom-openai-compatible': '#10a37f',
+  opencode: '#1a1a1a',
+  trae: '#00C8B3',
+  qoder: '#6F42C1',
+  mimo: '#FF6900',
+  zcode: '#3B82F6',
 }
 
 export function getProviderIcon(provider: string): React.FC<React.SVGProps<SVGSVGElement>> {
@@ -201,10 +250,15 @@ export function toolTypeToProvider(toolType: string): string {
   switch (toolType) {
     case 'claude': return 'claude'
     case 'codex': return 'codex'
-    case 'gemini': return 'gemini'
-    case 'qwen': return 'qwen'
+    case 'gemini': return 'google'
     case 'grok': return 'grok'
-    case 'opencode': return 'openai'
+    case 'opencode': return 'opencode'
+    case 'trae': return 'trae'
+    case 'qoder': return 'qoder'
+    case 'kimi': return 'kimi'
+    case 'zcode': return 'zhipu'
+    case 'mimo': return 'mimo'
+    case 'qwen': return 'qwen'
     default: return 'openai'
   }
 }

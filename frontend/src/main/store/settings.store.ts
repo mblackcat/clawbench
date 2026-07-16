@@ -70,6 +70,11 @@ interface SettingsSchema {
   assistantEnabled: boolean
   /** Role chosen in setup wizard; drives soul persona templates. */
   setupRole: string
+  /**
+   * Per-tool enablement for AI Coding (keyed by Local Env toolId, e.g. 'claude-code').
+   * Missing keys default to true. Disabled tools are hidden from AI Coding tool pickers.
+   */
+  codingToolsEnabled: Record<string, boolean>
 }
 
 interface PublicSettings {
@@ -276,9 +281,34 @@ export const settingsStore = new Store<SettingsSchema>({
     setupRole: {
       type: 'string',
       default: ''
+    },
+    codingToolsEnabled: {
+      type: 'object',
+      default: {},
+      additionalProperties: { type: 'boolean' }
     }
   }
 })
+
+/** Default: tools are enabled unless explicitly set to false */
+export function getCodingToolsEnabled(): Record<string, boolean> {
+  return settingsStore.get('codingToolsEnabled') ?? {}
+}
+
+export function isCodingToolEnabled(toolId: string): boolean {
+  const map = getCodingToolsEnabled()
+  return map[toolId] !== false
+}
+
+export function setCodingToolEnabled(toolId: string, enabled: boolean): Record<string, boolean> {
+  const map = { ...getCodingToolsEnabled(), [toolId]: enabled }
+  settingsStore.set('codingToolsEnabled', map)
+  return map
+}
+
+export function setCodingToolsEnabled(map: Record<string, boolean>): void {
+  settingsStore.set('codingToolsEnabled', map)
+}
 
 export function getSettings(): PublicSettings {
   // 获取或初始化 userAppDir

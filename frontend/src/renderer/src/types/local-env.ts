@@ -2,8 +2,40 @@ export type ToolId =
   | 'python' | 'nodejs' | 'go' | 'java' | 'docker'
   | 'mysql' | 'postgresql' | 'mongodb' | 'redis'
   | 'git' | 'svn' | 'perforce'
-  | 'claude-code' | 'gemini-cli' | 'codex-cli' | 'opencode' | 'traecli' | 'qwen-code' | 'qoder-cli' | 'grok-cli'
+  | 'claude-code' | 'codex-cli' | 'gemini-cli' | 'grok-cli'
+  | 'opencode' | 'traecli' | 'qoder-cli'
+  | 'kimi-code' | 'zcode' | 'mimo-code'
   | 'homebrew'
+
+/** AI Coding CLI tools shown in Local Env — display order */
+export const AI_CODING_TOOL_IDS: ToolId[] = [
+  'claude-code',
+  'codex-cli',
+  'gemini-cli',
+  'grok-cli',
+  'opencode',
+  'traecli',
+  'qoder-cli',
+  'kimi-code',
+  'zcode',
+  'mimo-code'
+]
+
+export const AI_CODING_TOOL_ID_SET = new Set<string>(AI_CODING_TOOL_IDS)
+
+/** Map Local Env toolId → AI Coding toolType */
+export const TOOL_ID_TO_AI_TYPE: Record<string, string> = {
+  'claude-code': 'claude',
+  'codex-cli': 'codex',
+  'gemini-cli': 'gemini',
+  'grok-cli': 'grok',
+  opencode: 'opencode',
+  traecli: 'trae',
+  'qoder-cli': 'qoder',
+  'kimi-code': 'kimi',
+  zcode: 'zcode',
+  'mimo-code': 'mimo'
+}
 
 export interface ToolInstallation {
   path: string

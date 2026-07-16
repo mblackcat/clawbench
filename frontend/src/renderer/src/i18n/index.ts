@@ -1107,6 +1107,10 @@ const translations: Record<Lang, Record<string, string>> = {
     'localEnv.viaWinget': '通过 winget 安装',
     'localEnv.download': '下载安装',
     'localEnv.updateAvailable': '有新版本 v{0}',
+    'localEnv.installed': '已安装',
+    'localEnv.codingEnabled': 'AI Coding 可用',
+    'localEnv.codingEnabledOn': '已开启：此工具会出现在 AI Coding 模块中',
+    'localEnv.codingEnabledOff': '已关闭：此工具将从 AI Coding 模块中隐藏',
 
     // My Contributions (我的) 页面
     'mine.title': '我的',
@@ -3323,6 +3327,10 @@ const translations: Record<Lang, Record<string, string>> = {
     'localEnv.viaWinget': 'Install via winget',
     'localEnv.download': 'Download',
     'localEnv.updateAvailable': 'Update available: v{0}',
+    'localEnv.installed': 'Installed',
+    'localEnv.codingEnabled': 'Available in AI Coding',
+    'localEnv.codingEnabledOn': 'On: this tool appears in the AI Coding module',
+    'localEnv.codingEnabledOff': 'Off: this tool is hidden from the AI Coding module',
 
     // My Contributions page
     'mine.title': 'Mine',

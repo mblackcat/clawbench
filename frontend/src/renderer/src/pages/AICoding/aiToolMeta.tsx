@@ -6,30 +6,45 @@ export const AI_TOOL_TAG_COLORS: Partial<Record<AIToolType, string>> = {
   claude: 'purple',
   codex: 'green',
   gemini: 'blue',
-  opencode: 'default',
-  qwen: 'gold',
   grok: 'default',
-  terminal: 'default'
+  opencode: 'default',
+  trae: 'cyan',
+  qoder: 'gold',
+  kimi: 'blue',
+  zcode: 'blue',
+  mimo: 'orange',
+  terminal: 'default',
+  qwen: 'gold'
 }
 
 export const AI_TOOL_NAMES: Record<AIToolType, string> = {
   claude: 'Claude',
   codex: 'Codex',
   gemini: 'Gemini',
-  opencode: 'OpenCode',
-  qwen: 'Qwen Code',
   grok: 'Grok',
-  terminal: 'Terminal'
+  opencode: 'OpenCode',
+  trae: 'Trae CLI',
+  qoder: 'Qoder CLI',
+  kimi: 'Kimi Code',
+  zcode: 'ZCode',
+  mimo: 'MiMo Code',
+  terminal: 'Terminal',
+  qwen: 'Qwen Code'
 }
 
 export const AI_TOOL_SHORT_NAMES: Record<AIToolType, string> = {
   claude: 'Claude',
   codex: 'Codex',
   gemini: 'Gemini',
-  opencode: 'OpenCode',
-  qwen: 'Qwen',
   grok: 'Grok',
-  terminal: 'Term'
+  opencode: 'OpenCode',
+  trae: 'Trae',
+  qoder: 'Qoder',
+  kimi: 'Kimi',
+  zcode: 'ZCode',
+  mimo: 'MiMo',
+  terminal: 'Term',
+  qwen: 'Qwen'
 }
 
 export const AI_TOOL_TAG_STYLE: React.CSSProperties = {
@@ -42,10 +57,15 @@ const AI_TOOL_ICON_PROVIDERS: Partial<Record<AIToolType, string | null>> = {
   claude: 'claude',
   codex: 'openai',
   gemini: 'google',
-  opencode: '',
-  qwen: 'qwen',
   grok: 'grok',
-  terminal: null
+  opencode: 'opencode',
+  trae: 'trae',
+  qoder: 'qoder',
+  kimi: 'kimi',
+  zcode: 'zhipu',
+  mimo: 'mimo',
+  terminal: null,
+  qwen: 'qwen'
 }
 
 export function getAIToolIcon(toolType: AIToolType, size = 12): React.ReactNode {

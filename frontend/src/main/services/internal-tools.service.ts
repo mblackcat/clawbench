@@ -315,12 +315,12 @@ class CodingToolProvider implements InternalToolProvider {
       },
       {
         name: 'create_coding_session',
-        description: 'Create and launch a coding session in a workspace, optionally sending an initial prompt. toolType: claude | codex | gemini | opencode | qwen.',
+        description: 'Create and launch a coding session in a workspace, optionally sending an initial prompt. toolType: claude | codex | gemini | grok | opencode | trae | qoder | kimi | zcode | mimo.',
         inputSchema: {
           type: 'object',
           properties: {
             workspaceId: { type: 'string', description: 'Coding workspace id (from list_coding_workspaces)' },
-            toolType: { type: 'string', description: 'claude | codex | gemini | opencode | qwen' },
+            toolType: { type: 'string', description: 'claude | codex | gemini | grok | opencode | trae | qoder | kimi | zcode | mimo' },
             initialPrompt: { type: 'string', description: 'Optional first message sent after launch' },
             source: { type: 'string', description: 'local or im (default local)' },
           },
@@ -364,7 +364,9 @@ class CodingToolProvider implements InternalToolProvider {
       const toolType = String(input.toolType || '').toLowerCase() as AIToolType
       const initialPrompt = input.initialPrompt ? String(input.initialPrompt) : ''
       const source = input.source === 'im' ? 'im' : 'local'
-      const valid: AIToolType[] = ['claude', 'codex', 'gemini', 'opencode', 'qwen', 'terminal']
+      const valid: AIToolType[] = [
+        'claude', 'codex', 'gemini', 'grok', 'opencode', 'trae', 'qoder', 'kimi', 'zcode', 'mimo', 'terminal'
+      ]
       if (!workspaceId) return { content: 'workspaceId is required', isError: true }
       if (!valid.includes(toolType)) {
         return { content: `Invalid toolType. Use one of: ${valid.join(', ')}`, isError: true }

@@ -409,7 +409,10 @@ export const api = {
       ipcRenderer.invoke('local-env:uninstall-pip-package', packageName, pythonPath),
     listNpmPackages: () => ipcRenderer.invoke('local-env:list-npm-packages'),
     uninstallNpmPackage: (packageName: string) =>
-      ipcRenderer.invoke('local-env:uninstall-npm-package', packageName)
+      ipcRenderer.invoke('local-env:uninstall-npm-package', packageName),
+    getCodingToolsEnabled: () => ipcRenderer.invoke('local-env:get-coding-tools-enabled') as Promise<Record<string, boolean>>,
+    setCodingToolEnabled: (toolId: string, enabled: boolean) =>
+      ipcRenderer.invoke('local-env:set-coding-tool-enabled', toolId, enabled) as Promise<Record<string, boolean>>
   },
 
   copiper: {

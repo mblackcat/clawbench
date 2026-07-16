@@ -373,6 +373,8 @@ export interface ClawBenchAPI {
     ) => Promise<import('./local-env').ToolInstallResult>
     listNpmPackages: () => Promise<import('./local-env').PackageListResult>
     uninstallNpmPackage: (packageName: string) => Promise<import('./local-env').ToolInstallResult>
+    getCodingToolsEnabled: () => Promise<Record<string, boolean>>
+    setCodingToolEnabled: (toolId: string, enabled: boolean) => Promise<Record<string, boolean>>
   }
   openclaw: {
     checkInstalled: () => Promise<import('./openclaw').OpenClawInstallCheck>

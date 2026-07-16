@@ -121,13 +121,27 @@ export function getToolCommand(toolType: AIToolType): { command: string; args: s
       return { command: 'gemini', args: [] }
     case 'grok':
       return { command: 'grok', args: [] }
+    case 'opencode':
+      return { command: 'opencode', args: [] }
+    case 'trae':
+      return { command: 'trae', args: [] }
+    case 'qoder':
+      return { command: 'qodercli', args: [] }
+    case 'kimi':
+      return { command: 'kimi', args: [] }
+    case 'zcode':
+      return { command: 'zcode', args: [] }
+    case 'mimo':
+      return { command: 'mimo', args: [] }
+    case 'qwen':
+      // Legacy sessions: fall back to qwen binary if still installed
+      return { command: 'qwen', args: [] }
     case 'terminal':
       return {
         command: process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash'),
         args: []
       }
     default:
-      // AIToolType may grow (e.g. opencode); fall back to a plain shell
       return {
         command: process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash'),
         args: []

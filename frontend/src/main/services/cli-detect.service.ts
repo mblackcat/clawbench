@@ -4,14 +4,41 @@ import * as os from 'os'
 import * as path from 'path'
 import * as fs from 'fs'
 import * as logger from '../utils/logger'
+import { isCodingToolEnabled } from '../store/settings.store'
 
 const execFileAsync = promisify(execFile)
 
 export interface DetectedCLI {
-  toolType: 'claude' | 'codex' | 'gemini' | 'opencode' | 'qwen' | 'grok' | 'terminal'
+  toolType:
+    | 'claude'
+    | 'codex'
+    | 'gemini'
+    | 'grok'
+    | 'opencode'
+    | 'trae'
+    | 'qoder'
+    | 'kimi'
+    | 'zcode'
+    | 'mimo'
+    | 'terminal'
+    | 'qwen'
   name: string
   installed: boolean
   version?: string
+}
+
+/** AI toolType → Local Env toolId (for enablement filtering) */
+const AI_TYPE_TO_TOOL_ID: Partial<Record<DetectedCLI['toolType'], string>> = {
+  claude: 'claude-code',
+  codex: 'codex-cli',
+  gemini: 'gemini-cli',
+  grok: 'grok-cli',
+  opencode: 'opencode',
+  trae: 'traecli',
+  qoder: 'qoder-cli',
+  kimi: 'kimi-code',
+  zcode: 'zcode',
+  mimo: 'mimo-code'
 }
 
 /**
@@ -262,6 +289,7 @@ async function detectClaudeCLI(env: NodeJS.ProcessEnv): Promise<DetectedCLI> {
 
 /**
  * Detect all supported AI coding CLI tools and the terminal fallback.
+ * Order matches Local Env: Claude → Codex → Gemini → Grok → OpenCode → Trae → Qoder → Kimi → ZCode → MiMo.
  * All detection runs in parallel.
  */
 export async function detectAvailableCLIs(): Promise<DetectedCLI[]> {
@@ -270,7 +298,13 @@ export async function detectAvailableCLIs(): Promise<DetectedCLI[]> {
   const tools: Array<{ binary: string; toolType: DetectedCLI['toolType']; name: string }> = [
     { binary: 'codex', toolType: 'codex', name: 'Codex CLI' },
     { binary: 'gemini', toolType: 'gemini', name: 'Gemini CLI' },
-    { binary: 'grok', toolType: 'grok', name: 'Grok CLI' }
+    { binary: 'grok', toolType: 'grok', name: 'Grok CLI' },
+    { binary: 'opencode', toolType: 'opencode', name: 'OpenCode' },
+    { binary: 'trae', toolType: 'trae', name: 'Trae CLI' },
+    { binary: 'qodercli', toolType: 'qoder', name: 'Qoder CLI' },
+    { binary: 'kimi', toolType: 'kimi', name: 'Kimi Code' },
+    { binary: 'zcode', toolType: 'zcode', name: 'ZCode' },
+    { binary: 'mimo', toolType: 'mimo', name: 'MiMo Code' }
   ]
 
   const [claudeResult, ...otherResults] = await Promise.all([
@@ -278,14 +312,28 @@ export async function detectAvailableCLIs(): Promise<DetectedCLI[]> {
     ...tools.map((t) => detectTool(t.binary, t.toolType, t.name, env))
   ])
 
-  const detected = [claudeResult, ...otherResults]
+  // If qodercli not found, try legacy `qoder` binary
+  const results = otherResults.slice()
+  const qoderIdx = tools.findIndex((t) => t.toolType === 'qoder')
+  if (qoderIdx >= 0 && !results[qoderIdx]?.installed) {
+    results[qoderIdx] = await detectTool('qoder', 'qoder', 'Qoder CLI', env)
+  }
+
+  const detected = [claudeResult, ...results]
+
+  // Hide tools the user disabled on Local Env coding cards (terminal always stays)
+  const enabled = detected.filter((cli) => {
+    const toolId = AI_TYPE_TO_TOOL_ID[cli.toolType]
+    if (!toolId) return true
+    return isCodingToolEnabled(toolId)
+  })
 
   // Terminal is always available
-  detected.push({
+  enabled.push({
     toolType: 'terminal',
     name: 'Terminal',
     installed: true
   })
 
-  return detected
+  return enabled
 }

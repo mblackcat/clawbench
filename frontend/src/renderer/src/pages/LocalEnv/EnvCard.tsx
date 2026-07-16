@@ -1,5 +1,5 @@
 import React from 'react'
-import { Card, Tag, Button, Typography, Tooltip, Popconfirm } from 'antd'
+import { Card, Tag, Button, Typography, Tooltip, Popconfirm, Switch } from 'antd'
 import {
   DownloadOutlined,
   GlobalOutlined,
@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons'
 import { theme } from 'antd'
 import type { ToolDetectionResult, PackageManagerInfo } from '../../types/local-env'
+import { AI_CODING_TOOL_ID_SET } from '../../types/local-env'
 import { useT } from '../../i18n'
 import { ProviderIcon } from '../../components/ProviderIcons'
 import { EnvToolIcon, hasEnvToolIcon } from '../../components/ToolIcons'
@@ -27,11 +28,14 @@ interface EnvCardProps {
   upgrading?: boolean
   /** Latest published version (from npm registry), if known — AI coding tools only */
   latestVersion?: string | null
+  /** Whether this coding tool is enabled for AI Coding module (AI tools only) */
+  codingEnabled?: boolean
   onInstall: (toolId: string) => void
   onRefresh: (toolId: string) => void
   onUninstall?: (toolId: string) => void
   onUpgrade?: (toolId: string) => void
   onOpenPackages?: (kind: 'pip' | 'npm', pythonPath?: string) => void
+  onCodingEnabledChange?: (toolId: string, enabled: boolean) => void
 }
 
 // Brand provider key for AI coding CLI tools that already have an icon in ProviderIcons.tsx
@@ -39,8 +43,13 @@ const AI_TOOL_PROVIDERS: Record<string, string> = {
   'claude-code': 'claude',
   'codex-cli': 'codex',
   'gemini-cli': 'google',
-  'qwen-code': 'qwen',
-  'grok-cli': 'grok'
+  'grok-cli': 'grok',
+  opencode: 'opencode',
+  traecli: 'trae',
+  'qoder-cli': 'qoder',
+  'kimi-code': 'kimi',
+  zcode: 'zhipu',
+  'mimo-code': 'mimo'
 }
 
 function renderToolIcon(toolId: string, size = 20) {
@@ -64,12 +73,7 @@ function isNewerVersion(current: string, latest: string): boolean {
   return false
 }
 
-const NPM_TOOL_IDS = new Set(['gemini-cli', 'codex-cli', 'qwen-code'])
-
-// AI coding CLI tools support one-click "upgrade" (npm reinstall @latest, or `claude update`)
-const AI_TOOL_IDS = new Set([
-  'claude-code', 'gemini-cli', 'codex-cli', 'opencode', 'traecli', 'qwen-code', 'qoder-cli', 'grok-cli'
-])
+const NPM_TOOL_IDS = new Set(['gemini-cli', 'codex-cli', 'qoder-cli', 'kimi-code', 'mimo-code', 'opencode'])
 
 // Tools whose uninstall is intentionally not offered from this card (no safe
 // programmatic uninstall path — e.g. removing Homebrew itself is destructive)
@@ -84,22 +88,29 @@ const EnvCard: React.FC<EnvCardProps> = ({
   uninstalling = false,
   upgrading = false,
   latestVersion,
+  codingEnabled = true,
   onInstall,
   onRefresh,
   onUninstall,
   onUpgrade,
-  onOpenPackages
+  onOpenPackages,
+  onCodingEnabledChange
 }) => {
   const { token } = theme.useToken()
   const t = useT()
 
+  const isAiCodingTool = AI_CODING_TOOL_ID_SET.has(tool.toolId)
   const installedVersion = tool.installations[0]?.version
   const hasUpdate = Boolean(
-    latestVersion && installedVersion && isNewerVersion(installedVersion, latestVersion)
+    latestVersion &&
+    installedVersion &&
+    installedVersion !== 'app' &&
+    installedVersion !== 'installed' &&
+    isNewerVersion(installedVersion, latestVersion)
   )
 
   const getInstallLabel = (): { label: string; viaPkgMgr: boolean } => {
-    if (tool.toolId === 'claude-code' || tool.toolId === 'grok-cli') {
+    if (tool.toolId === 'claude-code' || tool.toolId === 'grok-cli' || tool.toolId === 'kimi-code' || tool.toolId === 'mimo-code') {
       return { label: t('localEnv.oneClickInstall'), viaPkgMgr: true }
     }
     if (NPM_TOOL_IDS.has(tool.toolId)) {
@@ -132,14 +143,9 @@ const EnvCard: React.FC<EnvCardProps> = ({
         {renderToolIcon(tool.toolId)}
         <Text strong style={{ fontSize: 16 }}>{tool.name}</Text>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
-          {tool.installed && AI_TOOL_IDS.has(tool.toolId) && onUpgrade && (
-            <Tooltip
-              title={
-                hasUpdate
-                  ? t('localEnv.updateAvailable', latestVersion as string)
-                  : t('localEnv.upgrade')
-              }
-            >
+          {/* Only show upgrade when a newer version is known */}
+          {tool.installed && isAiCodingTool && hasUpdate && onUpgrade && (
+            <Tooltip title={t('localEnv.updateAvailable', latestVersion as string)}>
               <Button
                 type="text"
                 size="small"
@@ -147,7 +153,7 @@ const EnvCard: React.FC<EnvCardProps> = ({
                 loading={upgrading}
                 onClick={() => onUpgrade(tool.toolId)}
                 style={{
-                  color: hasUpdate ? token.colorSuccess : token.colorTextTertiary,
+                  color: token.colorSuccess,
                   padding: '0 4px'
                 }}
               />
@@ -198,7 +204,11 @@ const EnvCard: React.FC<EnvCardProps> = ({
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-                  <Tag color="blue">v{inst.version}</Tag>
+                  <Tag color="blue">
+                    {inst.version === 'app' || inst.version === 'installed'
+                      ? t('localEnv.installed')
+                      : `v${inst.version}`}
+                  </Tag>
                   {inst.managedBy && (
                     <Tag color="purple">{inst.managedBy}</Tag>
                   )}
@@ -273,6 +283,32 @@ const EnvCard: React.FC<EnvCardProps> = ({
           </div>
         )}
       </div>
+
+      {/* AI Coding enable switch — only for coding tools */}
+      {isAiCodingTool && onCodingEnabledChange && (
+        <div
+          style={{
+            marginTop: 12,
+            paddingTop: 12,
+            borderTop: `1px solid ${token.colorBorderSecondary}`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 8
+          }}
+        >
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {t('localEnv.codingEnabled')}
+          </Text>
+          <Tooltip title={codingEnabled ? t('localEnv.codingEnabledOn') : t('localEnv.codingEnabledOff')}>
+            <Switch
+              size="small"
+              checked={codingEnabled}
+              onChange={(checked) => onCodingEnabledChange(tool.toolId, checked)}
+            />
+          </Tooltip>
+        </div>
+      )}
     </Card>
   )
 }
