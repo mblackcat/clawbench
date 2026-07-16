@@ -9,6 +9,11 @@ import { useT } from '../../i18n'
 import { MONO_FONT_STACK } from '../../utils/mono-font'
 import { useHandsontableTheme, HOT_MAIN_ATTR } from '../../utils/handsontable-theme'
 import type { DBQueryResult } from '../../types/ai-terminal'
+import {
+  openDBTextExpandPanel,
+  closeDBTextExpandPanel,
+  DB_GRID_MAX_COL_WIDTH
+} from './db-cell-editors'
 
 registerAllModules()
 
@@ -54,6 +59,35 @@ const DBQueryEditor: React.FC<Props> = ({ tabId, connectionId }) => {
 
   // Shared Handsontable theming (unified with Copiper's handsome table scheme)
   useHandsontableTheme()
+
+  useEffect(() => {
+    return () => closeDBTextExpandPanel()
+  }, [])
+
+  const handleModifyColWidth = useCallback((width: number) => {
+    return Math.min(width, DB_GRID_MAX_COL_WIDTH)
+  }, [])
+
+  /** Double-click a result cell → read-only enlarge panel for select/copy. */
+  const handleCellMouseDown = useCallback(
+    (event: MouseEvent, coords: { row: number; col: number }, td: HTMLElement) => {
+      if (event.button !== 0 || event.detail !== 2) return
+      if (coords.row < 0 || coords.col < 0 || !result?.columns) return
+      const colName = result.columns[coords.col]
+      if (!colName) return
+      const row = result.rows?.[coords.row]
+      const raw = row?.[colName]
+      const text = raw === null || raw === undefined
+        ? 'NULL'
+        : (typeof raw === 'object' ? JSON.stringify(raw, null, 2) : String(raw))
+      openDBTextExpandPanel({
+        value: text,
+        anchorEl: td,
+        readOnly: true
+      })
+    },
+    [result]
+  )
 
   const handleExecute = useCallback(async (overrideSQL?: string) => {
     const sqlToRun = overrideSQL ?? sql
@@ -194,10 +228,14 @@ const DBQueryEditor: React.FC<Props> = ({ tabId, connectionId }) => {
             height="100%"
             stretchH="all"
             readOnly
+            wordWrap={false}
+            className="db-grid-compact"
             licenseKey="non-commercial-and-evaluation"
             manualColumnResize
             contextMenu={['copy']}
             outsideClickDeselects={false}
+            modifyColWidth={handleModifyColWidth as any}
+            afterOnCellMouseDown={handleCellMouseDown as any}
           />
         ) : result ? (
           <div style={{

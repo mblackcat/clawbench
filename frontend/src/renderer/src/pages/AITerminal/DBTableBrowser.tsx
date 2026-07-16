@@ -13,7 +13,12 @@ import { useHandsontableTheme, HOT_MAIN_ATTR } from '../../utils/handsontable-th
 import type { DBTableColumn, DBQueryResult } from '../../types/ai-terminal'
 import DBRowDetailModal from './DBRowDetailModal'
 import DBColumnEditModal, { type ColumnDraft } from './DBColumnEditModal'
-import { registerDBCellEditors } from './db-cell-editors'
+import {
+  registerDBCellEditors,
+  openDBTextExpandPanel,
+  closeDBTextExpandPanel,
+  DB_GRID_MAX_COL_WIDTH
+} from './db-cell-editors'
 
 registerAllModules()
 registerLanguageDictionary(zhCN)
@@ -350,13 +355,24 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
     t('db.colNullable'), t('db.colDefault'), t('db.colExtra')
   ], [t])
 
-  // ── Read-only cell content popup (hover / left-click) ──
-  // Full cell value in a floating box, only when text is ellipsis-truncated.
+  // ── Read-only cell content popup (hover only, quick glance) ──
+  // Full cell value in a floating box when text is ellipsis-truncated.
+  // For select/copy use double-click → enlarge panel (see openCellExpand).
   // Skipped in edit mode and while Handsontable's context menu is open.
   const hideCellPopup = useCallback(() => {
     const el = cellPopupRef.current
     if (el) el.style.display = 'none'
     cellPopupKeyRef.current = null
+  }, [])
+
+  // Cap auto-sized column widths so long text doesn't force huge horizontal scroll.
+  // Ellipsis + double-click enlarge already cover reading the full value.
+  const handleModifyColWidth = useCallback((width: number) => {
+    return Math.min(width, DB_GRID_MAX_COL_WIDTH)
+  }, [])
+
+  useEffect(() => {
+    return () => closeDBTextExpandPanel()
   }, [])
 
   const isOverlayMenuOpen = useCallback(() => {
@@ -378,6 +394,61 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
     return td.scrollWidth > td.clientWidth + 1 || td.scrollHeight > td.clientHeight + 1
   }, [])
 
+  /** Format a raw cell value for display in hover / expand panels. */
+  const formatCellText = useCallback((raw: unknown): string => {
+    if (raw === null || raw === undefined) return 'NULL'
+    if (typeof raw === 'object') return JSON.stringify(raw, null, 2)
+    return String(raw)
+  }, [])
+
+  /**
+   * Double-click enlarge: reuse the edit magnifier panel.
+   * Read-only mode (or PK cells) → read-only textarea for easy select/copy.
+   * Edit mode on writable cells → editable panel with Save that commits via the grid.
+   */
+  const openCellExpand = useCallback((row: number, col: number, td: HTMLElement) => {
+    if (row < 0 || col < 0) return
+    const colName = data?.columns?.[col]
+    if (!colName) return
+    const raw = data?.rows?.[row]?.[colName]
+    const text = formatCellText(raw)
+    hideCellPopup()
+
+    const isPk = pkColumns.includes(colName)
+    const canEdit = editMode && !isPk
+    // Value shown in the editable panel: NULL → empty so save can clear / set properly
+    const editValue = raw === null || raw === undefined
+      ? ''
+      : (typeof raw === 'object' ? JSON.stringify(raw) : String(raw))
+
+    openDBTextExpandPanel({
+      value: canEdit ? editValue : text,
+      anchorEl: td,
+      readOnly: !canEdit,
+      onSave: canEdit
+        ? (value) => {
+            const hot = hotRef.current?.hotInstance
+            if (!hot) return
+            // Cancel any inline editor Handsontable may have opened on dblclick
+            const editor = hot.getActiveEditor?.() as { isOpened?: () => boolean; cancelChanges?: () => void } | undefined
+            if (editor?.isOpened?.()) editor.cancelChanges?.()
+            // setDataAtCell → afterChange → updateDBRow
+            hot.setDataAtCell(row, col, value)
+          }
+        : undefined
+    })
+
+    // If Handsontable started the built-in editor on the second click, dismiss it
+    // so only the enlarge panel remains.
+    if (canEdit) {
+      requestAnimationFrame(() => {
+        const hot = hotRef.current?.hotInstance
+        const editor = hot?.getActiveEditor?.() as { isOpened?: () => boolean; cancelChanges?: () => void } | undefined
+        if (editor?.isOpened?.()) editor.cancelChanges?.()
+      })
+    }
+  }, [data?.columns, data?.rows, editMode, pkColumns, formatCellText, hideCellPopup])
+
   const showCellPopup = useCallback((td: HTMLElement, row: number, col: number) => {
     if (editMode || row < 0 || col < 0 || isOverlayMenuOpen()) {
       hideCellPopup()
@@ -389,10 +460,7 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
     }
     const colName = data?.columns?.[col]
     if (!colName) return
-    const raw = data?.rows?.[row]?.[colName]
-    const text = raw === null || raw === undefined
-      ? 'NULL'
-      : (typeof raw === 'object' ? JSON.stringify(raw, null, 2) : String(raw))
+    const text = formatCellText(data?.rows?.[row]?.[colName])
     // Empty / whitespace-only values are never useful as a popup
     if (!text || !String(text).trim()) {
       hideCellPopup()
@@ -409,7 +477,7 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
     el.style.left = `${rect.left}px`
     el.style.top = `${rect.bottom + 2}px`
     el.style.display = 'block'
-  }, [editMode, data?.columns, data?.rows, isOverlayMenuOpen, isCellTruncated, hideCellPopup])
+  }, [editMode, data?.columns, data?.rows, isOverlayMenuOpen, isCellTruncated, hideCellPopup, formatCellText])
 
   const handleCellMouseOver = useCallback(
     (_event: MouseEvent, coords: { row: number; col: number }, td: HTMLElement) => {
@@ -425,9 +493,14 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
         hideCellPopup()
         return
       }
+      // Double-click → enlarge panel (select/copy in read-only; edit+save when editable)
+      if (event.detail === 2) {
+        openCellExpand(coords.row, coords.col, td)
+        return
+      }
       showCellPopup(td, coords.row, coords.col)
     },
-    [showCellPopup, hideCellPopup]
+    [showCellPopup, hideCellPopup, openCellExpand]
   )
 
   // ── Structure page: column operations ──
@@ -656,6 +729,7 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
                   afterChange={handleAfterChange as any}
                   afterOnCellMouseOver={handleCellMouseOver as any}
                   afterOnCellMouseDown={handleCellMouseDown as any}
+                  modifyColWidth={handleModifyColWidth as any}
                 />
               ) : (
                 <div style={{
@@ -733,7 +807,7 @@ const DBTableBrowser: React.FC<Props> = ({ tabId, connectionId, tableName }) => 
         onDelete={handleModalDelete}
       />
 
-      {/* Read-only cell content popup — always mounted; visibility via display */}
+      {/* Hover glance popup for truncated cells (not selectable — dblclick enlarge for copy) */}
       <div
         ref={cellPopupRef}
         style={{

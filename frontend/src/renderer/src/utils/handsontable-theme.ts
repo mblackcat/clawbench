@@ -412,6 +412,8 @@ export function useHandsontableTheme(): void {
       .db-textexpand-textarea {
         min-width: 300px;
         min-height: 140px;
+        max-height: min(60vh, 480px);
+        max-width: min(80vw, 720px);
         resize: both;
         padding: 6px 8px;
         font-size: ${token.fontSize}px;
@@ -420,6 +422,11 @@ export function useHandsontableTheme(): void {
         border: 1px solid ${token.colorBorder};
         border-radius: 6px;
         outline: none;
+        /* Allow selecting / copying even when read-only */
+        user-select: text;
+      }
+      .db-textexpand-textarea[readonly] {
+        cursor: text;
       }
       .db-textexpand-textarea:focus {
         border-color: ${token.colorPrimary};
