@@ -21,6 +21,7 @@ import { useT } from '../../i18n'
 const AgentStatusBar: React.FC = () => {
   const t = useT()
   const { token } = theme.useToken()
+  // Keep tool timeline collapsed by default — avoid flashy mid-reply tool panels
   const [timelineExpanded, setTimelineExpanded] = useState(false)
   const {
     agentPhase,
@@ -42,7 +43,7 @@ const AgentStatusBar: React.FC = () => {
   }
 
   const stepCount = toolLoopController?.getStepCount() ?? 0
-  const maxSteps = 15
+  const maxSteps = toolLoopController?.getMaxSteps?.() ?? 0
 
   const phaseIcon = agentPhase === 'thinking'
     ? <Spin size="small"><BulbOutlined style={{ color: token.colorPrimary, fontSize: 14 }} /></Spin>
@@ -58,7 +59,7 @@ const AgentStatusBar: React.FC = () => {
     : ''
 
   const getToolIcon = (name: string) => {
-    if (name === 'web_search' || name === 'plan_search') return <SearchOutlined style={{ fontSize: 11 }} />
+    if (name === 'web_search') return <SearchOutlined style={{ fontSize: 11 }} />
     if (name === 'web_browse') return <GlobalOutlined style={{ fontSize: 11 }} />
     if (name === 'execute_command') return <CodeOutlined style={{ fontSize: 11 }} />
     if (name === 'generate_image' || name === 'edit_image') return <PictureOutlined style={{ fontSize: 11 }} />
@@ -91,7 +92,7 @@ const AgentStatusBar: React.FC = () => {
           </span>
           {stepCount > 0 && (
             <Tag style={{ fontSize: 10, margin: 0 }}>
-              Step {stepCount}/{maxSteps}
+              {maxSteps > 0 ? `Step ${stepCount}/${maxSteps}` : `Step ${stepCount}`}
             </Tag>
           )}
           {agentStepDescription && (
@@ -139,7 +140,7 @@ const AgentStatusBar: React.FC = () => {
           </div>
         )}
 
-        {/* Collapsible tool execution timeline */}
+        {/* Collapsible tool timeline — compact one-liner, details only when expanded */}
         {agentToolHistory.length > 0 && (
           <>
             <div
@@ -160,7 +161,9 @@ const AgentStatusBar: React.FC = () => {
               ) : (
                 <CaretRightOutlined style={{ fontSize: 10 }} />
               )}
-              {t('chat.agent.toolHistory')} ({agentToolHistory.length})
+              {agentPhase === 'calling-tools'
+                ? (agentStepDescription || t('chat.agent.callingTools'))
+                : `${t('chat.agent.toolHistory')} (${agentToolHistory.length})`}
             </div>
             {timelineExpanded && (
               <div style={{ padding: '4px 12px 8px' }}>

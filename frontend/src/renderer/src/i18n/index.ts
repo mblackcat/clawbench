@@ -201,32 +201,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'settings.tabAITools': 'AI 工具',
     'settings.aiTools.webSearchGroup': '网络搜索',
     'settings.aiTools.webSearchGroupDesc': '对应 AI 助理中的「网络搜索」开关，启用后 AI 可联网搜索并浏览网页获取最新信息。',
-    'settings.aiTools.webSearch': '搜索引擎',
-    'settings.aiTools.webSearchProvider': '搜索引擎',
-    'settings.aiTools.braveApiKey': 'Brave API Key',
-    'settings.aiTools.braveApiKeyHelp': '从 brave.com/search/api 获取 API Key',
-    'settings.aiTools.testConnection': '测试连接',
-    'settings.aiTools.testSuccess': '连接成功',
-    'settings.aiTools.testFailed': '连接失败',
-    'settings.aiTools.webBrowse': '网页浏览',
-    'settings.aiTools.webBrowseEngine': '浏览引擎',
-    'settings.aiTools.builtinHttp': '内置 HTTP',
-    'settings.aiTools.lightpandaPath': 'Lightpanda 路径',
-    'settings.aiTools.lightpandaDesc': '开源无头浏览器，专为 AI 和自动化设计，比 Chrome Headless 更快更轻量。',
-    'settings.aiTools.lightpandaDetect': '自动检测',
-    'settings.aiTools.lightpandaDetected': '已检测到 Lightpanda: {0}',
-    'settings.aiTools.lightpandaNotFound': '未检测到 Lightpanda，请手动指定路径或一键安装',
-    'settings.aiTools.lightpandaInstall': '一键安装',
-    'settings.aiTools.lightpandaInstalling': '正在下载安装...',
-    'settings.aiTools.lightpandaInstallSuccess': 'Lightpanda 安装成功: {0}',
-    'settings.aiTools.lightpandaInstallFailed': '安装失败',
-    'settings.aiTools.lightpandaConnecting': '正在连接...',
-    'settings.aiTools.lightpandaWriting': '正在写入...',
-    'settings.aiTools.lightpandaGitHub': 'GitHub',
-    'settings.aiTools.lightpandaDocs': '官方文档',
+    'settings.aiTools.webToolsAutoDesc': '开箱即用：在 AI 聊天打开「网络搜索」即可。搜索默认 DuckDuckGo；若本机已配置 Brave Key 或安装 Lightpanda 会自动使用。策略已内化到工具（含 Sources 引用），无需再配置引擎。',
     'settings.aiTools.toolBehavior': '工具行为',
-    'settings.aiTools.maxToolSteps': '最大工具调用步数',
-    'settings.aiTools.maxSearchRounds': '最大搜索轮数',
+    'settings.aiTools.toolBehaviorHint': 'Agent 工具循环已内置（不限制步数，自动去重防死循环）。仅保留单次工具超时。',
     'settings.aiTools.toolTimeout': '工具超时时间（秒）',
 
     // 模块设置
@@ -265,6 +242,11 @@ const translations: Record<Lang, Record<string, string>> = {
     'workspace.created': '工作区已创建',
     'workspace.switchTo': '切换到此工作区',
     'workspace.edit': '编辑工作区',
+    'workspace.delete': '删除工作区',
+    'workspace.deleteConfirmTitle': '删除工作区',
+    'workspace.deleteConfirmContent': '确定要删除工作区"{0}"吗？此操作不会删除本地文件，仅移除工作区记录。',
+    'workspace.deleted': '工作区已删除',
+    'workspace.deleteFailed': '删除工作区失败',
     'workspace.add': '添加工作区',
     'workspace.select': '设置你的工作区',
     'workspace.editTitle': '编辑工作区',
@@ -445,9 +427,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'settings.aiAssistant.autoApproveSession': '全部自动',
     'settings.aiAssistant.autoApproveSessionDesc': '所有工具自动执行，无需审批',
     'settings.aiAssistant.askEveryTime': '每次确认',
-    'settings.aiAssistant.askEveryTimeDesc': '每个工具调用都需手动审批',
-    'settings.aiAssistant.maxToolSteps': '最大工具步数',
-    'settings.aiAssistant.maxToolStepsDesc': '单次对话中 AI 可连续调用工具的最大次数',
+    'settings.aiAssistant.askEveryTimeDesc': '每个工具调用都需手动审批',
     'settings.aiAssistant.soulTitle': 'AI 人设',
     'settings.aiAssistant.soulDesc': '定义 AI 助手的身份、风格和行为规则（会注入系统提示词）。可选手设模板，或自行编辑。',
     'settings.aiAssistant.restoreDefault': '恢复默认',
@@ -1030,6 +1010,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'terminal.connected': '已连接 {0}',
     'terminal.connectFailed': '连接失败: {0}',
     'terminal.disconnected': '已断开 {0}',
+    'terminal.dbIdleDisconnected': '"{0}" 长时间未操作，已自动断开以释放连接池，如需使用请重新连接',
     'terminal.switchDBFailed': '切换数据库失败: {0}',
     'terminal.noTables': '暂无表',
     'terminal.noDatabases': '暂无数据库',
@@ -1130,6 +1111,19 @@ const translations: Record<Lang, Record<string, string>> = {
     'mine.run': '运行',
     'mine.appStarted': '应用 {0} 已开始执行',
     'mine.runFailed': '运行应用失败',
+    'mine.unpublish': '下架',
+    'mine.unpublishConfirmTitle': '确认下架',
+    'mine.unpublishConfirmContent': '下架后「{0}」将从市场移除，用户将无法再搜索或安装该资源。',
+    'mine.deleteLocalFilesOption': '同时删除此 app 的本地文件',
+    'mine.unpublishSuccess': '下架成功',
+    'mine.unpublishFailed': '下架失败',
+    'mine.unpublishNotFound': '未找到对应的已发布应用',
+    'mine.localFilesDeleteFailed': '本地文件删除失败',
+    'mine.delete': '删除',
+    'mine.deleteConfirmTitle': '确认删除',
+    'mine.deleteConfirmContent': '确定要删除「{0}」的本地文件吗？删除后无法恢复。',
+    'mine.deleteLocalSuccess': '删除成功',
+    'mine.deleteLocalFailed': '删除失败',
 
     // AI 技能管理（我的页面 / 发现市场）
     'skill.empty': '暂无 AI 技能。拖入文件夹或一键导入全局技能开始使用。',
@@ -1399,6 +1393,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'appEditor.descriptionPlaceholder': '应用描述',
     'appEditor.version': '版本',
     'appEditor.versionRequired': '请输入版本号',
+    'appEditor.cover': '封面图',
+    'appEditor.coverPlaceholder': '封面图 URL（可选）',
+    'appEditor.coverHelp': '可选。发布后将作为市场与收藏栏封面展示。',
     'appEditor.workspaceTypes': '支持的工作区类型',
     'appEditor.workspaceNone': '无',
     'appEditor.paramName': '参数名',
@@ -1460,6 +1457,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'skillEditor.description': '描述',
     'skillEditor.descPlaceholder': '简要描述这个技能的用途',
     'skillEditor.version': '版本',
+    'skillEditor.cover': '封面图',
+    'skillEditor.coverPlaceholder': '封面图 URL（可选）',
+    'skillEditor.coverHelp': '可选。发布后将作为市场封面展示。',
     'skillEditor.contentHint': '编辑 SKILL.md — 这是技能的核心定义文件，将被部署到 AI 编码工具的 commands 目录中。',
     'skillEditor.confirmTitle': '确认信息',
     'skillEditor.confirmName': '名称：',
@@ -1490,6 +1490,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'promptEditor.description': '描述',
     'promptEditor.descPlaceholder': '简要描述用途',
     'promptEditor.version': '版本',
+    'promptEditor.cover': '封面图',
+    'promptEditor.coverPlaceholder': '封面图 URL（可选）',
+    'promptEditor.coverHelp': '可选。发布后将作为市场封面展示。',
     'promptEditor.content': '提示词内容 *',
     'promptEditor.contentPlaceholder': '输入你的 Prompt 文本...',
     'promptEditor.saveUpdate': '保存更新',
@@ -2351,6 +2354,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'settings.tabAITools': 'AI Tools',
     'settings.aiTools.webSearchGroup': 'Web Search',
     'settings.aiTools.webSearchGroupDesc': 'Corresponds to the "Web Search" toggle in AI Chat. When enabled, AI can search the web and browse pages for up-to-date information.',
+    'settings.aiTools.webToolsAutoDesc': 'Zero-config: turn on Web Search in AI Chat. Default DuckDuckGo + HTTP fetch; Brave key or Lightpanda on disk are used automatically when present. Strategy (incl. Sources citations) lives in tool prompts — no engine settings.',
     'settings.aiTools.webSearch': 'Search Engine',
     'settings.aiTools.webSearchProvider': 'Search Engine',
     'settings.aiTools.braveApiKey': 'Brave API Key',
@@ -2375,8 +2379,10 @@ const translations: Record<Lang, Record<string, string>> = {
     'settings.aiTools.lightpandaGitHub': 'GitHub',
     'settings.aiTools.lightpandaDocs': 'Docs',
     'settings.aiTools.toolBehavior': 'Tool Behavior',
+    'settings.aiTools.toolBehaviorHint': 'Agent tool loop is built-in (unlimited steps, duplicate anti-spin). Only per-tool timeout is configurable.',
     'settings.aiTools.maxToolSteps': 'Max Tool Call Steps',
     'settings.aiTools.maxSearchRounds': 'Max Search Rounds',
+    'settings.aiTools.zeroUnlimited': '0 = unlimited',
     'settings.aiTools.toolTimeout': 'Tool Timeout (seconds)',
 
     // Module names
@@ -2415,6 +2421,12 @@ const translations: Record<Lang, Record<string, string>> = {
     'workspace.created': 'Workspace created',
     'workspace.switchTo': 'Switch to this workspace',
     'workspace.edit': 'Edit workspace',
+    'workspace.delete': 'Delete workspace',
+    'workspace.deleteConfirmTitle': 'Delete Workspace',
+    'workspace.deleteConfirmContent':
+      'Are you sure you want to delete workspace "{0}"? This will not delete local files, only remove the workspace record.',
+    'workspace.deleted': 'Workspace deleted',
+    'workspace.deleteFailed': 'Failed to delete workspace',
     'workspace.add': 'Add Workspace',
     'workspace.select': 'Set your workspace',
     'workspace.editTitle': 'Edit Workspace',
@@ -2596,8 +2608,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'settings.aiAssistant.autoApproveSessionDesc': 'All tools auto-execute without approval',
     'settings.aiAssistant.askEveryTime': 'Ask Every Time',
     'settings.aiAssistant.askEveryTimeDesc': 'Every tool call requires manual approval',
-    'settings.aiAssistant.maxToolSteps': 'Max Tool Steps',
-    'settings.aiAssistant.maxToolStepsDesc': 'Maximum number of consecutive tool calls per conversation turn',
+    'settings.aiAssistant.maxToolSteps': 'Max Tool Steps (optional)',
+    'settings.aiAssistant.maxToolStepsDesc': 'Soft cap on consecutive tool calls per turn. 0 = unlimited (recommended; Claude Code–style loop; anti-spin via duplicate detection only).',
+    'settings.aiAssistant.unlimited': 'Unlimited',
     'settings.aiAssistant.soulTitle': 'Agent Persona',
     'settings.aiAssistant.soulDesc': 'Define the AI assistant\'s identity, style, and behavioral rules (injected into the system prompt). Pick a role template or edit freely.',
     'settings.aiAssistant.restoreDefault': 'Restore Default',
@@ -3251,6 +3264,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'terminal.connected': 'Connected to {0}',
     'terminal.connectFailed': 'Connection failed: {0}',
     'terminal.disconnected': 'Disconnected from {0}',
+    'terminal.dbIdleDisconnected': '"{0}" was auto-disconnected after being idle to free the connection pool. Reconnect when you need it again.',
     'terminal.switchDBFailed': 'Failed to switch database: {0}',
     'terminal.noTables': 'No tables',
     'terminal.noDatabases': 'No databases',
@@ -3351,6 +3365,19 @@ const translations: Record<Lang, Record<string, string>> = {
     'mine.run': 'Run',
     'mine.appStarted': 'App {0} started',
     'mine.runFailed': 'Failed to run app',
+    'mine.unpublish': 'Unpublish',
+    'mine.unpublishConfirmTitle': 'Confirm unpublish',
+    'mine.unpublishConfirmContent': 'Unpublishing "{0}" will remove it from the marketplace — users will no longer be able to find or install it.',
+    'mine.deleteLocalFilesOption': 'Also delete this app\'s local files',
+    'mine.unpublishSuccess': 'Unpublished successfully',
+    'mine.unpublishFailed': 'Failed to unpublish',
+    'mine.unpublishNotFound': 'Could not find the matching published application',
+    'mine.localFilesDeleteFailed': 'Failed to delete local files',
+    'mine.delete': 'Delete',
+    'mine.deleteConfirmTitle': 'Confirm delete',
+    'mine.deleteConfirmContent': 'Delete the local files for "{0}"? This cannot be undone.',
+    'mine.deleteLocalSuccess': 'Deleted successfully',
+    'mine.deleteLocalFailed': 'Failed to delete',
 
     // AI skill management (Mine page / discovery market)
     'skill.empty': 'No AI skills yet. Drop a folder or import global skills to get started.',
@@ -3620,6 +3647,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'appEditor.descriptionPlaceholder': 'App description',
     'appEditor.version': 'Version',
     'appEditor.versionRequired': 'Please enter version',
+    'appEditor.cover': 'Cover image',
+    'appEditor.coverPlaceholder': 'Cover image URL (optional)',
+    'appEditor.coverHelp': 'Optional. Used as the marketplace and favorites cover after publish.',
     'appEditor.workspaceTypes': 'Supported Workspace Types',
     'appEditor.workspaceNone': 'None',
     'appEditor.paramName': 'Name',
@@ -3681,6 +3711,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'skillEditor.description': 'Description',
     'skillEditor.descPlaceholder': 'Briefly describe what this skill does',
     'skillEditor.version': 'Version',
+    'skillEditor.cover': 'Cover image',
+    'skillEditor.coverPlaceholder': 'Cover image URL (optional)',
+    'skillEditor.coverHelp': 'Optional. Used as the marketplace cover after publish.',
     'skillEditor.contentHint': 'Edit SKILL.md — the core definition file, deployed to the commands directory of AI coding tools.',
     'skillEditor.confirmTitle': 'Confirm Info',
     'skillEditor.confirmName': 'Name: ',
@@ -3711,6 +3744,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'promptEditor.description': 'Description',
     'promptEditor.descPlaceholder': 'Briefly describe its purpose',
     'promptEditor.version': 'Version',
+    'promptEditor.cover': 'Cover image',
+    'promptEditor.coverPlaceholder': 'Cover image URL (optional)',
+    'promptEditor.coverHelp': 'Optional. Used as the marketplace cover after publish.',
     'promptEditor.content': 'Prompt Content *',
     'promptEditor.contentPlaceholder': 'Enter your prompt text...',
     'promptEditor.saveUpdate': 'Save Update',

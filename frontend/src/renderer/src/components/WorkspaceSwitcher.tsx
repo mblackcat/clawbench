@@ -1,18 +1,26 @@
 import React, { useState, useEffect } from 'react'
-import { Select, Modal, Input, Button, Space, Tag, Form, message, Radio, Dropdown } from 'antd'
-import { PlusOutlined, FolderOpenOutlined, EditOutlined, SwapOutlined } from '@ant-design/icons'
+import { Modal, Input, Button, Space, Tag, Form, Radio, Dropdown, App } from 'antd'
+import {
+  PlusOutlined,
+  FolderOpenOutlined,
+  EditOutlined,
+  SwapOutlined,
+  DeleteOutlined
+} from '@ant-design/icons'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { useT } from '../i18n'
 import type { Workspace } from '../types/workspace'
 import type { MenuProps } from 'antd'
 
 const WorkspaceSwitcher: React.FC = () => {
+  const { modal, message } = App.useApp()
   const workspaces = useWorkspaceStore((state) => state.workspaces)
   const activeWorkspace = useWorkspaceStore((state) => state.activeWorkspace)
   const fetchWorkspaces = useWorkspaceStore((state) => state.fetchWorkspaces)
   const setActiveWorkspace = useWorkspaceStore((state) => state.setActiveWorkspace)
   const createWorkspace = useWorkspaceStore((state) => state.createWorkspace)
   const updateWorkspace = useWorkspaceStore((state) => state.updateWorkspace)
+  const deleteWorkspace = useWorkspaceStore((state) => state.deleteWorkspace)
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editingWorkspace, setEditingWorkspace] = useState<Workspace | null>(null)
@@ -51,6 +59,26 @@ const WorkspaceSwitcher: React.FC = () => {
   const handleAddWorkspace = (): void => {
     setModalOpen(true)
     setDropdownOpen(false)
+  }
+
+  const handleDeleteWorkspace = (workspace: Workspace, e: React.MouseEvent): void => {
+    e.stopPropagation()
+    setDropdownOpen(false)
+    modal.confirm({
+      title: t('workspace.deleteConfirmTitle'),
+      content: t('workspace.deleteConfirmContent', workspace.name),
+      okText: t('workspace.delete'),
+      okType: 'danger',
+      cancelText: t('workspace.cancel'),
+      onOk: async () => {
+        try {
+          await deleteWorkspace(workspace.id)
+          message.success(t('workspace.deleted'))
+        } catch {
+          message.error(t('workspace.deleteFailed'))
+        }
+      }
+    })
   }
 
   const handlePickDirectory = async (): Promise<void> => {
@@ -122,6 +150,14 @@ const WorkspaceSwitcher: React.FC = () => {
               icon={<EditOutlined />}
               onClick={(e) => handleEditWorkspace(ws, e)}
               title={t('workspace.edit')}
+            />
+            <Button
+              type="text"
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              onClick={(e) => handleDeleteWorkspace(ws, e)}
+              title={t('workspace.delete')}
             />
           </Space>
         </div>

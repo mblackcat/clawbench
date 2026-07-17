@@ -13,8 +13,12 @@ import {
   getApplicationById,
   setApplicationFeatured,
   setApplicationPublished,
+  updateApplication,
 } from '../repositories/applicationRepository';
-import { getLatestVersionsByApplicationIds } from '../repositories/applicationVersionRepository';
+import {
+  getLatestVersionsByApplicationIds,
+  getLatestVersion,
+} from '../repositories/applicationVersionRepository';
 import {
   listExecutionErrorsByApplication,
   countExecutionErrors,
@@ -221,11 +225,12 @@ export async function listAllApplicationsHandler(
 
 /**
  * PUT /api/v1/admin/applications/:applicationId
- * Admin-only update of application flags. Currently supports:
+ * Admin-only update of application fields. Supports:
  *   - featured (boolean): 推荐/精选标记
  *   - published (boolean): 发布状态
+ *   - metadata (object): shallow-merged into existing metadata (e.g. coverUrl, icon, url)
  *
- * Body: { featured?: boolean, published?: boolean }
+ * Body: { featured?: boolean, published?: boolean, metadata?: Record<string, unknown> }
  * Only the provided fields are updated; the rest are left unchanged.
  */
 export async function updateApplicationAdminHandler(
@@ -234,7 +239,11 @@ export async function updateApplicationAdminHandler(
 ): Promise<void> {
   try {
     const { applicationId } = req.params;
-    const { featured, published } = req.body as { featured?: unknown; published?: unknown };
+    const { featured, published, metadata } = req.body as {
+      featured?: unknown;
+      published?: unknown;
+      metadata?: unknown;
+    };
 
     const application = await getApplicationById(applicationId);
     if (!application) {
@@ -256,23 +265,43 @@ export async function updateApplicationAdminHandler(
       application.published = published;
       touched = true;
     }
+    if (metadata !== undefined) {
+      if (metadata === null || typeof metadata !== 'object' || Array.isArray(metadata)) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'INVALID_INPUT',
+            message: 'metadata must be an object',
+          },
+        });
+        return;
+      }
+      // Shallow-merge so admins can patch coverUrl/icon without wiping other keys
+      const merged = {
+        ...(application.metadata || {}),
+        ...(metadata as Record<string, unknown>),
+      };
+      await updateApplication(applicationId, { metadata: merged });
+      touched = true;
+    }
 
     if (!touched) {
       res.status(400).json({
         success: false,
         error: {
           code: 'NO_FIELDS',
-          message: 'Provide at least one of: featured, published',
+          message: 'Provide at least one of: featured, published, metadata',
         },
       });
       return;
     }
 
-    // Re-read to reflect the persisted state (incl. updated_at)
+    // Re-read to reflect the persisted state (incl. updated_at) + latest version
     const refreshed = await getApplicationById(applicationId);
+    const latest = await getLatestVersion(applicationId);
     res.json({
       success: true,
-      data: applicationToResponse(refreshed ?? application),
+      data: applicationToResponse(refreshed ?? application, undefined, latest?.version),
     });
   } catch (error) {
     logger.error('Error updating application (admin):', error);

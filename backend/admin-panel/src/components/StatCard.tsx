@@ -8,10 +8,12 @@ interface Props {
 
 const StatCard: React.FC<Props> = ({ value, label, icon }) => {
   return (
-    <div className="ios-glass-surface ios-stat-card">
-      {icon && <div style={{ fontSize: 24, opacity: 0.6, marginBottom: 4 }}>{icon}</div>}
-      <div className="ios-stat-value">{value}</div>
-      <div className="ios-stat-label">{label}</div>
+    <div className="stat-card">
+      <div className="stat-label">
+        {icon}
+        {label}
+      </div>
+      <div className="stat-value">{value}</div>
     </div>
   );
 };

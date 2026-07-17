@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import { theme } from 'antd'
+import { theme, App } from 'antd'
 import { useAITerminalStore } from '../../stores/useAITerminalStore'
 import { useT } from '../../i18n'
 import AITerminalSidebar from './AITerminalSidebar'
@@ -20,10 +20,12 @@ const COLLAPSED_SIDEBAR_WIDTH = 44
 
 const AITerminalPage: React.FC = () => {
   const { token } = theme.useToken()
+  const { message } = App.useApp()
   const t = useT()
   const {
     openTabs, activeTabId, sideMode, openDBTabs,
-    fetchQuickCommands, syncSSHConfig, fetchDBConnections, initListeners
+    fetchQuickCommands, syncSSHConfig, fetchDBConnections, initListeners,
+    setDBIdleDisconnectedCallback
   } = useAITerminalStore()
 
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
@@ -41,7 +43,14 @@ const AITerminalPage: React.FC = () => {
     fetchQuickCommands()
     fetchDBConnections()
     const cleanup = initListeners()
-    return cleanup
+    setDBIdleDisconnectedCallback((connId) => {
+      const conn = useAITerminalStore.getState().dbConnections.find(c => c.id === connId)
+      message.info(t('terminal.dbIdleDisconnected', conn?.name || connId))
+    })
+    return () => {
+      setDBIdleDisconnectedCallback(null)
+      cleanup()
+    }
   }, [])
 
   // Sidebar resize

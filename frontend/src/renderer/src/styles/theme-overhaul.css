@@ -1,42 +1,138 @@
 /* ==========================================================================
    ClawBench Theme — Fresh Clean Palette
-   Light: #F5F6F8 (bg), #EDEEF0 (sidebar), #fff (container), #2E3038 (text), #4F8CFF (accent)
-   Dark:  #17171A (bg), #232326 (container), #F0F0F3 (text), #6BA1FF (accent)
-   Font: Inter, system-ui — weight 300–500 for a lighter, airy feel
+   Light: #F5F6F8 (bg), #EDEEF0 (sidebar), #fff (container), #1F2329 (text), #4F8CFF (accent)
+   Dark:  #17171A (bg), #232326 (container), #DDDEE3 (text), #6BA1FF (accent)
+   Font: Inter (bundled) + system CJK
+     Light body 400 / strong 500 — readable on white (300 was too thin)
+     Dark  body 300 / strong 400 — bright-on-dark reads thicker; keep light strokes
+   Code / terminal mono: Consolas → Monaco → Menlo + YaHei/PingFang CJK (see mono-font.ts)
    ========================================================================== */
 
-/* --- Global Font Weight Override --- */
+/* --- Global Font Weight (per-theme via --cb-font-weight) --- */
 
 body,
 html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  font-weight: 400;
+  font-weight: var(--cb-font-weight, 400);
   margin: 0;
   overflow: hidden;
+  /* Inter optical axis tweaks */
+  font-feature-settings: "cv11", "ss01", "ss03";
+}
+
+/* Align Ant Design components with theme body weight */
+body,
+.ant-typography,
+.ant-btn,
+.ant-menu,
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-select,
+.ant-select-item,
+.ant-dropdown,
+.ant-dropdown-menu-item,
+.ant-tabs,
+.ant-table,
+.ant-form,
+.ant-form-item-label > label,
+.ant-tag,
+.ant-modal,
+.ant-drawer,
+.ant-card,
+.ant-list,
+.ant-breadcrumb,
+.ant-pagination,
+.ant-segmented,
+.ant-radio-wrapper,
+.ant-checkbox-wrapper,
+.ant-statistic,
+.ant-descriptions,
+.ant-empty,
+.ant-tooltip,
+.ant-popover,
+.ant-message,
+.ant-notification {
+  font-weight: var(--cb-font-weight, 400);
 }
 
 /* 根据主题同步 body 背景色，防止路由切换白屏闪烁 */
 [data-theme="light"] body,
 body[data-theme="light"] {
   background: #F5F6F8;
+  color: #1F2329;
+  caret-color: #1F2329;
 }
 
 [data-theme="dark"] body,
 body[data-theme="dark"] {
   background: #17171A;
+  color: #DDDEE3;
+  caret-color: #DDDEE3;
 }
 
-/* Lighter font weight for general text */
+/* Light: Regular body — Inter 300 washes out on light surfaces + CJK mismatch */
 [data-theme="light"] {
+  --cb-font-weight: 400;
+  --cb-font-weight-strong: 500;
   font-weight: 400;
   letter-spacing: 0.01em;
+  --cb-text: #1F2329;
+  --cb-text-secondary: #5C6370;
+  --cb-caret: #1F2329;
 }
 
+/* Dark: Light body — near-white glyphs already look heavier than print weight */
 [data-theme="dark"] {
-  font-weight: 400;
-  letter-spacing: 0.01em;
+  --cb-font-weight: 300;
+  --cb-font-weight-strong: 400;
+  font-weight: 300;
+  letter-spacing: 0.012em;
+  --cb-text: #DDDEE3;
+  --cb-text-secondary: #A0A3AD;
+  --cb-caret: #DDDEE3;
+}
+
+/* --- Caret (text insertion cursor "I") — always match readable text color --- */
+input,
+textarea,
+.ant-input,
+.ant-input-affix-wrapper input,
+.ant-input-textarea textarea,
+.ant-mentions,
+.ant-select-selection-search-input,
+.ant-picker-input > input,
+[contenteditable="true"] {
+  caret-color: var(--cb-caret, currentColor) !important;
+}
+
+[data-theme="light"] input,
+[data-theme="light"] textarea,
+[data-theme="light"] .ant-input,
+[data-theme="light"] .ant-input-affix-wrapper,
+[data-theme="light"] .ant-input-affix-wrapper input,
+[data-theme="light"] .ant-input-textarea textarea,
+[data-theme="light"] .ant-mentions,
+[data-theme="light"] .ant-select-selection-search-input,
+[data-theme="light"] .ant-picker-input > input,
+[data-theme="light"] [contenteditable="true"] {
+  color: #1F2329;
+  caret-color: #1F2329 !important;
+}
+
+[data-theme="dark"] input,
+[data-theme="dark"] textarea,
+[data-theme="dark"] .ant-input,
+[data-theme="dark"] .ant-input-affix-wrapper,
+[data-theme="dark"] .ant-input-affix-wrapper input,
+[data-theme="dark"] .ant-input-textarea textarea,
+[data-theme="dark"] .ant-mentions,
+[data-theme="dark"] .ant-select-selection-search-input,
+[data-theme="dark"] .ant-picker-input > input,
+[data-theme="dark"] [contenteditable="true"] {
+  color: #DDDEE3;
+  caret-color: #DDDEE3 !important;
 }
 
 /* --- Theme Variables --- */
@@ -98,12 +194,12 @@ body[data-theme="dark"] {
 
 .cb-sidebar .ant-menu-item {
   transition: all 0.15s ease;
-  font-weight: 400;
+  font-weight: var(--cb-font-weight, 400);
 }
 
 .cb-sidebar .ant-menu-item-selected {
   background: var(--cb-menu-selected-bg) !important;
-  font-weight: 500;
+  font-weight: var(--cb-font-weight-strong, 500);
 }
 
 .cb-sidebar .ant-menu-item:not(.ant-menu-item-selected):hover {
@@ -174,6 +270,7 @@ body[data-theme="dark"] {
 /* --- Glass Card --- */
 
 .cb-glass-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   border-radius: 12px;
@@ -203,6 +300,36 @@ body[data-theme="dark"] {
 [data-theme="dark"] .cb-glass-card:hover {
   transform: translateY(-1px);
   box-shadow: var(--cb-card-shadow-hover);
+}
+
+/* --- Long-press jiggle + corner close button (我的页面：下架/删除) --- */
+
+@keyframes cb-card-jiggle {
+  0%, 100% { transform: rotate(-1.2deg); }
+  50% { transform: rotate(1.2deg); }
+}
+
+.cb-glass-card--jiggling {
+  /* 抖动时允许溢出，使左上角的 X 按钮能"探出"卡片边缘，而不是被圆角裁掉。 */
+  overflow: visible;
+  animation: cb-card-jiggle 0.2s ease-in-out infinite;
+}
+
+.cb-card-close-btn {
+  /* 是 .cb-glass-card 的直接子元素，会随父级的 jiggle transform 一起转动，
+     不需要自己单独的动画。 */
+  position: absolute;
+  top: -10px;
+  left: -10px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 2;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
 /* --- Custom Scrollbar --- */
@@ -298,19 +425,23 @@ body[data-theme="dark"] {
 }
 
 [data-theme="light"] .ant-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: #2E3038 !important;
+  color: #1F2329 !important;
   font-weight: 500;
 }
 
 /* Dark mode: tab selected text */
 [data-theme="dark"] .ant-tabs .ant-tabs-tab {
-  font-weight: 400;
-  color: #6B7280;
+  font-weight: 300;
+  color: #787B86;
+}
+
+[data-theme="dark"] .ant-tabs .ant-tabs-tab:hover {
+  color: #A0A3AD;
 }
 
 [data-theme="dark"] .ant-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: #F0F0F3 !important;
-  font-weight: 500;
+  color: #DDDEE3 !important;
+  font-weight: 400;
 }
 
 /* --- Buttons --- */
@@ -318,7 +449,7 @@ body[data-theme="dark"] {
 .ant-btn-primary,
 .ant-btn-default {
   box-shadow: none !important;
-  font-weight: 400;
+  font-weight: var(--cb-font-weight, 400);
 }
 
 [data-theme="light"] .ant-btn-primary {
@@ -333,23 +464,44 @@ body[data-theme="dark"] {
 /* Default button: subtle border */
 [data-theme="light"] .ant-btn-default {
   border-color: rgba(0, 0, 0, 0.08);
-  color: #2E3038;
+  color: #1F2329;
 }
 
 [data-theme="light"] .ant-btn-default:hover {
   background: rgba(0, 0, 0, 0.03) !important;
   border-color: rgba(0, 0, 0, 0.12) !important;
-  color: #2E3038 !important;
+  color: #1F2329 !important;
 }
 
 [data-theme="light"] .ant-btn-text {
-  color: #2E3038;
+  color: #1F2329;
   font-weight: 400;
 }
 
 [data-theme="light"] .ant-btn-text:hover {
   background: rgba(0, 0, 0, 0.03) !important;
-  color: #2E3038 !important;
+  color: #1F2329 !important;
+}
+
+/* Dark buttons: ensure text stays bright */
+[data-theme="dark"] .ant-btn-default {
+  color: #DDDEE3;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+[data-theme="dark"] .ant-btn-default:hover {
+  color: #E8E9ED !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+[data-theme="dark"] .ant-btn-text {
+  color: #DDDEE3;
+}
+
+[data-theme="dark"] .ant-btn-text:hover {
+  color: #F0F0F3 !important;
+  background: rgba(255, 255, 255, 0.06) !important;
 }
 
 /* --- Input / TextArea: clean light border --- */
@@ -434,6 +586,96 @@ body[data-theme="dark"] {
   font-weight: 400;
 }
 
+/*
+ * Dark-mode tags: Ant Design preset colors use near-black purple/blue chips
+ * (e.g. #120338 / #111a2c) that disappear into the dark chrome. Soften every
+ * preset to a translucent tint + readable foreground so tags stay legible
+ * and visually consistent with the rest of the app.
+ */
+[data-theme="dark"] .ant-tag {
+  border-radius: 4px;
+  font-weight: 300;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.08);
+  color: #C9CCD4;
+}
+
+[data-theme="dark"] .ant-tag-blue,
+[data-theme="dark"] .ant-tag-processing {
+  color: #9EC5FF;
+  background: rgba(107, 161, 255, 0.16);
+  border-color: rgba(107, 161, 255, 0.28);
+}
+
+[data-theme="dark"] .ant-tag-geekblue {
+  color: #A8B8FF;
+  background: rgba(114, 132, 255, 0.16);
+  border-color: rgba(114, 132, 255, 0.28);
+}
+
+[data-theme="dark"] .ant-tag-purple {
+  color: #D4B8F5;
+  background: rgba(162, 112, 230, 0.16);
+  border-color: rgba(162, 112, 230, 0.28);
+}
+
+[data-theme="dark"] .ant-tag-magenta {
+  color: #F0A8D8;
+  background: rgba(235, 120, 190, 0.16);
+  border-color: rgba(235, 120, 190, 0.28);
+}
+
+[data-theme="dark"] .ant-tag-cyan {
+  color: #7EDDE0;
+  background: rgba(54, 186, 190, 0.16);
+  border-color: rgba(54, 186, 190, 0.28);
+}
+
+[data-theme="dark"] .ant-tag-green,
+[data-theme="dark"] .ant-tag-success {
+  color: #8FDBA8;
+  background: rgba(73, 170, 100, 0.16);
+  border-color: rgba(73, 170, 100, 0.28);
+}
+
+[data-theme="dark"] .ant-tag-lime {
+  color: #C4E06A;
+  background: rgba(160, 200, 40, 0.14);
+  border-color: rgba(160, 200, 40, 0.26);
+}
+
+[data-theme="dark"] .ant-tag-gold {
+  color: #E8C96A;
+  background: rgba(212, 168, 40, 0.16);
+  border-color: rgba(212, 168, 40, 0.28);
+}
+
+[data-theme="dark"] .ant-tag-orange,
+[data-theme="dark"] .ant-tag-warning {
+  color: #F0B070;
+  background: rgba(230, 140, 50, 0.16);
+  border-color: rgba(230, 140, 50, 0.28);
+}
+
+[data-theme="dark"] .ant-tag-volcano {
+  color: #F09A7A;
+  background: rgba(230, 100, 60, 0.16);
+  border-color: rgba(230, 100, 60, 0.28);
+}
+
+[data-theme="dark"] .ant-tag-red,
+[data-theme="dark"] .ant-tag-error {
+  color: #F09090;
+  background: rgba(220, 80, 80, 0.16);
+  border-color: rgba(220, 80, 80, 0.28);
+}
+
+/* Soften filled status tags (has-color uses solid bg + white text) */
+[data-theme="dark"] .ant-tag-has-color {
+  border-color: transparent;
+  opacity: 0.95;
+}
+
 /* --- Table: clean light borders --- */
 [data-theme="light"] .ant-table {
   border-radius: 8px;
@@ -463,7 +705,7 @@ body[data-theme="dark"] {
 
 [data-theme="dark"] .ant-table-thead > tr > th {
   background: #2A2A2E !important;
-  font-weight: 500;
+  font-weight: 400;
   font-size: 13px;
   color: #8B8D98;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
@@ -471,7 +713,7 @@ body[data-theme="dark"] {
 
 [data-theme="dark"] .ant-table-tbody > tr > td {
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-  font-weight: 400;
+  font-weight: 300;
 }
 
 [data-theme="dark"] .ant-table-tbody > tr:hover > td {
@@ -501,28 +743,80 @@ body[data-theme="dark"] {
   box-shadow: none;
 }
 
-/* --- Global heading weight reduction --- */
+/* --- Global heading weight (one step above body) --- */
 h1, h2, h3, h4, h5, h6,
 .ant-typography h1,
 .ant-typography h2,
 .ant-typography h3,
 .ant-typography h4 {
-  font-weight: 500 !important;
+  font-weight: var(--cb-font-weight-strong, 500) !important;
+  letter-spacing: 0.01em;
 }
 
-/* --- Menu text lighter --- */
+/* Large display titles: match body (not thinner than readable baseline) */
+.cb-display-title {
+  font-weight: var(--cb-font-weight, 400) !important;
+  letter-spacing: -0.005em;
+}
+
+/* Strong text one step above body (light 500 / dark 400) */
+.ant-typography strong,
+.ant-typography b,
+b, strong {
+  font-weight: var(--cb-font-weight-strong, 500) !important;
+}
+
+/* --- Menu / form / breadcrumb follow theme body weight --- */
 .ant-menu-item .ant-menu-title-content {
-  font-weight: 400;
+  font-weight: var(--cb-font-weight, 400);
 }
 
-/* --- Form label lighter --- */
 .ant-form-item-label > label {
-  font-weight: 400;
+  font-weight: var(--cb-font-weight, 400);
 }
 
-/* --- Breadcrumb lighter --- */
 .ant-breadcrumb {
-  font-weight: 400;
+  font-weight: var(--cb-font-weight, 400);
+}
+
+/* --- Typography secondary/tertiary contrast (dark) --- */
+[data-theme="dark"] .ant-typography,
+[data-theme="dark"] .ant-typography p {
+  color: #DDDEE3;
+}
+
+[data-theme="dark"] .ant-typography.ant-typography-secondary {
+  color: #A0A3AD !important;
+}
+
+[data-theme="dark"] .ant-empty-description {
+  color: #7E818C;
+}
+
+/* --- Select / dropdown text readability --- */
+[data-theme="dark"] .ant-select-selection-item,
+[data-theme="dark"] .ant-select-selection-placeholder,
+[data-theme="dark"] .ant-dropdown .ant-dropdown-menu-item {
+  color: #DDDEE3;
+}
+
+[data-theme="dark"] .ant-select-selection-placeholder {
+  color: #7E818C !important;
+}
+
+/* --- Placeholder always softer than caret/text --- */
+[data-theme="light"] ::placeholder,
+[data-theme="light"] .ant-input::placeholder,
+[data-theme="light"] .ant-select-selection-placeholder {
+  color: #A8AEB8 !important;
+  opacity: 1;
+}
+
+[data-theme="dark"] ::placeholder,
+[data-theme="dark"] .ant-input::placeholder,
+[data-theme="dark"] .ant-select-selection-placeholder {
+  color: #5C5E68 !important;
+  opacity: 1;
 }
 
 /* --- CodeEditor file tree: tighter left alignment --- */
@@ -540,4 +834,39 @@ h1, h2, h3, h4, h5, h6,
 @keyframes cb-update-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.55; }
+}
+
+/* --- Dark mode secondary UI text that often goes too dim --- */
+[data-theme="dark"] .ant-menu-item,
+[data-theme="dark"] .ant-menu-submenu-title {
+  color: #C9CCD4;
+}
+
+[data-theme="dark"] .ant-menu-item-selected {
+  color: #DDDEE3 !important;
+}
+
+[data-theme="dark"] .ant-form-item-label > label {
+  color: #A0A3AD;
+}
+
+[data-theme="dark"] .ant-descriptions-item-label {
+  color: #A0A3AD !important;
+}
+
+[data-theme="dark"] .ant-descriptions-item-content {
+  color: #DDDEE3 !important;
+}
+
+[data-theme="dark"] .ant-statistic-content {
+  color: #DDDEE3;
+}
+
+[data-theme="dark"] .ant-list-item-meta-description {
+  color: #A0A3AD !important;
+}
+
+/* Keep mono / code chips readable in both themes (sync: mono-font.ts) */
+code, kbd, samp, pre {
+  font-family: 'Consolas', 'Monaco', 'Menlo', 'Courier New', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC', 'Source Han Sans SC', sans-serif;
 }

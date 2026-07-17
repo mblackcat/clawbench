@@ -7,6 +7,7 @@ import {
   getUserApplicationsHandler,
   updateApplicationHandler,
   deleteApplicationHandler,
+  unpublishApplicationHandler,
   uploadApplicationPackageHandler,
   downloadApplicationPackageHandler,
   reportExecutionHandler,
@@ -55,6 +56,12 @@ applicationRouter.get('/:applicationId', getApplicationDetailHandler);
  * 更新应用信息（需要认证和所有权）
  */
 applicationRouter.put('/:applicationId', authenticate, updateApplicationHandler);
+
+/**
+ * PATCH /api/v1/applications/:applicationId/unpublish
+ * 下架应用（取消发布，需要认证和所有权）
+ */
+applicationRouter.patch('/:applicationId/unpublish', authenticate, unpublishApplicationHandler);
 
 /**
  * DELETE /api/v1/applications/:applicationId

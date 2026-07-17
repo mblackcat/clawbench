@@ -23,6 +23,7 @@ export interface SystemPromptContext {
 /**
  * Progressive injection budgets (characters).
  * Always-on core stays small; large / situational docs are on-demand via read_agent_file.
+ * Mirrors Claude Code: identity + compact context in prompt; capabilities live in tools.
  */
 export const PROMPT_INJECT_CAPS = {
   /** Persona is always needed but may be user-edited long */
@@ -31,7 +32,7 @@ export const PROMPT_INJECT_CAPS = {
   user: 1_200,
   /** Project facts — compact always-on; full file via tool */
   memory: 2_000,
-  /** Never inject full tools.md / agents.md */
+  /** Never inject full tools.md / agents.md — load via tools */
   tools: 0,
   agents: 0,
   customPrompt: 2_000,
@@ -69,14 +70,35 @@ export function injectBoundedSection(
   return `## ${title}\n${t.slice(0, maxChars).trimEnd()}${hint}`
 }
 
+/**
+ * Claude Code–style: progressive knowledge is a capability (tools), not a long prompt dump.
+ * tools.md / agents.md are never fully inlined — they are internal agent files.
+ */
 function onDemandCatalog(availableTools: string[]): string {
   const hasRead = availableTools.includes('read_agent_file')
   const readHint = hasRead
-    ? 'Use `read_agent_file` to load details only when the turn needs them.'
-    : 'Detailed files exist on disk; prefer tools when available to load them.'
+    ? 'Use `read_agent_file` to load a file only when this turn needs more than the short previews above.'
+    : 'Detailed agent files may exist on disk; prefer tools when available to load them.'
 
-  return `## On-demand knowledge (do not assume empty)
-Durable docs are NOT fully inlined every turn. ${readHint}
+  const persistLines: string[] = []
+  if (availableTools.includes('update_user_profile')) {
+    persistLines.push('`update_user_profile` — durable user prefs / identity notes')
+  }
+  if (availableTools.includes('update_long_term_memory')) {
+    persistLines.push('`update_long_term_memory` — projects, decisions, todos')
+  }
+  if (availableTools.includes('update_sub_agents')) {
+    persistLines.push('`update_sub_agents` — specialist buddy roster')
+  }
+
+  const persistBlock =
+    persistLines.length > 0
+      ? `\n\nPersist durable learnings with: ${persistLines.join('; ')}.`
+      : ''
+
+  return `## Agent knowledge files
+Durable docs are not fully inlined every turn. ${readHint}
+
 | file | when to load |
 |------|----------------|
 | \`soul\` | full persona when the identity preview was truncated |
@@ -85,10 +107,56 @@ Durable docs are NOT fully inlined every turn. ${readHint}
 | \`agents\` | sub-agent / buddy roster (multi-step specialist work) |
 | \`tools\` | detailed module harness (apps / terminal / DB / coding how-to) |
 
-Rules:
-- Simple Q&A: answer without loading extra files
-- Before complex module ops or multi-specialist plans: load \`tools\` and/or \`agents\` first
-- Never invent file contents — read when unsure`
+Simple Q&A: answer without loading extra files. Complex module ops: load \`tools\` and/or \`agents\` first. Never invent file contents.${persistBlock}`
+}
+
+/**
+ * Claude Code system section (trimmed): tool results tags, permission denial, parallel tools.
+ * Safety and search policy live in tool descriptions / executors, not here.
+ */
+function systemMechanicsSection(availableTools: string[]): string {
+  const items = [
+    'All text you output outside of tool use is displayed to the user. Use GitHub-flavored markdown.',
+    'Tools run under the user-selected permission mode. If a tool is denied, do not re-attempt the exact same call — adjust your approach.',
+    'Tool results and user messages may include system tags; they are automatically added and not part of the user\'s words.',
+    'You can call multiple tools in one response when independent; use sequential calls when a later call depends on an earlier result.',
+  ]
+
+  if (availableTools.includes('run_shell_command') || availableTools.includes('execute_command')) {
+    items.push(
+      'Prefer dedicated tools over ad-hoc shell when a matching tool exists (apps, DB, coding sessions).'
+    )
+  }
+
+  return `## System\n${items.map((i) => `- ${i}`).join('\n')}`
+}
+
+function usingToolsSection(availableTools: string[], webSearchEnabled: boolean): string | null {
+  if (availableTools.length === 0 && !webSearchEnabled) return null
+
+  const names =
+    availableTools.length > 0
+      ? availableTools.join(', ')
+      : '(none registered)'
+
+  const lines = [
+    `Tool schemas are provided by the API. Available names: ${names}.`,
+    'Use tools proactively when they improve correctness; never put secrets in tool arguments.',
+  ]
+
+  if (webSearchEnabled || availableTools.includes('web_search')) {
+    lines.push(
+      'Web search/browse tools encode their own usage policy. After using search results, end with a Sources: section of markdown links [Title](URL). Prefer the current year in queries for recent docs/events.'
+    )
+  }
+
+  if (availableTools.includes('read_agent_file')) {
+    lines.push(
+      'For module how-to beyond tool schemas, load file=`tools` via `read_agent_file`.'
+    )
+  }
+
+  return `## Using tools\n${lines.map((l) => `- ${l}`).join('\n')}`
 }
 
 export function buildSystemPrompt(ctx: SystemPromptContext): string {
@@ -121,11 +189,9 @@ export function buildSystemPrompt(ctx: SystemPromptContext): string {
   const sections: string[] = []
   const mem = ctx.agentMemory
 
-  // 1. Soul — always (capped)
+  // 1. Soul — always (capped). Identity is the primary always-on prompt surface.
   if (mem?.soul?.trim()) {
     const soul = injectBoundedSection('Identity', mem.soul, PROMPT_INJECT_CAPS.soul, 'soul')
-    // Soul is free-form; keep raw body without forcing "## Identity" if it already has a title
-    // Prefer inject as-is when under cap for nicer templates
     if (mem.soul.trim().length <= PROMPT_INJECT_CAPS.soul) {
       sections.push(mem.soul.trim())
     } else if (soul) {
@@ -160,44 +226,17 @@ export function buildSystemPrompt(ctx: SystemPromptContext): string {
     sections.push(`## Performance\n${mem.statsSnippet.trim()}`)
   }
 
-  // 5. Progressive catalog — always (replaces full tools.md + agents.md)
+  // 5. System mechanics (Claude Code–style)
+  sections.push(systemMechanicsSection(ctx.availableTools))
+
+  // 6. Using tools (brief; detailed policy lives in tool descriptions)
+  const toolsSec = usingToolsSection(ctx.availableTools, ctx.webSearchEnabled)
+  if (toolsSec) sections.push(toolsSec)
+
+  // 7. Progressive agent knowledge catalog (internal MD files)
   sections.push(onDemandCatalog(ctx.availableTools))
 
-  // 6. Compact workflow
-  sections.push(`## Workflow
-1. Understand intent; answer simple questions directly
-2. Complex tasks: brief plan → tools → synthesize
-3. Prefer parallel tool calls when independent
-4. Load on-demand docs (\`read_agent_file\`) only when this turn needs them
-5. Persist durable learnings: \`update_user_profile\`, \`update_long_term_memory\`, \`update_sub_agents\``)
-
-  // 7. Tool names only (schemas already sent by the API when tools are attached)
-  if (ctx.availableTools.length > 0) {
-    sections.push(`## Tool Usage
-- Tool schemas are provided by the API; names: ${ctx.availableTools.join(', ')}
-- Use tools proactively when they improve quality; never expose secrets in tool args
-- Prefer safe, read-only commands; confirm destructive shell/SQL
-- For module how-to beyond tool schemas, load file=\`tools\` via \`read_agent_file\``)
-  }
-
-  // 8. Search strategy (only when enabled)
-  if (ctx.webSearchEnabled) {
-    sections.push(`## Search Strategy
-Use web search judiciously — NOT on every message.
-
-**Skip search:** greetings, math/logic, coding from known APIs, basic facts, follow-ups already in thread.
-**Do search:** current events, latest versions/changelogs, uncertain facts, user-linked URLs, explicit "latest/today".
-
-**Rules:** decide first; if needed use plan_search then web_search; vary queries; stop after 2–4 useful rounds; cite URLs.`)
-  }
-
-  // 9. Safety
-  sections.push(`## Safety
-- Never reveal API keys, tokens, passwords, or other credentials
-- Never execute destructive commands (rm -rf, DROP TABLE, etc.) without explicit user confirmation
-- If a request seems harmful or unethical, explain why and suggest alternatives`)
-
-  // 10. Context
+  // 8. Context
   sections.push(`## Context
 - Current time: ${ctx.currentTime}
 - Timezone: ${ctx.timezone}
@@ -205,7 +244,7 @@ Use web search judiciously — NOT on every message.
 - User language: ${ctx.language}`)
 
   // NOTE: tools.md and agents.md are intentionally NOT fully injected.
-  // Model discovers them via On-demand knowledge + read_agent_file.
+  // Model discovers them via Agent knowledge files + read_agent_file.
 
   // Custom prompt (capped)
   if (ctx.userCustomPrompt?.trim()) {

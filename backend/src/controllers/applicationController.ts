@@ -583,6 +583,81 @@ export async function deleteApplicationHandler(
 }
 
 /**
+ * 下架应用（取消发布，保留应用与已上传的包，仅将 published 置为 false）
+ * PATCH /api/v1/applications/:applicationId/unpublish
+ */
+export async function unpublishApplicationHandler(
+  req: AuthRequest,
+  res: Response
+): Promise<void> {
+  try {
+    // 验证用户认证
+    if (!req.userId) {
+      res.status(401).json({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Authentication required',
+        },
+      });
+      return;
+    }
+
+    const { applicationId } = req.params;
+
+    // 检查应用是否存在
+    const application = await getApplicationById(applicationId);
+    if (!application) {
+      res.status(404).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Application not found',
+        },
+      });
+      return;
+    }
+
+    // 检查所有权
+    const isOwner = await isApplicationOwner(applicationId, req.userId);
+    if (!isOwner) {
+      res.status(403).json({
+        success: false,
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Only application owner can perform this action',
+        },
+      });
+      return;
+    }
+
+    // 下架：仅置 published = false，不删除应用/版本/已上传的包
+    await setApplicationPublished(applicationId, false);
+
+    const updatedApplication = await getApplicationById(applicationId);
+    const owner = await getUserById(req.userId);
+
+    res.status(200).json({
+      success: true,
+      data: updatedApplication
+        ? applicationToResponse(updatedApplication, owner?.username)
+        : { message: 'Application unpublished successfully' },
+    });
+
+    logger.info(`Application unpublished: ${applicationId} by user ${req.userId}`);
+  } catch (error) {
+    logger.error('Error unpublishing application:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Internal server error',
+      },
+    });
+  }
+}
+
+/**
  * 上传应用包
  * POST /api/v1/applications/:applicationId/upload
  */

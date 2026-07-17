@@ -19,6 +19,7 @@ export const TOOLS_WITH_NATIVE_SESSIONS: AIToolType[] = [
   'mimo'
 ]
 
+/** Soft preset colors — dark mode chips are further toned in theme-overhaul.css */
 export const AI_TOOL_TAG_COLORS: Partial<Record<AIToolType, string>> = {
   claude: 'purple',
   codex: 'green',
@@ -28,7 +29,7 @@ export const AI_TOOL_TAG_COLORS: Partial<Record<AIToolType, string>> = {
   trae: 'cyan',
   qoder: 'gold',
   kimi: 'blue',
-  zcode: 'blue',
+  zcode: 'geekblue',
   mimo: 'orange',
   terminal: 'default',
   qwen: 'gold'

@@ -7,7 +7,14 @@ import AppRoutes from './routes'
 import { useSettingsStore } from './stores/useSettingsStore'
 import './types/ipc'
 
-const FONT_FAMILY = "'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif"
+/**
+ * App UI face: Inter for Latin, then system UI / CJK stacks.
+ * Inter is loaded via @fontsource in main.tsx (weights 300/400/500).
+ * Light UI uses Regular (400) for readability; dark keeps Light (300) so
+ * bright-on-dark text does not look optically heavy. Strong text is one step up.
+ */
+const FONT_FAMILY =
+  "'Inter', 'Segoe UI Variable Text', 'Segoe UI Variable', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', system-ui, sans-serif"
 
 const lightTokens = {
   colorPrimary: '#4F8CFF',
@@ -17,8 +24,11 @@ const lightTokens = {
   colorBgLayout: '#F5F6F8',
   colorBgContainer: '#FFFFFF',
   colorBgElevated: '#FFFFFF',
-  colorText: '#2E3038',
-  colorTextSecondary: '#747A84',
+  // Near-black slate — high contrast on light surfaces (also drives caret-color)
+  colorText: '#1F2329',
+  colorTextSecondary: '#5C6370',
+  colorTextTertiary: '#8B929E',
+  colorTextQuaternary: '#A8AEB8',
   colorBorder: 'rgba(0, 0, 0, 0.08)',
   colorBorderSecondary: 'rgba(0, 0, 0, 0.05)',
   boxShadow: '0 1px 4px rgba(0, 0, 0, 0.04)',
@@ -35,8 +45,11 @@ const darkTokens = {
   colorBgLayout: '#17171A',
   colorBgContainer: '#232326',
   colorBgElevated: '#2A2A2E',
-  colorText: '#C9CCD4',
-  colorTextSecondary: '#8B8D98',
+  // Slightly softer than pure near-white — reduces optical "bold" on dark surfaces
+  colorText: '#DDDEE3',
+  colorTextSecondary: '#A0A3AD',
+  colorTextTertiary: '#787B86',
+  colorTextQuaternary: '#5C5E68',
   colorLink: '#6BA8FF',
   colorLinkHover: '#8FBEFF',
   colorLinkActive: '#5A9AEE',
@@ -45,7 +58,7 @@ const darkTokens = {
   boxShadow: '0 2px 12px rgba(0, 0, 0, 0.30)',
   boxShadowSecondary: '0 1px 6px rgba(0, 0, 0, 0.25)',
   fontFamily: FONT_FAMILY,
-  fontWeightStrong: 500,
+  fontWeightStrong: 400,
 }
 
 const componentOverrides = {
@@ -54,6 +67,7 @@ const componentOverrides = {
     borderRadiusLG: 10,
     borderRadiusSM: 6,
     paddingInline: 16,
+    // Theme CSS sets real body weight per light/dark; avoid forcing 300 here.
     fontWeight: 400,
   },
   Menu: {
@@ -99,13 +113,30 @@ const App: React.FC = () => {
   useEffect(() => {
     document.body.setAttribute('data-theme', theme)
     document.body.style.background = theme === 'dark' ? '#17171A' : '#F5F6F8'
+    // Keep caret (text insertion cursor) aligned with primary text color —
+    // light-mode inputs otherwise inherit a washed-out caret that vanishes.
+    document.body.style.caretColor = theme === 'dark' ? '#DDDEE3' : '#1F2329'
   }, [theme])
 
   const themeConfig = useMemo(
     () => ({
       algorithm: theme === 'dark' ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
       token: theme === 'dark' ? darkTokens : lightTokens,
-      components: componentOverrides,
+      components: {
+        ...componentOverrides,
+        Tag: {
+          borderRadiusSM: 4,
+          ...(theme === 'dark'
+            ? {
+                defaultBg: 'rgba(255, 255, 255, 0.08)',
+                defaultColor: '#C9CCD4',
+              }
+            : {
+                defaultBg: 'rgba(0, 0, 0, 0.04)',
+                defaultColor: '#5C6370',
+              }),
+        },
+      },
     }),
     [theme]
   )

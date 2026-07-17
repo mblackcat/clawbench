@@ -147,6 +147,8 @@ export interface DeleteApplicationResponse {
   success: boolean;
 }
 
+export type UnpublishApplicationResponse = Application;
+
 // ============ 文件上传相关类型 ============
 
 export interface UploadApplicationRequest {

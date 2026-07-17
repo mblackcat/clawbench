@@ -100,6 +100,9 @@ interface AITerminalState {
 
   // Listeners
   initListeners: () => () => void
+  // Fired by the store's onDBIdleDisconnected handler; lets pages surface a toast
+  onDBIdleDisconnected: ((connId: string) => void) | null
+  setDBIdleDisconnectedCallback: (cb: ((connId: string) => void) | null) => void
 }
 
 export const useAITerminalStore = create<AITerminalState>((set, get) => ({
@@ -123,6 +126,9 @@ export const useAITerminalStore = create<AITerminalState>((set, get) => ({
   dbDatabases: {},
   dbSelectedDatabase: {},
   pendingSQL: {},
+  onDBIdleDisconnected: null,
+
+  setDBIdleDisconnectedCallback: (cb) => set({ onDBIdleDisconnected: cb }),
 
   fetchConnections: async () => {
     const connections = await window.api.aiTerminal.getConnections()
@@ -632,8 +638,19 @@ export const useAITerminalStore = create<AITerminalState>((set, get) => ({
       }))
     })
 
+    // Backend auto-disconnects DB connections after a long idle period to release
+    // pooled connections. Reflect that in the sidebar status dot; the user
+    // reconnects manually (click the connection, or the context-menu "Connect").
+    const unsubDBIdle = window.api.aiTerminal.onDBIdleDisconnected(({ id }) => {
+      set(state => ({
+        dbConnectionStatus: { ...state.dbConnectionStatus, [id]: 'disconnected' }
+      }))
+      get().onDBIdleDisconnected?.(id)
+    })
+
     return () => {
       unsubExit()
+      unsubDBIdle()
     }
   }
 }))

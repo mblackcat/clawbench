@@ -2,7 +2,6 @@ import React, { useEffect, useState, useRef } from 'react'
 import {
   Typography,
   Card,
-  Radio,
   Input,
   InputNumber,
   Button,
@@ -17,7 +16,6 @@ import {
   SearchOutlined,
   DownloadOutlined,
   GithubOutlined,
-  LinkOutlined,
   CheckCircleOutlined,
   FolderOpenOutlined
 } from '@ant-design/icons'
@@ -31,29 +29,30 @@ const DEFAULT_CONFIG: AiToolsConfig = {
   webSearch: { provider: 'duckduckgo', braveApiKey: '' },
   webBrowse: { engine: 'http', lightpandaPath: '' },
   feishuKits: { enabled: false, cliPath: '' },
-  toolBehavior: { maxToolSteps: 10, maxSearchRounds: 5, toolTimeoutMs: 60000 }
+  // maxToolSteps / maxSearchRounds unused by agent loop
+  toolBehavior: { maxToolSteps: 0, maxSearchRounds: 0, toolTimeoutMs: 60000 }
 }
 
-const LIGHTPANDA_GITHUB = 'https://github.com/lightpanda-io/browser'
-const LIGHTPANDA_DOCS = 'https://lightpanda.io/docs/open-source/installation'
 const LARK_CLI_GITHUB = 'https://github.com/larksuite/cli'
 
+/**
+ * AI Tools settings — Feishu kits + tool timeout only.
+ * Web search/fetch backends are internalized (DDG + HTTP; optional Brave/Lightpanda if present on disk).
+ */
 const AIToolsSettings: React.FC = () => {
   const { token } = theme.useToken()
   const { message, modal } = App.useApp()
   const t = useT()
   const { aiToolsConfig, fetchAiToolsConfig, updateAiToolsConfig } = useSettingsStore()
-  const [testingBrave, setTestingBrave] = useState(false)
-  const [braveKeyInput, setBraveKeyInput] = useState('')
-  const [detectingLp, setDetectingLp] = useState(false)
-  const [installingLp, setInstallingLp] = useState(false)
-  const [installProgress, setInstallProgress] = useState<{ percent: number; downloadedMB: string; totalMB: string; stage: string } | null>(null)
-  const cleanupRef = useRef<(() => void) | null>(null)
 
-  // Feishu Kits state
   const [detectingFk, setDetectingFk] = useState(false)
   const [installingFk, setInstallingFk] = useState(false)
-  const [fkInstallProgress, setFkInstallProgress] = useState<{ percent: number; downloadedMB: string; totalMB: string; stage: string } | null>(null)
+  const [fkInstallProgress, setFkInstallProgress] = useState<{
+    percent: number
+    downloadedMB: string
+    totalMB: string
+    stage: string
+  } | null>(null)
   const fkCleanupRef = useRef<(() => void) | null>(null)
   const [isFeishuUser, setIsFeishuUser] = useState(false)
 
@@ -64,102 +63,18 @@ const AIToolsSettings: React.FC = () => {
   }, [fetchAiToolsConfig])
 
   useEffect(() => {
-    if (aiToolsConfig?.webSearch.braveApiKey) {
-      setBraveKeyInput(aiToolsConfig.webSearch.braveApiKey)
-    }
-  }, [aiToolsConfig?.webSearch.braveApiKey])
-
-  // Feishu OAuth login status (independent of AI Coding IM)
-  useEffect(() => {
-    window.api.settings.getFeishuKitsAuthStatus().then((res) => {
-      setIsFeishuUser(!!res.isFeishuUser)
-    }).catch(() => setIsFeishuUser(false))
+    window.api.settings
+      .getFeishuKitsAuthStatus()
+      .then((res) => {
+        setIsFeishuUser(!!res.isFeishuUser)
+      })
+      .catch(() => setIsFeishuUser(false))
   }, [])
 
   const updateConfig = (patch: Partial<AiToolsConfig>) => {
     const merged = { ...config, ...patch }
     updateAiToolsConfig(merged)
   }
-
-  const handleTestBrave = async () => {
-    if (!braveKeyInput || braveKeyInput === '****') return
-    setTestingBrave(true)
-    try {
-      const result = await window.api.settings.testBraveApiKey(braveKeyInput)
-      if (result.success) {
-        message.success(t('settings.aiTools.testSuccess'))
-        updateConfig({
-          webSearch: { ...config.webSearch, provider: 'brave', braveApiKey: braveKeyInput }
-        })
-      } else {
-        message.error(`${t('settings.aiTools.testFailed')}: ${result.message}`)
-      }
-    } catch (err: any) {
-      message.error(`${t('settings.aiTools.testFailed')}: ${err.message}`)
-    } finally {
-      setTestingBrave(false)
-    }
-  }
-
-  const handleDetectLightpanda = async () => {
-    setDetectingLp(true)
-    try {
-      const result = await window.api.settings.detectLightpanda()
-      if (result.found) {
-        message.success(t('settings.aiTools.lightpandaDetected', result.path))
-        updateConfig({
-          webBrowse: { ...config.webBrowse, lightpandaPath: result.path }
-        })
-      } else {
-        message.warning(t('settings.aiTools.lightpandaNotFound'))
-      }
-    } catch {
-      message.warning(t('settings.aiTools.lightpandaNotFound'))
-    } finally {
-      setDetectingLp(false)
-    }
-  }
-
-  const handleInstallLightpanda = async () => {
-    setInstallingLp(true)
-    setInstallProgress({ percent: 0, downloadedMB: '0', totalMB: '?', stage: 'connecting' })
-
-    // Subscribe to progress events
-    cleanupRef.current?.()
-    cleanupRef.current = window.api.settings.onLightpandaInstallProgress((data) => {
-      setInstallProgress(data)
-    })
-
-    try {
-      const result = await window.api.settings.installLightpanda()
-      if (result.success) {
-        message.success(t('settings.aiTools.lightpandaInstallSuccess', result.path))
-        updateConfig({
-          webBrowse: { ...config.webBrowse, engine: 'lightpanda', lightpandaPath: result.path }
-        })
-      } else {
-        message.error(`${t('settings.aiTools.lightpandaInstallFailed')}: ${result.error}`)
-      }
-    } catch (err: any) {
-      message.error(`${t('settings.aiTools.lightpandaInstallFailed')}: ${err.message}`)
-    } finally {
-      setInstallingLp(false)
-      setInstallProgress(null)
-      cleanupRef.current?.()
-      cleanupRef.current = null
-    }
-  }
-
-  const handleSelectLightpandaPath = async () => {
-    const files = await window.api.dialog.selectFiles()
-    if (files && files.length > 0) {
-      updateConfig({
-        webBrowse: { ...config.webBrowse, lightpandaPath: files[0] }
-      })
-    }
-  }
-
-  // ── Feishu Kits handlers ──
 
   const feishuKits = config.feishuKits || { enabled: false, cliPath: '' }
 
@@ -195,7 +110,6 @@ const AIToolsSettings: React.FC = () => {
       const result = await window.api.settings.installFeishuCli()
       if (result.success) {
         message.success(t('settings.aiTools.feishuCliInstallSuccess', result.path))
-        // Only record path; enabling still requires explicit confirm (Feishu identity notice)
         updateConfig({
           feishuKits: { ...feishuKits, cliPath: result.path }
         })
@@ -249,190 +163,19 @@ const AIToolsSettings: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Web Search & Browse — corresponds to the "Web Search" toggle in AI Chat */}
+      {/* Web tools — zero-config note */}
       <Card
         title={t('settings.aiTools.webSearchGroup')}
         size="small"
         style={{ borderRadius: token.borderRadiusLG, borderColor: token.colorPrimaryBorder }}
         styles={{ body: { padding: '14px 16px' } }}
       >
-        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 14 }}>
-          {t('settings.aiTools.webSearchGroupDesc')}
+        <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
+          {t('settings.aiTools.webToolsAutoDesc')}
         </Text>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* ── Search engine ── */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <Text strong style={{ fontSize: 13 }}>{t('settings.aiTools.webSearch')}</Text>
-            <div>
-              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
-                {t('settings.aiTools.webSearchProvider')}
-              </Text>
-              <Radio.Group
-                value={config.webSearch.provider}
-                onChange={(e) =>
-                  updateConfig({
-                    webSearch: { ...config.webSearch, provider: e.target.value }
-                  })
-                }
-              >
-                <Radio.Button value="duckduckgo">DuckDuckGo</Radio.Button>
-                <Radio.Button value="brave">Brave Search</Radio.Button>
-              </Radio.Group>
-            </div>
-
-            {config.webSearch.provider === 'brave' && (
-              <div>
-                <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
-                  {t('settings.aiTools.braveApiKey')}
-                </Text>
-                <Space.Compact style={{ width: '100%' }}>
-                  <Input.Password
-                    value={braveKeyInput}
-                    onChange={(e) => setBraveKeyInput(e.target.value)}
-                    placeholder="BSA-xxxxxxxx"
-                    style={{ flex: 1 }}
-                  />
-                  <Button loading={testingBrave} onClick={handleTestBrave}>
-                    {t('settings.aiTools.testConnection')}
-                  </Button>
-                </Space.Compact>
-                <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 4 }}>
-                  {t('settings.aiTools.braveApiKeyHelp')}
-                </Text>
-              </div>
-            )}
-          </div>
-
-          {/* divider */}
-          <div style={{ borderTop: `1px solid ${token.colorBorderSecondary}` }} />
-
-          {/* ── Browse engine ── */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <Text strong style={{ fontSize: 13 }}>{t('settings.aiTools.webBrowse')}</Text>
-            <div>
-              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
-                {t('settings.aiTools.webBrowseEngine')}
-              </Text>
-              <Radio.Group
-                value={config.webBrowse.engine}
-                onChange={(e) =>
-                  updateConfig({
-                    webBrowse: { ...config.webBrowse, engine: e.target.value }
-                  })
-                }
-              >
-                <Radio.Button value="http">{t('settings.aiTools.builtinHttp')}</Radio.Button>
-                <Radio.Button value="lightpanda">Lightpanda</Radio.Button>
-              </Radio.Group>
-            </div>
-
-            {config.webBrowse.engine === 'lightpanda' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {t('settings.aiTools.lightpandaDesc')}
-                </Text>
-
-                {/* Path input + detect + file select */}
-                <div>
-                  <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
-                    {t('settings.aiTools.lightpandaPath')}
-                  </Text>
-                  <Space.Compact style={{ width: '100%' }}>
-                    <Input
-                      value={config.webBrowse.lightpandaPath}
-                      onChange={(e) =>
-                        updateConfig({
-                          webBrowse: { ...config.webBrowse, lightpandaPath: e.target.value }
-                        })
-                      }
-                      placeholder="~/.lightpanda/lightpanda"
-                      style={{ flex: 1 }}
-                    />
-                    <Button
-                      icon={<FolderOpenOutlined />}
-                      onClick={handleSelectLightpandaPath}
-                    />
-                    <Button
-                      icon={<SearchOutlined />}
-                      loading={detectingLp}
-                      onClick={handleDetectLightpanda}
-                    >
-                      {t('settings.aiTools.lightpandaDetect')}
-                    </Button>
-                  </Space.Compact>
-                  {config.webBrowse.lightpandaPath && (
-                    <Tag
-                      icon={<CheckCircleOutlined />}
-                      color="success"
-                      style={{ marginTop: 4 }}
-                    >
-                      {config.webBrowse.lightpandaPath}
-                    </Tag>
-                  )}
-                </div>
-
-                {/* Install (only when no path configured) + links */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    {!config.webBrowse.lightpandaPath && (
-                      <Button
-                        type="primary"
-                        icon={<DownloadOutlined />}
-                        loading={installingLp}
-                        onClick={handleInstallLightpanda}
-                        size="small"
-                      >
-                        {installingLp
-                          ? t('settings.aiTools.lightpandaInstalling')
-                          : t('settings.aiTools.lightpandaInstall')}
-                      </Button>
-                    )}
-                    <Button
-                      type="link"
-                      icon={<GithubOutlined />}
-                      size="small"
-                      href={LIGHTPANDA_GITHUB}
-                      target="_blank"
-                      style={{ padding: '0 4px' }}
-                    >
-                      {t('settings.aiTools.lightpandaGitHub')}
-                    </Button>
-                    <Button
-                      type="link"
-                      icon={<LinkOutlined />}
-                      size="small"
-                      href={LIGHTPANDA_DOCS}
-                      target="_blank"
-                      style={{ padding: '0 4px' }}
-                    >
-                      {t('settings.aiTools.lightpandaDocs')}
-                    </Button>
-                  </div>
-                  {installingLp && installProgress && (
-                    <div>
-                      <Progress
-                        percent={installProgress.percent >= 0 ? installProgress.percent : 0}
-                        size="small"
-                        status={installProgress.stage === 'error' ? 'exception' : installProgress.percent >= 100 ? 'success' : 'active'}
-                        format={() =>
-                          installProgress.stage === 'connecting'
-                            ? t('settings.aiTools.lightpandaConnecting')
-                            : installProgress.stage === 'writing'
-                              ? t('settings.aiTools.lightpandaWriting')
-                              : `${installProgress.downloadedMB} / ${installProgress.totalMB} MB`
-                        }
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
       </Card>
 
-      {/* Feishu Kits — official lark-cli, Feishu login UAT only (not AI Coding IM) */}
+      {/* Feishu Kits */}
       <Card
         title={
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -463,7 +206,6 @@ const AIToolsSettings: React.FC = () => {
             )}
           </div>
 
-          {/* CLI Path input + detect + file select */}
           <div>
             <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
               {t('settings.aiTools.feishuCliPath')}
@@ -479,10 +221,7 @@ const AIToolsSettings: React.FC = () => {
                 placeholder="lark-cli"
                 style={{ flex: 1 }}
               />
-              <Button
-                icon={<FolderOpenOutlined />}
-                onClick={handleSelectFeishuCliPath}
-              />
+              <Button icon={<FolderOpenOutlined />} onClick={handleSelectFeishuCliPath} />
               <Button
                 icon={<SearchOutlined />}
                 loading={detectingFk}
@@ -492,17 +231,12 @@ const AIToolsSettings: React.FC = () => {
               </Button>
             </Space.Compact>
             {feishuKits.cliPath && (
-              <Tag
-                icon={<CheckCircleOutlined />}
-                color="success"
-                style={{ marginTop: 4 }}
-              >
+              <Tag icon={<CheckCircleOutlined />} color="success" style={{ marginTop: 4 }}>
                 {feishuKits.cliPath}
               </Tag>
             )}
           </div>
 
-          {/* Install + links */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               {!feishuKits.cliPath && (
@@ -530,22 +264,26 @@ const AIToolsSettings: React.FC = () => {
               </Button>
             </div>
             {installingFk && fkInstallProgress && (
-              <div>
-                <Progress
-                  percent={fkInstallProgress.percent >= 0 ? fkInstallProgress.percent : 0}
-                  size="small"
-                  status={fkInstallProgress.stage === 'error' ? 'exception' : fkInstallProgress.percent >= 100 ? 'success' : 'active'}
-                  format={() =>
-                    fkInstallProgress.stage === 'installing'
-                      ? t('settings.aiTools.feishuCliInstalling')
-                      : fkInstallProgress.stage === 'verifying'
-                        ? t('settings.aiTools.feishuCliVerifying')
-                        : fkInstallProgress.stage === 'done'
-                          ? t('settings.aiTools.feishuCliDone')
-                          : t('settings.aiTools.feishuCliInstalling')
-                  }
-                />
-              </div>
+              <Progress
+                percent={fkInstallProgress.percent >= 0 ? fkInstallProgress.percent : 0}
+                size="small"
+                status={
+                  fkInstallProgress.stage === 'error'
+                    ? 'exception'
+                    : fkInstallProgress.percent >= 100
+                      ? 'success'
+                      : 'active'
+                }
+                format={() =>
+                  fkInstallProgress.stage === 'installing'
+                    ? t('settings.aiTools.feishuCliInstalling')
+                    : fkInstallProgress.stage === 'verifying'
+                      ? t('settings.aiTools.feishuCliVerifying')
+                      : fkInstallProgress.stage === 'done'
+                        ? t('settings.aiTools.feishuCliDone')
+                        : t('settings.aiTools.feishuCliInstalling')
+                }
+              />
             )}
           </div>
         </div>
@@ -559,34 +297,9 @@ const AIToolsSettings: React.FC = () => {
         styles={{ body: { padding: '14px 16px' } }}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Text style={{ minWidth: 140 }}>{t('settings.aiTools.maxToolSteps')}</Text>
-            <InputNumber
-              min={1}
-              max={50}
-              value={config.toolBehavior.maxToolSteps}
-              onChange={(val) =>
-                updateConfig({
-                  toolBehavior: { ...config.toolBehavior, maxToolSteps: val ?? 10 }
-                })
-              }
-              style={{ width: 120 }}
-            />
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Text style={{ minWidth: 140 }}>{t('settings.aiTools.maxSearchRounds')}</Text>
-            <InputNumber
-              min={1}
-              max={20}
-              value={config.toolBehavior.maxSearchRounds}
-              onChange={(val) =>
-                updateConfig({
-                  toolBehavior: { ...config.toolBehavior, maxSearchRounds: val ?? 5 }
-                })
-              }
-              style={{ width: 120 }}
-            />
-          </div>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {t('settings.aiTools.toolBehaviorHint')}
+          </Text>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <Text style={{ minWidth: 140 }}>{t('settings.aiTools.toolTimeout')}</Text>
             <InputNumber
@@ -600,6 +313,7 @@ const AIToolsSettings: React.FC = () => {
               }
               style={{ width: 120 }}
             />
+            <Text type="secondary" style={{ fontSize: 12 }}>s</Text>
           </div>
         </div>
       </Card>

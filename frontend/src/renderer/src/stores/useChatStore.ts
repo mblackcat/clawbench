@@ -30,6 +30,14 @@ function localId(prefix = 'local'): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+/** True when stream events should update the live chat UI (user still on that conversation). */
+function isStreamUiActive(taskId?: string | null): boolean {
+  const s = useChatStore.getState()
+  if (taskId && s.streamingTaskId && taskId !== s.streamingTaskId) return false
+  if (!s.streamingConversationId) return false
+  return s.activeConversationId === s.streamingConversationId
+}
+
 /** Read a File as a base64 data URI (for session-only attachment previews). */
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -136,17 +144,28 @@ async function syncLocalChatDigests(): Promise<void> {
 
 // ============ Search source parsers ============
 
-/** Parse search results output into SearchSource[] */
+/** Parse search results output into SearchSource[] (legacy URL: lines + markdown links) */
 function parseSearchSources(output: string): SearchSource[] {
   const sources: SearchSource[] = []
-  // Match pattern: [N] Title\n    URL: https://...\n    snippet
-  const resultRegex = /\[\d+\]\s+(.+)\n\s+URL:\s+(https?:\/\/\S+)\n\s+(.*)/g
+  // Legacy: [N] Title\n    URL: https://...\n    snippet
+  const legacy = /\[\d+\]\s+(.+)\n\s+URL:\s+(https?:\/\/\S+)\n\s+(.*)/g
   let match: RegExpExecArray | null
-  while ((match = resultRegex.exec(output)) !== null) {
+  while ((match = legacy.exec(output)) !== null) {
     sources.push({
       title: match[1].trim(),
       url: match[2].trim(),
       snippet: match[3].trim()
+    })
+  }
+  if (sources.length > 0) return sources
+
+  // Claude Code–style: 1. [Title](https://...)\n   snippet
+  const md = /(\d+)\.\s+\[([^\]]+)\]\((https?:\/\/[^)]+)\)\n?\s*(.*)/g
+  while ((match = md.exec(output)) !== null) {
+    sources.push({
+      title: match[2].trim(),
+      url: match[3].trim(),
+      snippet: (match[4] || '').trim()
     })
   }
   return sources
@@ -168,11 +187,59 @@ interface PendingToolCall {
   streamedContent: string // text streamed before tool_use
 }
 
-/** Safe tools that can be auto-executed without user approval */
+/** Safe tools that can be auto-executed without user approval (mirrors main isSafe set) */
 const SAFE_TOOLS = new Set([
-  'web_search', 'web_browse', 'plan_search',
-  'generate_image', 'edit_image'
+  'web_search', 'web_browse', 'web_fetch',
+  'generate_image', 'edit_image',
+  'get_dev_environment',
+  'list_workbench_apps', 'search_market_apps',
+  'list_coding_workspaces', 'list_coding_sessions',
+  'list_terminal_connections', 'list_db_connections',
+  'query_database', 'read_agent_file',
+  'feishu_read_doc', 'feishu_search_docs', 'feishu_search_messages',
+  'feishu_list_wiki_spaces', 'feishu_sheet_read',
 ])
+
+/** Builtin hybrid loop abort + approval waiters (renderer-side gate) */
+let activeBuiltinAbort: AbortController | null = null
+const builtinApprovalWaiters = new Map<string, (approved: boolean) => void>()
+
+function waitBuiltinToolApproval(tc: {
+  toolCallId: string
+  toolName: string
+  input: Record<string, any>
+}): Promise<boolean> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      builtinApprovalWaiters.delete(tc.toolCallId)
+      resolve(false)
+    }, 300_000)
+    builtinApprovalWaiters.set(tc.toolCallId, (approved) => {
+      clearTimeout(timer)
+      builtinApprovalWaiters.delete(tc.toolCallId)
+      resolve(approved)
+    })
+    useChatStore.setState((s) => ({
+      pendingToolCalls: [
+        ...s.pendingToolCalls.filter((p) => p.toolCallId !== tc.toolCallId),
+        {
+          toolCallId: tc.toolCallId,
+          toolName: tc.toolName,
+          input: tc.input,
+          streamedContent: '',
+        },
+      ],
+      agentPhase: 'calling-tools' as AgentPhase,
+    }))
+  })
+}
+
+function resolveBuiltinToolApproval(toolCallId: string, approved: boolean): boolean {
+  const waiter = builtinApprovalWaiters.get(toolCallId)
+  if (!waiter) return false
+  waiter(approved)
+  return true
+}
 
 /**
  * Strip ~1MB base64 image payloads from a tool result before sending it back
@@ -201,10 +268,20 @@ function sanitizeToolOutputForAPI(toolName: string, output: string): string {
   return output
 }
 
+/** Whether tool may auto-run under auto-approve-safe (aligned with main agent isSafe). */
 function isSafeTool(toolName: string): boolean {
   if (SAFE_TOOLS.has(toolName)) return true
-  // MCP tools are considered safe by default (not execute_command)
-  if (toolName !== 'execute_command') return true
+  if (toolName.startsWith('list_') || toolName.startsWith('get_') || toolName.startsWith('read_')) {
+    return true
+  }
+  if (toolName.startsWith('feishu_')) {
+    return (
+      toolName.includes('read') ||
+      toolName.includes('search') ||
+      toolName.includes('list')
+    )
+  }
+  // Side-effect tools and MCP tools require approval under auto-approve-safe
   return false
 }
 
@@ -235,6 +312,8 @@ interface ChatState {
   streamingContent: string
   streamingThinkingContent: string
   streamingTaskId: string | null
+  /** Conversation that owns the in-flight stream (prevents sidebar switch pollution). */
+  streamingConversationId: string | null
   streamingError: string | null
   streamStartTime: number | null
 
@@ -379,48 +458,49 @@ async function getAvailableTools(
     }
   })
 
-  // Web search tool (only when enabled)
+  // Web tools (Claude Code–style strategy encoded in tool descriptions)
   if (webSearchEnabled) {
-    tools.push({
-      name: 'plan_search',
-      description:
-        'Before searching, declare your search plan: what queries you will use and why. This helps organize multi-step research.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          queries: { type: 'array', items: { type: 'string' }, description: 'List of search queries to execute' },
-          reasoning: { type: 'string', description: 'Brief explanation of your search strategy' }
-        },
-        required: ['queries', 'reasoning']
-      }
-    })
-
+    const monthYear = new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })
     tools.push({
       name: 'web_search',
       description:
-        'Search the web for current information. Use this to find up-to-date answers, recent news, documentation, or any information that may have changed after your training cutoff. Always use this tool when the user asks about current events, latest versions, real-time data, or anything that requires fresh information.',
+        'Search the web for up-to-date information beyond your knowledge cutoff. ' +
+        'Use for current events, latest versions/changelogs, uncertain facts. ' +
+        'Skip greetings, pure math/logic, known APIs, and follow-ups already in thread. ' +
+        `Current month is ${monthYear} — use this year in queries for recent docs/events. ` +
+        'Prefer 2–4 focused searches. CRITICAL: end answers with a Sources: section listing markdown links [Title](URL).',
       inputSchema: {
         type: 'object',
         properties: {
-          query: { type: 'string', description: 'The search query' },
-          maxResults: { type: 'number', description: 'Maximum number of results to return (default: 5)' }
+          query: {
+            type: 'string',
+            description: 'Search query; include current year for recent info',
+          },
+          maxResults: {
+            type: 'number',
+            description: 'Max results (default 5, max 8)',
+          },
         },
-        required: ['query']
-      }
+        required: ['query'],
+      },
     })
 
-    // web_browse tool
     tools.push({
       name: 'web_browse',
       description:
-        'Browse a specific web page URL to read its full content. Use this after web_search to read detailed content from promising search results. Returns the page title and text content.',
+        'Fetch a URL and return readable page text (HTML→text). Use after web_search for promising links or when the user gives a URL. ' +
+        'Optional prompt focuses extraction on long pages. Do not re-fetch the same path in one turn. Read-only.',
       inputSchema: {
         type: 'object',
         properties: {
-          url: { type: 'string', description: 'The URL to browse' }
+          url: { type: 'string', description: 'Fully-formed URL to fetch' },
+          prompt: {
+            type: 'string',
+            description: 'What to extract from the page (optional focus for long pages)',
+          },
         },
-        required: ['url']
-      }
+        required: ['url'],
+      },
     })
   }
 
@@ -517,16 +597,6 @@ async function executeToolCall(
   toolName: string,
   input: Record<string, any>
 ): Promise<{ output: string; isError: boolean }> {
-  // Handle plan_search pseudo-tool
-  if (toolName === 'plan_search') {
-    const queries = input.queries || []
-    const reasoning = input.reasoning || ''
-    return {
-      output: `Search plan confirmed. ${queries.length} queries planned. Reasoning: ${reasoning}\nProceed with your searches.`,
-      isError: false
-    }
-  }
-
   // Check if it's a Feishu tool
   if (toolName.startsWith('feishu_')) {
     try {
@@ -606,6 +676,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   streamingContent: '',
   streamingThinkingContent: '',
   streamingTaskId: null,
+  streamingConversationId: null,
   streamingError: null,
   streamStartTime: null,
 
@@ -836,6 +907,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   selectConversation: async (id: string) => {
+    // Cancel any in-flight stream so deltas/finalize cannot land on the new thread
+    const prev = get()
+    if (prev.streaming || prev.streamingTaskId || activeBuiltinAbort) {
+      get().cancelStreaming()
+    }
+
     set({
       activeConversationId: id,
       messages: [],
@@ -844,7 +921,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamingContent: '',
       streamingThinkingContent: '',
       streamingTaskId: null,
+      streamingConversationId: null,
       streamingError: null,
+      searchSources: [],
       toolApprovalMode: 'auto-approve-safe' as ToolApprovalMode,
       pendingToolCalls: [],
       agentPhase: 'idle' as AgentPhase,
@@ -1126,22 +1205,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return
     }
 
-    set({ streamingError: null, pendingToolCalls: [], searchSources: [], agentPhase: 'thinking' as AgentPhase, agentStepDescription: '', agentToolHistory: [] })
-
-    // Create tool loop controller for this message cycle
-    const cfg = useSettingsStore.getState().aiToolsConfig?.toolBehavior
-    let maxToolSteps = 15
-    try {
-      const agentSettings = await window.api.settings.getAgentSettings()
-      maxToolSteps = agentSettings?.maxAgentToolSteps ?? 15
-    } catch { /* ignore */ }
-    const toolLoopController = new ToolLoopController({
-      maxSteps: maxToolSteps,
-      maxDuplicates: 3,
-      wallClockTimeoutMs: 120000
+    set({
+      streamingError: null,
+      pendingToolCalls: [],
+      searchSources: [],
+      agentPhase: 'thinking' as AgentPhase,
+      agentStepDescription: '',
+      agentToolHistory: [],
+      // Bind stream to this conversation so sidebar switches cannot steal the reply
+      streamingConversationId: activeConversationId,
+      streaming: true,
+      streamingContent: '',
+      streamingThinkingContent: '',
+      // Local path uses main-process agent loop; controller only for builtin SSE fallback UI.
+      toolLoopController: new ToolLoopController({ maxSteps: 0, maxDuplicates: 3 }),
+      webSearchEnabled: !!webSearchEnabled,
+      feishuKitsEnabled: !!feishuKitsEnabled,
     })
-    set({ toolLoopController })
-    set({ webSearchEnabled: !!webSearchEnabled, feishuKitsEnabled: !!feishuKitsEnabled })
 
     // Upload files first (if any) — skip in local mode
     let uploadedAttachments: ChatAttachment[] = []
@@ -1261,11 +1341,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   finalizeStreaming: (fullContent: string, modelId: string, thinkingContent?: string, usage?: { promptTokens: number; completionTokens: number }) => {
-    const conversationId = get().activeConversationId || ''
+    // Always bind to the conversation that started the stream — not whatever is active now
+    const conversationId = get().streamingConversationId || get().activeConversationId || ''
+    const stillViewing = get().activeConversationId === conversationId && !!conversationId
+
     const isFirstExchange =
+      stillViewing &&
       get().messages.filter((m) => m.role === 'user').length === 1 &&
       get().messages.filter((m) => m.role === 'assistant').length === 0
-    const userContent = get().messages.find((m) => m.role === 'user')?.content || ''
+    const userContent = stillViewing
+      ? get().messages.find((m) => m.role === 'user')?.content || ''
+      : ''
 
     const { streamStartTime, searchSources } = get()
     const durationMs = streamStartTime ? Date.now() - streamStartTime : undefined
@@ -1275,7 +1361,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // rendered the answer as a completed image tool call (generate_image / edit_image)
     // and the model produced no follow-up text. Without this guard, Responses-API
     // models often leave a blank bubble below the image.
-    const trailingMessage = get().messages[get().messages.length - 1]
+    const trailingMessage = stillViewing ? get().messages[get().messages.length - 1] : undefined
     const trailingImageToolCompleted =
       !!trailingMessage &&
       trailingMessage.role === 'assistant' &&
@@ -1292,9 +1378,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
         streamingContent: '',
         streamingThinkingContent: '',
         streamingTaskId: null,
+        streamingConversationId: null,
         searchSources: [],
         agentPhase: 'idle' as AgentPhase,
-        agentStepDescription: ''
+        agentStepDescription: '',
+        agentToolHistory: [],
       })
       return
     }
@@ -1315,25 +1403,45 @@ export const useChatStore = create<ChatState>((set, get) => ({
       metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
       createdAt: Date.now()
     }
-    set((state) => ({
-      messages: [...state.messages, assistantMsg],
-      streaming: false,
-      streamingContent: '',
-      streamingThinkingContent: '',
-      streamingTaskId: null,
-      searchSources: [],
-      agentPhase: 'idle' as AgentPhase,
-      agentStepDescription: '',
-      // Update the conversation's modelId so the sidebar shows the correct provider icon
-      conversations: state.conversations.map((c) =>
-        c.conversationId === conversationId ? { ...c, modelId: modelId, updatedAt: Date.now() } : c
-      )
-    }))
-    // Persist assistant message to backend (fire-and-forget) — skip in local mode
+
+    // Only mutate the live message list when the user is still on that conversation
+    if (stillViewing) {
+      set((state) => ({
+        messages: [...state.messages, assistantMsg],
+        streaming: false,
+        streamingContent: '',
+        streamingThinkingContent: '',
+        streamingTaskId: null,
+        streamingConversationId: null,
+        searchSources: [],
+        agentPhase: 'idle' as AgentPhase,
+        agentStepDescription: '',
+        agentToolHistory: [],
+        conversations: state.conversations.map((c) =>
+          c.conversationId === conversationId ? { ...c, modelId: modelId, updatedAt: Date.now() } : c
+        )
+      }))
+    } else {
+      set({
+        streaming: false,
+        streamingContent: '',
+        streamingThinkingContent: '',
+        streamingTaskId: null,
+        streamingConversationId: null,
+        searchSources: [],
+        agentPhase: 'idle' as AgentPhase,
+        agentStepDescription: '',
+        agentToolHistory: [],
+        pendingToolCalls: [],
+      })
+    }
+
+    // Persist assistant message against the *bound* conversation (even if user switched away)
     if (conversationId && !isLocal()) {
       apiClient
         .sendMessage(conversationId, { role: 'assistant', content: fullContent, modelId, metadata: assistantMsg.metadata })
         .then((saved) => {
+          if (get().activeConversationId !== conversationId) return
           set((state) => ({
             messages: state.messages.map((m) =>
               m.messageId === assistantMsg.messageId
@@ -1344,10 +1452,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
         })
         .catch((err) => console.error('Failed to save assistant message:', err))
     } else if (conversationId && isLocal()) {
-      // Persist messages to localStorage
-      const allMsgs = get().messages
-      saveLocalMessages(conversationId, allMsgs)
-      // Update conversation updatedAt
+      if (stillViewing) {
+        saveLocalMessages(conversationId, get().messages)
+      } else {
+        // User switched away: append to stored history for that conversation only
+        const existing = loadLocalMessages(conversationId)
+        saveLocalMessages(conversationId, [...existing, assistantMsg])
+      }
       saveLocalConversations(
         loadLocalConversations().map((c) =>
           c.conversationId === conversationId ? { ...c, modelId: modelId, updatedAt: Date.now() } : c
@@ -1424,14 +1535,32 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   setStreamingError: (error: string) => {
     console.error('Streaming error:', error)
+    // Only surface error if still viewing the bound conversation
+    const bound = get().streamingConversationId
+    const active = get().activeConversationId
+    if (bound && active && bound !== active) {
+      set({
+        streaming: false,
+        streamingContent: '',
+        streamingThinkingContent: '',
+        streamingTaskId: null,
+        streamingConversationId: null,
+        agentPhase: 'idle' as AgentPhase,
+        agentStepDescription: '',
+        agentToolHistory: [],
+      })
+      return
+    }
     set({
       streaming: false,
       streamingContent: '',
       streamingThinkingContent: '',
       streamingTaskId: null,
+      streamingConversationId: null,
       streamingError: error,
       agentPhase: 'idle' as AgentPhase,
-      agentStepDescription: ''
+      agentStepDescription: '',
+      agentToolHistory: [],
     })
   },
 
@@ -1440,7 +1569,29 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (streamingTaskId) {
       window.api.ai.cancelChat(streamingTaskId)
     }
-    set({ streaming: false, streamingContent: '', streamingThinkingContent: '', streamingTaskId: null, streamStartTime: null, pendingToolCalls: [], agentPhase: 'idle' as AgentPhase, agentStepDescription: '', agentToolHistory: [] })
+    // Abort builtin hybrid agent loop (SSE + tools)
+    if (activeBuiltinAbort) {
+      activeBuiltinAbort.abort()
+      activeBuiltinAbort = null
+    }
+    // Reject any pending builtin tool approvals
+    for (const [id, resolve] of builtinApprovalWaiters) {
+      resolve(false)
+      builtinApprovalWaiters.delete(id)
+    }
+    set({
+      streaming: false,
+      streamingContent: '',
+      streamingThinkingContent: '',
+      streamingTaskId: null,
+      streamingConversationId: null,
+      streamStartTime: null,
+      pendingToolCalls: [],
+      agentPhase: 'idle' as AgentPhase,
+      agentStepDescription: '',
+      agentToolHistory: [],
+      searchSources: [],
+    })
   },
 
   setToolApprovalMode: (mode: ToolApprovalMode) => {
@@ -1453,11 +1604,36 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   approveToolCall: async (toolCallId: string) => {
-    const { pendingToolCalls, messages, activeConversationId } = get()
+    const { pendingToolCalls, messages, activeConversationId, streamingTaskId } = get()
     const tc = pendingToolCalls.find((t) => t.toolCallId === toolCallId)
     if (!tc || !activeConversationId) return
 
-    // Remove from pending
+    // Builtin hybrid loop: resolve renderer-side approval waiter
+    if (resolveBuiltinToolApproval(toolCallId, true)) {
+      set((state) => ({
+        pendingToolCalls: state.pendingToolCalls.filter((t) => t.toolCallId !== toolCallId),
+        streaming: true,
+        agentPhase: 'calling-tools' as AgentPhase,
+      }))
+      return
+    }
+
+    // Main-process agent loop: only signal approval; tools run in main.
+    if (streamingTaskId && window.api.ai.approveTool) {
+      set((state) => ({
+        pendingToolCalls: state.pendingToolCalls.filter((t) => t.toolCallId !== toolCallId),
+        streaming: true,
+        agentPhase: 'calling-tools' as AgentPhase,
+      }))
+      try {
+        await window.api.ai.approveTool(streamingTaskId, toolCallId)
+      } catch (err: any) {
+        get().setStreamingError(err?.message || 'Approve failed')
+      }
+      return
+    }
+
+    // Remove from pending (legacy single-turn streamChat path)
     set((state) => ({
       pendingToolCalls: state.pendingToolCalls.filter((t) => t.toolCallId !== toolCallId),
       streaming: true,
@@ -1547,7 +1723,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         // Append a user instruction to summarize
         historyForAI.push({
           role: 'user' as const,
-          content: `[系统提示：${check.reason}，搜索阶段已结束] 请基于前面已获取的所有搜索结果和网页内容，直接回答用户最初的问题。不要再调用任何工具。`
+          content: `[系统提示：${check.reason}] 请基于前面已获取的工具结果，直接回答用户最初的问题。不要再调用相同参数的工具。`
         })
 
         // Continue WITHOUT tools — force the model to answer
@@ -1702,11 +1878,28 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   rejectToolCall: (toolCallId: string) => {
-    const { pendingToolCalls, activeConversationId } = get()
+    const { pendingToolCalls, activeConversationId, streamingTaskId } = get()
     const tc = pendingToolCalls.find((t) => t.toolCallId === toolCallId)
     if (!tc || !activeConversationId) return
 
-    // Add assistant message with rejected tool call
+    // Builtin hybrid loop
+    if (resolveBuiltinToolApproval(toolCallId, false)) {
+      set((state) => ({
+        pendingToolCalls: state.pendingToolCalls.filter((t) => t.toolCallId !== toolCallId),
+      }))
+      return
+    }
+
+    // Main-process agent loop
+    if (streamingTaskId && window.api.ai.rejectTool) {
+      set((state) => ({
+        pendingToolCalls: state.pendingToolCalls.filter((t) => t.toolCallId !== toolCallId),
+      }))
+      window.api.ai.rejectTool(streamingTaskId, toolCallId).catch(() => {})
+      return
+    }
+
+    // Legacy single-turn path
     const assistantMsg: Message = {
       messageId: 'tc-rejected-' + Date.now(),
       conversationId: activeConversationId,
@@ -1790,7 +1983,6 @@ function handleSSEToolUse(
   // Update agent phase
   const toolDescription = tc.name === 'web_search' ? `Searching: ${tc.input.query || ''}`
     : tc.name === 'web_browse' ? `Browsing: ${tc.input.url || ''}`
-    : tc.name === 'plan_search' ? 'Planning search strategy'
     : tc.name === 'generate_image' ? 'Generating image'
     : tc.name === 'execute_command' ? `Running: ${tc.input.command || ''}`
     : `Calling: ${tc.name}`
@@ -1851,7 +2043,9 @@ async function loadAgentMemory(assistantEnabled: boolean): Promise<AgentMemoryCo
 }
 
 /**
- * Backend SSE streaming (initial call)
+ * Builtin (cloud) path: hybrid agent loop with shared main-process tools.
+ * Model streams via backend SSE; tools/compact/anti-spin use the same main catalog
+ * as local agent query (unbounded loop, concurrent batches, result budget).
  */
 async function streamBuiltin(
   modelId: string,
@@ -1861,16 +2055,22 @@ async function streamBuiltin(
   enableThinking?: boolean,
   webSearchEnabled?: boolean
 ): Promise<void> {
-  const messages = useChatStore
-    .getState()
-    .messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-      // Echo reasoning_content back for thinking models (DeepSeek thinking_mode, etc.)
-      ...(m.thinkingContent ? { reasoningContent: m.thinkingContent } : {})
-    }))
+  const state = useChatStore.getState()
+  let messages: Array<any> = state.messages.map((m) => ({
+    role: m.role,
+    content: m.content,
+    ...(m.thinkingContent ? { reasoningContent: m.thinkingContent } : {}),
+    ...(m.metadata?.toolCalls?.length
+      ? {
+          toolCalls: m.metadata.toolCalls.map((tc) => ({
+            id: tc.id,
+            name: tc.name,
+            input: tc.input,
+          })),
+        }
+      : {}),
+  }))
 
-  // Build dynamic system prompt
   let customPrompt = ''
   let assistantEnabled = true
   try {
@@ -1891,15 +2091,357 @@ async function streamBuiltin(
     webSearchEnabled: !!webSearchEnabled,
     userCustomPrompt: customPrompt,
     agentMemory,
-    assistantEnabled
+    assistantEnabled,
   })
-  messages.unshift({ role: 'system', content: systemPrompt })
+  messages = [{ role: 'system', content: systemPrompt }, ...messages.filter((m) => m.role !== 'system')]
 
-  await streamBuiltinWithMessages(modelId, conversationId, messages, tools, attachmentIds, enableThinking, webSearchEnabled)
+  await streamBuiltinAgentLoop(
+    modelId,
+    conversationId,
+    messages,
+    tools,
+    attachmentIds,
+    enableThinking,
+    webSearchEnabled
+  )
+}
+
+const BUILTIN_AGENT_HARD_CEILING = 200
+
+/**
+ * Unbounded hybrid agent loop for builtin models.
+ * Shares anti-spin (loop-scoped fingerprints), approval gate, and cancel with local semantics.
+ */
+async function streamBuiltinAgentLoop(
+  modelId: string,
+  conversationId: string,
+  messages: Array<any>,
+  tools?: Array<{ name: string; description: string; inputSchema: Record<string, any> }>,
+  attachmentIds?: string[],
+  enableThinking?: boolean,
+  webSearchEnabled?: boolean
+): Promise<void> {
+  // Cancel previous builtin loop if any
+  if (activeBuiltinAbort) {
+    activeBuiltinAbort.abort()
+  }
+  const abort = new AbortController()
+  activeBuiltinAbort = abort
+  const signal = abort.signal
+
+  const state = useChatStore.getState()
+  let step = 0
+  let working = [...messages]
+  let firstTurnAttachments = attachmentIds
+  /** Loop-scoped anti-spin — passed into every executeAgentTools IPC call */
+  let fingerprints: Record<string, number> = {}
+
+  try {
+    while (step < BUILTIN_AGENT_HARD_CEILING) {
+      if (signal.aborted) return
+
+      // Soft context budget via main compact helper when oversized
+      if (estimateBuiltinChars(working) > 100_000) {
+        try {
+          const compacted = await window.api.ai.compactMessages({ messages: working })
+          if (signal.aborted) return
+          if (compacted.compacted) {
+            working = compacted.messages
+            useChatStore.setState({ agentStepDescription: 'Context compacted' })
+          }
+        } catch { /* compact optional */ }
+      }
+
+      if (signal.aborted) return
+      useChatStore.setState({ agentPhase: 'thinking' as AgentPhase, streaming: true, streamingContent: '' })
+      const turn = await streamBuiltinOneTurn(
+        modelId,
+        conversationId,
+        working,
+        tools,
+        firstTurnAttachments,
+        enableThinking,
+        webSearchEnabled,
+        signal
+      )
+      firstTurnAttachments = undefined // only on first request
+
+      if (signal.aborted) return
+
+      if (turn.error) {
+        if (signal.aborted || turn.error === 'aborted') return
+        useChatStore.getState().setStreamingError(turn.error)
+        return
+      }
+
+      if (!turn.toolCalls.length) {
+        if (signal.aborted) return
+        useChatStore
+          .getState()
+          .finalizeStreaming(turn.text, modelId, turn.thinking || undefined, turn.usage)
+        return
+      }
+
+      // Record assistant + tool calls in working history
+      working.push({
+        role: 'assistant',
+        content: turn.text || '',
+        ...(turn.thinking ? { reasoningContent: turn.thinking } : {}),
+        toolCalls: turn.toolCalls.map((tc) => ({
+          id: tc.id,
+          name: tc.name,
+          input: tc.input,
+        })),
+      })
+
+      // Approval gate (shared semantics with local runOneTool)
+      const approvalMode = useChatStore.getState().toolApprovalMode
+      const approvedCalls: Array<{ id: string; name: string; input: Record<string, any> }> = []
+      const rejectedResults: Array<{ id: string; name: string; content: string; isError: boolean }> = []
+
+      for (const tc of turn.toolCalls) {
+        if (signal.aborted) return
+        const needsAsk =
+          approvalMode === 'ask-every-time' ||
+          (approvalMode === 'auto-approve-safe' && !isSafeTool(tc.name))
+
+        if (needsAsk) {
+          useChatStore.setState({
+            agentPhase: 'calling-tools' as AgentPhase,
+            agentStepDescription: `Awaiting approval: ${tc.name}`,
+          })
+          const ok = await waitBuiltinToolApproval({
+            toolCallId: tc.id,
+            toolName: tc.name,
+            input: tc.input,
+          })
+          if (signal.aborted) return
+          if (!ok) {
+            rejectedResults.push({
+              id: tc.id,
+              name: tc.name,
+              content: 'Tool call rejected by user',
+              isError: true,
+            })
+            continue
+          }
+        }
+        approvedCalls.push(tc)
+      }
+
+      // Show approved tools as running
+      for (const tc of approvedCalls) {
+        const historyEntry: AgentToolHistoryEntry = {
+          id: tc.id,
+          name: tc.name,
+          input: tc.input,
+          status: 'running',
+          startTime: Date.now(),
+        }
+        useChatStore.setState((s) => ({
+          agentPhase: 'calling-tools' as AgentPhase,
+          agentStepDescription: tc.name,
+          agentToolHistory: [...s.agentToolHistory.filter((h) => h.id !== tc.id), historyEntry],
+        }))
+      }
+
+      // Execute via main shared catalog (partition + budget + loop-scoped anti-spin)
+      let results = [...rejectedResults]
+      if (approvedCalls.length > 0 && !signal.aborted) {
+        const batch = await window.api.ai.executeAgentTools({
+          calls: approvedCalls,
+          toolsEnabled: state.toolsEnabled,
+          webSearchEnabled: !!webSearchEnabled,
+          feishuKitsEnabled: state.feishuKitsEnabled,
+          fingerprints,
+        })
+        if (signal.aborted) return
+        fingerprints = batch.fingerprints
+        results = [...results, ...batch.results]
+      }
+
+      for (const r of results) {
+        working.push({
+          role: 'tool',
+          content: r.content,
+          toolCallId: r.id,
+        })
+        useChatStore.setState((s) => ({
+          agentToolHistory: s.agentToolHistory.map((h) =>
+            h.id === r.id
+              ? {
+                  ...h,
+                  status: (r.isError ? 'error' : 'completed') as 'completed' | 'error',
+                  output: r.content,
+                  endTime: Date.now(),
+                }
+              : h
+          ),
+        }))
+        if (!r.isError && r.name === 'web_search' && r.content) {
+          const sources = parseSearchSources(r.content)
+          if (sources.length > 0) {
+            useChatStore.setState((s) => ({ searchSources: [...s.searchSources, ...sources] }))
+          }
+        }
+      }
+
+      step++
+    }
+    if (!signal.aborted) {
+      useChatStore.getState().setStreamingError('Agent tool loop hit safety ceiling')
+    }
+  } catch (err: any) {
+    if (signal.aborted || err?.name === 'AbortError') return
+    useChatStore.getState().setStreamingError(err.message || 'Builtin agent loop failed')
+  } finally {
+    if (activeBuiltinAbort === abort) {
+      activeBuiltinAbort = null
+    }
+  }
+}
+
+function estimateBuiltinChars(messages: Array<{ content?: string }>): number {
+  return messages.reduce((n, m) => n + (m.content?.length || 0), 0)
+}
+
+interface BuiltinTurnResult {
+  text: string
+  thinking: string
+  toolCalls: Array<{ id: string; name: string; input: Record<string, any> }>
+  usage?: any
+  error?: string
 }
 
 /**
- * Backend SSE streaming with explicit messages
+ * One backend SSE model turn — collects text + all tool_use blocks before returning.
+ */
+async function streamBuiltinOneTurn(
+  modelId: string,
+  conversationId: string,
+  messages: Array<any>,
+  tools?: Array<{ name: string; description: string; inputSchema: Record<string, any> }>,
+  attachmentIds?: string[],
+  enableThinking?: boolean,
+  webSearchEnabled?: boolean,
+  signal?: AbortSignal
+): Promise<BuiltinTurnResult> {
+  if (signal?.aborted) {
+    return { text: '', thinking: '', toolCalls: [], error: 'aborted' }
+  }
+
+  const token = apiClient.getToken()
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE_URL}/ai/chat/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        modelId,
+        messages,
+        conversationId,
+        attachmentIds: attachmentIds && attachmentIds.length > 0 ? attachmentIds : undefined,
+        tools,
+        enableThinking,
+        webSearchEnabled,
+      }),
+      signal,
+    })
+  } catch (err: any) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { text: '', thinking: '', toolCalls: [], error: 'aborted' }
+    }
+    return { text: '', thinking: '', toolCalls: [], error: err?.message || 'Stream request failed' }
+  }
+
+  if (!response.ok) {
+    return { text: '', thinking: '', toolCalls: [], error: 'Stream request failed' }
+  }
+
+  const reader = response.body?.getReader()
+  const decoder = new TextDecoder()
+  let fullContent = ''
+  let fullThinkingContent = ''
+  const toolCalls: Array<{ id: string; name: string; input: Record<string, any> }> = []
+  let usage: any
+  let error: string | undefined
+
+  if (reader) {
+    let buffer = ''
+    try {
+      while (true) {
+        if (signal?.aborted) {
+          try {
+            await reader.cancel()
+          } catch { /* ignore */ }
+          return { text: fullContent, thinking: fullThinkingContent, toolCalls, usage, error: 'aborted' }
+        }
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          try {
+            const data = JSON.parse(line.slice(6))
+            if (data.type === 'thinking_delta' && data.content) {
+              fullThinkingContent += data.content
+              if (isStreamUiActive()) {
+                useChatStore.setState({ streamingThinkingContent: fullThinkingContent })
+              }
+            } else if (data.type === 'delta' && data.content) {
+              fullContent += data.content
+              if (isStreamUiActive()) {
+                useChatStore.setState({ streamingContent: fullContent })
+              }
+            } else if (data.type === 'done') {
+              usage = data.usage
+            } else if (data.type === 'error') {
+              error = data.message
+            } else if (data.type === 'tool_use' && data.toolCall) {
+              toolCalls.push({
+                id: data.toolCall.id,
+                name: data.toolCall.name,
+                input: data.toolCall.input || {},
+              })
+            } else if (data.type === 'search_grounding' && data.sources) {
+              const sources: SearchSource[] = (
+                data.sources as Array<{ title: string; url: string }>
+              ).map((s) => ({ title: s.title, url: s.url }))
+              if (sources.length > 0) {
+                useChatStore.setState((state) => ({
+                  searchSources: [...state.searchSources, ...sources],
+                }))
+              }
+            }
+          } catch {
+            /* ignore non-JSON */
+          }
+        }
+      }
+    } catch (err: any) {
+      if (signal?.aborted || err?.name === 'AbortError') {
+        return { text: fullContent, thinking: fullThinkingContent, toolCalls, usage, error: 'aborted' }
+      }
+      throw err
+    }
+  }
+
+  return {
+    text: fullContent,
+    thinking: fullThinkingContent,
+    toolCalls,
+    usage,
+    error,
+  }
+}
+
+/**
+ * Backend SSE streaming with explicit messages (legacy single-turn; kept for recovery paths).
  */
 async function streamBuiltinWithMessages(
   modelId: string,
@@ -1910,138 +2452,72 @@ async function streamBuiltinWithMessages(
   enableThinking?: boolean,
   webSearchEnabled?: boolean
 ): Promise<void> {
-  try {
-    const token = apiClient.getToken()
-    const response = await fetch(`${API_BASE_URL}/ai/chat/stream`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        modelId,
-        messages,
-        conversationId,
-        attachmentIds: attachmentIds && attachmentIds.length > 0 ? attachmentIds : undefined,
-        tools,
-        enableThinking,
-        webSearchEnabled
-      })
-    })
-
-    if (!response.ok) throw new Error('Stream request failed')
-
-    const reader = response.body?.getReader()
-    const decoder = new TextDecoder()
-    let fullContent = ''
-    let fullThinkingContent = ''
-
-    if (reader) {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        const text = decoder.decode(value, { stream: true })
-        const lines = text.split('\n')
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6))
-              if (data.type === 'thinking_delta' && data.content) {
-                fullThinkingContent += data.content
-                useChatStore.setState({ streamingThinkingContent: fullThinkingContent })
-              } else if (data.type === 'delta' && data.content) {
-                fullContent += data.content
-                useChatStore.setState({ streamingContent: fullContent })
-              } else if (data.type === 'done') {
-                useChatStore.getState().finalizeStreaming(fullContent, modelId, fullThinkingContent || undefined, data.usage)
-              } else if (data.type === 'error') {
-                useChatStore.getState().setStreamingError(data.message)
-              } else if (data.type === 'tool_use' && data.toolCall) {
-                handleSSEToolUse(data, fullContent)
-                return
-              } else if (data.type === 'search_grounding' && data.sources) {
-                // Collect grounding sources from backend Gemini native search
-                const sources: SearchSource[] = (data.sources as Array<{ title: string; url: string }>).map((s) => ({
-                  title: s.title,
-                  url: s.url
-                }))
-                if (sources.length > 0) {
-                  useChatStore.setState((state) => ({
-                    searchSources: [...state.searchSources, ...sources]
-                  }))
-                }
-              }
-            } catch {
-              // ignore non-JSON SSE lines
-            }
-          }
-        }
-      }
-    }
-  } catch (err: any) {
-    useChatStore.getState().setStreamingError(err.message || 'Stream failed')
-  }
+  await streamBuiltinAgentLoop(
+    modelId,
+    conversationId,
+    messages,
+    tools,
+    attachmentIds,
+    enableThinking,
+    webSearchEnabled
+  )
 }
 
 /**
- * IPC streaming (initial call)
+ * Local model path: main-process agent query loop (Claude Code–style).
+ * System prompt, tools, parallel execution, compact, and multi-turn are owned by main.
  */
 async function streamLocal(
   modelConfigId: string,
   modelId: string,
   pendingFiles?: PendingAttachment[],
-  tools?: Array<{ name: string; description: string; inputSchema: Record<string, any> }>,
+  _tools?: Array<{ name: string; description: string; inputSchema: Record<string, any> }>,
   enableThinking?: boolean,
   webSearchEnabled?: boolean
 ): Promise<void> {
-  const messages = useChatStore
-    .getState()
-    .messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-      // Echo reasoning_content back for thinking models (DeepSeek thinking_mode, etc.)
-      ...(m.thinkingContent ? { reasoningContent: m.thinkingContent } : {})
-    }))
-
-  // Build dynamic system prompt
-  let customPrompt = ''
-  let assistantEnabled = true
-  try {
-    const agentSettings = await window.api.settings.getAgentSettings()
-    customPrompt = agentSettings?.customSystemPrompt || ''
-    assistantEnabled = agentSettings?.assistantEnabled !== false
-  } catch { /* ignore */ }
-
-  const agentMemory = await loadAgentMemory(assistantEnabled)
-  const allToolNames: string[] = tools ? tools.map((t) => t.name) : []
-  const lang = useSettingsStore.getState().language || 'zh-CN'
-  const systemPrompt = buildSystemPrompt({
-    currentTime: new Date().toLocaleString(),
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    platform: window.api.platform || 'unknown',
-    language: lang,
-    availableTools: allToolNames,
-    webSearchEnabled: !!webSearchEnabled,
-    userCustomPrompt: customPrompt,
-    agentMemory,
-    assistantEnabled
-  })
-  messages.unshift({ role: 'system', content: systemPrompt })
+  const state = useChatStore.getState()
+  const history = state.messages.map((m) => ({
+    role: m.role,
+    content: m.content,
+    ...(m.thinkingContent ? { reasoningContent: m.thinkingContent } : {}),
+    ...(m.metadata?.toolCalls?.length
+      ? {
+          toolCalls: m.metadata.toolCalls.map((tc) => ({
+            id: tc.id,
+            name: tc.name,
+            input: tc.input,
+          })),
+        }
+      : {}),
+  }))
 
   const ipcAttachments =
     pendingFiles && pendingFiles.length > 0
       ? pendingFiles.map((pf) => ({
           filePath: (pf.file as any).path as string,
           mimeType: pf.file.type,
-          fileName: pf.file.name
+          fileName: pf.file.name,
         }))
       : undefined
 
-  await streamLocalWithMessages(modelConfigId, modelId, messages, tools, ipcAttachments, enableThinking, webSearchEnabled)
+  const attachmentPaths = (pendingFiles || [])
+    .filter((pf) => pf.file.type.startsWith('image/'))
+    .map((pf) => (pf.file as any).path as string | undefined)
+    .filter((p): p is string => !!p)
+
+  await streamLocalAgentQuery(
+    modelConfigId,
+    modelId,
+    history,
+    ipcAttachments,
+    enableThinking,
+    webSearchEnabled,
+    attachmentPaths
+  )
 }
 
 /**
- * IPC streaming with explicit messages
+ * Fallback: single-turn streamChat with renderer-side tool loop (legacy / recovery).
  */
 async function streamLocalWithMessages(
   modelConfigId: string,
@@ -2102,14 +2578,13 @@ async function streamLocalWithMessages(
     })
     const cleanupSearchGrounding = window.api.ai.onChatSearchGrounding((data) => {
       if (data.taskId === taskId) {
-        // Collect grounding sources from Gemini native search
         const sources: SearchSource[] = data.sources.map((s) => ({
           title: s.title,
-          url: s.url
+          url: s.url,
         }))
         if (sources.length > 0) {
           useChatStore.setState((state) => ({
-            searchSources: [...state.searchSources, ...sources]
+            searchSources: [...state.searchSources, ...sources],
           }))
         }
       }
@@ -2125,5 +2600,177 @@ async function streamLocalWithMessages(
     }
   } catch (err: any) {
     useChatStore.getState().setStreamingError(err.message || 'Stream failed')
+  }
+}
+
+/**
+ * Subscribe to main-process agent query events for one task.
+ */
+async function streamLocalAgentQuery(
+  modelConfigId: string,
+  modelId: string,
+  messages: Array<any>,
+  attachments?: Array<{ filePath: string; mimeType: string; fileName: string }>,
+  enableThinking?: boolean,
+  webSearchEnabled?: boolean,
+  attachmentPaths?: string[]
+): Promise<void> {
+  const state = useChatStore.getState()
+  const lang = useSettingsStore.getState().language || 'zh-CN'
+
+  try {
+    const taskId = await window.api.ai.streamAgentQuery({
+      modelConfigId,
+      modelId,
+      messages,
+      attachments,
+      enableThinking,
+      webSearchEnabled,
+      toolsEnabled: state.toolsEnabled,
+      feishuKitsEnabled: state.feishuKitsEnabled,
+      toolApprovalMode: state.toolApprovalMode,
+      language: lang,
+      attachmentPaths,
+    })
+    useChatStore.setState({ streamingTaskId: taskId })
+
+    let fullContent = ''
+    let fullThinkingContent = ''
+    // Content for the current model turn (reset after tools so next turn streams cleanly)
+    let turnContent = ''
+
+    const cleanupDelta = window.api.ai.onChatDelta((data) => {
+      if (data.taskId !== taskId) return
+      // Always accumulate for finalize; only paint if still on this conversation
+      turnContent += data.content
+      fullContent = turnContent
+      if (isStreamUiActive(taskId)) {
+        useChatStore.setState({ streamingContent: fullContent, streaming: true })
+      }
+    })
+    const cleanupThinking = window.api.ai.onChatThinkingDelta((data) => {
+      if (data.taskId !== taskId) return
+      fullThinkingContent += data.content
+      if (isStreamUiActive(taskId)) {
+        useChatStore.setState({ streamingThinkingContent: fullThinkingContent })
+      }
+    })
+    const cleanupToolUse = window.api.ai.onChatToolUse((data) => {
+      if (data.taskId !== taskId) return
+      // Tool activity only in compact status bar — do NOT inject chat bubbles mid-stream
+      // (was causing noisy highlights; final answer carries search sources instead)
+      if (!isStreamUiActive(taskId)) {
+        turnContent = ''
+        return
+      }
+      const historyEntry: AgentToolHistoryEntry = {
+        id: data.toolCallId,
+        name: data.toolName,
+        input: data.input,
+        status: 'running',
+        startTime: Date.now(),
+      }
+      const desc =
+        data.toolName === 'web_search'
+          ? `Searching: ${data.input?.query || ''}`
+          : data.toolName === 'web_browse'
+            ? `Reading: ${data.input?.url || ''}`
+            : data.toolName
+      useChatStore.setState((s) => ({
+        agentPhase: 'calling-tools' as AgentPhase,
+        agentStepDescription: desc,
+        agentToolHistory: [...s.agentToolHistory.filter((h) => h.id !== data.toolCallId), historyEntry],
+        // Clear partial text so search tool cards aren't mixed into the streaming bubble
+        streamingContent: '',
+      }))
+      turnContent = ''
+      // Keep thinking for the final answer; do not wipe mid-tool
+    })
+    const cleanupToolResult = window.api.ai.onChatToolResult((data) => {
+      if (data.taskId !== taskId) return
+      // Collect search sources even if user switched away (for finalize persistence)
+      if (!data.isError && data.toolName === 'web_search' && data.output) {
+        const sources = parseSearchSources(data.output)
+        if (sources.length > 0) {
+          useChatStore.setState((s) => ({ searchSources: [...s.searchSources, ...sources] }))
+        }
+      }
+      if (!isStreamUiActive(taskId)) return
+      useChatStore.setState((s) => ({
+        agentToolHistory: s.agentToolHistory.map((h) =>
+          h.id === data.toolCallId
+            ? {
+                ...h,
+                status: (data.isError ? 'error' : 'completed') as 'completed' | 'error',
+                output: data.output,
+                endTime: Date.now(),
+              }
+            : h
+        ),
+        agentPhase: 'thinking' as AgentPhase,
+        agentStepDescription: data.isError ? `Tool error: ${data.toolName}` : '',
+      }))
+    })
+    const cleanupApproval = window.api.ai.onChatToolApproval((data) => {
+      if (data.taskId !== taskId) return
+      if (!isStreamUiActive(taskId)) return
+      const pending: PendingToolCall = {
+        toolCallId: data.toolCallId,
+        toolName: data.toolName,
+        input: data.input,
+        streamedContent: '',
+      }
+      useChatStore.setState((s) => ({
+        pendingToolCalls: [...s.pendingToolCalls.filter((p) => p.toolCallId !== data.toolCallId), pending],
+        agentPhase: 'calling-tools' as AgentPhase,
+      }))
+    })
+    const cleanupCompact = window.api.ai.onChatCompacted((data) => {
+      if (data.taskId !== taskId) return
+      if (!isStreamUiActive(taskId)) return
+      useChatStore.setState({
+        agentStepDescription: 'Context compacted',
+      })
+    })
+    const cleanupDone = window.api.ai.onChatDone((data) => {
+      if (data.taskId !== taskId) return
+      useChatStore
+        .getState()
+        .finalizeStreaming(turnContent || fullContent, modelId, fullThinkingContent || undefined, data.usage)
+      cleanup()
+    })
+    const cleanupError = window.api.ai.onChatError((data) => {
+      if (data.taskId !== taskId) return
+      useChatStore.getState().setStreamingError(data.error)
+      cleanup()
+    })
+    const cleanupSearchGrounding = window.api.ai.onChatSearchGrounding((data) => {
+      if (data.taskId !== taskId) return
+      const sources: SearchSource[] = data.sources.map((s) => ({
+        title: s.title,
+        url: s.url,
+      }))
+      if (sources.length > 0) {
+        useChatStore.setState((s) => ({
+          searchSources: [...s.searchSources, ...sources],
+        }))
+      }
+    })
+
+    function cleanup() {
+      cleanupDelta()
+      cleanupThinking()
+      cleanupToolUse()
+      cleanupToolResult()
+      cleanupApproval()
+      cleanupCompact()
+      cleanupDone()
+      cleanupError()
+      cleanupSearchGrounding()
+    }
+  } catch (err: any) {
+    // Fall back to legacy single-turn path if agent query IPC is unavailable
+    console.error('[chat] agent query failed, falling back:', err)
+    useChatStore.getState().setStreamingError(err.message || 'Agent query failed')
   }
 }

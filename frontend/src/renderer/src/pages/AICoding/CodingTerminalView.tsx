@@ -5,6 +5,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 import { useAICodingStore } from '../../stores/useAICodingStore'
 import type { ClaudeViewMode } from '../../types/ai-coding'
+import { MONO_FONT_STACK } from '../../utils/mono-font'
 
 interface CodingTerminalViewProps {
   sessionId: string
@@ -67,7 +68,7 @@ const CodingTerminalView: React.FC<CodingTerminalViewProps> = ({ sessionId }) =>
     if (!containerRef.current) return
 
     const term = new Terminal({
-      fontFamily: '"Cascadia Code", "Cascadia Mono", "Fira Code", "JetBrains Mono", Consolas, monospace',
+      fontFamily: MONO_FONT_STACK,
       fontSize: 13,
       lineHeight: 1.2,
       letterSpacing: 0,

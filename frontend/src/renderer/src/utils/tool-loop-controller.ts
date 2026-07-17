@@ -1,20 +1,33 @@
+/**
+ * Agent tool-loop guard (Claude Code–inspired).
+ *
+ * Claude Code's query loop is unbounded by default (`while (true)` until the
+ * model stops emitting tool_use). `maxTurns` is only an optional SDK safety.
+ *
+ * We mirror that:
+ * - No hard step / wall-clock caps by default
+ * - Soft optional maxSteps when explicitly configured (> 0)
+ * - Anti-spin: identical tool+args repeats, and browse URL dedup
+ */
 export interface ToolLoopConfig {
-  maxSteps: number
+  /**
+   * Soft safety only. `0` / undefined / negative = unlimited (default).
+   * Set a positive number for headless / constrained runs.
+   */
+  maxSteps?: number
+  /** Block exact same tool+input after this many successes in one turn. */
   maxDuplicates: number
-  wallClockTimeoutMs: number
 }
 
 const DEFAULT_CONFIG: ToolLoopConfig = {
-  maxSteps: 15,
+  maxSteps: 0,
   maxDuplicates: 3,
-  wallClockTimeoutMs: 120000
 }
 
 export class ToolLoopController {
   private stepCount = 0
   private fingerprints: Map<string, number> = new Map()
   private browsedDomainPaths: Set<string> = new Set()
-  private startTime = Date.now()
   private config: ToolLoopConfig
 
   constructor(config?: Partial<ToolLoopConfig>) {
@@ -22,12 +35,9 @@ export class ToolLoopController {
   }
 
   canExecute(toolName: string, input: Record<string, any>): { allowed: boolean; reason?: string } {
-    if (this.stepCount >= this.config.maxSteps) {
-      return { allowed: false, reason: '已达最大工具调用步数' }
-    }
-
-    if (Date.now() - this.startTime > this.config.wallClockTimeoutMs) {
-      return { allowed: false, reason: '工具调用超时' }
+    const max = this.config.maxSteps ?? 0
+    if (max > 0 && this.stepCount >= max) {
+      return { allowed: false, reason: '已达可选工具步数上限' }
     }
 
     // For web_browse, deduplicate by domain+path (ignore query params)
@@ -52,7 +62,6 @@ export class ToolLoopController {
     const fp = this.fingerprint(toolName, input)
     this.fingerprints.set(fp, (this.fingerprints.get(fp) || 0) + 1)
 
-    // Track browsed domain+path
     if (toolName === 'web_browse' && input.url) {
       this.browsedDomainPaths.add(this.normalizeBrowseUrl(input.url))
     }
@@ -60,6 +69,11 @@ export class ToolLoopController {
 
   getStepCount(): number {
     return this.stepCount
+  }
+
+  /** Soft max if configured; 0 means unlimited. */
+  getMaxSteps(): number {
+    return this.config.maxSteps && this.config.maxSteps > 0 ? this.config.maxSteps : 0
   }
 
   private fingerprint(toolName: string, input: Record<string, any>): string {

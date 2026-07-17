@@ -157,14 +157,6 @@ export const api = {
     },
     getAiToolsConfig: () => ipcRenderer.invoke('settings:get-ai-tools-config'),
     setAiToolsConfig: (config: Record<string, unknown>) => ipcRenderer.invoke('settings:set-ai-tools-config', config),
-    testBraveApiKey: (apiKey: string) => ipcRenderer.invoke('settings:test-brave-api-key', apiKey),
-    detectLightpanda: () => ipcRenderer.invoke('settings:detect-lightpanda'),
-    installLightpanda: () => ipcRenderer.invoke('settings:install-lightpanda'),
-    onLightpandaInstallProgress: (callback: (data: { percent: number; downloadedMB: string; totalMB: string; stage: string }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
-      ipcRenderer.on('settings:lightpanda-install-progress', handler)
-      return () => ipcRenderer.removeListener('settings:lightpanda-install-progress', handler)
-    },
     getAgentSettings: () => ipcRenderer.invoke('settings:get-agent-settings') as Promise<{
       customSystemPrompt: string
       defaultToolApprovalMode: string
@@ -234,9 +226,58 @@ export const api = {
       enableThinking?: boolean,
       webSearchEnabled?: boolean
     ) => ipcRenderer.invoke('ai:stream-chat', { modelConfigId, messages, modelId, attachments, tools, enableThinking, webSearchEnabled }),
+    /** Main-process multi-turn agent loop (tools + compact + parallel). */
+    streamAgentQuery: (params: {
+      modelConfigId: string
+      modelId?: string
+      messages: Array<{ role: string; content: string; toolCallId?: string; toolCalls?: any[]; reasoningContent?: string }>
+      attachments?: Array<{ filePath: string; mimeType: string; fileName: string }>
+      enableThinking?: boolean
+      webSearchEnabled?: boolean
+      toolsEnabled?: boolean
+      feishuKitsEnabled?: boolean
+      toolApprovalMode?: string
+      language?: string
+      customSystemPrompt?: string
+      assistantEnabled?: boolean
+      attachmentPaths?: string[]
+      systemPromptOverride?: string
+      clientTools?: Array<{
+        name: string
+        description: string
+        inputSchema: Record<string, any>
+        isReadOnly?: boolean
+      }>
+    }) => ipcRenderer.invoke('ai:stream-agent-query', params) as Promise<string>,
     cancelChat: (taskId: string) => ipcRenderer.invoke('ai:cancel-chat', taskId),
+    approveTool: (taskId: string, toolCallId: string) =>
+      ipcRenderer.invoke('ai:approve-tool', { taskId, toolCallId }) as Promise<boolean>,
+    rejectTool: (taskId: string, toolCallId: string) =>
+      ipcRenderer.invoke('ai:reject-tool', { taskId, toolCallId }) as Promise<boolean>,
     submitToolResult: (taskId: string, toolCallId: string, result: string, isError: boolean) =>
-      ipcRenderer.invoke('ai:tool-result', { taskId, toolCallId, result, isError }),
+      ipcRenderer.invoke('ai:tool-result', { taskId, toolCallId, result, isError, approved: !isError }),
+    /** Hybrid builtin: run tool batch via main shared catalog (partition + budget). */
+    executeAgentTools: (params: {
+      calls: Array<{ id: string; name: string; input: Record<string, any> }>
+      toolsEnabled?: boolean
+      webSearchEnabled?: boolean
+      feishuKitsEnabled?: boolean
+      attachmentPaths?: string[]
+      fingerprints?: Record<string, number>
+    }) =>
+      ipcRenderer.invoke('ai:execute-agent-tools', params) as Promise<{
+        results: Array<{ id: string; name: string; content: string; isError: boolean }>
+        fingerprints: Record<string, number>
+      }>,
+    compactMessages: (params: {
+      messages: Array<{ role: string; content: string; toolCallId?: string; toolCalls?: any[]; reasoningContent?: string }>
+      modelConfigId?: string
+      modelId?: string
+    }) =>
+      ipcRenderer.invoke('ai:compact-messages', params) as Promise<{
+        messages: Array<any>
+        compacted: boolean
+      }>,
     generateTitle: (
       modelConfigId: string,
       messages: Array<{ role: string; content: string }>,
@@ -261,6 +302,21 @@ export const api = {
       const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
       ipcRenderer.on('ai:chat-tool-use', handler)
       return () => ipcRenderer.removeListener('ai:chat-tool-use', handler)
+    },
+    onChatToolResult: (callback: (data: { taskId: string; toolCallId: string; toolName: string; output: string; isError: boolean }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
+      ipcRenderer.on('ai:chat-tool-result', handler)
+      return () => ipcRenderer.removeListener('ai:chat-tool-result', handler)
+    },
+    onChatToolApproval: (callback: (data: { taskId: string; toolCallId: string; toolName: string; input: Record<string, any> }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
+      ipcRenderer.on('ai:chat-tool-approval', handler)
+      return () => ipcRenderer.removeListener('ai:chat-tool-approval', handler)
+    },
+    onChatCompacted: (callback: (data: { taskId: string; preview: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
+      ipcRenderer.on('ai:chat-compacted', handler)
+      return () => ipcRenderer.removeListener('ai:chat-compacted', handler)
     },
     onChatThinkingDelta: (callback: (data: { taskId: string; content: string }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
@@ -654,6 +710,11 @@ export const api = {
       const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
       ipcRenderer.on('ai-terminal:exit', handler)
       return () => ipcRenderer.removeListener('ai-terminal:exit', handler)
+    },
+    onDBIdleDisconnected: (callback: (data: { id: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
+      ipcRenderer.on('ai-terminal:db-idle-disconnected', handler)
+      return () => ipcRenderer.removeListener('ai-terminal:db-idle-disconnected', handler)
     },
 
     // Quick commands

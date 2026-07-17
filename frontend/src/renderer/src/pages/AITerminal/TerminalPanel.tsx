@@ -13,6 +13,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 import { useAITerminalStore } from '../../stores/useAITerminalStore'
 import { useT } from '../../i18n'
+import { MONO_FONT_STACK } from '../../utils/mono-font'
 
 interface Props {
   sessionId: string
@@ -127,7 +128,7 @@ const TerminalPanel: React.FC<Props> = ({ sessionId }) => {
     if (!containerRef.current) return
 
     const term = new Terminal({
-      fontFamily: '"MesloLGS NF", "CaskaydiaCove Nerd Font", "FiraCode Nerd Font", "JetBrainsMono Nerd Font", "Cascadia Code", "Fira Code", "JetBrains Mono", monospace',
+      fontFamily: MONO_FONT_STACK,
       fontSize: 13,
       lineHeight: 1.4,
       cursorBlink: true,

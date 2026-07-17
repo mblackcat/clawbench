@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Input, Button, Typography, App, Divider } from 'antd';
+import { Input, Button, App, Divider } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { useApi } from '../hooks/useApi';
-
-const { Title, Text } = Typography;
 
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -35,107 +33,55 @@ const LoginPage: React.FC = () => {
 
   const handleFeishuLogin = () => {
     setFeishuLoading(true);
-    // Redirect to backend Feishu OAuth with source=web
-    // The backend will redirect back to /admin/auth/callback after auth
     const apiBase = window.location.origin;
     window.location.href = `${apiBase}/api/v1/auth/feishu?source=web`;
   };
 
   return (
-    <div className="ios-login-container" style={{ position: 'relative' }}>
-      {/* Animated floating orbs behind the login card */}
-      <div style={{
-        position: 'fixed',
-        inset: 0,
-        overflow: 'hidden',
-        pointerEvents: 'none',
-      }}>
-        <div style={{
-          position: 'absolute',
-          width: 400,
-          height: 400,
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(0,122,255,0.1), transparent 70%)',
-          top: '20%',
-          left: '10%',
-          animation: 'meshDrift 30s ease-in-out infinite alternate',
-        }} />
-        <div style={{
-          position: 'absolute',
-          width: 350,
-          height: 350,
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(175,82,222,0.08), transparent 70%)',
-          top: '50%',
-          right: '5%',
-          animation: 'meshDrift 35s ease-in-out 5s infinite alternate-reverse',
-        }} />
-      </div>
+    <div className="login-page">
+      <div className="login-card">
+        <div className="login-logo">C</div>
+        <h1>ClawBench Admin</h1>
+        <p className="login-sub">Sign in to manage the platform</p>
 
-      <div className="ios-glass-elevated ios-login-card" style={{ position: 'relative', zIndex: 1 }}>
-        <div style={{ textAlign: 'center', marginBottom: 32, position: 'relative', zIndex: 1 }}>
-          <div
-            style={{
-              width: 56,
-              height: 56,
-              borderRadius: 16,
-              background: 'linear-gradient(135deg, #007AFF, #AF52DE)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'white',
-              fontWeight: 700,
-              fontSize: 26,
-              marginBottom: 16,
-              boxShadow: '0 4px 20px rgba(0, 122, 255, 0.3)',
-            }}
-          >
-            C
-          </div>
-          <Title level={2} style={{ marginBottom: 4, letterSpacing: '-0.02em' }}>
-            ClawBench Admin
-          </Title>
-          <Text type="secondary">Sign in to manage the platform</Text>
-        </div>
-
-        {/* 飞书登录按钮 */}
         <Button
           size="large"
           loading={feishuLoading}
           onClick={handleFeishuLogin}
+          block
           style={{
-            height: 48,
-            fontSize: 16,
+            height: 44,
             fontWeight: 600,
-            width: '100%',
-            background: 'linear-gradient(135deg, #3370FF, #2860E1)',
+            background: '#3370FF',
             border: 'none',
-            color: '#FFFFFF',
-            marginBottom: 16,
+            color: '#fff',
+            marginBottom: 4,
           }}
           icon={
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ marginRight: 8 }}>
-              <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2z" fill="#3370FF"/>
-              <path d="M7.5 8.5h3.5v7H7.5v-7zm5.5 0h3.5v4H13v-4z" fill="#fff"/>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ marginRight: 6 }}>
+              <path
+                d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2z"
+                fill="#3370FF"
+              />
+              <path d="M7.5 8.5h3.5v7H7.5v-7zm5.5 0h3.5v4H13v-4z" fill="#fff" />
             </svg>
           }
         >
           Login with Feishu
         </Button>
 
-        <Divider plain style={{ margin: '16px 0', color: 'var(--text-tertiary)', fontSize: 12 }}>
-          or use password
+        <Divider plain style={{ margin: '16px 0', fontSize: 12, color: 'var(--text-tertiary)' }}>
+          or password
         </Divider>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Input
             size="large"
             prefix={<UserOutlined style={{ color: 'var(--text-tertiary)' }} />}
-            placeholder="Email or Username"
+            placeholder="Email or username"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             onPressEnter={handleSubmit}
-            style={{ height: 48 }}
           />
           <Input.Password
             size="large"
@@ -144,14 +90,14 @@ const LoginPage: React.FC = () => {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             onPressEnter={handleSubmit}
-            style={{ height: 48 }}
           />
           <Button
             type="primary"
             size="large"
             loading={loading}
             onClick={handleSubmit}
-            style={{ height: 48, fontSize: 16, fontWeight: 600, marginTop: 8 }}
+            style={{ height: 44, fontWeight: 600, marginTop: 4 }}
+            block
           >
             Sign In
           </Button>

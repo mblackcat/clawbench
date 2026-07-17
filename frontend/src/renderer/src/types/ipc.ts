@@ -267,10 +267,6 @@ export interface ClawBenchAPI {
     onFeishuCliInstallProgress: (callback: (data: { percent: number; downloadedMB: string; totalMB: string; stage: string }) => void) => () => void
     getAiToolsConfig: () => Promise<AiToolsConfig>
     setAiToolsConfig: (config: AiToolsConfig) => Promise<void>
-    testBraveApiKey: (apiKey: string) => Promise<{ success: boolean; message: string }>
-    detectLightpanda: () => Promise<{ found: boolean; path: string }>
-    installLightpanda: () => Promise<{ success: boolean; error: string; path: string }>
-    onLightpandaInstallProgress: (callback: (data: { percent: number; downloadedMB: string; totalMB: string; stage: string }) => void) => () => void
     getAgentSettings: () => Promise<{
       customSystemPrompt: string
       defaultToolApprovalMode: string
@@ -296,8 +292,48 @@ export interface ClawBenchAPI {
       enableThinking?: boolean,
       webSearchEnabled?: boolean
     ) => Promise<string>
+    streamAgentQuery: (params: {
+      modelConfigId: string
+      modelId?: string
+      messages: Array<{ role: string; content: string; toolCallId?: string; toolCalls?: any[]; reasoningContent?: string }>
+      attachments?: Array<{ filePath: string; mimeType: string; fileName: string }>
+      enableThinking?: boolean
+      webSearchEnabled?: boolean
+      toolsEnabled?: boolean
+      feishuKitsEnabled?: boolean
+      toolApprovalMode?: string
+      language?: string
+      customSystemPrompt?: string
+      assistantEnabled?: boolean
+      attachmentPaths?: string[]
+      systemPromptOverride?: string
+      clientTools?: Array<{
+        name: string
+        description: string
+        inputSchema: Record<string, any>
+        isReadOnly?: boolean
+      }>
+    }) => Promise<string>
     cancelChat: (taskId: string) => Promise<boolean>
+    approveTool: (taskId: string, toolCallId: string) => Promise<boolean>
+    rejectTool: (taskId: string, toolCallId: string) => Promise<boolean>
     submitToolResult: (taskId: string, toolCallId: string, result: string, isError: boolean) => Promise<void>
+    executeAgentTools: (params: {
+      calls: Array<{ id: string; name: string; input: Record<string, any> }>
+      toolsEnabled?: boolean
+      webSearchEnabled?: boolean
+      feishuKitsEnabled?: boolean
+      attachmentPaths?: string[]
+      fingerprints?: Record<string, number>
+    }) => Promise<{
+      results: Array<{ id: string; name: string; content: string; isError: boolean }>
+      fingerprints: Record<string, number>
+    }>
+    compactMessages: (params: {
+      messages: Array<{ role: string; content: string; toolCallId?: string; toolCalls?: any[]; reasoningContent?: string }>
+      modelConfigId?: string
+      modelId?: string
+    }) => Promise<{ messages: Array<any>; compacted: boolean }>
     generateTitle: (
       modelConfigId: string,
       messages: Array<{ role: string; content: string }>,
@@ -307,6 +343,9 @@ export interface ClawBenchAPI {
     onChatDone: (callback: (data: { taskId: string; usage: any }) => void) => () => void
     onChatError: (callback: (data: { taskId: string; error: string }) => void) => () => void
     onChatToolUse: (callback: (data: { taskId: string; toolCallId: string; toolName: string; input: Record<string, any> }) => void) => () => void
+    onChatToolResult: (callback: (data: { taskId: string; toolCallId: string; toolName: string; output: string; isError: boolean }) => void) => () => void
+    onChatToolApproval: (callback: (data: { taskId: string; toolCallId: string; toolName: string; input: Record<string, any> }) => void) => () => void
+    onChatCompacted: (callback: (data: { taskId: string; preview: string }) => void) => () => void
     onChatThinkingDelta: (callback: (data: { taskId: string; content: string }) => void) => () => void
     onChatSearchGrounding: (callback: (data: { taskId: string; queries: string[]; sources: Array<{ title: string; url: string }> }) => void) => () => void
   }
@@ -658,6 +697,7 @@ export interface ClawBenchAPI {
     onPtyData: (callback: (data: { sessionId: string; data: string }) => void) => () => void
     onPtyExit: (callback: (data: { sessionId: string; exitCode: number }) => void) => () => void
     onTerminalExit: (callback: (data: { sessionId: string; exitCode: number }) => void) => () => void
+    onDBIdleDisconnected: (callback: (data: { id: string }) => void) => () => void
     getQuickCommands: () => Promise<import('./ai-terminal').QuickCommand[]>
     saveQuickCommand: (data: Partial<import('./ai-terminal').QuickCommand>) => Promise<import('./ai-terminal').QuickCommand>
     deleteQuickCommand: (id: string) => Promise<boolean>

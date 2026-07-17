@@ -416,7 +416,10 @@ class TerminalToolProvider implements InternalToolProvider {
       },
       {
         name: 'run_shell_command',
-        description: 'Run a one-shot shell command on the local machine (or optional cwd). Prefer non-destructive commands. For long interactive sessions use AI Terminal UI.',
+        description:
+          'Run a one-shot shell command on the local machine (or optional cwd). Prefer non-destructive commands. ' +
+          'Never run catastrophic commands (rm -rf /, format, mkfs) — they are blocked. Confirm with the user before other destructive ops. ' +
+          'For long interactive sessions use AI Terminal UI / run_terminal_command.',
         inputSchema: {
           type: 'object',
           properties: {

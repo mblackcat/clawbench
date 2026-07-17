@@ -1,13 +1,12 @@
 import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { App as AntApp } from 'antd';
+import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
 import AuthCallbackPage from './pages/AuthCallbackPage';
 import DashboardPage from './pages/DashboardPage';
 import UserManagementPage from './pages/UserManagementPage';
-import AppStorePage from './pages/AppStorePage';
-import AppDetailPage from './pages/AppDetailPage';
+import ResourceListPage from './pages/ResourceListPage';
+import ResourceDetailPage from './pages/ResourceDetailPage';
 import { useApi } from './hooks/useApi';
 
 const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -17,6 +16,11 @@ const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return <>{children}</>;
 };
 
+const StoreRedirect: React.FC = () => {
+  const { appId } = useParams<{ appId: string }>();
+  return <Navigate to={`/admin/resources/${appId}`} replace />;
+};
+
 const AdminShell: React.FC = () => (
   <RequireAuth>
     <Layout admin>
@@ -24,8 +28,12 @@ const AdminShell: React.FC = () => (
         <Route index element={<DashboardPage />} />
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="users" element={<UserManagementPage />} />
-        <Route path="store" element={<AppStorePage />} />
-        <Route path="store/:appId" element={<AppDetailPage />} />
+        {/* New resources routes */}
+        <Route path="resources" element={<ResourceListPage />} />
+        <Route path="resources/:appId" element={<ResourceDetailPage />} />
+        {/* Legacy /admin/store redirects for bookmarks */}
+        <Route path="store" element={<Navigate to="/admin/resources" replace />} />
+        <Route path="store/:appId" element={<StoreRedirect />} />
       </Routes>
     </Layout>
   </RequireAuth>
@@ -34,8 +42,8 @@ const AdminShell: React.FC = () => (
 const StoreShell: React.FC = () => (
   <Layout admin={false}>
     <Routes>
-      <Route index element={<AppStorePage />} />
-      <Route path="app/:appId" element={<AppDetailPage />} />
+      <Route index element={<ResourceListPage />} />
+      <Route path="app/:appId" element={<ResourceDetailPage />} />
     </Routes>
   </Layout>
 );

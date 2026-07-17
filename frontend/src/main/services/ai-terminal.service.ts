@@ -403,6 +403,45 @@ export function executeCommandAndWait(
 /** Active DB connection pools/instances */
 const dbPools = new Map<string, any>()
 
+/** Last-activity timestamp per DB connection id, used to auto-disconnect idle connections */
+const dbLastActivity = new Map<string, number>()
+
+/** Idle threshold before an unused DB connection is auto-disconnected to free the pool */
+const DB_IDLE_TIMEOUT_MS = 15 * 60 * 1000 // 15 分钟无操作自动断开
+
+/** How often the idle sweep runs */
+const DB_IDLE_SWEEP_INTERVAL_MS = 60 * 1000
+
+/** Notified when a connection is auto-disconnected due to inactivity (wired up by the IPC layer) */
+let onDBIdleDisconnect: ((id: string) => void) | null = null
+
+export function setDBIdleDisconnectHandler(handler: (id: string) => void): void {
+  onDBIdleDisconnect = handler
+}
+
+/** Mark a DB connection as recently used, resetting its idle timer */
+function touchDBActivity(id: string): void {
+  dbLastActivity.set(id, Date.now())
+}
+
+let dbIdleSweepTimer: NodeJS.Timeout | null = null
+
+function ensureDBIdleSweep(): void {
+  if (dbIdleSweepTimer) return
+  dbIdleSweepTimer = setInterval(() => {
+    const now = Date.now()
+    for (const id of Array.from(dbPools.keys())) {
+      const last = dbLastActivity.get(id) ?? now
+      if (now - last < DB_IDLE_TIMEOUT_MS) continue
+      logger.info(`[terminal] DB idle timeout, auto-disconnecting: ${id}`)
+      disconnectDB(id)
+        .catch(err => logger.error('DB idle auto-disconnect error:', err))
+        .finally(() => onDBIdleDisconnect?.(id))
+    }
+  }, DB_IDLE_SWEEP_INTERVAL_MS)
+  dbIdleSweepTimer.unref?.()
+}
+
 // ── DB Connection CRUD ──
 
 export function getDBConnections(): DBConnection[] {
@@ -458,7 +497,10 @@ export async function connectDB(id: string): Promise<{ success: boolean; error?:
   if (!config) return { success: false, error: '连接配置不存在' }
 
   // If already connected, return success
-  if (dbPools.has(id)) return { success: true }
+  if (dbPools.has(id)) {
+    touchDBActivity(id)
+    return { success: true }
+  }
 
   try {
     switch (config.type) {
@@ -516,6 +558,8 @@ export async function connectDB(id: string): Promise<{ success: boolean; error?:
       default:
         return { success: false, error: `不支持的数据库类型: ${config.type}` }
     }
+    touchDBActivity(id)
+    ensureDBIdleSweep()
     logger.info(`[terminal] DB connected: ${id} type=${config.type}`)
     return { success: true }
   } catch (err: any) {
@@ -547,6 +591,7 @@ export async function disconnectDB(id: string): Promise<void> {
     logger.error('DB disconnect error:', err)
   }
   dbPools.delete(id)
+  dbLastActivity.delete(id)
   logger.info(`[terminal] DB disconnected: ${id}`)
 }
 
@@ -583,6 +628,7 @@ export async function testDBConnection(
 export async function getDBDatabases(id: string): Promise<string[]> {
   const entry = dbPools.get(id)
   if (!entry) throw new Error('数据库未连接')
+  touchDBActivity(id)
 
   switch (entry.type) {
     case 'mysql': {
@@ -613,6 +659,7 @@ export async function getDBDatabases(id: string): Promise<string[]> {
 export async function useDBDatabase(id: string, database: string): Promise<void> {
   const entry = dbPools.get(id)
   if (!entry) throw new Error('数据库未连接')
+  touchDBActivity(id)
 
   switch (entry.type) {
     case 'mysql': {
@@ -654,6 +701,7 @@ export async function useDBDatabase(id: string, database: string): Promise<void>
 export async function getDBTables(id: string): Promise<string[]> {
   const entry = dbPools.get(id)
   if (!entry) throw new Error('数据库未连接')
+  touchDBActivity(id)
 
   switch (entry.type) {
     case 'mysql': {
@@ -688,6 +736,7 @@ export async function getDBTableSchema(
 ): Promise<Array<{ name: string; type: string; nullable: boolean; primaryKey: boolean; defaultValue?: string; extra?: string }>> {
   const entry = dbPools.get(id)
   if (!entry) throw new Error('数据库未连接')
+  touchDBActivity(id)
 
   switch (entry.type) {
     case 'mysql': {
@@ -756,6 +805,7 @@ export async function queryDB(
 ): Promise<{ columns: string[]; rows: Record<string, any>[]; executionTimeMs: number }> {
   const entry = dbPools.get(id)
   if (!entry) throw new Error('数据库未连接')
+  touchDBActivity(id)
 
   const start = Date.now()
 
@@ -792,6 +842,7 @@ export async function executeDB(
 ): Promise<{ affectedRows: number; executionTimeMs: number }> {
   const entry = dbPools.get(id)
   if (!entry) throw new Error('数据库未连接')
+  touchDBActivity(id)
 
   const start = Date.now()
 
@@ -824,6 +875,7 @@ export async function queryMongoCollection(
 ): Promise<{ columns: string[]; rows: Record<string, any>[]; executionTimeMs: number }> {
   const entry = dbPools.get(id)
   if (!entry || entry.type !== 'mongodb') throw new Error('MongoDB 未连接')
+  touchDBActivity(id)
 
   const start = Date.now()
   const db = entry.client.db(entry.database)
@@ -857,6 +909,7 @@ export async function updateMongoDocument(
 ): Promise<{ modifiedCount: number }> {
   const entry = dbPools.get(id)
   if (!entry || entry.type !== 'mongodb') throw new Error('MongoDB 未连接')
+  touchDBActivity(id)
 
   const db = entry.client.db(entry.database)
   const result = await db.collection(collection).updateMany(filter, { $set: update })
@@ -870,6 +923,7 @@ export async function insertMongoDocument(
 ): Promise<{ insertedId: string }> {
   const entry = dbPools.get(id)
   if (!entry || entry.type !== 'mongodb') throw new Error('MongoDB 未连接')
+  touchDBActivity(id)
 
   const db = entry.client.db(entry.database)
   const result = await db.collection(collection).insertOne(doc)
@@ -883,6 +937,7 @@ export async function deleteMongoDocuments(
 ): Promise<{ deletedCount: number }> {
   const entry = dbPools.get(id)
   if (!entry || entry.type !== 'mongodb') throw new Error('MongoDB 未连接')
+  touchDBActivity(id)
 
   const db = entry.client.db(entry.database)
   const result = await db.collection(collection).deleteMany(filter)

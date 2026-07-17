@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Typography, Spin } from 'antd';
+import { useNavigate } from 'react-router-dom';
+import { Spin, Button } from 'antd';
 import {
   UserOutlined,
   AppstoreOutlined,
@@ -7,31 +8,35 @@ import {
   CloudUploadOutlined,
   ThunderboltOutlined,
   MessageOutlined,
+  LinkOutlined,
   CodeOutlined,
+  ArrowRightOutlined,
 } from '@ant-design/icons';
 import { useApi } from '../hooks/useApi';
 import StatCard from '../components/StatCard';
-import GlassCard from '../components/GlassCard';
 import type { DashboardStats } from '../types';
-
-const { Title, Text } = Typography;
+import { TYPE_LABELS } from '../types';
+import { formatNumber } from '../utils/cover';
 
 const TYPE_ICONS: Record<string, React.ReactNode> = {
   app: <AppstoreOutlined />,
   'ai-skill': <ThunderboltOutlined />,
   prompt: <MessageOutlined />,
+  link: <LinkOutlined />,
 };
 
 const TYPE_COLORS: Record<string, string> = {
-  app: '#007AFF',
-  'ai-skill': '#AF52DE',
-  prompt: '#34C759',
+  app: 'var(--type-app)',
+  'ai-skill': 'var(--type-skill)',
+  prompt: 'var(--type-prompt)',
+  link: 'var(--type-link)',
 };
 
 const DashboardPage: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const { fetchApi } = useApi();
+  const navigate = useNavigate();
 
   useEffect(() => {
     loadStats();
@@ -40,10 +45,12 @@ const DashboardPage: React.FC = () => {
   const loadStats = async () => {
     setLoading(true);
     try {
-      const res = await fetchApi<{ success: boolean; data: DashboardStats }>('/api/v1/admin/stats');
+      const res = await fetchApi<{ success: boolean; data: DashboardStats }>(
+        '/api/v1/admin/stats'
+      );
       setStats(res.data);
     } catch {
-      // Will show error state
+      // empty
     } finally {
       setLoading(false);
     }
@@ -51,84 +58,120 @@ const DashboardPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="ios-page-enter" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 300 }}>
+      <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}>
         <Spin size="large" />
       </div>
     );
   }
 
-  return (
-    <div className="ios-page-enter">
-      <Title level={3} style={{ marginBottom: 24, letterSpacing: '-0.02em' }}>
-        Dashboard
-      </Title>
+  const byType = stats?.applicationByType || {};
 
-      {/* Stats Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 32 }}>
-        <StatCard value={stats?.totalUsers ?? 0} label="Total Users" icon={<UserOutlined />} />
-        <StatCard value={stats?.totalApplications ?? 0} label="Total Apps" icon={<AppstoreOutlined />} />
-        <StatCard value={stats?.publishedApplications ?? 0} label="Published" icon={<CloudUploadOutlined />} />
-        <StatCard value={stats?.totalDownloads ?? 0} label="Downloads" icon={<DownloadOutlined />} />
+  return (
+    <div>
+      <div className="page-header">
+        <div>
+          <h1>Dashboard</h1>
+          <p className="page-desc">Platform overview — users, resources, and marketplace activity.</p>
+        </div>
+        <Button type="primary" onClick={() => navigate('/admin/resources')}>
+          Manage resources <ArrowRightOutlined />
+        </Button>
       </div>
 
-      {/* App Distribution by Type */}
-      {stats?.applicationByType && Object.keys(stats.applicationByType).length > 0 && (
-        <GlassCard className="" style={{ padding: 24, marginBottom: 24 }}>
-          <Text strong style={{ fontSize: 16, display: 'block', marginBottom: 16 }}>
-            Applications by Type
-          </Text>
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-            {Object.entries(stats.applicationByType).map(([type, count]) => (
-              <div
-                key={type}
-                style={{
-                  padding: '16px 24px',
-                  borderRadius: 16,
-                  background: 'var(--glass-surface-bg)',
-                  border: '1px solid var(--glass-surface-border)',
-                  textAlign: 'center',
-                  minWidth: 140,
-                  position: 'relative',
-                  overflow: 'hidden',
-                }}
-              >
-                {/* Type color accent at top */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: '20%',
-                    right: '20%',
-                    height: 2,
-                    borderRadius: '0 0 2px 2px',
-                    background: TYPE_COLORS[type] || 'var(--ios-accent)',
-                    opacity: 0.6,
-                  }}
-                />
-                <div style={{ fontSize: 22, marginBottom: 8, color: TYPE_COLORS[type] || 'var(--ios-accent)', opacity: 0.8 }}>
-                  {TYPE_ICONS[type] || <CodeOutlined />}
-                </div>
-                <Text strong style={{ fontSize: 28, display: 'block', marginBottom: 2, letterSpacing: '-0.02em' }}>
-                  {count}
-                </Text>
-                <Text type="secondary" style={{ textTransform: 'capitalize', fontSize: 12, letterSpacing: '0.03em' }}>
-                  {type === 'ai-skill' ? 'AI Skill' : type}
-                </Text>
-              </div>
-            ))}
-          </div>
-        </GlassCard>
-      )}
+      <div className="stat-grid">
+        <StatCard
+          value={formatNumber(stats?.totalUsers ?? 0)}
+          label="Users"
+          icon={<UserOutlined />}
+        />
+        <StatCard
+          value={formatNumber(stats?.totalApplications ?? 0)}
+          label="Resources"
+          icon={<AppstoreOutlined />}
+        />
+        <StatCard
+          value={formatNumber(stats?.publishedApplications ?? 0)}
+          label="Published"
+          icon={<CloudUploadOutlined />}
+        />
+        <StatCard
+          value={formatNumber(stats?.totalDownloads ?? 0)}
+          label="Downloads"
+          icon={<DownloadOutlined />}
+        />
+      </div>
 
-      {/* Quick Actions */}
-      <GlassCard className="" style={{ padding: 24 }}>
-        <Text strong style={{ fontSize: 16, display: 'block', marginBottom: 8 }}>
-          Quick Actions
-        </Text>
-        <Text type="secondary" style={{ lineHeight: 1.6 }}>
-          Use the sidebar to manage users and browse the app store. All changes are reflected in real time across the platform.
-        </Text>
-      </GlassCard>
+      <div className="panel" style={{ marginBottom: 16 }}>
+        <div className="panel-body">
+          <h2 className="panel-title">Resources by type</h2>
+          {Object.keys(byType).length === 0 ? (
+            <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+              No resources yet.
+            </p>
+          ) : (
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              {Object.entries(byType).map(([type, count]) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => navigate(`/admin/resources?type=${encodeURIComponent(type)}`)}
+                  style={{
+                    minWidth: 132,
+                    padding: '14px 18px',
+                    borderRadius: 10,
+                    background: 'var(--bg-muted)',
+                    border: '1px solid var(--border)',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 18,
+                      color: TYPE_COLORS[type] || 'var(--accent)',
+                      marginBottom: 8,
+                    }}
+                  >
+                    {TYPE_ICONS[type] || <CodeOutlined />}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 24,
+                      fontWeight: 650,
+                      letterSpacing: '-0.02em',
+                      color: 'var(--text)',
+                    }}
+                  >
+                    {count}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: 'var(--text-tertiary)',
+                      marginTop: 2,
+                    }}
+                  >
+                    {TYPE_LABELS[type] || type}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="panel-body">
+          <h2 className="panel-title">Quick actions</h2>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <Button onClick={() => navigate('/admin/resources')}>Browse all resources</Button>
+            <Button onClick={() => navigate('/admin/resources?type=link')}>View links</Button>
+            <Button onClick={() => navigate('/admin/users')}>Manage users</Button>
+            <Button onClick={() => window.open('/store', '_blank')}>Open public marketplace</Button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

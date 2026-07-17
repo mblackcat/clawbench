@@ -36,6 +36,7 @@ interface SkillForm {
   name: string;
   description: string;
   version: string;
+  icon: string;
   skillContent: string;
 }
 
@@ -57,6 +58,7 @@ const SkillEditor: React.FC = () => {
     name: '',
     description: '',
     version: '1.0.0',
+    icon: '',
     skillContent: buildSkillTemplate(t),
   });
   const [contentEdited, setContentEdited] = useState(false);
@@ -78,6 +80,7 @@ const SkillEditor: React.FC = () => {
         name: manifest.name || '',
         description: manifest.description || '',
         version: manifest.version || '1.0.0',
+        icon: manifest.icon || '',
         skillContent: buildSkillTemplate(t, manifest.name, manifest.description),
       });
       setContentEdited(true); // existing skill, don't auto-regenerate
@@ -104,6 +107,7 @@ const SkillEditor: React.FC = () => {
     savingRef.current = true;
     setLoading(true);
     try {
+      const iconVal = form.icon.trim();
       const manifest = {
         id: editAppId || `${crypto.randomUUID().slice(0, 8)}-skill`,
         name: form.name.trim(),
@@ -111,6 +115,7 @@ const SkillEditor: React.FC = () => {
         description: form.description.trim(),
         type: 'ai-skill' as const,
         entry: 'SKILL.md',
+        ...(iconVal ? { icon: iconVal } : {}),
         author: user ? { name: user.username, feishu_id: (user as any).feishu_id || '' } : 'unknown',
       };
 
@@ -181,6 +186,18 @@ const SkillEditor: React.FC = () => {
                 placeholder="1.0.0"
                 style={{ marginTop: 8 }}
               />
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <Text strong>{t('skillEditor.cover')}</Text>
+              <Input
+                value={form.icon}
+                onChange={(e) => setForm({ ...form, icon: e.target.value })}
+                placeholder={t('skillEditor.coverPlaceholder')}
+                style={{ marginTop: 8 }}
+              />
+              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+                {t('skillEditor.coverHelp')}
+              </Text>
             </div>
           </div>
         );

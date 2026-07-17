@@ -30,6 +30,7 @@ const PromptEditor: React.FC = () => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [version, setVersion] = useState('1.0.0');
+  const [icon, setIcon] = useState('');
   const [promptContent, setPromptContent] = useState('');
 
   useEffect(() => {
@@ -48,6 +49,7 @@ const PromptEditor: React.FC = () => {
       setName(manifest.name || '');
       setDescription(manifest.description || '');
       setVersion(manifest.version || '1.0.0');
+      setIcon(manifest.icon || '');
 
       try {
         const content = await window.api.developer.readFile(`${appPath}/prompt.md`);
@@ -75,6 +77,7 @@ const PromptEditor: React.FC = () => {
     savingRef.current = true;
     setLoading(true);
     try {
+      const iconVal = icon.trim();
       const manifest = {
         id: editAppId || `${crypto.randomUUID().slice(0, 8)}-prompt`,
         name: name.trim(),
@@ -82,6 +85,7 @@ const PromptEditor: React.FC = () => {
         description: description.trim(),
         type: 'prompt' as const,
         entry: 'prompt.md',
+        ...(iconVal ? { icon: iconVal } : {}),
         author: user ? { name: user.username, feishu_id: (user as any).feishu_id || '' } : 'unknown',
       };
 
@@ -145,6 +149,19 @@ const PromptEditor: React.FC = () => {
           placeholder="1.0.0"
           style={{ marginTop: 8, maxWidth: 200 }}
         />
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <Text strong>{t('promptEditor.cover')}</Text>
+        <Input
+          value={icon}
+          onChange={(e) => setIcon(e.target.value)}
+          placeholder={t('promptEditor.coverPlaceholder')}
+          style={{ marginTop: 8 }}
+        />
+        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+          {t('promptEditor.coverHelp')}
+        </Text>
       </div>
 
       <div style={{ marginBottom: 24 }}>

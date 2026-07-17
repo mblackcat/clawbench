@@ -107,17 +107,34 @@ const AppPublisher: React.FC = () => {
         const userApps = await applicationManager.fetchUserApplications()
         const existingApp = userApps.find(app => app.name === manifest.name)
 
+        // Build marketplace metadata — include cover/icon/url for all resource types
+        const cover =
+          (typeof manifest.icon === 'string' && manifest.icon.trim()) ||
+          (typeof (manifest as any).coverUrl === 'string' && String((manifest as any).coverUrl).trim()) ||
+          ''
+        const publishMetadata: Record<string, unknown> = {
+          entry: manifest.entry,
+          category: manifest.category,
+          supported_workspace_types: manifest.supported_workspace_types,
+          params: manifest.params,
+        }
+        if (cover) {
+          publishMetadata.coverUrl = cover
+          publishMetadata.icon = cover
+        }
+        if (typeof manifest.url === 'string' && manifest.url.trim()) {
+          publishMetadata.url = manifest.url.trim()
+        }
+        if (manifest.mini != null) {
+          publishMetadata.mini = !!manifest.mini
+        }
+
         if (existingApp) {
           // 更新现有应用
           await applicationManager.updateApplication(existingApp.applicationId, {
             name: manifest.name,
             description: manifest.description,
-            metadata: {
-              entry: manifest.entry,
-              category: manifest.category,
-              supported_workspace_types: manifest.supported_workspace_types,
-              params: manifest.params
-            }
+            metadata: publishMetadata,
           })
           applicationId = existingApp.applicationId
         } else {
@@ -128,11 +145,7 @@ const AppPublisher: React.FC = () => {
             version: manifest.version,
             category: manifest.category || 'general',
             type: manifest.type || 'app',
-            metadata: {
-              entry: manifest.entry,
-              supported_workspace_types: manifest.supported_workspace_types,
-              params: manifest.params
-            }
+            metadata: publishMetadata,
           })
           applicationId = newApp.applicationId
         }
