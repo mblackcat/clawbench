@@ -1,19 +1,21 @@
 import React, { useEffect } from 'react'
 import { Menu } from 'antd'
 import {
-  StarOutlined,
   SettingOutlined,
-  RobotOutlined,
   LaptopOutlined,
-  CodeOutlined,
-  CodepenOutlined,
-  DatabaseOutlined
+  CodeOutlined
 } from '@ant-design/icons'
 import Icon from '@ant-design/icons'
 import { useNavigate, useLocation } from 'react-router-dom'
 import type { MenuProps } from 'antd'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { useT } from '../../i18n'
+import {
+  WorkbenchIcon,
+  AIChatIcon,
+  AICodingIcon,
+  CopiperIcon
+} from '../icons/MenuIcons'
 
 interface SidebarProps {
   collapsed: boolean
@@ -44,18 +46,18 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, variant = 'main' }) => {
   const allItems: (NonNullable<MenuProps['items']>[number] & { moduleKey?: string })[] = [
     {
       key: '/workbench',
-      icon: <StarOutlined />,
+      icon: <WorkbenchIcon />,
       label: t('menu.workbench')
     },
     {
       key: '/ai-chat',
-      icon: <RobotOutlined />,
+      icon: <AIChatIcon />,
       label: t('menu.aiChat'),
       moduleKey: 'aiChat'
     },
     {
       key: '/ai-coding',
-      icon: <CodepenOutlined />,
+      icon: <AICodingIcon />,
       label: t('menu.aiCoding'),
       moduleKey: 'aiCoding'
     },
@@ -79,7 +81,7 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, variant = 'main' }) => {
     },
     {
       key: '/copiper',
-      icon: <DatabaseOutlined />,
+      icon: <CopiperIcon />,
       label: t('menu.copiper'),
       moduleKey: 'copiper'
     },
