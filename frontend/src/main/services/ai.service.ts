@@ -7,6 +7,7 @@ import { BrowserWindow } from 'electron'
 import { settingsStore, AIModelConfig } from '../store/settings.store'
 import { normalizeOpenAIBaseURL, normalizeAnthropicBaseURL } from '../utils/endpoint'
 import * as logger from '../utils/logger'
+import { applyClaudeThinkingParams } from './claude-thinking'
 
 export interface ContentPart {
   type: 'text' | 'image_base64'
@@ -1036,13 +1037,33 @@ async function streamClaude(
     system: systemMsg?.content || undefined,
     messages: buildClaudeMessages(messages)
   }
-  if (enableThinking) {
-    requestParams.thinking = { type: 'enabled', budget_tokens: 10000 }
-  }
+  applyClaudeThinkingParams(requestParams, modelId, !!enableThinking)
   if (tools && tools.length > 0) {
     requestParams.tools = toClaudeTools(tools)
   }
 
+  try {
+    await streamClaudeWithParams(client, requestParams, emit, signal)
+  } catch (err: any) {
+    // Retry once with the alternate thinking mode if the model rejects the first form
+    const msg = String(err?.message || err || '')
+    if (enableThinking && /thinking\.type|budget_tokens|adaptive|effort/i.test(msg)) {
+      logger.warn('[claude] thinking params rejected, retrying alternate mode:', msg)
+      const retry = { ...requestParams }
+      applyClaudeThinkingParams(retry, modelId, true, true)
+      await streamClaudeWithParams(client, retry, emit, signal)
+      return
+    }
+    throw err
+  }
+}
+
+async function streamClaudeWithParams(
+  client: Anthropic,
+  requestParams: any,
+  emit: StreamEmitter,
+  signal: AbortSignal
+): Promise<void> {
   const stream = client.messages.stream(requestParams)
 
   for await (const event of stream) {
@@ -1062,7 +1083,6 @@ async function streamClaude(
   if (!signal.aborted) {
     const finalMessage = await stream.finalMessage()
 
-    // Check for tool_use blocks
     const toolUseBlocks = finalMessage.content.filter((b: any) => b.type === 'tool_use')
     if (toolUseBlocks.length > 0) {
       for (const block of toolUseBlocks) {

@@ -21,6 +21,7 @@ import { useT } from '../../i18n'
 const AgentStatusBar: React.FC = () => {
   const t = useT()
   const { token } = theme.useToken()
+  // Keep tool timeline collapsed by default — avoid flashy mid-reply tool panels
   const [timelineExpanded, setTimelineExpanded] = useState(false)
   const {
     agentPhase,
@@ -139,7 +140,7 @@ const AgentStatusBar: React.FC = () => {
           </div>
         )}
 
-        {/* Collapsible tool execution timeline */}
+        {/* Collapsible tool timeline — compact one-liner, details only when expanded */}
         {agentToolHistory.length > 0 && (
           <>
             <div
@@ -160,7 +161,9 @@ const AgentStatusBar: React.FC = () => {
               ) : (
                 <CaretRightOutlined style={{ fontSize: 10 }} />
               )}
-              {t('chat.agent.toolHistory')} ({agentToolHistory.length})
+              {agentPhase === 'calling-tools'
+                ? (agentStepDescription || t('chat.agent.callingTools'))
+                : `${t('chat.agent.toolHistory')} (${agentToolHistory.length})`}
             </div>
             {timelineExpanded && (
               <div style={{ padding: '4px 12px 8px' }}>

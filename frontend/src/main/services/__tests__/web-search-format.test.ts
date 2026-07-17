@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { formatSearchResults, getCurrentMonthYear } from '../web-search.service'
+import {
+  formatSearchResults,
+  getCurrentMonthYear,
+  WEB_SEARCH_TOOL,
+} from '../web-search.service'
 
 describe('formatSearchResults (Claude Code–style)', () => {
   it('formats results as markdown links for Sources sections', () => {
@@ -12,6 +16,7 @@ describe('formatSearchResults (Claude Code–style)', () => {
     expect(out).toContain('[Hooks](https://react.dev/hooks)')
     expect(out).toContain('Sources')
     expect(out).toContain('The library for web UIs')
+    expect(out.toLowerCase()).toContain('ticker')
   })
 
   it('exposes current month/year for query guidance', () => {
@@ -19,4 +24,11 @@ describe('formatSearchResults (Claude Code–style)', () => {
     expect(my).toMatch(/\d{4}/)
     expect(my.length).toBeGreaterThan(4)
   })
+
+  it('tool description insists on exact ticker before related companies', () => {
+    expect(WEB_SEARCH_TOOL.description).toMatch(/EXACT/i)
+    expect(WEB_SEARCH_TOOL.description).toMatch(/Micron|related company/i)
+    expect(WEB_SEARCH_TOOL.description).toMatch(/Sources/i)
+  })
 })
+
