@@ -13,6 +13,7 @@ import { IMAGE_GENERATION_TOOL, IMAGE_EDIT_TOOL } from '../image-gen.service'
 import { internalToolRegistry } from '../internal-tools.service'
 import { mcpClientManager } from '../mcp/mcp-client.service'
 import { getFeishuToolsService, isFeishuToolsAvailable } from '../feishu-tools.service'
+import { applyToolResultBudget, applyToolResultBatchBudget } from './tool-result-budget'
 import * as logger from '../../utils/logger'
 
 export interface AgentToolCall {
@@ -383,10 +384,11 @@ export async function executeAgentTool(
   }
   try {
     const r = await tool.execute(call.input || {}, ctx)
+    const budgeted = applyToolResultBudget(r.content || '')
     return {
       id: call.id,
       name: call.name,
-      content: (r.content || '').slice(0, 50_000),
+      content: budgeted.content,
       isError: r.isError,
     }
   } catch (err: any) {
@@ -397,4 +399,64 @@ export async function executeAgentTool(
       isError: true,
     }
   }
+}
+
+/**
+ * Execute a batch of tool calls with concurrency partitioning + result budget.
+ * Used by main agent loop and by hybrid builtin chat via IPC.
+ */
+export async function executeAgentToolBatch(
+  calls: AgentToolCall[],
+  options?: {
+    toolsEnabled?: boolean
+    webSearchEnabled?: boolean
+    feishuKitsEnabled?: boolean
+    attachmentPaths?: string[]
+  }
+): Promise<Array<{ id: string; name: string; content: string; isError: boolean }>> {
+  const agentTools = await resolveAgentTools({
+    toolsEnabled: options?.toolsEnabled !== false,
+    webSearchEnabled: !!options?.webSearchEnabled,
+    feishuKitsEnabled: !!options?.feishuKitsEnabled,
+  })
+  const catalog = new Map(agentTools.map((t) => [t.name, t]))
+  const fingerprints = new Map<string, number>()
+  const MAX_DUP = 3
+  const ctx = { attachmentPaths: options?.attachmentPaths }
+
+  const results: Array<{ id: string; name: string; content: string; isError: boolean }> = []
+  const batches = partitionToolBatches(calls, catalog)
+
+  for (const batch of batches) {
+    const runOne = async (call: AgentToolCall) => {
+      const fp = `${call.name}:${JSON.stringify(call.input || {}, Object.keys(call.input || {}).sort())}`
+      const dup = fingerprints.get(fp) || 0
+      if (dup >= MAX_DUP) {
+        return {
+          id: call.id,
+          name: call.name,
+          content: 'Duplicate tool call blocked (anti-loop). Use existing results.',
+          isError: true,
+        }
+      }
+      fingerprints.set(fp, dup + 1)
+      return executeAgentTool(call, catalog, ctx)
+    }
+
+    if (batch.concurrent && batch.calls.length > 1) {
+      const batchResults = await Promise.all(batch.calls.map(runOne))
+      results.push(...batchResults)
+    } else {
+      for (const call of batch.calls) {
+        results.push(await runOne(call))
+      }
+    }
+  }
+
+  return applyToolResultBatchBudget(results).map((r) => ({
+    id: r.id,
+    name: r.name || '',
+    content: r.content,
+    isError: !!r.isError,
+  }))
 }

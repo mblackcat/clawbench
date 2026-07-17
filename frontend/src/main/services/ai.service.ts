@@ -523,7 +523,7 @@ export function getModelConfig(configId: string): AIModelConfig | undefined {
  * When agentLoopMode is true, does not emit final `ai:chat-done` (caller finalizes).
  */
 export async function streamOneTurn(
-  window: BrowserWindow,
+  window: BrowserWindow | null,
   taskId: string,
   config: AIModelConfig,
   modelId: string,
@@ -557,7 +557,7 @@ function isImageGenModel(modelId: string): boolean {
 }
 
 async function doStream(
-  window: BrowserWindow,
+  window: BrowserWindow | null,
   taskId: string,
   config: AIModelConfig,
   modelId: string,
@@ -1213,12 +1213,15 @@ export class StreamEmitter {
   private usage?: { promptTokens?: number; completionTokens?: number }
   private agentLoopMode: boolean
   readonly taskId: string
+  /** When null, events are collected only (headless IM / tests). */
+  private window: BrowserWindow | null
 
   constructor(
-    private window: BrowserWindow,
+    window: BrowserWindow | null,
     taskId: string,
     options?: { agentLoopMode?: boolean }
   ) {
+    this.window = window
     this.taskId = taskId
     this.agentLoopMode = !!options?.agentLoopMode
   }
@@ -1242,6 +1245,7 @@ export class StreamEmitter {
   // The stream keeps producing after the window closes — sending to a
   // destroyed webContents throws, so every emit checks first.
   private send(channel: string, payload: Record<string, unknown>): void {
+    if (!this.window) return
     if (this.window.isDestroyed() || this.window.webContents.isDestroyed()) return
     this.window.webContents.send(channel, payload)
   }

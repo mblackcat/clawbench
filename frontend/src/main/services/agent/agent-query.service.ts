@@ -192,8 +192,74 @@ export async function streamAgentQuery(
   return taskId
 }
 
+/**
+ * Headless agent query for IM / background: same loop + tools + compact,
+ * auto-approves tools, returns final assistant text.
+ */
+export async function runAgentQueryHeadless(
+  config: AIModelConfig,
+  modelId: string,
+  history: ChatMessage[],
+  options?: {
+    toolsEnabled?: boolean
+    webSearchEnabled?: boolean
+    feishuKitsEnabled?: boolean
+    language?: string
+    customSystemPrompt?: string
+    assistantEnabled?: boolean
+    signal?: AbortSignal
+  }
+): Promise<string> {
+  const taskId = randomUUID()
+  const abortController = new AbortController()
+  if (options?.signal) {
+    options.signal.addEventListener('abort', () => abortController.abort(), { once: true })
+  }
+  const agentSettings = getAgentSettings()
+  const params: AgentQueryParams = {
+    modelConfigId: config.id,
+    modelId,
+    messages: history.filter((m) => m.role !== 'system'),
+    toolsEnabled: options?.toolsEnabled !== false,
+    webSearchEnabled: !!options?.webSearchEnabled,
+    feishuKitsEnabled: !!options?.feishuKitsEnabled,
+    toolApprovalMode: 'auto-approve-session', // headless: no UI to ask
+    language: options?.language || settingsStore.get('language') || 'zh-CN',
+    customSystemPrompt:
+      options?.customSystemPrompt !== undefined
+        ? options.customSystemPrompt
+        : agentSettings.customSystemPrompt || '',
+    assistantEnabled:
+      options?.assistantEnabled !== undefined
+        ? options.assistantEnabled
+        : agentSettings.assistantEnabled !== false,
+  }
+
+  const emit = new StreamEmitter(null, taskId, { agentLoopMode: true })
+  try {
+    await runAgentLoop(null, taskId, config, modelId, params, {
+      approvalMode: 'auto-approve-session',
+      assistantEnabled: params.assistantEnabled !== false,
+      customPrompt: params.customSystemPrompt || '',
+      language: params.language || 'zh-CN',
+      signal: abortController.signal,
+      emit,
+    })
+    // Final text is the last non-tool assistant content from the loop emitter turns.
+    // runAgentLoop streams deltas into emit; last turn text is emit.textContent after finalize.
+    return emit.textContent?.trim() || collectFinalTextFromLoop(emit) || ''
+  } catch (err: any) {
+    logger.error('[agent-query] headless failed:', err)
+    throw err
+  }
+}
+
+function collectFinalTextFromLoop(emit: StreamEmitter): string {
+  return emit.getResult().text?.trim() || ''
+}
+
 async function runAgentLoop(
-  window: BrowserWindow,
+  window: BrowserWindow | null,
   taskId: string,
   config: AIModelConfig,
   modelId: string,
@@ -204,9 +270,10 @@ async function runAgentLoop(
     customPrompt: string
     language: string
     signal: AbortSignal
+    emit?: StreamEmitter
   }
 ): Promise<void> {
-  const emit = new StreamEmitter(window, taskId, { agentLoopMode: true })
+  const emit = opts.emit || new StreamEmitter(window, taskId, { agentLoopMode: true })
 
   const agentTools = await resolveAgentTools({
     toolsEnabled: params.toolsEnabled !== false,
@@ -277,8 +344,10 @@ async function runAgentLoop(
 
     lastUsage = turn.usage
 
-    // No tool calls → final answer
+    // No tool calls → final answer (capture text for headless consumers)
     if (!turn.toolCalls.length) {
+      emit.textContent = turn.text || emit.textContent
+      emit.thinkingContent = turn.thinking || emit.thinkingContent
       emit.finalizeDone(turn.usage)
       return
     }

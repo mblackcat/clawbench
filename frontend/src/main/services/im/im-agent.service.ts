@@ -10,17 +10,12 @@
 import { join } from 'path'
 import { promises as fs } from 'fs'
 import { randomUUID } from 'crypto'
-import OpenAI, { AzureOpenAI } from 'openai'
-import Anthropic from '@anthropic-ai/sdk'
-import { GoogleGenerativeAI } from '@google/generative-ai'
 import { getAppDataPath } from '../../utils/paths'
 import { getUser } from '../../store/auth.store'
 import { getAgentSettings, getAiModelConfigs, getLastChatModel, settingsStore } from '../../store/settings.store'
 import { getIMConfig } from '../ai-coding.service'
-import { readMemory, getStatsSnippet } from '../agent-memory.service'
-import { internalToolRegistry } from '../internal-tools.service'
-import { buildSystemPrompt } from '../../utils/system-prompt-builder'
-import { normalizeOpenAIBaseURL, normalizeAnthropicBaseURL } from '../../utils/endpoint'
+import { runAgentQueryHeadless } from '../agent/agent-query.service'
+import type { ChatMessage } from '../ai.service'
 import * as logger from '../../utils/logger'
 import type { AIModelConfig } from '../../store/settings.store'
 
@@ -183,45 +178,9 @@ async function resolveModel(): Promise<{ config: AIModelConfig; modelId: string 
   return { config, modelId }
 }
 
-async function buildAgentSystemPrompt(availableTools: string[]): Promise<string> {
-  const agentSettings = getAgentSettings()
-  const assistantEnabled = agentSettings.assistantEnabled !== false
-  const lang = settingsStore.get('language') || 'zh-CN'
-
-  let agentMemory: {
-    soul?: string
-    memory?: string
-    user?: string
-    statsSnippet?: string
-  } = {}
-
-  if (assistantEnabled) {
-    // Progressive: tools/agents loaded on demand via read_agent_file, not every IM turn
-    const [soul, memory, user, statsSnippet] = await Promise.all([
-      readMemory('soul.md'),
-      readMemory('memory.md'),
-      readMemory('user.md'),
-      getStatsSnippet(),
-    ])
-    agentMemory = { soul, memory, user, statsSnippet }
-  }
-
-  return buildSystemPrompt({
-    currentTime: new Date().toLocaleString(),
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    platform: process.platform,
-    language: lang,
-    availableTools,
-    webSearchEnabled: false,
-    userCustomPrompt: agentSettings.customSystemPrompt || '',
-    agentMemory,
-    assistantEnabled,
-  })
-}
-
 /**
  * Handle one user turn for IM agent chat.
- * Returns reply text (and optional notice about new session).
+ * Uses the same main-process agent loop as local AI Chat (tools, compact, anti-spin).
  */
 export async function handleImAgentMessage(
   chatId: string,
@@ -247,7 +206,7 @@ export async function handleImAgentMessage(
     notice = '距离上次对话已超过 1 小时，已自动开启新会话。'
   }
 
-  // Turn limit
+  // Turn limit (session-level product limit — not the tool-step cap)
   if (runtime.conversationId && runtime.turnCount >= maxTurns) {
     closeAgentSession(chatId, 'turn_limit')
     notice = `本会话已达 ${maxTurns} 轮上限，已自动开启新会话。发送 /new 可随时新开对话。`
@@ -282,33 +241,42 @@ export async function handleImAgentMessage(
   }
   conv.messages.push(userMsg)
 
-  const tools = await internalToolRegistry.listAllTools()
-  const toolDefs = tools.map((t) => ({
-    name: t.name,
-    description: t.description,
-    inputSchema: t.inputSchema,
-  }))
-  const systemPrompt = await buildAgentSystemPrompt(toolDefs.map((t) => t.name))
-
-  const { config, modelId } = conv.modelConfigId
-    ? { config: getAiModelConfigs().find((c) => c.id === conv!.modelConfigId)!, modelId: conv.modelId || '' }
-    : await resolveModel()
-
-  if (!config) {
-    const { config: c, modelId: m } = await resolveModel()
-    conv.modelConfigId = c.id
-    conv.modelId = m
+  let actualConfig = conv.modelConfigId
+    ? getAiModelConfigs().find((c) => c.id === conv!.modelConfigId)
+    : undefined
+  let actualModel = conv.modelId || ''
+  if (!actualConfig) {
+    const resolved = await resolveModel()
+    actualConfig = resolved.config
+    actualModel = resolved.modelId
+    conv.modelConfigId = actualConfig.id
+    conv.modelId = actualModel
+  }
+  if (!actualModel) {
+    actualModel = actualConfig.models?.[0] || actualConfig.name
   }
 
-  const actualConfig = config || (await resolveModel()).config
-  const actualModel = modelId || conv.modelId || actualConfig.models?.[0] || actualConfig.name
+  const history: ChatMessage[] = conv.messages
+    .filter((m) => m.role === 'user' || m.role === 'assistant')
+    .map((m) => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
+    }))
 
   let reply = ''
   try {
-    reply = await runAgentLoop(actualConfig, actualModel, systemPrompt, conv.messages, toolDefs)
+    const agentSettings = getAgentSettings()
+    reply = await runAgentQueryHeadless(actualConfig, actualModel, history, {
+      toolsEnabled: true,
+      webSearchEnabled: false,
+      feishuKitsEnabled: false,
+      language: settingsStore.get('language') || 'zh-CN',
+      customSystemPrompt: agentSettings.customSystemPrompt || '',
+      assistantEnabled: agentSettings.assistantEnabled !== false,
+    })
   } catch (err: any) {
     reply = `❌ AI 调用失败：${err.message || err}`
-    logger.error('[im-agent] loop failed:', err)
+    logger.error('[im-agent] headless agent loop failed:', err)
   }
 
   conv.messages.push({
@@ -330,161 +298,4 @@ export async function handleImAgentMessage(
   return { reply, conversationId: conv.id, notice }
 }
 
-async function runAgentLoop(
-  config: AIModelConfig,
-  modelId: string,
-  systemPrompt: string,
-  history: ImAgentMessage[],
-  tools: Array<{ name: string; description: string; inputSchema: Record<string, any> }>,
-  // 0 = unlimited (Claude Code–style). Soft safety only when positive.
-  maxSteps = 0
-): Promise<string> {
-  const provider = config.provider.toLowerCase()
-  // Build chat messages (exclude tool-only intermediate from display history for non-OpenAI)
-  const baseMessages = history
-    .filter((m) => m.role === 'user' || m.role === 'assistant')
-    .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
 
-  if (provider === 'openai' || provider === 'openai-compatible' || provider === 'azure-openai'
-    || provider === 'qwen' || provider === 'doubao' || provider === 'deepseek' || provider === 'kimi') {
-    return runOpenAIToolLoop(config, modelId, systemPrompt, baseMessages, tools, maxSteps)
-  }
-
-  // Claude / Google: complete without tools for now (still have persona/memory/history)
-  const messages = [
-    { role: 'system' as const, content: systemPrompt },
-    ...baseMessages,
-  ]
-  return completeWithoutTools(config, modelId, messages)
-}
-
-async function completeWithoutTools(
-  config: AIModelConfig,
-  modelId: string,
-  messages: Array<{ role: string; content: string }>
-): Promise<string> {
-  const provider = config.provider.toLowerCase()
-  if (provider === 'anthropic' || provider === 'anthropic-compatible') {
-    const client = new Anthropic({ apiKey: config.apiKey, baseURL: normalizeAnthropicBaseURL(config.endpoint) })
-    const systemMsg = messages.find((m) => m.role === 'system')
-    const resp = await client.messages.create({
-      model: modelId,
-      max_tokens: 4096,
-      system: systemMsg?.content || undefined,
-      messages: messages
-        .filter((m) => m.role !== 'system')
-        .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-    })
-    const textBlock = resp.content.find((b) => b.type === 'text')
-    return (textBlock as any)?.text?.trim() || ''
-  }
-  if (provider === 'google') {
-    const genAI = new GoogleGenerativeAI(config.apiKey)
-    const model = genAI.getGenerativeModel({ model: modelId })
-    const last = messages.filter((m) => m.role === 'user').pop()
-    const result = await model.generateContent(last?.content || '')
-    return result.response.text().trim() || ''
-  }
-  // OpenAI-compatible fallback
-  return runOpenAIToolLoop(config, modelId, messages.find((m) => m.role === 'system')?.content || '',
-    messages.filter((m) => m.role !== 'system') as any, [], 1)
-}
-
-async function runOpenAIToolLoop(
-  config: AIModelConfig,
-  modelId: string,
-  systemPrompt: string,
-  baseMessages: Array<{ role: 'user' | 'assistant'; content: string }>,
-  tools: Array<{ name: string; description: string; inputSchema: Record<string, any> }>,
-  maxSteps: number
-): Promise<string> {
-  const ClientClass = config.provider === 'azure-openai' ? AzureOpenAI : OpenAI
-  const clientOpts: any = { apiKey: config.apiKey }
-  if (config.provider === 'azure-openai') {
-    clientOpts.apiVersion = config.apiVersion || '2025-04-01-preview'
-    clientOpts.endpoint = config.endpoint
-  } else {
-    clientOpts.baseURL = normalizeOpenAIBaseURL(config.endpoint)
-  }
-  const client = new ClientClass(clientOpts)
-
-  const openaiTools = tools.length > 0
-    ? tools.map((t) => ({
-        type: 'function' as const,
-        function: {
-          name: t.name,
-          description: t.description,
-          parameters: t.inputSchema || { type: 'object', properties: {} },
-        },
-      }))
-    : undefined
-
-  type Msg = OpenAI.Chat.Completions.ChatCompletionMessageParam
-  const messages: Msg[] = [
-    { role: 'system', content: systemPrompt },
-    ...baseMessages.map((m) => ({ role: m.role, content: m.content }) as Msg),
-  ]
-
-  // Unbounded agent loop (Claude Code queryLoop style). Soft maxSteps only when > 0.
-  const fingerprints = new Map<string, number>()
-  const MAX_DUPLICATES = 3
-  let step = 0
-  // Absolute backstop to avoid infinite loops if the model never stops (e.g. runaway).
-  const hardCeiling = maxSteps > 0 ? maxSteps : 200
-
-  while (step < hardCeiling) {
-    step++
-    const resp = await client.chat.completions.create({
-      model: modelId,
-      messages,
-      max_tokens: 4096,
-      tools: openaiTools,
-      tool_choice: openaiTools ? 'auto' : undefined,
-    })
-    const choice = resp.choices[0]?.message
-    if (!choice) return ''
-
-    const toolCalls = choice.tool_calls
-    if (toolCalls && toolCalls.length > 0) {
-      messages.push({
-        role: 'assistant',
-        content: choice.content || null,
-        tool_calls: toolCalls,
-      } as Msg)
-
-      for (const tc of toolCalls) {
-        const fn = (tc as any).function as { name?: string; arguments?: string } | undefined
-        const name = fn?.name || ''
-        let args: Record<string, any> = {}
-        try {
-          args = JSON.parse(fn?.arguments || '{}')
-        } catch {
-          args = {}
-        }
-        const fp = `${name}:${JSON.stringify(args, Object.keys(args).sort())}`
-        const dupCount = fingerprints.get(fp) || 0
-        if (dupCount >= MAX_DUPLICATES) {
-          messages.push({
-            role: 'tool',
-            tool_call_id: tc.id,
-            content: 'Duplicate tool call blocked (anti-loop). Summarize with results so far.',
-          } as Msg)
-          continue
-        }
-        fingerprints.set(fp, dupCount + 1)
-        logger.info(`[im-agent] tool call: ${name}`, args)
-        const result = await internalToolRegistry.executeTool(name, args)
-        messages.push({
-          role: 'tool',
-          tool_call_id: tc.id,
-          content: result.content.slice(0, 12000),
-        } as Msg)
-      }
-      continue
-    }
-
-    return (choice.content || '').trim()
-  }
-
-  return '（工具调用次数过多已停止；请缩小范围后重试）'
-}

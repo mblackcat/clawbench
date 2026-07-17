@@ -1874,7 +1874,9 @@ async function loadAgentMemory(assistantEnabled: boolean): Promise<AgentMemoryCo
 }
 
 /**
- * Backend SSE streaming (initial call)
+ * Builtin (cloud) path: hybrid agent loop with shared main-process tools.
+ * Model streams via backend SSE; tools/compact/anti-spin use the same main catalog
+ * as local agent query (unbounded loop, concurrent batches, result budget).
  */
 async function streamBuiltin(
   modelId: string,
@@ -1884,16 +1886,22 @@ async function streamBuiltin(
   enableThinking?: boolean,
   webSearchEnabled?: boolean
 ): Promise<void> {
-  const messages = useChatStore
-    .getState()
-    .messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-      // Echo reasoning_content back for thinking models (DeepSeek thinking_mode, etc.)
-      ...(m.thinkingContent ? { reasoningContent: m.thinkingContent } : {})
-    }))
+  const state = useChatStore.getState()
+  let messages: Array<any> = state.messages.map((m) => ({
+    role: m.role,
+    content: m.content,
+    ...(m.thinkingContent ? { reasoningContent: m.thinkingContent } : {}),
+    ...(m.metadata?.toolCalls?.length
+      ? {
+          toolCalls: m.metadata.toolCalls.map((tc) => ({
+            id: tc.id,
+            name: tc.name,
+            input: tc.input,
+          })),
+        }
+      : {}),
+  }))
 
-  // Build dynamic system prompt
   let customPrompt = ''
   let assistantEnabled = true
   try {
@@ -1914,15 +1922,257 @@ async function streamBuiltin(
     webSearchEnabled: !!webSearchEnabled,
     userCustomPrompt: customPrompt,
     agentMemory,
-    assistantEnabled
+    assistantEnabled,
   })
-  messages.unshift({ role: 'system', content: systemPrompt })
+  messages = [{ role: 'system', content: systemPrompt }, ...messages.filter((m) => m.role !== 'system')]
 
-  await streamBuiltinWithMessages(modelId, conversationId, messages, tools, attachmentIds, enableThinking, webSearchEnabled)
+  await streamBuiltinAgentLoop(
+    modelId,
+    conversationId,
+    messages,
+    tools,
+    attachmentIds,
+    enableThinking,
+    webSearchEnabled
+  )
+}
+
+const BUILTIN_AGENT_HARD_CEILING = 200
+
+/**
+ * Unbounded hybrid agent loop for builtin models.
+ */
+async function streamBuiltinAgentLoop(
+  modelId: string,
+  conversationId: string,
+  messages: Array<any>,
+  tools?: Array<{ name: string; description: string; inputSchema: Record<string, any> }>,
+  attachmentIds?: string[],
+  enableThinking?: boolean,
+  webSearchEnabled?: boolean
+): Promise<void> {
+  const state = useChatStore.getState()
+  let step = 0
+  let working = [...messages]
+  let firstTurnAttachments = attachmentIds
+
+  try {
+    while (step < BUILTIN_AGENT_HARD_CEILING) {
+      // Soft context budget via main compact helper when oversized
+      if (estimateBuiltinChars(working) > 100_000) {
+        try {
+          const compacted = await window.api.ai.compactMessages({ messages: working })
+          if (compacted.compacted) {
+            working = compacted.messages
+            useChatStore.setState({ agentStepDescription: 'Context compacted' })
+          }
+        } catch { /* compact optional */ }
+      }
+
+      useChatStore.setState({ agentPhase: 'thinking' as AgentPhase, streaming: true, streamingContent: '' })
+      const turn = await streamBuiltinOneTurn(
+        modelId,
+        conversationId,
+        working,
+        tools,
+        firstTurnAttachments,
+        enableThinking,
+        webSearchEnabled
+      )
+      firstTurnAttachments = undefined // only on first request
+
+      if (turn.error) {
+        useChatStore.getState().setStreamingError(turn.error)
+        return
+      }
+
+      if (!turn.toolCalls.length) {
+        useChatStore
+          .getState()
+          .finalizeStreaming(turn.text, modelId, turn.thinking || undefined, turn.usage)
+        return
+      }
+
+      // Record assistant + tool calls in working history
+      working.push({
+        role: 'assistant',
+        content: turn.text || '',
+        ...(turn.thinking ? { reasoningContent: turn.thinking } : {}),
+        toolCalls: turn.toolCalls.map((tc) => ({
+          id: tc.id,
+          name: tc.name,
+          input: tc.input,
+        })),
+      })
+
+      // Show tools running
+      for (const tc of turn.toolCalls) {
+        const historyEntry: AgentToolHistoryEntry = {
+          id: tc.id,
+          name: tc.name,
+          input: tc.input,
+          status: 'running',
+          startTime: Date.now(),
+        }
+        useChatStore.setState((s) => ({
+          agentPhase: 'calling-tools' as AgentPhase,
+          agentStepDescription: tc.name,
+          agentToolHistory: [...s.agentToolHistory.filter((h) => h.id !== tc.id), historyEntry],
+        }))
+      }
+
+      // Execute via main shared catalog (partition + budget + anti-spin)
+      const results = await window.api.ai.executeAgentTools({
+        calls: turn.toolCalls,
+        toolsEnabled: state.toolsEnabled,
+        webSearchEnabled: !!webSearchEnabled,
+        feishuKitsEnabled: state.feishuKitsEnabled,
+      })
+
+      for (const r of results) {
+        working.push({
+          role: 'tool',
+          content: r.content,
+          toolCallId: r.id,
+        })
+        useChatStore.setState((s) => ({
+          agentToolHistory: s.agentToolHistory.map((h) =>
+            h.id === r.id
+              ? {
+                  ...h,
+                  status: (r.isError ? 'error' : 'completed') as 'completed' | 'error',
+                  output: r.content,
+                  endTime: Date.now(),
+                }
+              : h
+          ),
+        }))
+        if (!r.isError && r.name === 'web_search' && r.content) {
+          const sources = parseSearchSources(r.content)
+          if (sources.length > 0) {
+            useChatStore.setState((s) => ({ searchSources: [...s.searchSources, ...sources] }))
+          }
+        }
+      }
+
+      step++
+    }
+    useChatStore.getState().setStreamingError('Agent tool loop hit safety ceiling')
+  } catch (err: any) {
+    useChatStore.getState().setStreamingError(err.message || 'Builtin agent loop failed')
+  }
+}
+
+function estimateBuiltinChars(messages: Array<{ content?: string }>): number {
+  return messages.reduce((n, m) => n + (m.content?.length || 0), 0)
+}
+
+interface BuiltinTurnResult {
+  text: string
+  thinking: string
+  toolCalls: Array<{ id: string; name: string; input: Record<string, any> }>
+  usage?: any
+  error?: string
 }
 
 /**
- * Backend SSE streaming with explicit messages
+ * One backend SSE model turn — collects text + all tool_use blocks before returning.
+ */
+async function streamBuiltinOneTurn(
+  modelId: string,
+  conversationId: string,
+  messages: Array<any>,
+  tools?: Array<{ name: string; description: string; inputSchema: Record<string, any> }>,
+  attachmentIds?: string[],
+  enableThinking?: boolean,
+  webSearchEnabled?: boolean
+): Promise<BuiltinTurnResult> {
+  const token = apiClient.getToken()
+  const response = await fetch(`${API_BASE_URL}/ai/chat/stream`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      modelId,
+      messages,
+      conversationId,
+      attachmentIds: attachmentIds && attachmentIds.length > 0 ? attachmentIds : undefined,
+      tools,
+      enableThinking,
+      webSearchEnabled,
+    }),
+  })
+
+  if (!response.ok) {
+    return { text: '', thinking: '', toolCalls: [], error: 'Stream request failed' }
+  }
+
+  const reader = response.body?.getReader()
+  const decoder = new TextDecoder()
+  let fullContent = ''
+  let fullThinkingContent = ''
+  const toolCalls: Array<{ id: string; name: string; input: Record<string, any> }> = []
+  let usage: any
+  let error: string | undefined
+
+  if (reader) {
+    let buffer = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        try {
+          const data = JSON.parse(line.slice(6))
+          if (data.type === 'thinking_delta' && data.content) {
+            fullThinkingContent += data.content
+            useChatStore.setState({ streamingThinkingContent: fullThinkingContent })
+          } else if (data.type === 'delta' && data.content) {
+            fullContent += data.content
+            useChatStore.setState({ streamingContent: fullContent })
+          } else if (data.type === 'done') {
+            usage = data.usage
+          } else if (data.type === 'error') {
+            error = data.message
+          } else if (data.type === 'tool_use' && data.toolCall) {
+            toolCalls.push({
+              id: data.toolCall.id,
+              name: data.toolCall.name,
+              input: data.toolCall.input || {},
+            })
+          } else if (data.type === 'search_grounding' && data.sources) {
+            const sources: SearchSource[] = (
+              data.sources as Array<{ title: string; url: string }>
+            ).map((s) => ({ title: s.title, url: s.url }))
+            if (sources.length > 0) {
+              useChatStore.setState((state) => ({
+                searchSources: [...state.searchSources, ...sources],
+              }))
+            }
+          }
+        } catch {
+          /* ignore non-JSON */
+        }
+      }
+    }
+  }
+
+  return {
+    text: fullContent,
+    thinking: fullThinkingContent,
+    toolCalls,
+    usage,
+    error,
+  }
+}
+
+/**
+ * Backend SSE streaming with explicit messages (legacy single-turn; kept for recovery paths).
  */
 async function streamBuiltinWithMessages(
   modelId: string,
@@ -1933,77 +2183,15 @@ async function streamBuiltinWithMessages(
   enableThinking?: boolean,
   webSearchEnabled?: boolean
 ): Promise<void> {
-  try {
-    const token = apiClient.getToken()
-    const response = await fetch(`${API_BASE_URL}/ai/chat/stream`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        modelId,
-        messages,
-        conversationId,
-        attachmentIds: attachmentIds && attachmentIds.length > 0 ? attachmentIds : undefined,
-        tools,
-        enableThinking,
-        webSearchEnabled
-      })
-    })
-
-    if (!response.ok) throw new Error('Stream request failed')
-
-    const reader = response.body?.getReader()
-    const decoder = new TextDecoder()
-    let fullContent = ''
-    let fullThinkingContent = ''
-
-    if (reader) {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        const text = decoder.decode(value, { stream: true })
-        const lines = text.split('\n')
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6))
-              if (data.type === 'thinking_delta' && data.content) {
-                fullThinkingContent += data.content
-                useChatStore.setState({ streamingThinkingContent: fullThinkingContent })
-              } else if (data.type === 'delta' && data.content) {
-                fullContent += data.content
-                useChatStore.setState({ streamingContent: fullContent })
-              } else if (data.type === 'done') {
-                useChatStore.getState().finalizeStreaming(fullContent, modelId, fullThinkingContent || undefined, data.usage)
-              } else if (data.type === 'error') {
-                useChatStore.getState().setStreamingError(data.message)
-              } else if (data.type === 'tool_use' && data.toolCall) {
-                handleSSEToolUse(data, fullContent)
-                return
-              } else if (data.type === 'search_grounding' && data.sources) {
-                // Collect grounding sources from backend Gemini native search
-                const sources: SearchSource[] = (data.sources as Array<{ title: string; url: string }>).map((s) => ({
-                  title: s.title,
-                  url: s.url
-                }))
-                if (sources.length > 0) {
-                  useChatStore.setState((state) => ({
-                    searchSources: [...state.searchSources, ...sources]
-                  }))
-                }
-              }
-            } catch {
-              // ignore non-JSON SSE lines
-            }
-          }
-        }
-      }
-    }
-  } catch (err: any) {
-    useChatStore.getState().setStreamingError(err.message || 'Stream failed')
-  }
+  await streamBuiltinAgentLoop(
+    modelId,
+    conversationId,
+    messages,
+    tools,
+    attachmentIds,
+    enableThinking,
+    webSearchEnabled
+  )
 }
 
 /**

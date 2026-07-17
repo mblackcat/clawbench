@@ -31,7 +31,7 @@ const DEFAULT_CONFIG: AiToolsConfig = {
   webSearch: { provider: 'duckduckgo', braveApiKey: '' },
   webBrowse: { engine: 'http', lightpandaPath: '' },
   feishuKits: { enabled: false, cliPath: '' },
-  toolBehavior: { maxToolSteps: 0, maxSearchRounds: 0, toolTimeoutMs: 60000 }
+  toolBehavior: { maxToolSteps: 0, maxSearchRounds: 0, toolTimeoutMs: 60000 } // max steps unused by agent loop
 }
 
 const LIGHTPANDA_GITHUB = 'https://github.com/lightpanda-io/browser'

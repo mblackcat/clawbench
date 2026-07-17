@@ -315,6 +315,18 @@ export interface ClawBenchAPI {
     approveTool: (taskId: string, toolCallId: string) => Promise<boolean>
     rejectTool: (taskId: string, toolCallId: string) => Promise<boolean>
     submitToolResult: (taskId: string, toolCallId: string, result: string, isError: boolean) => Promise<void>
+    executeAgentTools: (params: {
+      calls: Array<{ id: string; name: string; input: Record<string, any> }>
+      toolsEnabled?: boolean
+      webSearchEnabled?: boolean
+      feishuKitsEnabled?: boolean
+      attachmentPaths?: string[]
+    }) => Promise<Array<{ id: string; name: string; content: string; isError: boolean }>>
+    compactMessages: (params: {
+      messages: Array<{ role: string; content: string; toolCallId?: string; toolCalls?: any[]; reasoningContent?: string }>
+      modelConfigId?: string
+      modelId?: string
+    }) => Promise<{ messages: Array<any>; compacted: boolean }>
     generateTitle: (
       modelConfigId: string,
       messages: Array<{ role: string; content: string }>,

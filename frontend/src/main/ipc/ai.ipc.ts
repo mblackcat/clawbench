@@ -1,11 +1,18 @@
 import { ipcMain, BrowserWindow } from 'electron'
-import { streamChat, cancelChat, generateTitle } from '../services/ai.service'
+import {
+  streamChat,
+  cancelChat,
+  generateTitle,
+  getModelConfig,
+} from '../services/ai.service'
 import type { AttachmentInfo, ToolDefinition, ChatMessage } from '../services/ai.service'
 import {
   streamAgentQuery,
   resolveToolApproval,
   type AgentQueryParams,
 } from '../services/agent/agent-query.service'
+import { executeAgentToolBatch } from '../services/agent/agent-tools'
+import { needsCompact, compactMessages } from '../services/agent/context-compact'
 
 export function registerAiIpc(): void {
   ipcMain.handle(
@@ -74,6 +81,67 @@ export function registerAiIpc(): void {
         return resolveToolApproval(params.taskId, params.toolCallId, false)
       }
       return resolveToolApproval(params.taskId, params.toolCallId, true)
+    }
+  )
+
+  /**
+   * Hybrid builtin chat: execute tools on main with shared catalog / partition / budget.
+   */
+  ipcMain.handle(
+    'ai:execute-agent-tools',
+    async (
+      _event,
+      params: {
+        calls: Array<{ id: string; name: string; input: Record<string, any> }>
+        toolsEnabled?: boolean
+        webSearchEnabled?: boolean
+        feishuKitsEnabled?: boolean
+        attachmentPaths?: string[]
+      }
+    ) => {
+      return executeAgentToolBatch(params.calls || [], {
+        toolsEnabled: params.toolsEnabled,
+        webSearchEnabled: params.webSearchEnabled,
+        feishuKitsEnabled: params.feishuKitsEnabled,
+        attachmentPaths: params.attachmentPaths,
+      })
+    }
+  )
+
+  /** Optional compact for hybrid builtin path (uses local model config when available). */
+  ipcMain.handle(
+    'ai:compact-messages',
+    async (
+      _event,
+      params: {
+        messages: ChatMessage[]
+        modelConfigId?: string
+        modelId?: string
+      }
+    ) => {
+      if (!needsCompact(params.messages || [])) {
+        return { messages: params.messages, compacted: false }
+      }
+      const config = params.modelConfigId ? getModelConfig(params.modelConfigId) : undefined
+      if (!config) {
+        // No local model for summarization — drop oldest non-system messages as soft compact
+        const system = (params.messages || []).filter((m) => m.role === 'system')
+        const rest = (params.messages || []).filter((m) => m.role !== 'system')
+        const keep = rest.slice(-12)
+        return {
+          messages: [
+            ...system,
+            {
+              role: 'user' as const,
+              content:
+                '[System: conversation context compacted — older turns dropped (no local model for LLM summary)]',
+            },
+            ...keep,
+          ],
+          compacted: true,
+        }
+      }
+      return compactMessages(params.messages, config, params.modelId || config.models[0] || config.name)
     }
   )
 

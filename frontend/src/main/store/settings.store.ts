@@ -65,6 +65,10 @@ interface SettingsSchema {
   }
   customSystemPrompt: string
   defaultToolApprovalMode: string
+  /**
+   * @deprecated Unused by agent loop (always unbounded + anti-spin).
+   * Kept for store schema compatibility; never gates tool rounds.
+   */
   maxAgentToolSteps: number
   /** Master switch for AI assistant persona/memory/harness. Default true. */
   assistantEnabled: boolean
@@ -229,7 +233,7 @@ export const settingsStore = new Store<SettingsSchema>({
         webSearch: { provider: 'duckduckgo', braveApiKey: '' },
         webBrowse: { engine: 'http', lightpandaPath: '' },
         feishuKits: { enabled: false, cliPath: '' },
-        // maxToolSteps / maxSearchRounds: 0 = unlimited (Claude Code–style agent loop)
+        // maxToolSteps / maxSearchRounds are legacy dead fields (agent loop ignores them).
         toolBehavior: { maxToolSteps: 0, maxSearchRounds: 0, toolTimeoutMs: 60000 }
       },
       properties: {

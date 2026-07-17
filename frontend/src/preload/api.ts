@@ -257,6 +257,26 @@ export const api = {
       ipcRenderer.invoke('ai:reject-tool', { taskId, toolCallId }) as Promise<boolean>,
     submitToolResult: (taskId: string, toolCallId: string, result: string, isError: boolean) =>
       ipcRenderer.invoke('ai:tool-result', { taskId, toolCallId, result, isError, approved: !isError }),
+    /** Hybrid builtin: run tool batch via main shared catalog (partition + budget). */
+    executeAgentTools: (params: {
+      calls: Array<{ id: string; name: string; input: Record<string, any> }>
+      toolsEnabled?: boolean
+      webSearchEnabled?: boolean
+      feishuKitsEnabled?: boolean
+      attachmentPaths?: string[]
+    }) =>
+      ipcRenderer.invoke('ai:execute-agent-tools', params) as Promise<
+        Array<{ id: string; name: string; content: string; isError: boolean }>
+      >,
+    compactMessages: (params: {
+      messages: Array<{ role: string; content: string; toolCallId?: string; toolCalls?: any[]; reasoningContent?: string }>
+      modelConfigId?: string
+      modelId?: string
+    }) =>
+      ipcRenderer.invoke('ai:compact-messages', params) as Promise<{
+        messages: Array<any>
+        compacted: boolean
+      }>,
     generateTitle: (
       modelConfigId: string,
       messages: Array<{ role: string; content: string }>,
