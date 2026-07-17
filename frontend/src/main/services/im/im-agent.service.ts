@@ -266,9 +266,10 @@ export async function handleImAgentMessage(
   let reply = ''
   try {
     const agentSettings = getAgentSettings()
+    // Web search enabled for parity with local AI Chat (zero-config DDG backends).
     reply = await runAgentQueryHeadless(actualConfig, actualModel, history, {
       toolsEnabled: true,
-      webSearchEnabled: false,
+      webSearchEnabled: true,
       feishuKitsEnabled: false,
       language: settingsStore.get('language') || 'zh-CN',
       customSystemPrompt: agentSettings.customSystemPrompt || '',
