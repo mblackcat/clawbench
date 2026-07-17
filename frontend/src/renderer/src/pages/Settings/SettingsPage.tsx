@@ -38,24 +38,36 @@ const ModuleSettings: React.FC = () => {
   const t = useT()
 
   return (
-    <div>
+    <div style={{ minWidth: 0, maxWidth: '100%' }}>
       <Text type="secondary" style={{ display: 'block', marginBottom: 20, fontSize: 13 }}>
         {t('settings.moduleDesc')}
       </Text>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
         {SETTINGS_MODULE_CARDS.map((mod) => (
           <Card
             key={mod.key}
             size="small"
             style={{
               borderRadius: token.borderRadiusLG,
-              borderColor: moduleVisibility[mod.key] ? token.colorPrimaryBorder : token.colorBorderSecondary
+              borderColor: moduleVisibility[mod.key] ? token.colorPrimaryBorder : token.colorBorderSecondary,
+              maxWidth: '100%'
             }}
             styles={{ body: { padding: '14px 16px' } }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <Text strong style={{ fontSize: 14 }}>{t(mod.titleKey)}</Text>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 16,
+                minWidth: 0
+              }}
+            >
+              {/* flex:1 + minWidth:0 so long desc wraps instead of expanding the tab */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Text strong style={{ fontSize: 14, display: 'block' }}>
+                  {t(mod.titleKey)}
+                </Text>
                 <Text
                   type="secondary"
                   style={{ display: 'block', fontSize: 12, marginTop: 3 }}
@@ -64,6 +76,7 @@ const ModuleSettings: React.FC = () => {
                 </Text>
               </div>
               <Switch
+                style={{ flexShrink: 0 }}
                 checked={moduleVisibility[mod.key]}
                 onChange={(checked) =>
                   updateSetting('moduleVisibility', { ...moduleVisibility, [mod.key]: checked })
