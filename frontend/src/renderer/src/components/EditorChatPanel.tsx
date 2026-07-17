@@ -23,14 +23,15 @@ import ThinkingBlock from './ThinkingBlock'
 import ModelSelector from '../pages/AIChat/ModelSelector'
 import { SUBAPP_CHAT_SYSTEM_PROMPT, SUBAPP_CHAT_TOOLS } from '../skills/subappCreateSkill'
 import { apiClient, API_BASE_URL } from '../services/apiClient'
+import { runAgentClientLoop } from '../utils/agent-client-loop'
 import { useT } from '../i18n'
 import '../pages/AIChat/chat-styles.css'
 
 const { TextArea } = Input
 const { Text } = Typography
 
-/** Soft ceiling only (anti-runaway). 0-style unlimited is emulated with a high backstop. */
-const MAX_TOOL_ROUNDS = 100
+/** Builtin hybrid ceiling only (anti-runaway); local uses main agent loop. */
+const BUILTIN_HARD_CEILING = 200
 
 interface ToolRun {
   id: string
@@ -99,6 +100,7 @@ const EditorChatPanel: React.FC<EditorChatPanelProps> = ({
   const streamingToolsRef = useRef<ToolRun[]>([])
   const cancelledRef = useRef(false)
   const rejectStreamRef = useRef<((err: Error) => void) | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   const { selectedModelSource, selectedModelConfigId, selectedModelId, builtinModels, localModels, fetchBuiltinModels, fetchLocalModels, initializeSelectedModel } =
     useAIModelStore()
@@ -408,63 +410,134 @@ const EditorChatPanel: React.FC<EditorChatPanelProps> = ({
 
     const accumulatedTools: ToolRun[] = []
     let finalThinking = ''
+    const abort = new AbortController()
+    abortRef.current = abort
 
     try {
-      for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-        if (cancelledRef.current) break
+      // Local models: main-process agent loop with client tools (unbounded + anti-spin)
+      if (model.source === 'local' && model.configId) {
+        const history = apiMessages
+          .filter((m) => m.role !== 'system')
+          .map((m) => ({
+            role: m.role,
+            content: m.content || '',
+            ...(m.reasoningContent ? { reasoningContent: m.reasoningContent } : {}),
+          }))
+        const clientTools = SUBAPP_CHAT_TOOLS.map((t) => ({
+          name: t.name,
+          description: t.description,
+          inputSchema: t.inputSchema as Record<string, any>,
+          isReadOnly: t.name === 'list_files' || t.name === 'read_file',
+        }))
+        const result = await runAgentClientLoop({
+          modelConfigId: model.configId,
+          modelId: model.modelId,
+          messages: history,
+          systemPromptOverride: SUBAPP_CHAT_SYSTEM_PROMPT,
+          clientTools,
+          enableThinking: true,
+          toolsEnabled: false,
+          toolApprovalMode: 'auto-approve-session',
+          signal: abort.signal,
+          executeTool: async (name, input) => {
+            const r = await executeTool(name, input)
+            return { result: r.result, isError: r.isError }
+          },
+          onDelta: (c) => {
+            streamingContentRef.current += c
+            forceUpdate()
+          },
+          onThinking: (c) => {
+            streamingThinkingRef.current += c
+            forceUpdate()
+          },
+          onToolStart: (tc) => {
+            accumulatedTools.push({
+              id: tc.id,
+              name: tc.name,
+              input: tc.input,
+              status: 'running',
+            })
+            streamingToolsRef.current = [...accumulatedTools]
+            forceUpdate()
+          },
+          onToolEnd: (tc) => {
+            const run = accumulatedTools.find((x) => x.id === tc.id)
+            if (run) {
+              run.status = tc.isError ? 'error' : 'completed'
+              run.result = tc.result
+            }
+            streamingToolsRef.current = [...accumulatedTools]
+            forceUpdate()
+          },
+        })
+        if (!cancelledRef.current && !result.cancelled) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `a-${Date.now()}`,
+              role: 'assistant',
+              content: result.content || result.error || '',
+              thinking: result.thinking || undefined,
+              tools: accumulatedTools.length ? [...accumulatedTools] : undefined,
+            },
+          ])
+        }
+        streamingContentRef.current = ''
+        streamingThinkingRef.current = ''
+        streamingToolsRef.current = []
+      } else {
+        // Builtin: hybrid multi-round SSE (panel-local tools)
+        for (let round = 0; round < BUILTIN_HARD_CEILING; round++) {
+          if (cancelledRef.current || abort.signal.aborted) break
 
-        const res = model.source === 'builtin'
-          ? await streamBuiltinOneRound(model.modelId, apiMessages)
-          : await streamOneRound(model.configId, apiMessages, model.modelId)
-        if (res.thinking) finalThinking = res.thinking
+          const res = await streamBuiltinOneRound(model.modelId, apiMessages)
+          if (res.thinking) finalThinking = res.thinking
 
-        if (res.type === 'done') {
-          // Persist the assistant turn.
-          const assistantMsg: ChatMsg = {
-            id: `a-${Date.now()}-${round}`,
+          if (res.type === 'done') {
+            const assistantMsg: ChatMsg = {
+              id: `a-${Date.now()}-${round}`,
+              role: 'assistant',
+              content: res.content,
+              thinking: finalThinking || undefined,
+              tools: accumulatedTools.length ? [...accumulatedTools] : undefined,
+            }
+            setMessages((prev) => [...prev, assistantMsg])
+            streamingContentRef.current = ''
+            streamingThinkingRef.current = ''
+            streamingToolsRef.current = []
+            break
+          }
+
+          const run: ToolRun = {
+            id: res.toolCallId,
+            name: res.toolName,
+            input: res.toolInput,
+            status: 'running',
+          }
+          accumulatedTools.push(run)
+          streamingToolsRef.current = [...accumulatedTools]
+          forceUpdate()
+
+          apiMessages.push({
             role: 'assistant',
             content: res.content,
-            thinking: finalThinking || undefined,
-            tools: accumulatedTools.length ? [...accumulatedTools] : undefined
-          }
-          setMessages((prev) => [...prev, assistantMsg])
-          streamingContentRef.current = ''
-          streamingThinkingRef.current = ''
-          streamingToolsRef.current = []
-          break
+            reasoningContent: res.thinking || undefined,
+            toolCalls: [{ id: res.toolCallId, name: res.toolName, input: res.toolInput }],
+          })
+
+          const { result, isError } = await executeTool(res.toolName, res.toolInput)
+          run.status = isError ? 'error' : 'completed'
+          run.result = result
+          streamingToolsRef.current = [...accumulatedTools]
+          forceUpdate()
+
+          apiMessages.push({
+            role: 'tool',
+            toolCallId: res.toolCallId,
+            content: result,
+          })
         }
-
-        // tool_use: record running tool, execute, feed result back.
-        const run: ToolRun = {
-          id: res.toolCallId,
-          name: res.toolName,
-          input: res.toolInput,
-          status: 'running'
-        }
-        accumulatedTools.push(run)
-        streamingToolsRef.current = [...accumulatedTools]
-        forceUpdate()
-
-        // The assistant message must include the tool_use block.
-        apiMessages.push({
-          role: 'assistant',
-          content: res.content,
-          // Echo reasoning_content back on tool-calling turns for thinking models
-          reasoningContent: res.thinking || undefined,
-          toolCalls: [{ id: res.toolCallId, name: res.toolName, input: res.toolInput }]
-        })
-
-        const { result, isError } = await executeTool(res.toolName, res.toolInput)
-        run.status = isError ? 'error' : 'completed'
-        run.result = result
-        streamingToolsRef.current = [...accumulatedTools]
-        forceUpdate()
-
-        apiMessages.push({
-          role: 'tool',
-          toolCallId: res.toolCallId,
-          content: result
-        })
       }
     } catch (err: any) {
       if (!cancelledRef.current) {
@@ -474,21 +547,23 @@ const EditorChatPanel: React.FC<EditorChatPanelProps> = ({
             id: `e-${Date.now()}`,
             role: 'assistant',
             content: t('editor.streamError', String(err?.message || String(err))),
-            tools: accumulatedTools.length ? [...accumulatedTools] : undefined
-          }
+            tools: accumulatedTools.length ? [...accumulatedTools] : undefined,
+          },
         ])
       }
       streamingContentRef.current = ''
       streamingThinkingRef.current = ''
       streamingToolsRef.current = []
     } finally {
+      abortRef.current = null
       setStreaming(false)
       forceUpdate()
     }
-  }, [inputValue, streaming, messages, resolveModel, streamOneRound, streamBuiltinOneRound, executeTool, forceUpdate, t])
+  }, [inputValue, streaming, messages, resolveModel, streamBuiltinOneRound, executeTool, forceUpdate, t])
 
   const handleCancel = useCallback(() => {
     cancelledRef.current = true
+    abortRef.current?.abort()
     rejectStreamRef.current?.(new Error('cancelled'))
     setStreaming(false)
   }, [])

@@ -9,6 +9,7 @@ import type { AttachmentInfo, ToolDefinition, ChatMessage } from '../services/ai
 import {
   streamAgentQuery,
   resolveToolApproval,
+  resolveClientToolResult,
   type AgentQueryParams,
 } from '../services/agent/agent-query.service'
 import { executeAgentToolBatch } from '../services/agent/agent-tools'
@@ -69,14 +70,27 @@ export function registerAiIpc(): void {
     }
   )
 
-  // Legacy alias used by older preload bindings
+  // Client tool result (Editor / Terminal) or legacy approval alias
   ipcMain.handle(
     'ai:tool-result',
     async (
       _event,
       params: { taskId: string; toolCallId: string; result?: string; isError?: boolean; approved?: boolean }
     ) => {
-      // Treat as approval resolution when used from agent loop
+      // Prefer client-tool waiter when a result payload is present
+      if (typeof params.result === 'string') {
+        if (
+          resolveClientToolResult(
+            params.taskId,
+            params.toolCallId,
+            params.result,
+            !!params.isError
+          )
+        ) {
+          return true
+        }
+      }
+      // Approval resolution when used from agent loop
       if (params.approved === false || params.isError) {
         return resolveToolApproval(params.taskId, params.toolCallId, false)
       }

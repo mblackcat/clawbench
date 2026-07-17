@@ -21,6 +21,7 @@ import { ModelAvatar, UserAvatar } from '../../components/ProviderIcons'
 import { useAuthStore } from '../../stores/useAuthStore'
 import ThinkingBlock from '../../components/ThinkingBlock'
 import { externalLinkMarkdownComponents } from '../../utils/markdown-links'
+import { runAgentClientLoop } from '../../utils/agent-client-loop'
 import '../AIChat/chat-styles.css'
 
 const { TextArea } = Input
@@ -289,6 +290,7 @@ const AIAssistantPanel: React.FC = () => {
   const streamingThinkingRef = useRef('')
   const streamingToolsRef = useRef<StreamingToolCall[]>([])
   const cancelledRef = useRef(false)
+  const terminalAbortRef = useRef<AbortController | null>(null)
   const currentTaskIdRef = useRef<string | null>(null)
   // Stored reject function to break streamOneRound Promise on cancel
   const rejectStreamRef = useRef<((err: Error) => void) | null>(null)
@@ -578,75 +580,150 @@ const AIAssistantPanel: React.FC = () => {
 
       const configId = selectedModelSource === 'builtin' ? '' : (selectedModelConfigId || '')
       const modelId = selectedModelId || ''
-
-      // Stream loop: handle tool calls by re-calling streamChat with tool results.
-      // Soft ceiling only — continues until the model stops calling tools (Claude Code–style).
-      let messages = aiMsgs
-      const MAX_TOOL_ROUNDS = 100
+      const abort = new AbortController()
+      terminalAbortRef.current = abort
       let allThinking = ''
 
-      for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-        if (cancelledRef.current) break
-
-        const result = await streamOneRound(configId, messages, modelId, tools, chatMode === 'thinking')
-
-        if (cancelledRef.current) break
-
-        if (result.type === 'done') {
-          // Accumulate thinking from all rounds
-          if (result.thinking && !allThinking) allThinking = result.thinking
-          break
-        }
-
-        // tool_use: execute the tool, then continue with updated messages
-        if (result.thinking && !allThinking) allThinking = result.thinking
-
-        // Show tool as running
-        const tc: StreamingToolCall = {
-          id: result.toolCallId,
-          name: result.toolName,
-          input: result.toolInput,
-          status: 'running',
-        }
-        streamingToolsRef.current = [...streamingToolsRef.current, tc]
-        forceUpdate()
-
-        // Execute tool
-        const toolResult = await executeTool(
-          result.toolName, result.toolInput, effectiveTabId!, currentDBConnId
-        )
-
-        if (cancelledRef.current) break
-
-        // Update tool status
-        streamingToolsRef.current = streamingToolsRef.current.map(t =>
-          t.id === result.toolCallId
-            ? { ...t, status: toolResult.isError ? 'error' : 'completed', result: toolResult.result }
-            : t
-        )
-        forceUpdate()
-
-        // Build messages for next round: append assistant tool_use + tool result
-        messages = [
-          ...messages,
-          {
-            role: 'assistant',
-            content: result.content || '',
-            // Echo reasoning_content back on tool-calling turns for thinking models
-            reasoningContent: result.thinking || undefined,
-            toolCalls: [{ id: result.toolCallId, name: result.toolName, input: result.toolInput }]
+      // Local models: main agent loop + client tools (terminal/DB)
+      if (configId && tools && tools.length > 0) {
+        const history = aiMsgs
+          .filter((m) => m.role !== 'system')
+          .map((m) => ({
+            role: m.role,
+            content: m.content || '',
+            ...(m.reasoningContent ? { reasoningContent: m.reasoningContent } : {}),
+          }))
+        const systemContent =
+          (aiMsgs.find((m) => m.role === 'system')?.content as string) || ''
+        const clientTools = tools.map((t) => ({
+          name: t.name,
+          description: t.description,
+          inputSchema: t.inputSchema as Record<string, any>,
+          isReadOnly:
+            t.name === 'terminal_read_output' ||
+            t.name === 'db_query' ||
+            t.name === 'db_get_tables' ||
+            t.name === 'db_get_schema',
+        }))
+        const result = await runAgentClientLoop({
+          modelConfigId: configId,
+          modelId,
+          messages: history,
+          systemPromptOverride: systemContent,
+          clientTools,
+          enableThinking: chatMode === 'thinking',
+          toolsEnabled: false,
+          toolApprovalMode: 'auto-approve-session',
+          signal: abort.signal,
+          executeTool: async (name, input) => {
+            const r = await executeTool(name, input, effectiveTabId!, currentDBConnId)
+            return { result: r.result, isError: r.isError }
           },
-          {
-            role: 'tool',
-            content: toolResult.result,
-            toolCallId: result.toolCallId
-          }
-        ]
+          onDelta: (c) => {
+            streamingContentRef.current += c
+            forceUpdate()
+          },
+          onThinking: (c) => {
+            streamingThinkingRef.current += c
+            forceUpdate()
+          },
+          onToolStart: (tc) => {
+            streamingToolsRef.current = [
+              ...streamingToolsRef.current,
+              { id: tc.id, name: tc.name, input: tc.input, status: 'running' },
+            ]
+            forceUpdate()
+          },
+          onToolEnd: (tc) => {
+            streamingToolsRef.current = streamingToolsRef.current.map((t) =>
+              t.id === tc.id
+                ? {
+                    ...t,
+                    status: tc.isError ? 'error' : 'completed',
+                    result: tc.result,
+                  }
+                : t
+            )
+            forceUpdate()
+          },
+        })
+        allThinking = result.thinking || ''
+        if (result.content) streamingContentRef.current = result.content
+      } else {
+        // Builtin or no tools: multi-round streamChat (soft ceiling only)
+        let messages = aiMsgs
+        const HARD_CEILING = 200
+        for (let round = 0; round < HARD_CEILING; round++) {
+          if (cancelledRef.current || abort.signal.aborted) break
 
-        // Reset per-round streaming content (keep accumulated thinking & tools)
-        streamingContentRef.current = ''
-        // Don't reset thinking - keep it from first round
+          const result = await streamOneRound(
+            configId,
+            messages,
+            modelId,
+            tools,
+            chatMode === 'thinking'
+          )
+
+          if (cancelledRef.current || abort.signal.aborted) break
+
+          if (result.type === 'done') {
+            if (result.thinking && !allThinking) allThinking = result.thinking
+            break
+          }
+
+          if (result.thinking && !allThinking) allThinking = result.thinking
+
+          const tc: StreamingToolCall = {
+            id: result.toolCallId,
+            name: result.toolName,
+            input: result.toolInput,
+            status: 'running',
+          }
+          streamingToolsRef.current = [...streamingToolsRef.current, tc]
+          forceUpdate()
+
+          const toolResult = await executeTool(
+            result.toolName,
+            result.toolInput,
+            effectiveTabId!,
+            currentDBConnId
+          )
+
+          if (cancelledRef.current || abort.signal.aborted) break
+
+          streamingToolsRef.current = streamingToolsRef.current.map((t) =>
+            t.id === result.toolCallId
+              ? {
+                  ...t,
+                  status: toolResult.isError ? 'error' : 'completed',
+                  result: toolResult.result,
+                }
+              : t
+          )
+          forceUpdate()
+
+          messages = [
+            ...messages,
+            {
+              role: 'assistant',
+              content: result.content || '',
+              reasoningContent: result.thinking || undefined,
+              toolCalls: [
+                { id: result.toolCallId, name: result.toolName, input: result.toolInput },
+              ],
+            },
+            {
+              role: 'tool',
+              content: toolResult.result,
+              toolCallId: result.toolCallId,
+            },
+          ]
+
+          streamingContentRef.current = ''
+        }
       }
+
+      terminalAbortRef.current = null
 
       const assistantMsg: TerminalAIMessage = {
         id: `msg-${Date.now()}`,
@@ -694,6 +771,7 @@ const AIAssistantPanel: React.FC = () => {
 
   const handleCancel = useCallback(() => {
     cancelledRef.current = true
+    terminalAbortRef.current?.abort()
     // Cancel any active stream on main process
     const tid = currentTaskIdRef.current
     if (tid) {

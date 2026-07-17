@@ -15,6 +15,7 @@ import { getUser } from '../../store/auth.store'
 import { getAgentSettings, getAiModelConfigs, getLastChatModel, settingsStore } from '../../store/settings.store'
 import { getIMConfig } from '../ai-coding.service'
 import { runAgentQueryHeadless } from '../agent/agent-query.service'
+import { isFeishuToolsAvailable } from '../feishu-tools.service'
 import type { ChatMessage } from '../ai.service'
 import * as logger from '../../utils/logger'
 import type { AIModelConfig } from '../../store/settings.store'
@@ -266,11 +267,12 @@ export async function handleImAgentMessage(
   let reply = ''
   try {
     const agentSettings = getAgentSettings()
-    // Web search enabled for parity with local AI Chat (zero-config DDG backends).
+    // Web search + Feishu kits (when logged in / enabled) for parity with desktop AI Chat.
+    const feishuAvail = isFeishuToolsAvailable()
     reply = await runAgentQueryHeadless(actualConfig, actualModel, history, {
       toolsEnabled: true,
       webSearchEnabled: true,
-      feishuKitsEnabled: false,
+      feishuKitsEnabled: feishuAvail.available,
       language: settingsStore.get('language') || 'zh-CN',
       customSystemPrompt: agentSettings.customSystemPrompt || '',
       assistantEnabled: agentSettings.assistantEnabled !== false,

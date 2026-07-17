@@ -157,14 +157,6 @@ export const api = {
     },
     getAiToolsConfig: () => ipcRenderer.invoke('settings:get-ai-tools-config'),
     setAiToolsConfig: (config: Record<string, unknown>) => ipcRenderer.invoke('settings:set-ai-tools-config', config),
-    testBraveApiKey: (apiKey: string) => ipcRenderer.invoke('settings:test-brave-api-key', apiKey),
-    detectLightpanda: () => ipcRenderer.invoke('settings:detect-lightpanda'),
-    installLightpanda: () => ipcRenderer.invoke('settings:install-lightpanda'),
-    onLightpandaInstallProgress: (callback: (data: { percent: number; downloadedMB: string; totalMB: string; stage: string }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
-      ipcRenderer.on('settings:lightpanda-install-progress', handler)
-      return () => ipcRenderer.removeListener('settings:lightpanda-install-progress', handler)
-    },
     getAgentSettings: () => ipcRenderer.invoke('settings:get-agent-settings') as Promise<{
       customSystemPrompt: string
       defaultToolApprovalMode: string
@@ -249,6 +241,13 @@ export const api = {
       customSystemPrompt?: string
       assistantEnabled?: boolean
       attachmentPaths?: string[]
+      systemPromptOverride?: string
+      clientTools?: Array<{
+        name: string
+        description: string
+        inputSchema: Record<string, any>
+        isReadOnly?: boolean
+      }>
     }) => ipcRenderer.invoke('ai:stream-agent-query', params) as Promise<string>,
     cancelChat: (taskId: string) => ipcRenderer.invoke('ai:cancel-chat', taskId),
     approveTool: (taskId: string, toolCallId: string) =>

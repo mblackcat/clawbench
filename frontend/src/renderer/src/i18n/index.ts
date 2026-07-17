@@ -201,35 +201,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'settings.tabAITools': 'AI 工具',
     'settings.aiTools.webSearchGroup': '网络搜索',
     'settings.aiTools.webSearchGroupDesc': '对应 AI 助理中的「网络搜索」开关，启用后 AI 可联网搜索并浏览网页获取最新信息。',
-    'settings.aiTools.webToolsAutoDesc': '开箱即用：在 AI 聊天打开「网络搜索」即可。搜索默认 DuckDuckGo；若本机已配置 Brave Key 或安装 Lightpanda 会自动使用。策略已内化到工具（含 Sources 引用），无需再配置引擎。',
-    'settings.aiTools.webSearch': '搜索引擎',
-    'settings.aiTools.webSearchProvider': '搜索引擎',
-    'settings.aiTools.braveApiKey': 'Brave API Key',
-    'settings.aiTools.braveApiKeyHelp': '从 brave.com/search/api 获取 API Key',
-    'settings.aiTools.testConnection': '测试连接',
-    'settings.aiTools.testSuccess': '连接成功',
-    'settings.aiTools.testFailed': '连接失败',
-    'settings.aiTools.webBrowse': '网页浏览',
-    'settings.aiTools.webBrowseEngine': '浏览引擎',
-    'settings.aiTools.builtinHttp': '内置 HTTP',
-    'settings.aiTools.lightpandaPath': 'Lightpanda 路径',
-    'settings.aiTools.lightpandaDesc': '开源无头浏览器，专为 AI 和自动化设计，比 Chrome Headless 更快更轻量。',
-    'settings.aiTools.lightpandaDetect': '自动检测',
-    'settings.aiTools.lightpandaDetected': '已检测到 Lightpanda: {0}',
-    'settings.aiTools.lightpandaNotFound': '未检测到 Lightpanda，请手动指定路径或一键安装',
-    'settings.aiTools.lightpandaInstall': '一键安装',
-    'settings.aiTools.lightpandaInstalling': '正在下载安装...',
-    'settings.aiTools.lightpandaInstallSuccess': 'Lightpanda 安装成功: {0}',
-    'settings.aiTools.lightpandaInstallFailed': '安装失败',
-    'settings.aiTools.lightpandaConnecting': '正在连接...',
-    'settings.aiTools.lightpandaWriting': '正在写入...',
-    'settings.aiTools.lightpandaGitHub': 'GitHub',
-    'settings.aiTools.lightpandaDocs': '官方文档',
+    'settings.aiTools.webToolsAutoDesc': '开箱即用：在 AI 聊天打开「网络搜索」即可。搜索默认 DuckDuckGo；若本机已配置 Brave Key 或安装 Lightpanda 会自动使用。策略已内化到工具（含 Sources 引用），无需再配置引擎。',
     'settings.aiTools.toolBehavior': '工具行为',
-    'settings.aiTools.toolBehaviorHint': 'Agent 工具循环已内置（不限制步数，自动去重防死循环）。仅保留单次工具超时。',
-    'settings.aiTools.maxToolSteps': '最大工具调用步数',
-    'settings.aiTools.maxSearchRounds': '最大搜索轮数',
-    'settings.aiTools.zeroUnlimited': '0 = 不限制',
+    'settings.aiTools.toolBehaviorHint': 'Agent 工具循环已内置（不限制步数，自动去重防死循环）。仅保留单次工具超时。',
     'settings.aiTools.toolTimeout': '工具超时时间（秒）',
 
     // 模块设置
@@ -453,10 +427,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'settings.aiAssistant.autoApproveSession': '全部自动',
     'settings.aiAssistant.autoApproveSessionDesc': '所有工具自动执行，无需审批',
     'settings.aiAssistant.askEveryTime': '每次确认',
-    'settings.aiAssistant.askEveryTimeDesc': '每个工具调用都需手动审批',
-    'settings.aiAssistant.maxToolSteps': '最大工具步数（可选）',
-    'settings.aiAssistant.maxToolStepsDesc': '单次对话中 AI 可连续调用工具的软上限。0 = 不限制（推荐，与 Claude Code 一致，仅靠去重防死循环）。',
-    'settings.aiAssistant.unlimited': '不限',
+    'settings.aiAssistant.askEveryTimeDesc': '每个工具调用都需手动审批',
     'settings.aiAssistant.soulTitle': 'AI 人设',
     'settings.aiAssistant.soulDesc': '定义 AI 助手的身份、风格和行为规则（会注入系统提示词）。可选手设模板，或自行编辑。',
     'settings.aiAssistant.restoreDefault': '恢复默认',

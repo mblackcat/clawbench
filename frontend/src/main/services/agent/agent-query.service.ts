@@ -33,6 +33,15 @@ import * as logger from '../../utils/logger'
 
 export type ToolApprovalMode = 'auto-approve-safe' | 'auto-approve-session' | 'ask-every-time'
 
+/** Tools executed in the renderer (Editor / AI Terminal); main waits for submitToolResult. */
+export interface ClientToolDef {
+  name: string
+  description: string
+  inputSchema: Record<string, any>
+  /** Default true — concurrent-safe read-only tools */
+  isReadOnly?: boolean
+}
+
 export interface AgentQueryParams {
   modelConfigId: string
   modelId?: string
@@ -49,6 +58,15 @@ export interface AgentQueryParams {
   assistantEnabled?: boolean
   /** Absolute paths for vision MCP injection */
   attachmentPaths?: string[]
+  /**
+   * Full system prompt override (Editor/Terminal). When set, skips persona/memory builder.
+   */
+  systemPromptOverride?: string
+  /**
+   * Tools whose execute lives in the renderer. Model schemas are merged into the API
+   * tool list; main emits tool_use and waits for `submitToolResult` with the payload.
+   */
+  clientTools?: ClientToolDef[]
 }
 
 /** Pending human approval for a tool call */
@@ -57,6 +75,14 @@ interface PendingApproval {
 }
 
 const pendingApprovals = new Map<string, PendingApproval>() // key: `${taskId}:${toolCallId}`
+
+/** Pending client (renderer) tool results */
+interface PendingClientResult {
+  resolve: (r: { content: string; isError: boolean }) => void
+}
+const pendingClientResults = new Map<string, PendingClientResult>()
+/** Results that arrived before the loop registered a waiter (race with streaming tool_use). */
+const earlyClientResults = new Map<string, { content: string; isError: boolean }>()
 
 export function resolveToolApproval(
   taskId: string,
@@ -68,6 +94,27 @@ export function resolveToolApproval(
   if (!pending) return false
   pendingApprovals.delete(key)
   pending.resolve(approved)
+  return true
+}
+
+/**
+ * Resolve a client tool execution from the renderer.
+ * Buffers if the loop has not yet started waiting (tool_use event races ahead).
+ */
+export function resolveClientToolResult(
+  taskId: string,
+  toolCallId: string,
+  content: string,
+  isError: boolean
+): boolean {
+  const key = `${taskId}:${toolCallId}`
+  const pending = pendingClientResults.get(key)
+  if (pending) {
+    pendingClientResults.delete(key)
+    pending.resolve({ content: content || '', isError: !!isError })
+    return true
+  }
+  earlyClientResults.set(key, { content: content || '', isError: !!isError })
   return true
 }
 
@@ -86,6 +133,32 @@ function waitForApproval(
       resolve: (approved) => {
         clearTimeout(timer)
         resolve(approved)
+      },
+    })
+  })
+}
+
+function waitForClientToolResult(
+  taskId: string,
+  toolCallId: string,
+  timeoutMs = 300_000
+): Promise<{ content: string; isError: boolean }> {
+  return new Promise((resolve) => {
+    const key = `${taskId}:${toolCallId}`
+    const early = earlyClientResults.get(key)
+    if (early) {
+      earlyClientResults.delete(key)
+      resolve(early)
+      return
+    }
+    const timer = setTimeout(() => {
+      pendingClientResults.delete(key)
+      resolve({ content: 'Client tool timed out', isError: true })
+    }, timeoutMs)
+    pendingClientResults.set(key, {
+      resolve: (r) => {
+        clearTimeout(timer)
+        resolve(r)
       },
     })
   })
@@ -179,13 +252,23 @@ export async function streamAgentQuery(
     })
     .finally(() => {
       unregisterActiveTask(taskId)
-      // Clear any leftover approvals for this task
+      // Clear any leftover approvals / client tool waiters for this task
       for (const key of pendingApprovals.keys()) {
         if (key.startsWith(`${taskId}:`)) {
           const p = pendingApprovals.get(key)
           pendingApprovals.delete(key)
           p?.resolve(false)
         }
+      }
+      for (const key of pendingClientResults.keys()) {
+        if (key.startsWith(`${taskId}:`)) {
+          const p = pendingClientResults.get(key)
+          pendingClientResults.delete(key)
+          p?.resolve({ content: 'Task cancelled', isError: true })
+        }
+      }
+      for (const key of [...earlyClientResults.keys()]) {
+        if (key.startsWith(`${taskId}:`)) earlyClientResults.delete(key)
       }
     })
 
@@ -281,15 +364,44 @@ async function runAgentLoop(
     feishuKitsEnabled: !!params.feishuKitsEnabled,
   })
   const catalog = new Map(agentTools.map((t) => [t.name, t]))
-  const apiTools = toApiToolDefs(agentTools)
+  const clientToolNames = new Set((params.clientTools || []).map((t) => t.name))
 
-  const systemPrompt = await buildAgentSystemPrompt(
-    agentTools.map((t) => t.name),
-    !!params.webSearchEnabled,
-    opts.language,
-    opts.customPrompt,
-    opts.assistantEnabled
-  )
+  // Merge client tools (renderer-executed) into catalog + API schema list
+  for (const ct of params.clientTools || []) {
+    catalog.set(ct.name, {
+      name: ct.name,
+      description: ct.description,
+      inputSchema: ct.inputSchema,
+      source: 'builtin',
+      isSafe: true,
+      isReadOnly: () => ct.isReadOnly !== false,
+      isConcurrencySafe: () => ct.isReadOnly !== false,
+      execute: async () => ({
+        content: 'Client tool must be executed in the renderer',
+        isError: true,
+      }),
+    })
+  }
+
+  const apiTools = [
+    ...toApiToolDefs(agentTools),
+    ...(params.clientTools || []).map((t) => ({
+      name: t.name,
+      description: t.description,
+      inputSchema: t.inputSchema,
+    })),
+  ]
+
+  const allToolNames = [...catalog.keys()]
+  const systemPrompt = params.systemPromptOverride?.trim()
+    ? params.systemPromptOverride.trim()
+    : await buildAgentSystemPrompt(
+        allToolNames,
+        !!params.webSearchEnabled,
+        opts.language,
+        opts.customPrompt,
+        opts.assistantEnabled
+      )
 
   // Build messages with system + history
   let messages: ChatMessage[] = [
@@ -379,7 +491,8 @@ async function runAgentLoop(
               emit,
               opts.approvalMode,
               fingerprints,
-              params.attachmentPaths
+              params.attachmentPaths,
+              clientToolNames
             )
           )
         )
@@ -400,7 +513,8 @@ async function runAgentLoop(
             emit,
             opts.approvalMode,
             fingerprints,
-            params.attachmentPaths
+            params.attachmentPaths,
+            clientToolNames
           )
           messages.push({
             role: 'tool',
@@ -433,7 +547,8 @@ async function runOneTool(
   emit: StreamEmitter,
   approvalMode: ToolApprovalMode,
   fingerprints: Map<string, number>,
-  attachmentPaths?: string[]
+  attachmentPaths?: string[],
+  clientToolNames?: Set<string>
 ): Promise<{ id: string; content: string }> {
   const tool = catalog.get(call.name)
   const fp = `${call.name}:${JSON.stringify(call.input || {}, Object.keys(call.input || {}).sort())}`
@@ -444,10 +559,12 @@ async function runOneTool(
     return { id: call.id, content: msg }
   }
 
-  // Approval gate
+  // Approval gate (skip for client tools — renderer panel owns UX)
+  const isClient = clientToolNames?.has(call.name)
   const needsAsk =
-    approvalMode === 'ask-every-time' ||
-    (approvalMode === 'auto-approve-safe' && !isToolSafe(tool, call.name))
+    !isClient &&
+    (approvalMode === 'ask-every-time' ||
+      (approvalMode === 'auto-approve-safe' && !isToolSafe(tool, call.name)))
 
   if (needsAsk) {
     emit.toolApprovalRequest(call.id, call.name, call.input || {})
@@ -460,6 +577,14 @@ async function runOneTool(
   }
 
   fingerprints.set(fp, dup + 1)
+
+  if (isClient) {
+    // tool_use already emitted by stream; wait for renderer submitToolResult
+    const clientResult = await waitForClientToolResult(taskId, call.id)
+    emit.toolResult(call.id, call.name, clientResult.content, clientResult.isError)
+    return { id: call.id, content: clientResult.content }
+  }
+
   const result = await executeAgentTool(call, catalog, { attachmentPaths })
   emit.toolResult(call.id, call.name, result.content, result.isError)
   return { id: call.id, content: result.content }

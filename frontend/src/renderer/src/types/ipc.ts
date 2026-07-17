@@ -267,10 +267,6 @@ export interface ClawBenchAPI {
     onFeishuCliInstallProgress: (callback: (data: { percent: number; downloadedMB: string; totalMB: string; stage: string }) => void) => () => void
     getAiToolsConfig: () => Promise<AiToolsConfig>
     setAiToolsConfig: (config: AiToolsConfig) => Promise<void>
-    testBraveApiKey: (apiKey: string) => Promise<{ success: boolean; message: string }>
-    detectLightpanda: () => Promise<{ found: boolean; path: string }>
-    installLightpanda: () => Promise<{ success: boolean; error: string; path: string }>
-    onLightpandaInstallProgress: (callback: (data: { percent: number; downloadedMB: string; totalMB: string; stage: string }) => void) => () => void
     getAgentSettings: () => Promise<{
       customSystemPrompt: string
       defaultToolApprovalMode: string
@@ -310,6 +306,13 @@ export interface ClawBenchAPI {
       customSystemPrompt?: string
       assistantEnabled?: boolean
       attachmentPaths?: string[]
+      systemPromptOverride?: string
+      clientTools?: Array<{
+        name: string
+        description: string
+        inputSchema: Record<string, any>
+        isReadOnly?: boolean
+      }>
     }) => Promise<string>
     cancelChat: (taskId: string) => Promise<boolean>
     approveTool: (taskId: string, toolCallId: string) => Promise<boolean>
