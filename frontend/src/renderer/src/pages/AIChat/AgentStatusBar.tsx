@@ -58,7 +58,7 @@ const AgentStatusBar: React.FC = () => {
     : ''
 
   const getToolIcon = (name: string) => {
-    if (name === 'web_search' || name === 'plan_search') return <SearchOutlined style={{ fontSize: 11 }} />
+    if (name === 'web_search') return <SearchOutlined style={{ fontSize: 11 }} />
     if (name === 'web_browse') return <GlobalOutlined style={{ fontSize: 11 }} />
     if (name === 'execute_command') return <CodeOutlined style={{ fontSize: 11 }} />
     if (name === 'generate_image' || name === 'edit_image') return <PictureOutlined style={{ fontSize: 11 }} />

@@ -28,23 +28,20 @@ describe('checkAndRecordFingerprint (shipped anti-spin helper)', () => {
   it('persists across sequential batch calls (loop-scoped map)', async () => {
     // Simulate two IPC steps with the same fingerprints bag (builtin hybrid contract)
     let fingerprints: Record<string, number> = {}
-    const call = { id: '1', name: 'plan_search', input: { queries: ['x'], reasoning: 'y' } }
-
-    // plan_search is a real tool that executes without side effects
+    // Use a pure fingerprint bag without network: only checkAndRecord across "batches"
+    const callName = 'web_search'
+    const input = { query: 'same-query-for-anti-spin' }
     for (let i = 0; i < MAX_TOOL_DUPLICATES; i++) {
-      const batch = await executeAgentToolBatch([{ ...call, id: `c${i}` }], {
-        toolsEnabled: true,
-        webSearchEnabled: true,
-        fingerprints,
-      })
-      fingerprints = batch.fingerprints
-      expect(batch.results[0].isError).toBe(false)
+      const r = checkAndRecordFingerprint(fingerprints, callName, input)
+      expect(r.blocked).toBe(false)
     }
-    const last = await executeAgentToolBatch([{ ...call, id: 'blocked' }], {
-      toolsEnabled: true,
-      webSearchEnabled: true,
-      fingerprints,
-    })
+    const blocked = checkAndRecordFingerprint(fingerprints, callName, input)
+    expect(blocked.blocked).toBe(true)
+    // Also verify executeAgentToolBatch respects pre-seeded fingerprints
+    const last = await executeAgentToolBatch(
+      [{ id: 'blocked', name: callName, input }],
+      { toolsEnabled: true, webSearchEnabled: true, fingerprints }
+    )
     expect(last.results[0].isError).toBe(true)
     expect(last.results[0].content).toMatch(/Duplicate|anti-loop/i)
   })

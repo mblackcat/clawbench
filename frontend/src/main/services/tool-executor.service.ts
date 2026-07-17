@@ -1,9 +1,7 @@
 import { exec } from 'child_process'
-import { net } from 'electron'
 import * as logger from '../utils/logger'
 import { executeImageGeneration, executeImageEdit } from './image-gen.service'
-import { getAiToolsConfigRaw } from '../store/settings.store'
-import { executeWebBrowse } from './web-browse.service'
+import { executeWebSearch, executeWebFetch } from './web-search.service'
 
 export interface ToolDefinition {
   name: string
@@ -90,100 +88,6 @@ export function executeCommand(
 }
 
 /**
- * Execute web search via DuckDuckGo HTML and parse results
- */
-async function executeWebSearch(query: string, maxResults = 5): Promise<ToolResult> {
-  const config = getAiToolsConfigRaw()
-  if (config.webSearch.provider === 'brave' && config.webSearch.braveApiKey) {
-    return executeBraveSearch(query, config.webSearch.braveApiKey, maxResults)
-  }
-  return executeDuckDuckGoSearch(query, maxResults)
-}
-
-async function executeDuckDuckGoSearch(query: string, maxResults = 5): Promise<ToolResult> {
-  logger.info(`Web search: "${query}"`)
-  try {
-    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`
-    const response = await net.fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      }
-    })
-    if (!response.ok) {
-      return { error: `Search request failed: ${response.status}`, isError: true }
-    }
-    const html = await response.text()
-
-    // Parse results from DuckDuckGo HTML
-    const results: Array<{ title: string; url: string; snippet: string }> = []
-    const resultRegex = /<a[^>]+class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g
-    let match: RegExpExecArray | null
-    while ((match = resultRegex.exec(html)) !== null && results.length < maxResults) {
-      const rawUrl = match[1]
-      const title = match[2].replace(/<[^>]*>/g, '').trim()
-      const snippet = match[3].replace(/<[^>]*>/g, '').trim()
-      // DuckDuckGo URLs are redirect links, extract actual URL
-      let finalUrl = rawUrl
-      const uddgMatch = rawUrl.match(/[?&]uddg=([^&]+)/)
-      if (uddgMatch) {
-        finalUrl = decodeURIComponent(uddgMatch[1])
-      }
-      if (title && snippet) {
-        results.push({ title, url: finalUrl, snippet })
-      }
-    }
-
-    if (results.length === 0) {
-      return { output: `No search results found for: "${query}"`, isError: false }
-    }
-
-    const formatted = results
-      .map((r, i) => `[${i + 1}] ${r.title}\n    URL: ${r.url}\n    ${r.snippet}`)
-      .join('\n\n')
-
-    return { output: `Search results for "${query}":\n\n${formatted}`, isError: false }
-  } catch (err: any) {
-    logger.error('Web search failed:', err)
-    return { error: `Web search failed: ${err.message}`, isError: true }
-  }
-}
-
-async function executeBraveSearch(query: string, apiKey: string, maxResults = 5): Promise<ToolResult> {
-  logger.info(`Brave search: "${query}"`)
-  try {
-    const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${maxResults}`
-    const response = await net.fetch(url, {
-      headers: {
-        'X-Subscription-Token': apiKey,
-        'Accept': 'application/json',
-        'Cache-Control': 'no-cache',
-        'Accept-Encoding': 'gzip'
-      }
-    })
-    if (!response.ok) {
-      const body = await response.text().catch(() => '')
-      logger.error(`Brave search failed: HTTP ${response.status}`, body)
-      return { error: `Brave search failed: ${response.status} ${body}`, isError: true }
-    }
-    const data = await response.json() as any
-    const results = (data.web?.results || []).slice(0, maxResults)
-    if (results.length === 0) {
-      return { output: `No search results found for: "${query}"`, isError: false }
-    }
-    const formatted = results
-      .map((r: any, i: number) => {
-        const snippets = [r.description, ...(r.extra_snippets || [])].filter(Boolean).join(' | ')
-        return `[${i + 1}] ${r.title}\n    URL: ${r.url}\n    ${snippets}`
-      })
-      .join('\n\n')
-    return { output: `Search results for "${query}":\n\n${formatted}`, isError: false }
-  } catch (err: any) {
-    logger.error('Brave search failed:', err)
-    return { error: `Brave search failed: ${err.message}`, isError: true }
-  }
-}
-
-/**
  * Execute a tool by name and return result
  */
 export async function executeTool(
@@ -206,9 +110,8 @@ export async function executeTool(
     return executeWebSearch(input.query, input.maxResults)
   }
 
-  if (toolName === 'web_browse') {
-    const config = getAiToolsConfigRaw()
-    return executeWebBrowse(input.url, config.webBrowse)
+  if (toolName === 'web_browse' || toolName === 'web_fetch') {
+    return executeWebFetch(input.url, input.prompt)
   }
 
   return {

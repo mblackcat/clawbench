@@ -146,7 +146,7 @@ function usingToolsSection(availableTools: string[], webSearchEnabled: boolean):
 
   if (webSearchEnabled || availableTools.includes('web_search')) {
     lines.push(
-      'Web search/browse: skip for greetings, pure math/logic, and facts already in thread; use for current events, latest versions, and uncertain facts. Prefer varied queries; cite URLs when answering from the web.'
+      'Web search/browse tools encode their own usage policy. After using search results, end with a Sources: section of markdown links [Title](URL). Prefer the current year in queries for recent docs/events.'
     )
   }
 

@@ -71,7 +71,7 @@ function SearchIndicator() {
   const t = useT()
   const pendingToolCalls = useChatStore((s) => s.pendingToolCalls)
   const hasActiveSearch = pendingToolCalls.some(
-    (tc) => tc.toolName === 'web_search' || tc.toolName === 'plan_search'
+    (tc) => tc.toolName === 'web_search'
   )
 
   if (!hasActiveSearch) return null

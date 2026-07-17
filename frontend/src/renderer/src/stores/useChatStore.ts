@@ -136,17 +136,28 @@ async function syncLocalChatDigests(): Promise<void> {
 
 // ============ Search source parsers ============
 
-/** Parse search results output into SearchSource[] */
+/** Parse search results output into SearchSource[] (legacy URL: lines + markdown links) */
 function parseSearchSources(output: string): SearchSource[] {
   const sources: SearchSource[] = []
-  // Match pattern: [N] Title\n    URL: https://...\n    snippet
-  const resultRegex = /\[\d+\]\s+(.+)\n\s+URL:\s+(https?:\/\/\S+)\n\s+(.*)/g
+  // Legacy: [N] Title\n    URL: https://...\n    snippet
+  const legacy = /\[\d+\]\s+(.+)\n\s+URL:\s+(https?:\/\/\S+)\n\s+(.*)/g
   let match: RegExpExecArray | null
-  while ((match = resultRegex.exec(output)) !== null) {
+  while ((match = legacy.exec(output)) !== null) {
     sources.push({
       title: match[1].trim(),
       url: match[2].trim(),
       snippet: match[3].trim()
+    })
+  }
+  if (sources.length > 0) return sources
+
+  // Claude Code–style: 1. [Title](https://...)\n   snippet
+  const md = /(\d+)\.\s+\[([^\]]+)\]\((https?:\/\/[^)]+)\)\n?\s*(.*)/g
+  while ((match = md.exec(output)) !== null) {
+    sources.push({
+      title: match[2].trim(),
+      url: match[3].trim(),
+      snippet: (match[4] || '').trim()
     })
   }
   return sources
@@ -170,7 +181,7 @@ interface PendingToolCall {
 
 /** Safe tools that can be auto-executed without user approval (mirrors main isSafe set) */
 const SAFE_TOOLS = new Set([
-  'web_search', 'web_browse', 'plan_search',
+  'web_search', 'web_browse', 'web_fetch',
   'generate_image', 'edit_image',
   'get_dev_environment',
   'list_workbench_apps', 'search_market_apps',
@@ -437,51 +448,49 @@ async function getAvailableTools(
     }
   })
 
-  // Web search tool (only when enabled)
+  // Web tools (Claude Code–style strategy encoded in tool descriptions)
   if (webSearchEnabled) {
-    tools.push({
-      name: 'plan_search',
-      description:
-        'Optional planning step for multi-query research. Declare queries and why before calling web_search. Skip for a single obvious query. After planning, execute searches yourself (this tool does not fetch pages).',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          queries: { type: 'array', items: { type: 'string' }, description: 'List of search queries to execute' },
-          reasoning: { type: 'string', description: 'Brief explanation of your search strategy' }
-        },
-        required: ['queries', 'reasoning']
-      }
-    })
-
+    const monthYear = new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })
     tools.push({
       name: 'web_search',
       description:
-        'Search the web for current information (events, latest versions, changelogs, uncertain facts). ' +
-        'Skip for greetings, pure math/logic, coding from well-known APIs, and follow-ups already answered in-thread. ' +
-        'Vary queries when results are thin; prefer 2–4 useful searches over exhaustive crawling. Cite source URLs in the final answer.',
+        'Search the web for up-to-date information beyond your knowledge cutoff. ' +
+        'Use for current events, latest versions/changelogs, uncertain facts. ' +
+        'Skip greetings, pure math/logic, known APIs, and follow-ups already in thread. ' +
+        `Current month is ${monthYear} — use this year in queries for recent docs/events. ` +
+        'Prefer 2–4 focused searches. CRITICAL: end answers with a Sources: section listing markdown links [Title](URL).',
       inputSchema: {
         type: 'object',
         properties: {
-          query: { type: 'string', description: 'The search query' },
-          maxResults: { type: 'number', description: 'Maximum number of results to return (default: 5)' }
+          query: {
+            type: 'string',
+            description: 'Search query; include current year for recent info',
+          },
+          maxResults: {
+            type: 'number',
+            description: 'Max results (default 5, max 8)',
+          },
         },
-        required: ['query']
-      }
+        required: ['query'],
+      },
     })
 
-    // web_browse tool
     tools.push({
       name: 'web_browse',
       description:
-        'Fetch and read a specific URL (full page text). Use after web_search for promising links, or when the user provides a URL. ' +
-        'Do not re-browse the same page path in one turn. Prefer extracting only what answers the user.',
+        'Fetch a URL and return readable page text (HTML→text). Use after web_search for promising links or when the user gives a URL. ' +
+        'Optional prompt focuses extraction on long pages. Do not re-fetch the same path in one turn. Read-only.',
       inputSchema: {
         type: 'object',
         properties: {
-          url: { type: 'string', description: 'The URL to browse' }
+          url: { type: 'string', description: 'Fully-formed URL to fetch' },
+          prompt: {
+            type: 'string',
+            description: 'What to extract from the page (optional focus for long pages)',
+          },
         },
-        required: ['url']
-      }
+        required: ['url'],
+      },
     })
   }
 
@@ -578,16 +587,6 @@ async function executeToolCall(
   toolName: string,
   input: Record<string, any>
 ): Promise<{ output: string; isError: boolean }> {
-  // Handle plan_search pseudo-tool
-  if (toolName === 'plan_search') {
-    const queries = input.queries || []
-    const reasoning = input.reasoning || ''
-    return {
-      output: `Search plan confirmed. ${queries.length} queries planned. Reasoning: ${reasoning}\nProceed with your searches.`,
-      isError: false
-    }
-  }
-
   // Check if it's a Feishu tool
   if (toolName.startsWith('feishu_')) {
     try {
@@ -1899,7 +1898,6 @@ function handleSSEToolUse(
   // Update agent phase
   const toolDescription = tc.name === 'web_search' ? `Searching: ${tc.input.query || ''}`
     : tc.name === 'web_browse' ? `Browsing: ${tc.input.url || ''}`
-    : tc.name === 'plan_search' ? 'Planning search strategy'
     : tc.name === 'generate_image' ? 'Generating image'
     : tc.name === 'execute_command' ? `Running: ${tc.input.command || ''}`
     : `Calling: ${tc.name}`

@@ -10,6 +10,7 @@
  */
 import { executeTool as executeBuiltinTool, COMMAND_EXECUTOR_TOOL } from '../tool-executor.service'
 import { IMAGE_GENERATION_TOOL, IMAGE_EDIT_TOOL } from '../image-gen.service'
+import { WEB_SEARCH_TOOL, WEB_FETCH_TOOL, executeWebSearch, executeWebFetch } from '../web-search.service'
 import { internalToolRegistry } from '../internal-tools.service'
 import { mcpClientManager } from '../mcp/mcp-client.service'
 import { getFeishuToolsService, isFeishuToolsAvailable } from '../feishu-tools.service'
@@ -60,7 +61,7 @@ export interface ResolveToolsOptions {
 const SAFE_TOOL_NAMES = new Set([
   'web_search',
   'web_browse',
-  'plan_search',
+  'web_fetch',
   'generate_image',
   'edit_image',
   'get_dev_environment',
@@ -104,81 +105,34 @@ function wrapBuiltin(
   }
 }
 
-const PLAN_SEARCH: AgentToolDefinition = {
-  name: 'plan_search',
-  description:
-    'Optional planning step for multi-query research. Declare queries and why before calling web_search. Skip for a single obvious query. After planning, execute searches yourself (this tool does not fetch pages).',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      queries: { type: 'array', items: { type: 'string' }, description: 'List of search queries to execute' },
-      reasoning: { type: 'string', description: 'Brief explanation of your search strategy' },
-    },
-    required: ['queries', 'reasoning'],
-  },
-  source: 'pseudo',
+const WEB_SEARCH: AgentToolDefinition = {
+  name: WEB_SEARCH_TOOL.name,
+  description: WEB_SEARCH_TOOL.description,
+  inputSchema: WEB_SEARCH_TOOL.inputSchema,
+  source: 'search',
   isSafe: true,
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
-  prompt: () =>
-    'Use plan_search only for multi-angle research. Then call web_search with varied queries; cite URLs in the final answer.',
   execute: async (input) => {
-    const queries = input.queries || []
-    const reasoning = input.reasoning || ''
-    return {
-      content: `Search plan confirmed. ${queries.length} queries planned. Reasoning: ${reasoning}\nProceed with your searches.`,
-      isError: false,
-    }
+    const r = await executeWebSearch(String(input.query || ''), input.maxResults)
+    return { content: r.output || r.error || '', isError: r.isError }
   },
 }
 
-const WEB_SEARCH = wrapBuiltin(
-  {
-    name: 'web_search',
-    description:
-      'Search the web for current information (events, latest versions, changelogs, uncertain facts). ' +
-      'Skip for greetings, pure math/logic, coding from well-known APIs, and follow-ups already answered in-thread. ' +
-      'Vary queries when results are thin; prefer 2–4 useful searches over exhaustive crawling. Cite source URLs in the final answer.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        query: { type: 'string', description: 'The search query' },
-        maxResults: { type: 'number', description: 'Maximum number of results to return (default: 5)' },
-      },
-      required: ['query'],
-    },
+/** Claude Code WebFetch-style page fetch (kept as web_browse for UI compatibility). */
+const WEB_FETCH: AgentToolDefinition = {
+  name: WEB_FETCH_TOOL.name,
+  description: WEB_FETCH_TOOL.description,
+  inputSchema: WEB_FETCH_TOOL.inputSchema,
+  source: 'search',
+  isSafe: true,
+  isReadOnly: () => true,
+  isConcurrencySafe: () => true,
+  execute: async (input) => {
+    const r = await executeWebFetch(String(input.url || ''), input.prompt ? String(input.prompt) : undefined)
+    return { content: r.output || r.error || '', isError: r.isError }
   },
-  {
-    source: 'search',
-    isSafe: true,
-    isReadOnly: () => true,
-    isConcurrencySafe: () => true,
-    prompt: () =>
-      'Web search is for fresh/uncertain facts only. Do not search every message. Prefer quality over volume.',
-  }
-)
-
-const WEB_BROWSE = wrapBuiltin(
-  {
-    name: 'web_browse',
-    description:
-      'Fetch and read a specific URL (full page text). Use after web_search for promising links, or when the user provides a URL. ' +
-      'Do not re-browse the same page path in one turn. Prefer extracting only what answers the user.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        url: { type: 'string', description: 'The URL to browse' },
-      },
-      required: ['url'],
-    },
-  },
-  {
-    source: 'search',
-    isSafe: true,
-    isReadOnly: () => true,
-    isConcurrencySafe: () => true,
-  }
-)
+}
 
 /**
  * Resolve the full tool set for an agent turn.
@@ -285,7 +239,7 @@ export async function resolveAgentTools(opts: ResolveToolsOptions = {}): Promise
   }
 
   if (webSearch) {
-    tools.push(PLAN_SEARCH, WEB_SEARCH, WEB_BROWSE)
+    tools.push(WEB_SEARCH, WEB_FETCH)
   }
 
   if (opts.feishuKitsEnabled) {
