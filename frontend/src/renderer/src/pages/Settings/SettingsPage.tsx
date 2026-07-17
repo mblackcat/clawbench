@@ -232,7 +232,17 @@ const SettingsPage: React.FC = () => {
   }
 
   return (
-    <div style={{ maxWidth: 800, margin: '0 auto', paddingTop: 24 }}>
+    <div
+      style={{
+        width: '100%',
+        maxWidth: 800,
+        minWidth: 0,
+        margin: '0 auto',
+        paddingTop: 24,
+        boxSizing: 'border-box',
+        paddingInline: 16
+      }}
+    >
       <style>{`
         .settings-table-card .ant-table-container,
         .settings-table-card .ant-table-header {
@@ -244,11 +254,19 @@ const SettingsPage: React.FC = () => {
         .settings-table-card .ant-table-container table > thead > tr:first-child > *:last-child {
           border-start-end-radius: 0 !important;
         }
+        /* Keep tab panels from expanding page width when tables are wide */
+        .settings-tabs .ant-tabs-content-holder,
+        .settings-tabs .ant-tabs-content,
+        .settings-tabs .ant-tabs-tabpane {
+          min-width: 0;
+          max-width: 100%;
+        }
       `}</style>
       <Title level={4} style={{ marginBottom: 24 }}>
         {t('settings.title')}
       </Title>
       <Tabs
+        className="settings-tabs"
         activeKey={activeTab}
         onChange={setActiveTab}
         items={[

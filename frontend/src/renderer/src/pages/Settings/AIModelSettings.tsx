@@ -183,14 +183,15 @@ const AIModelSettings: React.FC = () => {
       title: t('aiModel.colName'),
       dataIndex: 'name',
       key: 'name',
-      width: 220,
-      render: (name: string) => <Text strong>{name}</Text>
+      ellipsis: true,
+      render: (name: string) => <Text strong ellipsis>{name}</Text>
     },
     {
       title: t('aiModel.colProvider'),
       dataIndex: 'provider',
       key: 'provider',
-      width: 160,
+      width: 150,
+      ellipsis: true,
       render: (provider: string) => {
         const opt = PROVIDER_OPTIONS.find((p) => p.value === provider)
         return <Tag icon={<ProviderIcon provider={provider} size={14} style={{ marginRight: 4, position: 'relative', top: -1 }} />}>{opt?.rawLabel || provider}</Tag>
@@ -200,7 +201,7 @@ const AIModelSettings: React.FC = () => {
       title: t('aiModel.colModels'),
       dataIndex: 'models',
       key: 'models',
-      width: 160,
+      ellipsis: true,
       render: (models: string[]) => (
         <Space size={[0, 4]} wrap>
           {models.map((m) => (
@@ -215,7 +216,7 @@ const AIModelSettings: React.FC = () => {
       title: t('aiModel.colCapabilities'),
       dataIndex: 'capabilities',
       key: 'capabilities',
-      width: 160,
+      width: 140,
       render: (caps: string[] | undefined) => (
         <Space size={[0, 4]} wrap>
           {(caps || []).includes('image-gen') && (
@@ -234,14 +235,14 @@ const AIModelSettings: React.FC = () => {
       title: t('aiModel.colEnabled'),
       dataIndex: 'enabled',
       key: 'enabled',
-      width: 60,
+      width: 64,
       render: (enabled: boolean) =>
         enabled ? <Tag color="green">{t('aiModel.yes')}</Tag> : <Tag>{t('aiModel.no')}</Tag>
     },
     {
       title: t('aiModel.colActions'),
       key: 'actions',
-      width: 100,
+      width: 88,
       render: (_: unknown, record: AIModelConfig) => (
         <Space size={4}>
           <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
@@ -259,16 +260,18 @@ const AIModelSettings: React.FC = () => {
   ]
 
   return (
-    <div>
+    <div style={{ minWidth: 0, maxWidth: '100%' }}>
       <div
         style={{
           marginBottom: 16,
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'center'
+          alignItems: 'center',
+          gap: 12,
+          minWidth: 0
         }}
       >
-        <Text type="secondary" style={{ fontSize: 13 }}>
+        <Text type="secondary" style={{ fontSize: 13, flex: 1, minWidth: 0 }}>
           {t('aiModel.desc')}
         </Text>
         <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
@@ -279,7 +282,7 @@ const AIModelSettings: React.FC = () => {
       <Card
         size="small"
         className="settings-table-card"
-        style={{ borderRadius: token.borderRadiusLG, borderColor: token.colorPrimaryBorder, overflow: 'hidden' }}
+        style={{ borderRadius: token.borderRadiusLG, borderColor: token.colorPrimaryBorder, overflow: 'hidden', maxWidth: '100%' }}
         styles={{ body: { padding: 0 } }}
       >
         <Table
@@ -289,6 +292,8 @@ const AIModelSettings: React.FC = () => {
           loading={loading}
           pagination={false}
           size="small"
+          tableLayout="fixed"
+          scroll={{ x: true }}
           locale={{ emptyText: t('aiModel.emptyText') }}
         />
       </Card>
