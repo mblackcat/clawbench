@@ -31,7 +31,7 @@ const DEFAULT_CONFIG: AiToolsConfig = {
   webSearch: { provider: 'duckduckgo', braveApiKey: '' },
   webBrowse: { engine: 'http', lightpandaPath: '' },
   feishuKits: { enabled: false, cliPath: '' },
-  toolBehavior: { maxToolSteps: 10, maxSearchRounds: 5, toolTimeoutMs: 60000 }
+  toolBehavior: { maxToolSteps: 0, maxSearchRounds: 0, toolTimeoutMs: 60000 }
 }
 
 const LIGHTPANDA_GITHUB = 'https://github.com/lightpanda-io/browser'
@@ -562,30 +562,36 @@ const AIToolsSettings: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <Text style={{ minWidth: 140 }}>{t('settings.aiTools.maxToolSteps')}</Text>
             <InputNumber
-              min={1}
-              max={50}
+              min={0}
+              max={200}
               value={config.toolBehavior.maxToolSteps}
               onChange={(val) =>
                 updateConfig({
-                  toolBehavior: { ...config.toolBehavior, maxToolSteps: val ?? 10 }
+                  toolBehavior: { ...config.toolBehavior, maxToolSteps: val ?? 0 }
                 })
               }
               style={{ width: 120 }}
             />
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {t('settings.aiTools.zeroUnlimited')}
+            </Text>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <Text style={{ minWidth: 140 }}>{t('settings.aiTools.maxSearchRounds')}</Text>
             <InputNumber
-              min={1}
-              max={20}
+              min={0}
+              max={50}
               value={config.toolBehavior.maxSearchRounds}
               onChange={(val) =>
                 updateConfig({
-                  toolBehavior: { ...config.toolBehavior, maxSearchRounds: val ?? 5 }
+                  toolBehavior: { ...config.toolBehavior, maxSearchRounds: val ?? 0 }
                 })
               }
               style={{ width: 120 }}
             />
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {t('settings.aiTools.zeroUnlimited')}
+            </Text>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <Text style={{ minWidth: 140 }}>{t('settings.aiTools.toolTimeout')}</Text>

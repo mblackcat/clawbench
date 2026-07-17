@@ -45,7 +45,7 @@ const AIAssistantSettings: React.FC = () => {
   const [remoteImSaving, setRemoteImSaving] = useState(false)
 
   const [toolApprovalMode, setToolApprovalMode] = useState('auto-approve-safe')
-  const [maxToolSteps, setMaxToolSteps] = useState(15)
+  const [maxToolSteps, setMaxToolSteps] = useState(0)
   const [assistantEnabled, setAssistantEnabled] = useState(true)
   const [setupRole, setSetupRole] = useState<SetupRole | ''>('')
 
@@ -69,7 +69,7 @@ const AIAssistantSettings: React.FC = () => {
       fetchIMConfig(),
     ]).then(([settings, memories, statsData]: any[]) => {
       setToolApprovalMode(settings?.defaultToolApprovalMode || 'auto-approve-safe')
-      setMaxToolSteps(settings?.maxAgentToolSteps ?? 15)
+      setMaxToolSteps(settings?.maxAgentToolSteps ?? 0)
       setAssistantEnabled(settings?.assistantEnabled !== false)
       setSetupRole((settings?.setupRole as SetupRole) || '')
 
@@ -533,14 +533,16 @@ const AIAssistantSettings: React.FC = () => {
             </Text>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               <Slider
-                min={5}
-                max={30}
+                min={0}
+                max={100}
                 value={maxToolSteps}
                 onChange={setMaxToolSteps}
                 onChangeComplete={saveMaxSteps}
                 style={{ flex: 1 }}
               />
-              <Text strong style={{ minWidth: 30, textAlign: 'right' }}>{maxToolSteps}</Text>
+              <Text strong style={{ minWidth: 48, textAlign: 'right' }}>
+                {maxToolSteps === 0 ? t('settings.aiAssistant.unlimited') : maxToolSteps}
+              </Text>
             </div>
           </Form.Item>
         </Form>

@@ -384,7 +384,7 @@ async function getAvailableTools(
     tools.push({
       name: 'plan_search',
       description:
-        'Before searching, declare your search plan: what queries you will use and why. This helps organize multi-step research.',
+        'Optional planning step for multi-query research. Declare queries and why before calling web_search. Skip for a single obvious query. After planning, execute searches yourself (this tool does not fetch pages).',
       inputSchema: {
         type: 'object',
         properties: {
@@ -398,7 +398,9 @@ async function getAvailableTools(
     tools.push({
       name: 'web_search',
       description:
-        'Search the web for current information. Use this to find up-to-date answers, recent news, documentation, or any information that may have changed after your training cutoff. Always use this tool when the user asks about current events, latest versions, real-time data, or anything that requires fresh information.',
+        'Search the web for current information (events, latest versions, changelogs, uncertain facts). ' +
+        'Skip for greetings, pure math/logic, coding from well-known APIs, and follow-ups already answered in-thread. ' +
+        'Vary queries when results are thin; prefer 2–4 useful searches over exhaustive crawling. Cite source URLs in the final answer.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -413,7 +415,8 @@ async function getAvailableTools(
     tools.push({
       name: 'web_browse',
       description:
-        'Browse a specific web page URL to read its full content. Use this after web_search to read detailed content from promising search results. Returns the page title and text content.',
+        'Fetch and read a specific URL (full page text). Use after web_search for promising links, or when the user provides a URL. ' +
+        'Do not re-browse the same page path in one turn. Prefer extracting only what answers the user.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -1128,17 +1131,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     set({ streamingError: null, pendingToolCalls: [], searchSources: [], agentPhase: 'thinking' as AgentPhase, agentStepDescription: '', agentToolHistory: [] })
 
-    // Create tool loop controller for this message cycle
-    const cfg = useSettingsStore.getState().aiToolsConfig?.toolBehavior
-    let maxToolSteps = 15
+    // Tool loop: Claude Code–style unbounded by default; maxSteps is optional soft safety only.
+    // 0 / missing = unlimited. Anti-spin is handled via maxDuplicates + browse dedup.
+    let maxToolSteps = 0
     try {
       const agentSettings = await window.api.settings.getAgentSettings()
-      maxToolSteps = agentSettings?.maxAgentToolSteps ?? 15
+      const configured = agentSettings?.maxAgentToolSteps
+      maxToolSteps = typeof configured === 'number' && configured > 0 ? configured : 0
     } catch { /* ignore */ }
     const toolLoopController = new ToolLoopController({
       maxSteps: maxToolSteps,
       maxDuplicates: 3,
-      wallClockTimeoutMs: 120000
     })
     set({ toolLoopController })
     set({ webSearchEnabled: !!webSearchEnabled, feishuKitsEnabled: !!feishuKitsEnabled })
@@ -1547,7 +1550,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         // Append a user instruction to summarize
         historyForAI.push({
           role: 'user' as const,
-          content: `[系统提示：${check.reason}，搜索阶段已结束] 请基于前面已获取的所有搜索结果和网页内容，直接回答用户最初的问题。不要再调用任何工具。`
+          content: `[系统提示：${check.reason}] 请基于前面已获取的工具结果，直接回答用户最初的问题。不要再调用相同参数的工具。`
         })
 
         // Continue WITHOUT tools — force the model to answer

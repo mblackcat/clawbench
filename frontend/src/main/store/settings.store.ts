@@ -229,7 +229,8 @@ export const settingsStore = new Store<SettingsSchema>({
         webSearch: { provider: 'duckduckgo', braveApiKey: '' },
         webBrowse: { engine: 'http', lightpandaPath: '' },
         feishuKits: { enabled: false, cliPath: '' },
-        toolBehavior: { maxToolSteps: 10, maxSearchRounds: 5, toolTimeoutMs: 60000 }
+        // maxToolSteps / maxSearchRounds: 0 = unlimited (Claude Code–style agent loop)
+        toolBehavior: { maxToolSteps: 0, maxSearchRounds: 0, toolTimeoutMs: 60000 }
       },
       properties: {
         webSearch: {
@@ -272,8 +273,9 @@ export const settingsStore = new Store<SettingsSchema>({
       default: 'auto-approve-safe'
     },
     maxAgentToolSteps: {
+      // 0 = unlimited tool steps per turn (default). Positive = soft safety cap only.
       type: 'number',
-      default: 15
+      default: 0
     },
     assistantEnabled: {
       type: 'boolean',
@@ -453,7 +455,7 @@ export function getAgentSettings(): AgentSettings {
   return {
     customSystemPrompt: settingsStore.get('customSystemPrompt') || '',
     defaultToolApprovalMode: settingsStore.get('defaultToolApprovalMode') || 'auto-approve-safe',
-    maxAgentToolSteps: settingsStore.get('maxAgentToolSteps') ?? 15,
+    maxAgentToolSteps: settingsStore.get('maxAgentToolSteps') ?? 0,
     // Default true when missing (older stores)
     assistantEnabled: settingsStore.get('assistantEnabled') !== false,
     setupRole: settingsStore.get('setupRole') || ''

@@ -42,7 +42,7 @@ const AgentStatusBar: React.FC = () => {
   }
 
   const stepCount = toolLoopController?.getStepCount() ?? 0
-  const maxSteps = 15
+  const maxSteps = toolLoopController?.getMaxSteps?.() ?? 0
 
   const phaseIcon = agentPhase === 'thinking'
     ? <Spin size="small"><BulbOutlined style={{ color: token.colorPrimary, fontSize: 14 }} /></Spin>
@@ -91,7 +91,7 @@ const AgentStatusBar: React.FC = () => {
           </span>
           {stepCount > 0 && (
             <Tag style={{ fontSize: 10, margin: 0 }}>
-              Step {stepCount}/{maxSteps}
+              {maxSteps > 0 ? `Step ${stepCount}/${maxSteps}` : `Step ${stepCount}`}
             </Tag>
           )}
           {agentStepDescription && (

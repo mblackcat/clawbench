@@ -336,7 +336,8 @@ async function runAgentLoop(
   systemPrompt: string,
   history: ImAgentMessage[],
   tools: Array<{ name: string; description: string; inputSchema: Record<string, any> }>,
-  maxSteps = 8
+  // 0 = unlimited (Claude Code–style). Soft safety only when positive.
+  maxSteps = 0
 ): Promise<string> {
   const provider = config.provider.toLowerCase()
   // Build chat messages (exclude tool-only intermediate from display history for non-OpenAI)
@@ -424,7 +425,15 @@ async function runOpenAIToolLoop(
     ...baseMessages.map((m) => ({ role: m.role, content: m.content }) as Msg),
   ]
 
-  for (let step = 0; step < maxSteps; step++) {
+  // Unbounded agent loop (Claude Code queryLoop style). Soft maxSteps only when > 0.
+  const fingerprints = new Map<string, number>()
+  const MAX_DUPLICATES = 3
+  let step = 0
+  // Absolute backstop to avoid infinite loops if the model never stops (e.g. runaway).
+  const hardCeiling = maxSteps > 0 ? maxSteps : 200
+
+  while (step < hardCeiling) {
+    step++
     const resp = await client.chat.completions.create({
       model: modelId,
       messages,
@@ -452,6 +461,17 @@ async function runOpenAIToolLoop(
         } catch {
           args = {}
         }
+        const fp = `${name}:${JSON.stringify(args, Object.keys(args).sort())}`
+        const dupCount = fingerprints.get(fp) || 0
+        if (dupCount >= MAX_DUPLICATES) {
+          messages.push({
+            role: 'tool',
+            tool_call_id: tc.id,
+            content: 'Duplicate tool call blocked (anti-loop). Summarize with results so far.',
+          } as Msg)
+          continue
+        }
+        fingerprints.set(fp, dupCount + 1)
         logger.info(`[im-agent] tool call: ${name}`, args)
         const result = await internalToolRegistry.executeTool(name, args)
         messages.push({
@@ -466,5 +486,5 @@ async function runOpenAIToolLoop(
     return (choice.content || '').trim()
   }
 
-  return '（达到工具调用步数上限，请简化请求后重试）'
+  return '（工具调用次数过多已停止；请缩小范围后重试）'
 }

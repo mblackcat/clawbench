@@ -25,7 +25,10 @@ export interface ToolResult {
 export const COMMAND_EXECUTOR_TOOL: ToolDefinition = {
   name: 'execute_command',
   description:
-    'Execute a shell command on the local machine. Use this to run scripts, check file contents, install packages, or perform other system operations.',
+    'Execute a shell command on the local machine (scripts, file checks, package installs, system ops). ' +
+    'Prefer dedicated tools when available (DB query, workbench apps, coding sessions). ' +
+    'Never run destructive commands (rm -rf /, format, DROP DATABASE, force-push) without explicit user confirmation. ' +
+    'Do not echo secrets, tokens, or full .env contents into the conversation.',
   inputSchema: {
     type: 'object',
     properties: {

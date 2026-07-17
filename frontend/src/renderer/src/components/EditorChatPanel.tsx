@@ -29,7 +29,8 @@ import '../pages/AIChat/chat-styles.css'
 const { TextArea } = Input
 const { Text } = Typography
 
-const MAX_TOOL_ROUNDS = 16
+/** Soft ceiling only (anti-runaway). 0-style unlimited is emulated with a high backstop. */
+const MAX_TOOL_ROUNDS = 100
 
 interface ToolRun {
   id: string

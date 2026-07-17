@@ -227,6 +227,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'settings.aiTools.toolBehavior': '工具行为',
     'settings.aiTools.maxToolSteps': '最大工具调用步数',
     'settings.aiTools.maxSearchRounds': '最大搜索轮数',
+    'settings.aiTools.zeroUnlimited': '0 = 不限制',
     'settings.aiTools.toolTimeout': '工具超时时间（秒）',
 
     // 模块设置
@@ -451,8 +452,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'settings.aiAssistant.autoApproveSessionDesc': '所有工具自动执行，无需审批',
     'settings.aiAssistant.askEveryTime': '每次确认',
     'settings.aiAssistant.askEveryTimeDesc': '每个工具调用都需手动审批',
-    'settings.aiAssistant.maxToolSteps': '最大工具步数',
-    'settings.aiAssistant.maxToolStepsDesc': '单次对话中 AI 可连续调用工具的最大次数',
+    'settings.aiAssistant.maxToolSteps': '最大工具步数（可选）',
+    'settings.aiAssistant.maxToolStepsDesc': '单次对话中 AI 可连续调用工具的软上限。0 = 不限制（推荐，与 Claude Code 一致，仅靠去重防死循环）。',
+    'settings.aiAssistant.unlimited': '不限',
     'settings.aiAssistant.soulTitle': 'AI 人设',
     'settings.aiAssistant.soulDesc': '定义 AI 助手的身份、风格和行为规则（会注入系统提示词）。可选手设模板，或自行编辑。',
     'settings.aiAssistant.restoreDefault': '恢复默认',
@@ -2405,6 +2407,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'settings.aiTools.toolBehavior': 'Tool Behavior',
     'settings.aiTools.maxToolSteps': 'Max Tool Call Steps',
     'settings.aiTools.maxSearchRounds': 'Max Search Rounds',
+    'settings.aiTools.zeroUnlimited': '0 = unlimited',
     'settings.aiTools.toolTimeout': 'Tool Timeout (seconds)',
 
     // Module names
@@ -2630,8 +2633,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'settings.aiAssistant.autoApproveSessionDesc': 'All tools auto-execute without approval',
     'settings.aiAssistant.askEveryTime': 'Ask Every Time',
     'settings.aiAssistant.askEveryTimeDesc': 'Every tool call requires manual approval',
-    'settings.aiAssistant.maxToolSteps': 'Max Tool Steps',
-    'settings.aiAssistant.maxToolStepsDesc': 'Maximum number of consecutive tool calls per conversation turn',
+    'settings.aiAssistant.maxToolSteps': 'Max Tool Steps (optional)',
+    'settings.aiAssistant.maxToolStepsDesc': 'Soft cap on consecutive tool calls per turn. 0 = unlimited (recommended; Claude Code–style loop; anti-spin via duplicate detection only).',
+    'settings.aiAssistant.unlimited': 'Unlimited',
     'settings.aiAssistant.soulTitle': 'Agent Persona',
     'settings.aiAssistant.soulDesc': 'Define the AI assistant\'s identity, style, and behavioral rules (injected into the system prompt). Pick a role template or edit freely.',
     'settings.aiAssistant.restoreDefault': 'Restore Default',

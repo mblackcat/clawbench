@@ -579,9 +579,10 @@ const AIAssistantPanel: React.FC = () => {
       const configId = selectedModelSource === 'builtin' ? '' : (selectedModelConfigId || '')
       const modelId = selectedModelId || ''
 
-      // Stream loop: handle tool calls by re-calling streamChat with tool results
+      // Stream loop: handle tool calls by re-calling streamChat with tool results.
+      // Soft ceiling only — continues until the model stops calling tools (Claude Code–style).
       let messages = aiMsgs
-      const MAX_TOOL_ROUNDS = 10
+      const MAX_TOOL_ROUNDS = 100
       let allThinking = ''
 
       for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {

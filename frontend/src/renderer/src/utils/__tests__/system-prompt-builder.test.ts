@@ -26,10 +26,17 @@ describe('buildSystemPrompt progressive injection', () => {
     expect(prompt).toContain('helpful AI assistant')
   })
 
-  it('always injects soul and on-demand catalog, not full tools harness', () => {
+  it('always injects soul and agent knowledge catalog, not full tools harness', () => {
     const prompt = buildSystemPrompt({
       ...base,
       assistantEnabled: true,
+      availableTools: [
+        'list_workbench_apps',
+        'read_agent_file',
+        'update_user_profile',
+        'update_long_term_memory',
+        'update_sub_agents',
+      ],
       agentMemory: {
         soul: '# Custom Soul Persona',
         memory: 'User likes TypeScript. '.repeat(20),
@@ -39,11 +46,17 @@ describe('buildSystemPrompt progressive injection', () => {
     })
     expect(prompt).toContain('Custom Soul Persona')
     expect(prompt).toContain('Long-term Memory (preview)')
-    expect(prompt).toContain('On-demand knowledge')
+    expect(prompt).toContain('Agent knowledge files')
     expect(prompt).toContain('read_agent_file')
+    expect(prompt).toContain('## System')
+    expect(prompt).toContain('## Using tools')
     // Full situational docs must NOT be inlined every turn
     expect(prompt).not.toContain('SECRET_HARNESS')
     expect(prompt).not.toContain('Reviewer Buddy')
+    // Verbose prompt sections internalized into tools (removed from always-on prompt)
+    expect(prompt).not.toContain('## Workflow')
+    expect(prompt).not.toContain('## Search Strategy')
+    expect(prompt).not.toContain('## Safety')
     expect(prompt).toContain('update_user_profile')
   })
 

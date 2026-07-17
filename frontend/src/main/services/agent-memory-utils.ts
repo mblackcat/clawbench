@@ -11,10 +11,14 @@ export interface LiveToolInfo {
   description: string
 }
 
-/** Static module harness body (capability guide). Live tool list is appended separately. */
+/**
+ * Internal capability harness (agent knowledge file tools.md).
+ * Loaded on demand via read_agent_file — not fully inlined into every system prompt.
+ * Tool API schemas remain the source of truth; this is orchestration guidance.
+ */
 export const DEFAULT_TOOLS_HARNESS_BODY = `# ClawBench Module Harness
 
-You can control local ClawBench modules via tools. Prefer tools over guessing.
+Internal capability guide for coordinating ClawBench modules. Prefer tools over guessing paths, app IDs, or connection credentials.
 
 ## Workbench Apps
 - \`list_workbench_apps\` — list installed apps and parameters
@@ -36,8 +40,8 @@ You can control local ClawBench modules via tools. Prefer tools over guessing.
 - \`create_coding_session\` — create a session in a workspace with toolType (claude|codex|gemini|…) and optional initialPrompt
 
 ## Self-maintenance (durable knowledge)
-Full tools/agents/memory files are not always in the system prompt — load with \`read_agent_file\` when needed:
-- \`read_agent_file\` — soul | user | memory | agents | tools (on-demand detail)
+Agent files (soul / user / memory / agents / tools) are progressive knowledge:
+- \`read_agent_file\` — load soul | user | memory | agents | tools when this turn needs detail
 - \`update_user_profile\` — who the user is: name/titles, role, preferences, habits
 - \`update_long_term_memory\` — projects, decisions, facts, open todos
 - \`update_sub_agents\` — specialist buddies for multi-step work
