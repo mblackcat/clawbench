@@ -194,7 +194,7 @@
 .markdown-body h6 {
   margin: 1.2em 0 0.5em;
   line-height: 1.4;
-  font-weight: 500;
+  font-weight: var(--cb-font-weight-strong, 500);
 }
 
 .markdown-body h1:first-child,

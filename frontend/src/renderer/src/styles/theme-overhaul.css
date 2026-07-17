@@ -1,26 +1,28 @@
 /* ==========================================================================
    ClawBench Theme — Fresh Clean Palette
    Light: #F5F6F8 (bg), #EDEEF0 (sidebar), #fff (container), #1F2329 (text), #4F8CFF (accent)
-   Dark:  #17171A (bg), #232326 (container), #E8E9ED (text), #6BA1FF (accent)
-   Font: Inter (bundled) + system CJK — default Light 300, strong 400
+   Dark:  #17171A (bg), #232326 (container), #DDDEE3 (text), #6BA1FF (accent)
+   Font: Inter (bundled) + system CJK
+     Light body 400 / strong 500 — readable on white (300 was too thin)
+     Dark  body 300 / strong 400 — bright-on-dark reads thicker; keep light strokes
    Code / terminal mono: Consolas → Monaco → Menlo + YaHei/PingFang CJK (see mono-font.ts)
    ========================================================================== */
 
-/* --- Global Font Weight Override (Light 300 baseline) --- */
+/* --- Global Font Weight (per-theme via --cb-font-weight) --- */
 
 body,
 html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  font-weight: 300;
+  font-weight: var(--cb-font-weight, 400);
   margin: 0;
   overflow: hidden;
-  /* Thinner Latin strokes when Inter is active */
+  /* Inter optical axis tweaks */
   font-feature-settings: "cv11", "ss01", "ss03";
 }
 
-/* Push Ant Design defaults down from Regular/Medium to Light */
+/* Align Ant Design components with theme body weight */
 body,
 .ant-typography,
 .ant-btn,
@@ -52,7 +54,7 @@ body,
 .ant-popover,
 .ant-message,
 .ant-notification {
-  font-weight: 300;
+  font-weight: var(--cb-font-weight, 400);
 }
 
 /* 根据主题同步 body 背景色，防止路由切换白屏闪烁 */
@@ -66,25 +68,30 @@ body[data-theme="light"] {
 [data-theme="dark"] body,
 body[data-theme="dark"] {
   background: #17171A;
-  color: #E8E9ED;
-  caret-color: #E8E9ED;
+  color: #DDDEE3;
+  caret-color: #DDDEE3;
 }
 
-/* Light optical weight for general text */
+/* Light: Regular body — Inter 300 washes out on light surfaces + CJK mismatch */
 [data-theme="light"] {
-  font-weight: 300;
-  letter-spacing: 0.015em;
+  --cb-font-weight: 400;
+  --cb-font-weight-strong: 500;
+  font-weight: 400;
+  letter-spacing: 0.01em;
   --cb-text: #1F2329;
   --cb-text-secondary: #5C6370;
   --cb-caret: #1F2329;
 }
 
+/* Dark: Light body — near-white glyphs already look heavier than print weight */
 [data-theme="dark"] {
+  --cb-font-weight: 300;
+  --cb-font-weight-strong: 400;
   font-weight: 300;
-  letter-spacing: 0.02em;
-  --cb-text: #E8E9ED;
-  --cb-text-secondary: #A8ABB4;
-  --cb-caret: #E8E9ED;
+  letter-spacing: 0.012em;
+  --cb-text: #DDDEE3;
+  --cb-text-secondary: #A0A3AD;
+  --cb-caret: #DDDEE3;
 }
 
 /* --- Caret (text insertion cursor "I") — always match readable text color --- */
@@ -124,8 +131,8 @@ textarea,
 [data-theme="dark"] .ant-select-selection-search-input,
 [data-theme="dark"] .ant-picker-input > input,
 [data-theme="dark"] [contenteditable="true"] {
-  color: #E8E9ED;
-  caret-color: #E8E9ED !important;
+  color: #DDDEE3;
+  caret-color: #DDDEE3 !important;
 }
 
 /* --- Theme Variables --- */
@@ -187,12 +194,12 @@ textarea,
 
 .cb-sidebar .ant-menu-item {
   transition: all 0.15s ease;
-  font-weight: 300;
+  font-weight: var(--cb-font-weight, 400);
 }
 
 .cb-sidebar .ant-menu-item-selected {
   background: var(--cb-menu-selected-bg) !important;
-  font-weight: 400;
+  font-weight: var(--cb-font-weight-strong, 500);
 }
 
 .cb-sidebar .ant-menu-item:not(.ant-menu-item-selected):hover {
@@ -407,7 +414,7 @@ textarea,
 
 [data-theme="light"] .ant-tabs .ant-tabs-tab {
   font-size: 14px;
-  font-weight: 300;
+  font-weight: 400;
   padding: 8px 4px;
   color: #A8ABB3;
   transition: color 0.15s;
@@ -419,21 +426,21 @@ textarea,
 
 [data-theme="light"] .ant-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
   color: #1F2329 !important;
-  font-weight: 400;
+  font-weight: 500;
 }
 
 /* Dark mode: tab selected text */
 [data-theme="dark"] .ant-tabs .ant-tabs-tab {
   font-weight: 300;
-  color: #7E818C;
+  color: #787B86;
 }
 
 [data-theme="dark"] .ant-tabs .ant-tabs-tab:hover {
-  color: #A8ABB4;
+  color: #A0A3AD;
 }
 
 [data-theme="dark"] .ant-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: #E8E9ED !important;
+  color: #DDDEE3 !important;
   font-weight: 400;
 }
 
@@ -442,7 +449,7 @@ textarea,
 .ant-btn-primary,
 .ant-btn-default {
   box-shadow: none !important;
-  font-weight: 300;
+  font-weight: var(--cb-font-weight, 400);
 }
 
 [data-theme="light"] .ant-btn-primary {
@@ -468,7 +475,7 @@ textarea,
 
 [data-theme="light"] .ant-btn-text {
   color: #1F2329;
-  font-weight: 300;
+  font-weight: 400;
 }
 
 [data-theme="light"] .ant-btn-text:hover {
@@ -478,18 +485,18 @@ textarea,
 
 /* Dark buttons: ensure text stays bright */
 [data-theme="dark"] .ant-btn-default {
-  color: #E8E9ED;
+  color: #DDDEE3;
   border-color: rgba(255, 255, 255, 0.12);
 }
 
 [data-theme="dark"] .ant-btn-default:hover {
-  color: #F0F0F3 !important;
+  color: #E8E9ED !important;
   border-color: rgba(255, 255, 255, 0.2) !important;
   background: rgba(255, 255, 255, 0.06) !important;
 }
 
 [data-theme="dark"] .ant-btn-text {
-  color: #E8E9ED;
+  color: #DDDEE3;
 }
 
 [data-theme="dark"] .ant-btn-text:hover {
@@ -502,7 +509,7 @@ textarea,
 [data-theme="light"] .ant-input-affix-wrapper {
   border-color: rgba(0, 0, 0, 0.06);
   box-shadow: none !important;
-  font-weight: 300;
+  font-weight: 400;
 }
 
 [data-theme="light"] .ant-input:hover,
@@ -557,7 +564,7 @@ textarea,
 
 [data-theme="light"] .ant-dropdown .ant-dropdown-menu-item {
   border-radius: 6px;
-  font-weight: 300;
+  font-weight: 400;
 }
 
 /* --- Popover: clean style --- */
@@ -576,7 +583,7 @@ textarea,
 [data-theme="light"] .ant-tag {
   border-radius: 4px;
   border: 1px solid rgba(0, 0, 0, 0.05);
-  font-weight: 300;
+  font-weight: 400;
 }
 
 /*
@@ -676,7 +683,7 @@ textarea,
 
 [data-theme="light"] .ant-table-thead > tr > th {
   background: #F5F6F8 !important;
-  font-weight: 400;
+  font-weight: 500;
   font-size: 13px;
   color: #747A84;
   border-bottom: 1px solid rgba(0, 0, 0, 0.04);
@@ -684,7 +691,7 @@ textarea,
 
 [data-theme="light"] .ant-table-tbody > tr > td {
   border-bottom: 1px solid rgba(0, 0, 0, 0.03);
-  font-weight: 300;
+  font-weight: 400;
 }
 
 [data-theme="light"] .ant-table-tbody > tr:hover > td {
@@ -728,7 +735,7 @@ textarea,
 /* --- Tooltip: clean --- */
 [data-theme="light"] .ant-tooltip-inner {
   border-radius: 6px;
-  font-weight: 300;
+  font-weight: 400;
 }
 
 /* --- Badge: cleaner --- */
@@ -736,50 +743,50 @@ textarea,
   box-shadow: none;
 }
 
-/* --- Global heading weight (thin / airy) --- */
+/* --- Global heading weight (one step above body) --- */
 h1, h2, h3, h4, h5, h6,
 .ant-typography h1,
 .ant-typography h2,
 .ant-typography h3,
 .ant-typography h4 {
-  font-weight: 400 !important;
+  font-weight: var(--cb-font-weight-strong, 500) !important;
   letter-spacing: 0.01em;
 }
 
-/* Large display titles: extra light */
+/* Large display titles: match body (not thinner than readable baseline) */
 .cb-display-title {
-  font-weight: 300 !important;
+  font-weight: var(--cb-font-weight, 400) !important;
   letter-spacing: -0.005em;
 }
 
-/* Strong text only one step above body (400 vs 300) */
+/* Strong text one step above body (light 500 / dark 400) */
 .ant-typography strong,
 .ant-typography b,
 b, strong {
-  font-weight: 400 !important;
+  font-weight: var(--cb-font-weight-strong, 500) !important;
 }
 
-/* --- Menu / form / breadcrumb stay Light --- */
+/* --- Menu / form / breadcrumb follow theme body weight --- */
 .ant-menu-item .ant-menu-title-content {
-  font-weight: 300;
+  font-weight: var(--cb-font-weight, 400);
 }
 
 .ant-form-item-label > label {
-  font-weight: 300;
+  font-weight: var(--cb-font-weight, 400);
 }
 
 .ant-breadcrumb {
-  font-weight: 300;
+  font-weight: var(--cb-font-weight, 400);
 }
 
 /* --- Typography secondary/tertiary contrast (dark) --- */
 [data-theme="dark"] .ant-typography,
 [data-theme="dark"] .ant-typography p {
-  color: #E8E9ED;
+  color: #DDDEE3;
 }
 
 [data-theme="dark"] .ant-typography.ant-typography-secondary {
-  color: #A8ABB4 !important;
+  color: #A0A3AD !important;
 }
 
 [data-theme="dark"] .ant-empty-description {
@@ -790,7 +797,7 @@ b, strong {
 [data-theme="dark"] .ant-select-selection-item,
 [data-theme="dark"] .ant-select-selection-placeholder,
 [data-theme="dark"] .ant-dropdown .ant-dropdown-menu-item {
-  color: #E8E9ED;
+  color: #DDDEE3;
 }
 
 [data-theme="dark"] .ant-select-selection-placeholder {
@@ -836,27 +843,27 @@ b, strong {
 }
 
 [data-theme="dark"] .ant-menu-item-selected {
-  color: #E8E9ED !important;
+  color: #DDDEE3 !important;
 }
 
 [data-theme="dark"] .ant-form-item-label > label {
-  color: #A8ABB4;
+  color: #A0A3AD;
 }
 
 [data-theme="dark"] .ant-descriptions-item-label {
-  color: #A8ABB4 !important;
+  color: #A0A3AD !important;
 }
 
 [data-theme="dark"] .ant-descriptions-item-content {
-  color: #E8E9ED !important;
+  color: #DDDEE3 !important;
 }
 
 [data-theme="dark"] .ant-statistic-content {
-  color: #E8E9ED;
+  color: #DDDEE3;
 }
 
 [data-theme="dark"] .ant-list-item-meta-description {
-  color: #A8ABB4 !important;
+  color: #A0A3AD !important;
 }
 
 /* Keep mono / code chips readable in both themes (sync: mono-font.ts) */

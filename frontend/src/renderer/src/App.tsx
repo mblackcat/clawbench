@@ -10,7 +10,8 @@ import './types/ipc'
 /**
  * App UI face: Inter for Latin, then system UI / CJK stacks.
  * Inter is loaded via @fontsource in main.tsx (weights 300/400/500).
- * Default UI weight is Light (300) for thinner strokes; strong text stays 400.
+ * Light UI uses Regular (400) for readability; dark keeps Light (300) so
+ * bright-on-dark text does not look optically heavy. Strong text is one step up.
  */
 const FONT_FAMILY =
   "'Inter', 'Segoe UI Variable Text', 'Segoe UI Variable', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', system-ui, sans-serif"
@@ -33,7 +34,7 @@ const lightTokens = {
   boxShadow: '0 1px 4px rgba(0, 0, 0, 0.04)',
   boxShadowSecondary: '0 1px 2px rgba(0, 0, 0, 0.03)',
   fontFamily: FONT_FAMILY,
-  fontWeightStrong: 400,
+  fontWeightStrong: 500,
 }
 
 const darkTokens = {
@@ -44,10 +45,10 @@ const darkTokens = {
   colorBgLayout: '#17171A',
   colorBgContainer: '#232326',
   colorBgElevated: '#2A2A2E',
-  // Brighter than Ant Design default grays so body text stays readable
-  colorText: '#E8E9ED',
-  colorTextSecondary: '#A8ABB4',
-  colorTextTertiary: '#7E818C',
+  // Slightly softer than pure near-white — reduces optical "bold" on dark surfaces
+  colorText: '#DDDEE3',
+  colorTextSecondary: '#A0A3AD',
+  colorTextTertiary: '#787B86',
   colorTextQuaternary: '#5C5E68',
   colorLink: '#6BA8FF',
   colorLinkHover: '#8FBEFF',
@@ -66,7 +67,8 @@ const componentOverrides = {
     borderRadiusLG: 10,
     borderRadiusSM: 6,
     paddingInline: 16,
-    fontWeight: 300,
+    // Theme CSS sets real body weight per light/dark; avoid forcing 300 here.
+    fontWeight: 400,
   },
   Menu: {
     itemBorderRadius: 8,
@@ -113,7 +115,7 @@ const App: React.FC = () => {
     document.body.style.background = theme === 'dark' ? '#17171A' : '#F5F6F8'
     // Keep caret (text insertion cursor) aligned with primary text color —
     // light-mode inputs otherwise inherit a washed-out caret that vanishes.
-    document.body.style.caretColor = theme === 'dark' ? '#E8E9ED' : '#1F2329'
+    document.body.style.caretColor = theme === 'dark' ? '#DDDEE3' : '#1F2329'
   }, [theme])
 
   const themeConfig = useMemo(

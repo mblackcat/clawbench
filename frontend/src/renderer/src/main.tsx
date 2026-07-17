@@ -1,6 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-// Inter: UI face defaulting to Light 300 (weights 300/400/500 bundled offline).
+// Inter: light theme body 400 / dark body 300; strong 500/400 (weights bundled offline).
 import '@fontsource/inter/300.css'
 import '@fontsource/inter/400.css'
 import '@fontsource/inter/500.css'
