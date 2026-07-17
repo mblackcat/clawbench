@@ -39,8 +39,8 @@ import type {
 /**
  * Renderer API base URL.
  *
- * In electron-vite dev, absolute cross-origin URLs (e.g. http://192.168.x.x:8840/api/v1)
- * trigger browser CORS preflight from origin http://localhost:5173. Many remote/LAN
+ * In electron-vite dev, absolute cross-origin URLs (e.g. http://your-backend-domain/api/v1)
+ * trigger browser CORS preflight from origin http://localhost:5173. Many remote
  * backends do not allow that origin, so conversation list and other API calls fail.
  *
  * Dev fix: use same-origin `/api/v1` and let Vite proxy to VITE_API_BASE_URL's origin

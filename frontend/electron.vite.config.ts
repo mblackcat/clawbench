@@ -8,7 +8,7 @@ const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8')
 /**
  * Derive the Vite dev-server proxy target from VITE_API_BASE_URL.
  * Renderer uses same-origin `/api/v1` in dev so Chromium never CORS-preflights
- * a cross-origin LAN/production API (e.g. localhost:5173 → 192.168.x.x:8840).
+ * a cross-origin remote API (e.g. localhost:5173 → your-backend-domain).
  * Main process keeps the absolute URL (no CORS in Node).
  */
 function resolveApiProxyTarget(): string {
