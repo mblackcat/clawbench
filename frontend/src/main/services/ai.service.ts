@@ -443,13 +443,19 @@ async function completeChatGoogle(
 
 // ============ Streaming ============
 
+export interface StreamTurnResult {
+  text: string
+  thinking: string
+  toolCalls: Array<{ id: string; name: string; input: Record<string, any> }>
+  usage?: { promptTokens?: number; completionTokens?: number }
+}
+
 /**
- * Stream chat with optional tool support.
+ * Stream chat with optional tool support (single turn).
  *
  * When tools are provided and the AI returns tool_use, the stream emits
- * `ai:chat-tool-use` events and ends (no `ai:chat-done`). The renderer
- * is responsible for executing the tool, then calling streamChat again
- * with updated messages (including the tool result).
+ * `ai:chat-tool-use` events and ends (no `ai:chat-done`). Prefer
+ * `streamAgentQuery` for full multi-turn agent loops (main process owns tools).
  */
 export async function streamChat(
   window: BrowserWindow,
@@ -499,6 +505,49 @@ export function cancelChat(taskId: string): boolean {
   return false
 }
 
+/** Register an externally-owned abortable task (agent query loop). */
+export function registerActiveTask(taskId: string, abortController: AbortController): void {
+  activeTasks.set(taskId, { taskId, abortController })
+}
+
+export function unregisterActiveTask(taskId: string): void {
+  activeTasks.delete(taskId)
+}
+
+export function getModelConfig(configId: string): AIModelConfig | undefined {
+  return getModelConfigById(configId)
+}
+
+/**
+ * Run a single model turn and return structured result (for agent loop).
+ * When agentLoopMode is true, does not emit final `ai:chat-done` (caller finalizes).
+ */
+export async function streamOneTurn(
+  window: BrowserWindow,
+  taskId: string,
+  config: AIModelConfig,
+  modelId: string,
+  messages: ChatMessage[],
+  signal: AbortSignal,
+  tools?: ToolDefinition[],
+  enableThinking?: boolean,
+  webSearchEnabled?: boolean,
+  agentLoopMode = false
+): Promise<StreamTurnResult> {
+  return doStream(
+    window,
+    taskId,
+    config,
+    modelId,
+    messages,
+    signal,
+    tools,
+    enableThinking,
+    webSearchEnabled,
+    agentLoopMode
+  )
+}
+
 /**
  * Check if a model is an image generation model (uses Images API, not Chat Completions).
  */
@@ -516,27 +565,30 @@ async function doStream(
   signal: AbortSignal,
   tools?: ToolDefinition[],
   enableThinking?: boolean,
-  webSearchEnabled?: boolean
-): Promise<void> {
+  webSearchEnabled?: boolean,
+  agentLoopMode = false
+): Promise<StreamTurnResult> {
+  const emit = new StreamEmitter(window, taskId, { agentLoopMode })
   const provider = config.provider.toLowerCase()
 
   // Image generation models use the Images API, not Chat Completions
   if (isImageGenModel(modelId) && (provider === 'openai' || provider === 'openai-compatible')) {
-    await streamOpenAIImage(window, taskId, config, modelId, messages, signal)
-    return
+    await streamOpenAIImage(emit, config, modelId, messages, signal)
+    return emit.getResult()
   }
 
   if (provider === 'anthropic' || provider === 'anthropic-compatible') {
-    await streamClaude(window, taskId, config, modelId, messages, signal, tools, enableThinking)
+    await streamClaude(emit, config, modelId, messages, signal, tools, enableThinking)
   } else if (provider === 'google') {
-    await streamGoogle(window, taskId, config, modelId, messages, signal, tools, webSearchEnabled)
+    await streamGoogle(emit, config, modelId, messages, signal, tools, webSearchEnabled)
   } else if (provider === 'azure-openai') {
-    await streamAzureOpenAI(window, taskId, config, modelId, messages, signal, tools, enableThinking)
+    await streamAzureOpenAI(emit, config, modelId, messages, signal, tools, enableThinking)
   } else if (provider === 'openai-responses') {
-    await streamOpenAIResponses(window, taskId, config, modelId, messages, signal, tools, enableThinking)
+    await streamOpenAIResponses(emit, config, modelId, messages, signal, tools, enableThinking)
   } else {
-    await streamOpenAI(window, taskId, config, modelId, messages, signal, tools, enableThinking)
+    await streamOpenAI(emit, config, modelId, messages, signal, tools, enableThinking)
   }
+  return emit.getResult()
 }
 
 /**
@@ -545,8 +597,7 @@ async function doStream(
  * and emits the result as a markdown image in the chat stream.
  */
 async function streamOpenAIImage(
-  window: BrowserWindow,
-  taskId: string,
+  emit: StreamEmitter,
   config: AIModelConfig,
   modelId: string,
   messages: ChatMessage[],
@@ -607,7 +658,6 @@ async function streamOpenAIImage(
   }
   content += `![Generated Image](data:image/png;base64,${b64})`
 
-  const emit = new StreamEmitter(window, taskId)
   emit.delta(content)
   emit.done()
 }
@@ -675,8 +725,7 @@ async function streamOpenAICompatible(
 }
 
 async function streamOpenAI(
-  window: BrowserWindow,
-  taskId: string,
+  emit: StreamEmitter,
   config: AIModelConfig,
   modelId: string,
   messages: ChatMessage[],
@@ -689,7 +738,7 @@ async function streamOpenAI(
     baseURL: normalizeOpenAIBaseURL(config.endpoint)
   })
   await streamOpenAICompatible(
-    new StreamEmitter(window, taskId), client, modelId, messages, signal, tools, enableThinking
+    emit, client, modelId, messages, signal, tools, enableThinking
   )
 }
 
@@ -754,8 +803,7 @@ function toResponsesTools(tools: ToolDefinition[]): any[] {
 }
 
 async function streamOpenAIResponses(
-  window: BrowserWindow,
-  taskId: string,
+  emit: StreamEmitter,
   config: AIModelConfig,
   modelId: string,
   messages: ChatMessage[],
@@ -763,7 +811,6 @@ async function streamOpenAIResponses(
   tools?: ToolDefinition[],
   enableThinking?: boolean
 ): Promise<void> {
-  const emit = new StreamEmitter(window, taskId)
   const client = new OpenAI({ apiKey: config.apiKey, baseURL: normalizeOpenAIBaseURL(config.endpoint) })
 
   const params: any = {
@@ -949,8 +996,7 @@ async function completeOpenAIResponses(
 }
 
 async function streamAzureOpenAI(
-  window: BrowserWindow,
-  taskId: string,
+  emit: StreamEmitter,
   config: AIModelConfig,
   modelId: string,
   messages: ChatMessage[],
@@ -964,13 +1010,12 @@ async function streamAzureOpenAI(
     endpoint: config.endpoint
   })
   await streamOpenAICompatible(
-    new StreamEmitter(window, taskId), client, modelId, messages, signal, tools, enableThinking
+    emit, client, modelId, messages, signal, tools, enableThinking
   )
 }
 
 async function streamClaude(
-  window: BrowserWindow,
-  taskId: string,
+  emit: StreamEmitter,
   config: AIModelConfig,
   modelId: string,
   messages: ChatMessage[],
@@ -978,7 +1023,6 @@ async function streamClaude(
   tools?: ToolDefinition[],
   enableThinking?: boolean
 ): Promise<void> {
-  const emit = new StreamEmitter(window, taskId)
   const client = new Anthropic({
     apiKey: config.apiKey,
     baseURL: normalizeAnthropicBaseURL(config.endpoint)
@@ -1035,8 +1079,7 @@ async function streamClaude(
 }
 
 async function streamGoogle(
-  window: BrowserWindow,
-  taskId: string,
+  emit: StreamEmitter,
   config: AIModelConfig,
   modelId: string,
   messages: ChatMessage[],
@@ -1044,7 +1087,6 @@ async function streamGoogle(
   tools?: ToolDefinition[],
   webSearchEnabled?: boolean
 ): Promise<void> {
-  const emit = new StreamEmitter(window, taskId)
   const genAI = new GoogleGenerativeAI(config.apiKey)
   const requestOptions = config.endpoint ? { baseUrl: config.endpoint } : undefined
 
@@ -1164,11 +1206,38 @@ async function streamGoogle(
 
 // ============ StreamEmitter — centralised IPC event contract ============
 
-class StreamEmitter {
+export class StreamEmitter {
+  textContent = ''
+  thinkingContent = ''
+  collectedTools: Array<{ id: string; name: string; input: Record<string, any> }> = []
+  private usage?: { promptTokens?: number; completionTokens?: number }
+  private agentLoopMode: boolean
+  readonly taskId: string
+
   constructor(
     private window: BrowserWindow,
-    private taskId: string
-  ) {}
+    taskId: string,
+    options?: { agentLoopMode?: boolean }
+  ) {
+    this.taskId = taskId
+    this.agentLoopMode = !!options?.agentLoopMode
+  }
+
+  beginTurn(): void {
+    this.textContent = ''
+    this.thinkingContent = ''
+    this.collectedTools = []
+    this.usage = undefined
+  }
+
+  getResult(): StreamTurnResult {
+    return {
+      text: this.textContent,
+      thinking: this.thinkingContent,
+      toolCalls: [...this.collectedTools],
+      usage: this.usage,
+    }
+  }
 
   // The stream keeps producing after the window closes — sending to a
   // destroyed webContents throws, so every emit checks first.
@@ -1178,24 +1247,63 @@ class StreamEmitter {
   }
 
   delta(content: string): void {
+    this.textContent += content
     this.send('ai:chat-delta', { taskId: this.taskId, content })
   }
 
   thinkingDelta(content: string): void {
+    this.thinkingContent += content
     this.send('ai:chat-thinking-delta', { taskId: this.taskId, content })
   }
 
   toolUse(toolCallId: string, toolName: string, input: Record<string, any>): void {
+    this.collectedTools.push({ id: toolCallId, name: toolName, input })
     this.send('ai:chat-tool-use', {
       taskId: this.taskId,
       toolCallId,
       toolName,
-      input
+      input,
     })
   }
 
+  toolResult(toolCallId: string, toolName: string, output: string, isError: boolean): void {
+    this.send('ai:chat-tool-result', {
+      taskId: this.taskId,
+      toolCallId,
+      toolName,
+      output,
+      isError,
+    })
+  }
+
+  toolApprovalRequest(toolCallId: string, toolName: string, input: Record<string, any>): void {
+    this.send('ai:chat-tool-approval', {
+      taskId: this.taskId,
+      toolCallId,
+      toolName,
+      input,
+    })
+  }
+
+  contextCompacted(summaryPreview: string): void {
+    this.send('ai:chat-compacted', {
+      taskId: this.taskId,
+      preview: summaryPreview.slice(0, 200),
+    })
+  }
+
+  /**
+   * Intermediate turn finished (text-only final for non-agent mode).
+   * In agentLoopMode, suppress done — agent query calls finalizeDone once.
+   */
   done(usage?: { promptTokens?: number; completionTokens?: number }): void {
+    this.usage = usage
+    if (this.agentLoopMode) return
     this.send('ai:chat-done', { taskId: this.taskId, usage: usage || {} })
+  }
+
+  finalizeDone(usage?: { promptTokens?: number; completionTokens?: number }): void {
+    this.send('ai:chat-done', { taskId: this.taskId, usage: usage || this.usage || {} })
   }
 
   error(message: string): void {

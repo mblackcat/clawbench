@@ -234,9 +234,29 @@ export const api = {
       enableThinking?: boolean,
       webSearchEnabled?: boolean
     ) => ipcRenderer.invoke('ai:stream-chat', { modelConfigId, messages, modelId, attachments, tools, enableThinking, webSearchEnabled }),
+    /** Main-process multi-turn agent loop (tools + compact + parallel). */
+    streamAgentQuery: (params: {
+      modelConfigId: string
+      modelId?: string
+      messages: Array<{ role: string; content: string; toolCallId?: string; toolCalls?: any[]; reasoningContent?: string }>
+      attachments?: Array<{ filePath: string; mimeType: string; fileName: string }>
+      enableThinking?: boolean
+      webSearchEnabled?: boolean
+      toolsEnabled?: boolean
+      feishuKitsEnabled?: boolean
+      toolApprovalMode?: string
+      language?: string
+      customSystemPrompt?: string
+      assistantEnabled?: boolean
+      attachmentPaths?: string[]
+    }) => ipcRenderer.invoke('ai:stream-agent-query', params) as Promise<string>,
     cancelChat: (taskId: string) => ipcRenderer.invoke('ai:cancel-chat', taskId),
+    approveTool: (taskId: string, toolCallId: string) =>
+      ipcRenderer.invoke('ai:approve-tool', { taskId, toolCallId }) as Promise<boolean>,
+    rejectTool: (taskId: string, toolCallId: string) =>
+      ipcRenderer.invoke('ai:reject-tool', { taskId, toolCallId }) as Promise<boolean>,
     submitToolResult: (taskId: string, toolCallId: string, result: string, isError: boolean) =>
-      ipcRenderer.invoke('ai:tool-result', { taskId, toolCallId, result, isError }),
+      ipcRenderer.invoke('ai:tool-result', { taskId, toolCallId, result, isError, approved: !isError }),
     generateTitle: (
       modelConfigId: string,
       messages: Array<{ role: string; content: string }>,
@@ -261,6 +281,21 @@ export const api = {
       const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
       ipcRenderer.on('ai:chat-tool-use', handler)
       return () => ipcRenderer.removeListener('ai:chat-tool-use', handler)
+    },
+    onChatToolResult: (callback: (data: { taskId: string; toolCallId: string; toolName: string; output: string; isError: boolean }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
+      ipcRenderer.on('ai:chat-tool-result', handler)
+      return () => ipcRenderer.removeListener('ai:chat-tool-result', handler)
+    },
+    onChatToolApproval: (callback: (data: { taskId: string; toolCallId: string; toolName: string; input: Record<string, any> }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
+      ipcRenderer.on('ai:chat-tool-approval', handler)
+      return () => ipcRenderer.removeListener('ai:chat-tool-approval', handler)
+    },
+    onChatCompacted: (callback: (data: { taskId: string; preview: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
+      ipcRenderer.on('ai:chat-compacted', handler)
+      return () => ipcRenderer.removeListener('ai:chat-compacted', handler)
     },
     onChatThinkingDelta: (callback: (data: { taskId: string; content: string }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)

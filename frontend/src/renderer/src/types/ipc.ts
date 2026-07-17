@@ -296,7 +296,24 @@ export interface ClawBenchAPI {
       enableThinking?: boolean,
       webSearchEnabled?: boolean
     ) => Promise<string>
+    streamAgentQuery: (params: {
+      modelConfigId: string
+      modelId?: string
+      messages: Array<{ role: string; content: string; toolCallId?: string; toolCalls?: any[]; reasoningContent?: string }>
+      attachments?: Array<{ filePath: string; mimeType: string; fileName: string }>
+      enableThinking?: boolean
+      webSearchEnabled?: boolean
+      toolsEnabled?: boolean
+      feishuKitsEnabled?: boolean
+      toolApprovalMode?: string
+      language?: string
+      customSystemPrompt?: string
+      assistantEnabled?: boolean
+      attachmentPaths?: string[]
+    }) => Promise<string>
     cancelChat: (taskId: string) => Promise<boolean>
+    approveTool: (taskId: string, toolCallId: string) => Promise<boolean>
+    rejectTool: (taskId: string, toolCallId: string) => Promise<boolean>
     submitToolResult: (taskId: string, toolCallId: string, result: string, isError: boolean) => Promise<void>
     generateTitle: (
       modelConfigId: string,
@@ -307,6 +324,9 @@ export interface ClawBenchAPI {
     onChatDone: (callback: (data: { taskId: string; usage: any }) => void) => () => void
     onChatError: (callback: (data: { taskId: string; error: string }) => void) => () => void
     onChatToolUse: (callback: (data: { taskId: string; toolCallId: string; toolName: string; input: Record<string, any> }) => void) => () => void
+    onChatToolResult: (callback: (data: { taskId: string; toolCallId: string; toolName: string; output: string; isError: boolean }) => void) => () => void
+    onChatToolApproval: (callback: (data: { taskId: string; toolCallId: string; toolName: string; input: Record<string, any> }) => void) => () => void
+    onChatCompacted: (callback: (data: { taskId: string; preview: string }) => void) => () => void
     onChatThinkingDelta: (callback: (data: { taskId: string; content: string }) => void) => () => void
     onChatSearchGrounding: (callback: (data: { taskId: string; queries: string[]; sources: Array<{ title: string; url: string }> }) => void) => () => void
   }

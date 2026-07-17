@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import {
-  Card, Form, Input, Select, Slider, Typography, theme, App, Button,
+  Card, Form, Input, Select, Typography, theme, App, Button,
   Tabs, Statistic, Row, Col, Tag, Popconfirm, Space, Switch, Empty,
 } from 'antd'
 import {
@@ -45,7 +45,6 @@ const AIAssistantSettings: React.FC = () => {
   const [remoteImSaving, setRemoteImSaving] = useState(false)
 
   const [toolApprovalMode, setToolApprovalMode] = useState('auto-approve-safe')
-  const [maxToolSteps, setMaxToolSteps] = useState(0)
   const [assistantEnabled, setAssistantEnabled] = useState(true)
   const [setupRole, setSetupRole] = useState<SetupRole | ''>('')
 
@@ -69,7 +68,6 @@ const AIAssistantSettings: React.FC = () => {
       fetchIMConfig(),
     ]).then(([settings, memories, statsData]: any[]) => {
       setToolApprovalMode(settings?.defaultToolApprovalMode || 'auto-approve-safe')
-      setMaxToolSteps(settings?.maxAgentToolSteps ?? 0)
       setAssistantEnabled(settings?.assistantEnabled !== false)
       setSetupRole((settings?.setupRole as SetupRole) || '')
 
@@ -86,11 +84,6 @@ const AIAssistantSettings: React.FC = () => {
   const saveApprovalMode = useCallback((value: string) => {
     setToolApprovalMode(value)
     window.api.settings.setAgentSettings({ defaultToolApprovalMode: value }).catch(() => {})
-  }, [])
-
-  const saveMaxSteps = useCallback((value: number) => {
-    setMaxToolSteps(value)
-    window.api.settings.setAgentSettings({ maxAgentToolSteps: value }).catch(() => {})
   }, [])
 
   const saveAssistantEnabled = useCallback((value: boolean) => {
@@ -507,7 +500,7 @@ const AIAssistantSettings: React.FC = () => {
         <Form layout="vertical" style={{ marginBottom: 0 }}>
           <Form.Item
             label={t('settings.aiAssistant.toolApproval')}
-            style={{ marginBottom: 16 }}
+            style={{ marginBottom: 0 }}
           >
             <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>
               {t('settings.aiAssistant.toolApprovalDesc')}
@@ -522,28 +515,6 @@ const AIAssistantSettings: React.FC = () => {
                 { value: 'ask-every-time', label: t('settings.aiAssistant.askEveryTime') },
               ]}
             />
-          </Form.Item>
-
-          <Form.Item
-            label={t('settings.aiAssistant.maxToolSteps')}
-            style={{ marginBottom: 0 }}
-          >
-            <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>
-              {t('settings.aiAssistant.maxToolStepsDesc')}
-            </Text>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <Slider
-                min={0}
-                max={100}
-                value={maxToolSteps}
-                onChange={setMaxToolSteps}
-                onChangeComplete={saveMaxSteps}
-                style={{ flex: 1 }}
-              />
-              <Text strong style={{ minWidth: 48, textAlign: 'right' }}>
-                {maxToolSteps === 0 ? t('settings.aiAssistant.unlimited') : maxToolSteps}
-              </Text>
-            </div>
           </Form.Item>
         </Form>
       </Card>

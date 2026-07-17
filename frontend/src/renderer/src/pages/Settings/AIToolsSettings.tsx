@@ -559,40 +559,9 @@ const AIToolsSettings: React.FC = () => {
         styles={{ body: { padding: '14px 16px' } }}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Text style={{ minWidth: 140 }}>{t('settings.aiTools.maxToolSteps')}</Text>
-            <InputNumber
-              min={0}
-              max={200}
-              value={config.toolBehavior.maxToolSteps}
-              onChange={(val) =>
-                updateConfig({
-                  toolBehavior: { ...config.toolBehavior, maxToolSteps: val ?? 0 }
-                })
-              }
-              style={{ width: 120 }}
-            />
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {t('settings.aiTools.zeroUnlimited')}
-            </Text>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Text style={{ minWidth: 140 }}>{t('settings.aiTools.maxSearchRounds')}</Text>
-            <InputNumber
-              min={0}
-              max={50}
-              value={config.toolBehavior.maxSearchRounds}
-              onChange={(val) =>
-                updateConfig({
-                  toolBehavior: { ...config.toolBehavior, maxSearchRounds: val ?? 0 }
-                })
-              }
-              style={{ width: 120 }}
-            />
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {t('settings.aiTools.zeroUnlimited')}
-            </Text>
-          </div>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {t('settings.aiTools.toolBehaviorHint')}
+          </Text>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <Text style={{ minWidth: 140 }}>{t('settings.aiTools.toolTimeout')}</Text>
             <InputNumber
@@ -606,6 +575,7 @@ const AIToolsSettings: React.FC = () => {
               }
               style={{ width: 120 }}
             />
+            <Text type="secondary" style={{ fontSize: 12 }}>s</Text>
           </div>
         </div>
       </Card>

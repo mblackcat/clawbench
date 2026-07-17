@@ -1129,22 +1129,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return
     }
 
-    set({ streamingError: null, pendingToolCalls: [], searchSources: [], agentPhase: 'thinking' as AgentPhase, agentStepDescription: '', agentToolHistory: [] })
-
-    // Tool loop: Claude Code–style unbounded by default; maxSteps is optional soft safety only.
-    // 0 / missing = unlimited. Anti-spin is handled via maxDuplicates + browse dedup.
-    let maxToolSteps = 0
-    try {
-      const agentSettings = await window.api.settings.getAgentSettings()
-      const configured = agentSettings?.maxAgentToolSteps
-      maxToolSteps = typeof configured === 'number' && configured > 0 ? configured : 0
-    } catch { /* ignore */ }
-    const toolLoopController = new ToolLoopController({
-      maxSteps: maxToolSteps,
-      maxDuplicates: 3,
+    set({
+      streamingError: null,
+      pendingToolCalls: [],
+      searchSources: [],
+      agentPhase: 'thinking' as AgentPhase,
+      agentStepDescription: '',
+      agentToolHistory: [],
+      // Local path uses main-process agent loop; controller only for builtin SSE fallback UI.
+      toolLoopController: new ToolLoopController({ maxSteps: 0, maxDuplicates: 3 }),
+      webSearchEnabled: !!webSearchEnabled,
+      feishuKitsEnabled: !!feishuKitsEnabled,
     })
-    set({ toolLoopController })
-    set({ webSearchEnabled: !!webSearchEnabled, feishuKitsEnabled: !!feishuKitsEnabled })
 
     // Upload files first (if any) — skip in local mode
     let uploadedAttachments: ChatAttachment[] = []
@@ -1456,11 +1452,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   approveToolCall: async (toolCallId: string) => {
-    const { pendingToolCalls, messages, activeConversationId } = get()
+    const { pendingToolCalls, messages, activeConversationId, streamingTaskId } = get()
     const tc = pendingToolCalls.find((t) => t.toolCallId === toolCallId)
     if (!tc || !activeConversationId) return
 
-    // Remove from pending
+    // Main-process agent loop: only signal approval; tools run in main.
+    if (streamingTaskId && (window.api.ai as any).approveTool) {
+      set((state) => ({
+        pendingToolCalls: state.pendingToolCalls.filter((t) => t.toolCallId !== toolCallId),
+        streaming: true,
+        agentPhase: 'calling-tools' as AgentPhase,
+      }))
+      try {
+        await window.api.ai.approveTool(streamingTaskId, toolCallId)
+      } catch (err: any) {
+        get().setStreamingError(err?.message || 'Approve failed')
+      }
+      return
+    }
+
+    // Remove from pending (legacy single-turn streamChat path)
     set((state) => ({
       pendingToolCalls: state.pendingToolCalls.filter((t) => t.toolCallId !== toolCallId),
       streaming: true,
@@ -1705,11 +1716,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   rejectToolCall: (toolCallId: string) => {
-    const { pendingToolCalls, activeConversationId } = get()
+    const { pendingToolCalls, activeConversationId, streamingTaskId } = get()
     const tc = pendingToolCalls.find((t) => t.toolCallId === toolCallId)
     if (!tc || !activeConversationId) return
 
-    // Add assistant message with rejected tool call
+    // Main-process agent loop
+    if (streamingTaskId && window.api.ai.rejectTool) {
+      set((state) => ({
+        pendingToolCalls: state.pendingToolCalls.filter((t) => t.toolCallId !== toolCallId),
+      }))
+      window.api.ai.rejectTool(streamingTaskId, toolCallId).catch(() => {})
+      return
+    }
+
+    // Legacy single-turn path
     const assistantMsg: Message = {
       messageId: 'tc-rejected-' + Date.now(),
       conversationId: activeConversationId,
@@ -1987,64 +2007,60 @@ async function streamBuiltinWithMessages(
 }
 
 /**
- * IPC streaming (initial call)
+ * Local model path: main-process agent query loop (Claude Code–style).
+ * System prompt, tools, parallel execution, compact, and multi-turn are owned by main.
  */
 async function streamLocal(
   modelConfigId: string,
   modelId: string,
   pendingFiles?: PendingAttachment[],
-  tools?: Array<{ name: string; description: string; inputSchema: Record<string, any> }>,
+  _tools?: Array<{ name: string; description: string; inputSchema: Record<string, any> }>,
   enableThinking?: boolean,
   webSearchEnabled?: boolean
 ): Promise<void> {
-  const messages = useChatStore
-    .getState()
-    .messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-      // Echo reasoning_content back for thinking models (DeepSeek thinking_mode, etc.)
-      ...(m.thinkingContent ? { reasoningContent: m.thinkingContent } : {})
-    }))
-
-  // Build dynamic system prompt
-  let customPrompt = ''
-  let assistantEnabled = true
-  try {
-    const agentSettings = await window.api.settings.getAgentSettings()
-    customPrompt = agentSettings?.customSystemPrompt || ''
-    assistantEnabled = agentSettings?.assistantEnabled !== false
-  } catch { /* ignore */ }
-
-  const agentMemory = await loadAgentMemory(assistantEnabled)
-  const allToolNames: string[] = tools ? tools.map((t) => t.name) : []
-  const lang = useSettingsStore.getState().language || 'zh-CN'
-  const systemPrompt = buildSystemPrompt({
-    currentTime: new Date().toLocaleString(),
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    platform: window.api.platform || 'unknown',
-    language: lang,
-    availableTools: allToolNames,
-    webSearchEnabled: !!webSearchEnabled,
-    userCustomPrompt: customPrompt,
-    agentMemory,
-    assistantEnabled
-  })
-  messages.unshift({ role: 'system', content: systemPrompt })
+  const state = useChatStore.getState()
+  const history = state.messages.map((m) => ({
+    role: m.role,
+    content: m.content,
+    ...(m.thinkingContent ? { reasoningContent: m.thinkingContent } : {}),
+    ...(m.metadata?.toolCalls?.length
+      ? {
+          toolCalls: m.metadata.toolCalls.map((tc) => ({
+            id: tc.id,
+            name: tc.name,
+            input: tc.input,
+          })),
+        }
+      : {}),
+  }))
 
   const ipcAttachments =
     pendingFiles && pendingFiles.length > 0
       ? pendingFiles.map((pf) => ({
           filePath: (pf.file as any).path as string,
           mimeType: pf.file.type,
-          fileName: pf.file.name
+          fileName: pf.file.name,
         }))
       : undefined
 
-  await streamLocalWithMessages(modelConfigId, modelId, messages, tools, ipcAttachments, enableThinking, webSearchEnabled)
+  const attachmentPaths = (pendingFiles || [])
+    .filter((pf) => pf.file.type.startsWith('image/'))
+    .map((pf) => (pf.file as any).path as string | undefined)
+    .filter((p): p is string => !!p)
+
+  await streamLocalAgentQuery(
+    modelConfigId,
+    modelId,
+    history,
+    ipcAttachments,
+    enableThinking,
+    webSearchEnabled,
+    attachmentPaths
+  )
 }
 
 /**
- * IPC streaming with explicit messages
+ * Fallback: single-turn streamChat with renderer-side tool loop (legacy / recovery).
  */
 async function streamLocalWithMessages(
   modelConfigId: string,
@@ -2105,14 +2121,13 @@ async function streamLocalWithMessages(
     })
     const cleanupSearchGrounding = window.api.ai.onChatSearchGrounding((data) => {
       if (data.taskId === taskId) {
-        // Collect grounding sources from Gemini native search
         const sources: SearchSource[] = data.sources.map((s) => ({
           title: s.title,
-          url: s.url
+          url: s.url,
         }))
         if (sources.length > 0) {
           useChatStore.setState((state) => ({
-            searchSources: [...state.searchSources, ...sources]
+            searchSources: [...state.searchSources, ...sources],
           }))
         }
       }
@@ -2128,5 +2143,204 @@ async function streamLocalWithMessages(
     }
   } catch (err: any) {
     useChatStore.getState().setStreamingError(err.message || 'Stream failed')
+  }
+}
+
+/**
+ * Subscribe to main-process agent query events for one task.
+ */
+async function streamLocalAgentQuery(
+  modelConfigId: string,
+  modelId: string,
+  messages: Array<any>,
+  attachments?: Array<{ filePath: string; mimeType: string; fileName: string }>,
+  enableThinking?: boolean,
+  webSearchEnabled?: boolean,
+  attachmentPaths?: string[]
+): Promise<void> {
+  const state = useChatStore.getState()
+  const lang = useSettingsStore.getState().language || 'zh-CN'
+
+  try {
+    const taskId = await window.api.ai.streamAgentQuery({
+      modelConfigId,
+      modelId,
+      messages,
+      attachments,
+      enableThinking,
+      webSearchEnabled,
+      toolsEnabled: state.toolsEnabled,
+      feishuKitsEnabled: state.feishuKitsEnabled,
+      toolApprovalMode: state.toolApprovalMode,
+      language: lang,
+      attachmentPaths,
+    })
+    useChatStore.setState({ streamingTaskId: taskId })
+
+    let fullContent = ''
+    let fullThinkingContent = ''
+    // Content for the current model turn (reset after tools so next turn streams cleanly)
+    let turnContent = ''
+
+    const cleanupDelta = window.api.ai.onChatDelta((data) => {
+      if (data.taskId !== taskId) return
+      turnContent += data.content
+      fullContent = turnContent
+      useChatStore.setState({ streamingContent: fullContent, streaming: true })
+    })
+    const cleanupThinking = window.api.ai.onChatThinkingDelta((data) => {
+      if (data.taskId !== taskId) return
+      fullThinkingContent += data.content
+      useChatStore.setState({ streamingThinkingContent: fullThinkingContent })
+    })
+    const cleanupToolUse = window.api.ai.onChatToolUse((data) => {
+      if (data.taskId !== taskId) return
+      const historyEntry: AgentToolHistoryEntry = {
+        id: data.toolCallId,
+        name: data.toolName,
+        input: data.input,
+        status: 'running',
+        startTime: Date.now(),
+      }
+      useChatStore.setState((s) => ({
+        agentPhase: 'calling-tools' as AgentPhase,
+        agentStepDescription: data.toolName,
+        agentToolHistory: [...s.agentToolHistory.filter((h) => h.id !== data.toolCallId), historyEntry],
+      }))
+      // Persist intermediate assistant text + tool call into message list for UI
+      if (turnContent.trim() || data.toolName) {
+        const convId = useChatStore.getState().activeConversationId || ''
+        const assistantMsg: Message = {
+          messageId: `tc-agent-${data.toolCallId}`,
+          conversationId: convId,
+          role: 'assistant',
+          content: turnContent,
+          thinkingContent: fullThinkingContent || undefined,
+          modelId: null,
+          metadata: {
+            toolCalls: [
+              {
+                id: data.toolCallId,
+                name: data.toolName,
+                input: data.input,
+                status: 'pending',
+              },
+            ],
+          },
+          createdAt: Date.now(),
+        }
+        useChatStore.setState((s) => {
+          const exists = s.messages.some((m) => m.messageId === assistantMsg.messageId)
+          return {
+            messages: exists
+              ? s.messages.map((m) => (m.messageId === assistantMsg.messageId ? assistantMsg : m))
+              : [...s.messages, assistantMsg],
+            streamingContent: '',
+          }
+        })
+        turnContent = ''
+        fullThinkingContent = ''
+      }
+    })
+    const cleanupToolResult = window.api.ai.onChatToolResult((data) => {
+      if (data.taskId !== taskId) return
+      useChatStore.setState((s) => ({
+        agentToolHistory: s.agentToolHistory.map((h) =>
+          h.id === data.toolCallId
+            ? {
+                ...h,
+                status: (data.isError ? 'error' : 'completed') as 'completed' | 'error',
+                output: data.output,
+                endTime: Date.now(),
+              }
+            : h
+        ),
+        messages: s.messages.map((m) => {
+          if (!m.metadata?.toolCalls?.some((tc) => tc.id === data.toolCallId)) return m
+          return {
+            ...m,
+            metadata: {
+              toolCalls: m.metadata!.toolCalls!.map((tc) =>
+                tc.id === data.toolCallId
+                  ? {
+                      ...tc,
+                      status: data.isError ? 'error' : 'completed',
+                      output: data.output,
+                      error: data.isError ? data.output : undefined,
+                    }
+                  : tc
+              ),
+            },
+          }
+        }),
+        agentPhase: 'thinking' as AgentPhase,
+      }))
+      // Collect search sources
+      if (!data.isError && data.toolName === 'web_search' && data.output) {
+        const sources = parseSearchSources(data.output)
+        if (sources.length > 0) {
+          useChatStore.setState((s) => ({ searchSources: [...s.searchSources, ...sources] }))
+        }
+      }
+    })
+    const cleanupApproval = window.api.ai.onChatToolApproval((data) => {
+      if (data.taskId !== taskId) return
+      const pending: PendingToolCall = {
+        toolCallId: data.toolCallId,
+        toolName: data.toolName,
+        input: data.input,
+        streamedContent: '',
+      }
+      useChatStore.setState((s) => ({
+        pendingToolCalls: [...s.pendingToolCalls.filter((p) => p.toolCallId !== data.toolCallId), pending],
+        agentPhase: 'calling-tools' as AgentPhase,
+      }))
+    })
+    const cleanupCompact = window.api.ai.onChatCompacted((data) => {
+      if (data.taskId !== taskId) return
+      useChatStore.setState({
+        agentStepDescription: 'Context compacted',
+      })
+    })
+    const cleanupDone = window.api.ai.onChatDone((data) => {
+      if (data.taskId !== taskId) return
+      useChatStore
+        .getState()
+        .finalizeStreaming(turnContent || fullContent, modelId, fullThinkingContent || undefined, data.usage)
+      cleanup()
+    })
+    const cleanupError = window.api.ai.onChatError((data) => {
+      if (data.taskId !== taskId) return
+      useChatStore.getState().setStreamingError(data.error)
+      cleanup()
+    })
+    const cleanupSearchGrounding = window.api.ai.onChatSearchGrounding((data) => {
+      if (data.taskId !== taskId) return
+      const sources: SearchSource[] = data.sources.map((s) => ({
+        title: s.title,
+        url: s.url,
+      }))
+      if (sources.length > 0) {
+        useChatStore.setState((s) => ({
+          searchSources: [...s.searchSources, ...sources],
+        }))
+      }
+    })
+
+    function cleanup() {
+      cleanupDelta()
+      cleanupThinking()
+      cleanupToolUse()
+      cleanupToolResult()
+      cleanupApproval()
+      cleanupCompact()
+      cleanupDone()
+      cleanupError()
+      cleanupSearchGrounding()
+    }
+  } catch (err: any) {
+    // Fall back to legacy single-turn path if agent query IPC is unavailable
+    console.error('[chat] agent query failed, falling back:', err)
+    useChatStore.getState().setStreamingError(err.message || 'Agent query failed')
   }
 }
