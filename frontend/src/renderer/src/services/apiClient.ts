@@ -36,7 +36,31 @@ import type {
 
 // ============ 配置 ============
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api/v1';
+/**
+ * Renderer API base URL.
+ *
+ * In electron-vite dev, absolute cross-origin URLs (e.g. http://192.168.x.x:8840/api/v1)
+ * trigger browser CORS preflight from origin http://localhost:5173. Many remote/LAN
+ * backends do not allow that origin, so conversation list and other API calls fail.
+ *
+ * Dev fix: use same-origin `/api/v1` and let Vite proxy to VITE_API_BASE_URL's origin
+ * (see electron.vite.config.ts). Production builds and the main process keep the
+ * absolute VITE_API_BASE_URL (main process has no CORS).
+ */
+function resolveRendererApiBaseUrl(): string {
+  const configured = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api/v1'
+  if (import.meta.env.DEV && /^https?:\/\//i.test(configured)) {
+    try {
+      const pathname = new URL(configured).pathname.replace(/\/$/, '')
+      return pathname || '/api/v1'
+    } catch {
+      return '/api/v1'
+    }
+  }
+  return configured
+}
+
+export const API_BASE_URL = resolveRendererApiBaseUrl()
 const TOKEN_STORAGE_KEY = 'clawbench_token';
 
 // ============ 认证令牌管理 ============

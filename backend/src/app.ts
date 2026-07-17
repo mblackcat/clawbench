@@ -24,8 +24,26 @@ export function createApp(): Application {
   // 基础中间件
   // CORS：设置了 CORS_ORIGIN 时启用白名单。生产环境缺失会在 config 加载时
   // 直接报错（fail-secure），因此走到 else 开放分支的只可能是开发环境。
+  // 非生产环境下额外放行 localhost / 127.0.0.1 任意端口（Vite / electron-vite dev）。
   if (config.cors.origins) {
-    app.use(cors({ origin: config.cors.origins, credentials: true }));
+    const allowlist = new Set(config.cors.origins);
+    const isDevLocalOrigin = (origin: string): boolean =>
+      config.nodeEnv !== 'production' &&
+      /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
+
+    app.use(
+      cors({
+        origin(origin, callback) {
+          // Non-browser / same-origin / Electron file:// may omit Origin
+          if (!origin || allowlist.has(origin) || isDevLocalOrigin(origin)) {
+            callback(null, true);
+            return;
+          }
+          callback(new Error(`CORS blocked for origin: ${origin}`));
+        },
+        credentials: true,
+      })
+    );
   } else {
     logger.warn('CORS_ORIGIN is not set — all origins are allowed (development only).');
     app.use(cors());
