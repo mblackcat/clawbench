@@ -82,11 +82,15 @@
   transform: scale(1.28);
 }
 
-/* === Code Blocks === */
+/* === Markdown body (AI chat / coding / terminal assistant) ===
+   Inter + CJK at ~14px reads denser than system UI fonts; open line-height
+   and block spacing so long answers feel less cramped. */
 .markdown-body {
   overflow-x: auto;
   overflow-wrap: break-word;
   word-break: break-word;
+  line-height: 1.75;
+  letter-spacing: 0.01em;
 }
 
 /* Keep in sync with utils/mono-font.ts MONO_FONT_STACK */
@@ -98,12 +102,14 @@
 }
 
 .markdown-body pre {
-  padding: 12px;
-  border-radius: 6px;
+  margin: 0.9em 0;
+  padding: 14px 16px;
+  border-radius: 8px;
   overflow-x: auto;
   white-space: pre;
   word-break: normal;
   overflow-wrap: normal;
+  line-height: 1.55;
 }
 
 [data-theme="light"] .markdown-body pre {
@@ -151,12 +157,13 @@
 .markdown-body table {
   border-collapse: collapse;
   width: 100%;
-  margin: 8px 0;
+  margin: 0.9em 0;
+  line-height: 1.55;
 }
 
 .markdown-body th,
 .markdown-body td {
-  padding: 6px 12px;
+  padding: 8px 14px;
   text-align: left;
 }
 
@@ -178,18 +185,81 @@
   background: rgba(201, 193, 177, 0.06);
 }
 
+/* === Headings === */
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  margin: 1.2em 0 0.5em;
+  line-height: 1.4;
+  font-weight: 500;
+}
+
+.markdown-body h1:first-child,
+.markdown-body h2:first-child,
+.markdown-body h3:first-child,
+.markdown-body h4:first-child,
+.markdown-body h5:first-child,
+.markdown-body h6:first-child {
+  margin-top: 0.2em;
+}
+
+.markdown-body h1 { font-size: 1.35em; }
+.markdown-body h2 { font-size: 1.22em; }
+.markdown-body h3 { font-size: 1.1em; }
+.markdown-body h4 { font-size: 1.05em; }
+
 /* === Paragraphs & Lists === */
 .markdown-body p {
-  margin: 0 0 8px 0;
+  margin: 0 0 0.85em 0;
 }
 
 .markdown-body p:last-child {
   margin-bottom: 0;
 }
 
-.markdown-body ul, .markdown-body ol {
-  padding-left: 20px;
-  margin: 4px 0;
+.markdown-body ul,
+.markdown-body ol {
+  padding-left: 1.45em;
+  margin: 0.35em 0 0.85em;
+}
+
+.markdown-body li {
+  margin: 0.32em 0;
+  padding-left: 0.15em;
+}
+
+.markdown-body li > p {
+  margin-bottom: 0.4em;
+}
+
+.markdown-body li > p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body li > ul,
+.markdown-body li > ol {
+  margin: 0.25em 0 0.35em;
+}
+
+/* === Blockquote / hr === */
+.markdown-body blockquote {
+  margin: 0.9em 0;
+  padding: 0.15em 0 0.15em 0.95em;
+  border-left: 3px solid rgba(127, 127, 127, 0.35);
+  opacity: 0.92;
+}
+
+.markdown-body blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body hr {
+  margin: 1.25em 0;
+  border: none;
+  border-top: 1px solid rgba(127, 127, 127, 0.25);
 }
 
 /* === Cursor Blink === */

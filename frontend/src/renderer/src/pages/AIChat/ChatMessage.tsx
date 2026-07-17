@@ -344,7 +344,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming, contain
       style={{
         display: 'flex',
         justifyContent: isUser ? 'flex-end' : 'flex-start',
-        marginBottom: isUser ? 16 : 24,
+        marginBottom: isUser ? 18 : 28,
         padding: isUser ? '0 16px' : '0 0 0 40px',
         scrollMarginTop: 16,
       }}
@@ -399,11 +399,11 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming, contain
             style={{
               background: isUser ? token.colorPrimary : 'transparent',
               color: isUser ? '#fff' : token.colorText,
-              padding: isUser ? '8px 14px' : 0,
+              padding: isUser ? '10px 16px' : 0,
               borderRadius: isUser ? 12 : 0,
               borderTopLeftRadius: isUser ? 12 : 0,
               borderTopRightRadius: isUser ? 4 : 0,
-              lineHeight: 1.6,
+              lineHeight: isUser ? 1.7 : 1.75,
               wordBreak: 'break-word',
               minWidth: 0,
               overflow: isUser ? 'hidden' : 'visible',
