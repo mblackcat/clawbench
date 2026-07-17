@@ -321,7 +321,11 @@ export interface ClawBenchAPI {
       webSearchEnabled?: boolean
       feishuKitsEnabled?: boolean
       attachmentPaths?: string[]
-    }) => Promise<Array<{ id: string; name: string; content: string; isError: boolean }>>
+      fingerprints?: Record<string, number>
+    }) => Promise<{
+      results: Array<{ id: string; name: string; content: string; isError: boolean }>
+      fingerprints: Record<string, number>
+    }>
     compactMessages: (params: {
       messages: Array<{ role: string; content: string; toolCallId?: string; toolCalls?: any[]; reasoningContent?: string }>
       modelConfigId?: string

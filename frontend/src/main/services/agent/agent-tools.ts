@@ -401,9 +401,48 @@ export async function executeAgentTool(
   }
 }
 
+/** Stable fingerprint for tool name + args (loop-scoped anti-spin). */
+export function toolCallFingerprint(name: string, input: Record<string, any>): string {
+  return `${name}:${JSON.stringify(input || {}, Object.keys(input || {}).sort())}`
+}
+
+export const MAX_TOOL_DUPLICATES = 3
+
+/**
+ * Record a tool fingerprint; returns blocked when identical call exceeds max.
+ * Pure helper — used by executeAgentToolBatch and unit-tested on the real path.
+ */
+export function checkAndRecordFingerprint(
+  fingerprints: Map<string, number> | Record<string, number>,
+  name: string,
+  input: Record<string, any>,
+  maxDup: number = MAX_TOOL_DUPLICATES
+): { blocked: boolean; fingerprint: string; count: number } {
+  const fp = toolCallFingerprint(name, input)
+  const get = (k: string) =>
+    fingerprints instanceof Map ? fingerprints.get(k) || 0 : fingerprints[k] || 0
+  const set = (k: string, v: number) => {
+    if (fingerprints instanceof Map) fingerprints.set(k, v)
+    else fingerprints[k] = v
+  }
+  const count = get(fp)
+  if (count >= maxDup) {
+    return { blocked: true, fingerprint: fp, count }
+  }
+  set(fp, count + 1)
+  return { blocked: false, fingerprint: fp, count: count + 1 }
+}
+
+export interface ExecuteAgentToolBatchResult {
+  results: Array<{ id: string; name: string; content: string; isError: boolean }>
+  /** Updated fingerprint counts for the whole agent turn/loop (persist across IPC calls). */
+  fingerprints: Record<string, number>
+}
+
 /**
  * Execute a batch of tool calls with concurrency partitioning + result budget.
  * Used by main agent loop and by hybrid builtin chat via IPC.
+ * Pass `fingerprints` from previous steps so anti-spin spans the full agent loop.
  */
 export async function executeAgentToolBatch(
   calls: AgentToolCall[],
@@ -412,16 +451,17 @@ export async function executeAgentToolBatch(
     webSearchEnabled?: boolean
     feishuKitsEnabled?: boolean
     attachmentPaths?: string[]
+    /** Loop-scoped anti-spin state (serialized). Mutated and returned. */
+    fingerprints?: Record<string, number>
   }
-): Promise<Array<{ id: string; name: string; content: string; isError: boolean }>> {
+): Promise<ExecuteAgentToolBatchResult> {
   const agentTools = await resolveAgentTools({
     toolsEnabled: options?.toolsEnabled !== false,
     webSearchEnabled: !!options?.webSearchEnabled,
     feishuKitsEnabled: !!options?.feishuKitsEnabled,
   })
   const catalog = new Map(agentTools.map((t) => [t.name, t]))
-  const fingerprints = new Map<string, number>()
-  const MAX_DUP = 3
+  const fingerprints: Record<string, number> = { ...(options?.fingerprints || {}) }
   const ctx = { attachmentPaths: options?.attachmentPaths }
 
   const results: Array<{ id: string; name: string; content: string; isError: boolean }> = []
@@ -429,9 +469,8 @@ export async function executeAgentToolBatch(
 
   for (const batch of batches) {
     const runOne = async (call: AgentToolCall) => {
-      const fp = `${call.name}:${JSON.stringify(call.input || {}, Object.keys(call.input || {}).sort())}`
-      const dup = fingerprints.get(fp) || 0
-      if (dup >= MAX_DUP) {
+      const check = checkAndRecordFingerprint(fingerprints, call.name, call.input || {})
+      if (check.blocked) {
         return {
           id: call.id,
           name: call.name,
@@ -439,13 +478,33 @@ export async function executeAgentToolBatch(
           isError: true,
         }
       }
-      fingerprints.set(fp, dup + 1)
       return executeAgentTool(call, catalog, ctx)
     }
 
     if (batch.concurrent && batch.calls.length > 1) {
-      const batchResults = await Promise.all(batch.calls.map(runOne))
-      results.push(...batchResults)
+      // Serial fingerprint checks first (parallel execute would race Map updates)
+      const allowed: AgentToolCall[] = []
+      const blocked: Array<{ id: string; name: string; content: string; isError: boolean }> = []
+      for (const call of batch.calls) {
+        const check = checkAndRecordFingerprint(fingerprints, call.name, call.input || {})
+        if (check.blocked) {
+          blocked.push({
+            id: call.id,
+            name: call.name,
+            content: 'Duplicate tool call blocked (anti-loop). Use existing results.',
+            isError: true,
+          })
+        } else {
+          allowed.push(call)
+        }
+      }
+      results.push(...blocked)
+      if (allowed.length > 0) {
+        const batchResults = await Promise.all(
+          allowed.map((call) => executeAgentTool(call, catalog, ctx))
+        )
+        results.push(...batchResults)
+      }
     } else {
       for (const call of batch.calls) {
         results.push(await runOne(call))
@@ -453,10 +512,13 @@ export async function executeAgentToolBatch(
     }
   }
 
-  return applyToolResultBatchBudget(results).map((r) => ({
-    id: r.id,
-    name: r.name || '',
-    content: r.content,
-    isError: !!r.isError,
-  }))
+  return {
+    results: applyToolResultBatchBudget(results).map((r) => ({
+      id: r.id,
+      name: r.name || '',
+      content: r.content,
+      isError: !!r.isError,
+    })),
+    fingerprints,
+  }
 }

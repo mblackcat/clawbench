@@ -264,10 +264,12 @@ export const api = {
       webSearchEnabled?: boolean
       feishuKitsEnabled?: boolean
       attachmentPaths?: string[]
+      fingerprints?: Record<string, number>
     }) =>
-      ipcRenderer.invoke('ai:execute-agent-tools', params) as Promise<
-        Array<{ id: string; name: string; content: string; isError: boolean }>
-      >,
+      ipcRenderer.invoke('ai:execute-agent-tools', params) as Promise<{
+        results: Array<{ id: string; name: string; content: string; isError: boolean }>
+        fingerprints: Record<string, number>
+      }>,
     compactMessages: (params: {
       messages: Array<{ role: string; content: string; toolCallId?: string; toolCalls?: any[]; reasoningContent?: string }>
       modelConfigId?: string

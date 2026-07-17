@@ -97,6 +97,7 @@ export function registerAiIpc(): void {
         webSearchEnabled?: boolean
         feishuKitsEnabled?: boolean
         attachmentPaths?: string[]
+        fingerprints?: Record<string, number>
       }
     ) => {
       return executeAgentToolBatch(params.calls || [], {
@@ -104,6 +105,7 @@ export function registerAiIpc(): void {
         webSearchEnabled: params.webSearchEnabled,
         feishuKitsEnabled: params.feishuKitsEnabled,
         attachmentPaths: params.attachmentPaths,
+        fingerprints: params.fingerprints,
       })
     }
   )
