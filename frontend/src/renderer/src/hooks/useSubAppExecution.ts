@@ -1,6 +1,7 @@
 import { useEffect, useCallback } from 'react'
 import { useTaskStore } from '../stores/useTaskStore'
 import { useSubAppStore } from '../stores/useSubAppStore'
+import { raiseWorkbenchCompletion } from '../stores/useAttentionStore'
 import type { SubAppOutput, TaskStatus } from '../types/subapp'
 
 interface UseSubAppExecutionReturn {
@@ -49,6 +50,13 @@ export function useSubAppExecution(): UseSubAppExecutionReturn {
               }
             : undefined
         updateStatus(data.taskId, status, result)
+
+        // Background success → red-dot attention when user is not on workbench
+        if (status === 'completed' && (data.success ?? true)) {
+          const task = useTaskStore.getState().tasks[data.taskId]
+          const appName = task?.appName || '应用'
+          raiseWorkbenchCompletion(data.taskId, appName)
+        }
       }
     )
 

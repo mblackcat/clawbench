@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react'
-import { Menu } from 'antd'
+import React, { useEffect, useMemo } from 'react'
+import { Badge, Menu } from 'antd'
 import {
   SettingOutlined,
   LaptopOutlined,
@@ -9,6 +9,7 @@ import Icon from '@ant-design/icons'
 import { useNavigate, useLocation } from 'react-router-dom'
 import type { MenuProps } from 'antd'
 import { useSettingsStore } from '../../stores/useSettingsStore'
+import { useAttentionStore } from '../../stores/useAttentionStore'
 import { useT } from '../../i18n'
 import {
   WorkbenchIcon,
@@ -37,28 +38,61 @@ const OpenClawSvg = () => (
 )
 const OpenClawIcon = (props: any) => <Icon component={OpenClawSvg} {...props} />
 
+const withMenuDot = (label: string, showDot: boolean) =>
+  showDot ? (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <span>{label}</span>
+      <Badge status="error" />
+    </span>
+  ) : (
+    label
+  )
+
 const Sidebar: React.FC<SidebarProps> = ({ collapsed, variant = 'main' }) => {
   const navigate = useNavigate()
   const location = useLocation()
   const { moduleVisibility } = useSettingsStore()
   const t = useT()
+  const attentionItems = useAttentionStore((s) => s.items)
+
+  const dots = useMemo(() => {
+    const has = (source: 'workbench' | 'ai-chat' | 'ai-coding') =>
+      attentionItems.some((i) => i.source === source)
+    return {
+      workbench: has('workbench'),
+      aiChat: has('ai-chat'),
+      aiCoding: has('ai-coding')
+    }
+  }, [attentionItems])
 
   const allItems: (NonNullable<MenuProps['items']>[number] & { moduleKey?: string })[] = [
     {
       key: '/workbench',
-      icon: <WorkbenchIcon />,
-      label: t('menu.workbench')
+      icon: (
+        <Badge dot={dots.workbench} offset={[2, 0]}>
+          <WorkbenchIcon />
+        </Badge>
+      ),
+      label: withMenuDot(t('menu.workbench'), dots.workbench && !collapsed)
     },
     {
       key: '/ai-chat',
-      icon: <AIChatIcon />,
-      label: t('menu.aiChat'),
+      icon: (
+        <Badge dot={dots.aiChat} offset={[2, 0]}>
+          <AIChatIcon />
+        </Badge>
+      ),
+      label: withMenuDot(t('menu.aiChat'), dots.aiChat && !collapsed),
       moduleKey: 'aiChat'
     },
     {
       key: '/ai-coding',
-      icon: <AICodingIcon />,
-      label: t('menu.aiCoding'),
+      icon: (
+        <Badge dot={dots.aiCoding} offset={[2, 0]}>
+          <AICodingIcon />
+        </Badge>
+      ),
+      label: withMenuDot(t('menu.aiCoding'), dots.aiCoding && !collapsed),
       moduleKey: 'aiCoding'
     },
     {

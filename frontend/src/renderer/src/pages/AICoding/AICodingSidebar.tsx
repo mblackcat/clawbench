@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useRef, useCallback, useEffect } from 'react'
-import { Dropdown, Input, App, Button, theme, Tooltip, Spin, Tag } from 'antd'
+import { Dropdown, Input, App, Button, theme, Tooltip, Spin, Tag, Badge } from 'antd'
 import type { MenuProps } from 'antd'
 import {
   FolderOutlined,
@@ -13,6 +13,7 @@ import {
 import { AI_TOOL_SHORT_NAMES, AI_TOOL_TAG_COLORS, AI_TOOL_TAG_STYLE, renderAIToolTagLabel, TOOLS_WITH_NATIVE_SESSIONS } from './aiToolMeta'
 import { useT } from '../../i18n'
 import { useAICodingStore } from '../../stores/useAICodingStore'
+import { useAttentionStore } from '../../stores/useAttentionStore'
 import { MONO_FONT_STACK } from '../../utils/mono-font'
 import type { AIToolType } from '../../types/ai-coding'
 
@@ -84,6 +85,10 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
   const updateWorkspace = useAICodingStore((s) => s.updateWorkspace)
   const renameGroup = useAICodingStore((s) => s.renameGroup)
   const deleteGroup = useAICodingStore((s) => s.deleteGroup)
+  const codingAttentionIds = useAttentionStore((s) =>
+    s.items.filter((i) => i.source === 'ai-coding' && i.targetId).map((i) => i.targetId as string)
+  )
+  const codingAttentionSet = useMemo(() => new Set(codingAttentionIds), [codingAttentionIds])
 
   const [sidebarWidth, setSidebarWidth] = useState(240)
   const isResizing = useRef(false)
@@ -731,6 +736,8 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
                       {/* Sessions — hidden when workspace is collapsed */}
                       {!isWsCollapsed && sessionRows.map((row) => {
                         const isSelected = activeSessionId === row.openedSessionId
+                        const sessionHasAttention =
+                          !!row.openedSessionId && codingAttentionSet.has(row.openedSessionId)
 
                         return (
                           <div
@@ -769,12 +776,16 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
                                 whiteSpace: 'nowrap',
-                                lineHeight: '20px'
+                                lineHeight: '20px',
+                                flex: 1
                               }}
                             >
                               {row.title}
                             </span>
-                            <span style={{ marginLeft: 'auto', flexShrink: 0, fontSize: 11, color: token.colorTextQuaternary }}>
+                            {sessionHasAttention && (
+                              <Badge status="error" style={{ flexShrink: 0 }} />
+                            )}
+                            <span style={{ marginLeft: sessionHasAttention ? 0 : 'auto', flexShrink: 0, fontSize: 11, color: token.colorTextQuaternary }}>
                               {formatRelativeTime(row.modifiedAt)}
                             </span>
                           </div>

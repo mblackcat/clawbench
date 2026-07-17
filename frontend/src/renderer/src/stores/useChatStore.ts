@@ -17,6 +17,11 @@ import type {
   SearchSource
 } from '../types/chat'
 import { getT } from '../i18n'
+import {
+  raiseChatCompletion,
+  raiseChatAction,
+  dismissChatTarget
+} from './useAttentionStore'
 
 const PAGE_SIZE = 20
 
@@ -231,6 +236,13 @@ function waitBuiltinToolApproval(tc: {
       ],
       agentPhase: 'calling-tools' as AgentPhase,
     }))
+    // Flash attention when tool approval is needed and user is away
+    const convId =
+      useChatStore.getState().streamingConversationId ||
+      useChatStore.getState().activeConversationId
+    if (convId) {
+      raiseChatAction(convId, undefined, getT()('attention.chatToolPending', tc.toolName))
+    }
   })
 }
 
@@ -913,6 +925,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       get().cancelStreaming()
     }
 
+    // Clear attention red-dot for the conversation the user is opening
+    dismissChatTarget(id)
+
     set({
       activeConversationId: id,
       messages: [],
@@ -1384,6 +1399,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
         agentStepDescription: '',
         agentToolHistory: [],
       })
+      if (conversationId) {
+        const title =
+          [...get().conversations, ...get().favConversations].find(
+            (c) => c.conversationId === conversationId
+          )?.title || undefined
+        raiseChatCompletion(conversationId, title)
+      }
       return
     }
 
@@ -1434,6 +1456,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
         agentToolHistory: [],
         pendingToolCalls: [],
       })
+    }
+
+    // Red-dot when reply finishes and user is not viewing this conversation
+    if (conversationId) {
+      const title =
+        [...get().conversations, ...get().favConversations].find(
+          (c) => c.conversationId === conversationId
+        )?.title || undefined
+      raiseChatCompletion(conversationId, title)
     }
 
     // Persist assistant message against the *bound* conversation (even if user switched away)
@@ -2018,6 +2049,12 @@ function handleSSEToolUse(
       streaming: false,
       streamingContent: ''
     }))
+    const convId =
+      useChatStore.getState().streamingConversationId ||
+      useChatStore.getState().activeConversationId
+    if (convId) {
+      raiseChatAction(convId, undefined, getT()('attention.chatToolPending', tc.name))
+    }
   }
 }
 
@@ -2713,7 +2750,7 @@ async function streamLocalAgentQuery(
     })
     const cleanupApproval = window.api.ai.onChatToolApproval((data) => {
       if (data.taskId !== taskId) return
-      if (!isStreamUiActive(taskId)) return
+      // Always record pending approval so the user can act after switching back
       const pending: PendingToolCall = {
         toolCallId: data.toolCallId,
         toolName: data.toolName,
@@ -2724,6 +2761,12 @@ async function streamLocalAgentQuery(
         pendingToolCalls: [...s.pendingToolCalls.filter((p) => p.toolCallId !== data.toolCallId), pending],
         agentPhase: 'calling-tools' as AgentPhase,
       }))
+      const convId =
+        useChatStore.getState().streamingConversationId ||
+        useChatStore.getState().activeConversationId
+      if (convId) {
+        raiseChatAction(convId, undefined, getT()('attention.chatToolPending', data.toolName))
+      }
     })
     const cleanupCompact = window.api.ai.onChatCompacted((data) => {
       if (data.taskId !== taskId) return

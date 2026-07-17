@@ -10,6 +10,12 @@ import {
   genPaneId, createDefaultLayout, findLeaf, findLeafBySessionId,
   collectLeaves, replaceNode, removeLeaf, updateLeaf, updateSplitSizes
 } from '../types/split-layout'
+import {
+  raiseCodingCompletion,
+  raiseCodingAction,
+  dismissCodingTarget
+} from './useAttentionStore'
+import { getT } from '../i18n'
 
 let msgCounter = 0
 function genMsgId(): string { return `wm-${Date.now()}-${++msgCounter}` }
@@ -312,13 +318,24 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
         const cb = get().sessionStreamingBlocks[sessionId] || []
         if (cb.length > 0) { const m: CodingMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: cb, timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] }, sessionPendingQuestions: { ...s.sessionPendingQuestions, [sessionId]: null } })) }
         else set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionPendingQuestions: { ...s.sessionPendingQuestions, [sessionId]: null } }))
+        if (et === 'pipe_exit' || et === 'slash_command_done') {
+          const sess = get().sessions.find((s) => s.id === sessionId)
+          raiseCodingCompletion(sessionId, sess?.title)
+        }
         return
       }
       if (et === 'raw_output') {
         const content = (event as any).content as string; if (!content) return
         set(s => { const blocks = [...(s.sessionStreamingBlocks[sessionId] || [])]; const last = blocks[blocks.length - 1]; if (last && last.type === 'raw_output') blocks[blocks.length - 1] = { type: 'raw_output', text: last.text + '\n' + content }; else blocks.push({ type: 'raw_output', text: content }); return { sessionStreaming: { ...s.sessionStreaming, [sessionId]: true }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: blocks } } })
         const act = (event as any).activity as string
-        if (act === 'waiting_input' || act === 'auth_request') { const cur = get(); const blocks = cur.sessionStreamingBlocks[sessionId] || []; if (blocks.length > 0) { const m: CodingMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks, timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } })) } }
+        if (act === 'waiting_input' || act === 'auth_request') {
+          const cur = get(); const blocks = cur.sessionStreamingBlocks[sessionId] || []; if (blocks.length > 0) { const m: CodingMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks, timestamp: Date.now() }; set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } })) }
+          raiseCodingAction(
+            sessionId,
+            undefined,
+            act === 'auth_request' ? getT()('attention.codingAuth') : getT()('attention.codingWaitingInput')
+          )
+        }
         return
       }
       if (session.toolType === 'claude' || session.toolType === 'codex') {
@@ -432,6 +449,7 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
             sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] },
             sessionPendingQuestions: { ...s.sessionPendingQuestions, [sessionId]: { id: (event as any).id || '', questions: (event as any).questions || [] } }
           }))
+          raiseCodingAction(sessionId, undefined, getT()('attention.codingQuestion'))
           return
         }
         // Handle permission_request dedicated event — the SDK's canUseTool
@@ -457,6 +475,8 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
             sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] },
             sessionPendingPermissions: { ...s.sessionPendingPermissions, [sessionId]: { id: (event as any).id || '', toolName: (event as any).toolName || '', input: (event as any).input || {} } }
           }))
+          const toolName = (event as any).toolName || 'tool'
+          raiseCodingAction(sessionId, undefined, getT()('attention.codingPermission', toolName))
           return
         }
         // Handle TodoWrite / TaskCreate / TaskUpdate dedicated event.
@@ -509,6 +529,8 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
           } else {
             set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } }))
           }
+          const sess = get().sessions.find((s) => s.id === sessionId)
+          raiseCodingCompletion(sessionId, sess?.title)
           return
         }
         if (et === 'error') {
@@ -527,6 +549,7 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
   },
 
   setActiveSession: (sid) => {
+    if (sid) dismissCodingTarget(sid)
     set({ activeSessionId: sid })
     if (sid) void get().hydrateSessionTranscript(sid)
   },
@@ -645,6 +668,11 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
         sessionPendingQuestions: { ...s.sessionPendingQuestions, [sessionId]: null }
       }
     })
+    // Clear action attention if no more pending prompts for this session
+    const after = get()
+    if (!after.sessionPendingPermissions[sessionId] && !after.sessionPendingQuestions[sessionId]) {
+      dismissCodingTarget(sessionId)
+    }
     // The SDK's canUseTool callback is blocked awaiting this specific AskUserQuestion
     // tool call; unblocking it with the real per-question answers lets the turn
     // continue with those answers as the tool_result — unlike the old behavior of
@@ -671,6 +699,10 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
         sessionPendingPermissions: { ...s.sessionPendingPermissions, [sessionId]: null }
       }
     })
+    const after = get()
+    if (!after.sessionPendingPermissions[sessionId] && !after.sessionPendingQuestions[sessionId]) {
+      dismissCodingTarget(sessionId)
+    }
     // The SDK's canUseTool callback is blocked awaiting this; unblocking it lets
     // the turn continue (allow → tool runs; deny → SDK reports the denial).
     try {

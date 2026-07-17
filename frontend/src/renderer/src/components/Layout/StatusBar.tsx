@@ -13,6 +13,7 @@ import { useTaskStore } from '../../stores/useTaskStore'
 import { useUpdaterStore } from '../../stores/useUpdaterStore'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { useNotificationStore } from '../../stores/useNotificationStore'
+import { useAttentionStore } from '../../stores/useAttentionStore'
 import type { WeatherType } from '../WeatherEffect'
 import { useT } from '../../i18n'
 
@@ -306,6 +307,12 @@ const StatusBar: React.FC<StatusBarProps> = ({ onToggleErrorLog, weatherVisible,
   const { token } = theme.useToken()
   const updaterStatus = useUpdaterStore((state) => state.status)
   const unreadCount = useNotificationStore((state) => state.unreadCount)
+  const attentionItems = useAttentionStore((state) => state.items)
+  const attentionHasAction = useAttentionStore((state) => {
+    // Inline so Zustand tracks item/context changes via selector return value
+    return state.hasAction()
+  })
+  const openFirstAttention = useAttentionStore((state) => state.openFirst)
   const t = useT()
   const weatherNames = useWeatherNames()
 
@@ -318,6 +325,9 @@ const StatusBar: React.FC<StatusBarProps> = ({ onToggleErrorLog, weatherVisible,
   )
 
   const hasUpdate = updaterStatus === 'available' || updaterStatus === 'downloading' || updaterStatus === 'downloaded'
+  const attentionCount = attentionItems.length
+  // Prefer attention count; fall back to legacy notification unread
+  const bellBadgeCount = attentionCount > 0 ? attentionCount : unreadCount
 
   return (
     <div
@@ -380,19 +390,31 @@ const StatusBar: React.FC<StatusBarProps> = ({ onToggleErrorLog, weatherVisible,
           </span>
         </Tooltip>
 
-        {/* Notification bell */}
+        {/* Notification bell — left click jumps to first attention when any */}
         <Popover
           content={<NotificationList />}
           title={t('statusbar.notifications')}
-          trigger="click"
+          trigger={attentionCount > 0 ? [] : 'click'}
           placement="topRight"
         >
-          <Badge count={unreadCount} size="small" offset={[-2, 2]}>
+          <Badge
+            count={bellBadgeCount}
+            size="small"
+            offset={[-2, 2]}
+            color={attentionHasAction ? token.colorError : undefined}
+            dot={attentionCount > 0 && !attentionHasAction && unreadCount === 0}
+          >
             <BellOutlined
+              className={attentionHasAction ? 'cb-attention-flash' : undefined}
+              onClick={() => {
+                if (attentionCount > 0) {
+                  openFirstAttention()
+                }
+              }}
               style={{
                 fontSize: 14,
                 cursor: 'pointer',
-                color: token.colorTextSecondary
+                color: attentionCount > 0 ? token.colorError : token.colorTextSecondary
               }}
             />
           </Badge>
