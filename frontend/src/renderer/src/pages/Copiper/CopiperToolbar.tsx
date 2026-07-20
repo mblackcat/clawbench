@@ -1,29 +1,69 @@
-import React from 'react'
-import { Button, Space, Input, App, theme } from 'antd'
+import React, { useEffect, useState } from 'react'
+import { Button, Space, Input, App, theme, Tooltip } from 'antd'
 import {
   PlusOutlined,
   DeleteOutlined,
   SettingOutlined,
   CheckCircleOutlined,
-  ExportOutlined
+  ExportOutlined,
+  CloudSyncOutlined,
+  LinkOutlined
 } from '@ant-design/icons'
 import { useCopiperStore } from '../../stores/useCopiperStore'
 import { useT } from '../../i18n'
+import { getFeishuLinkFromDb } from '../../types/copiper'
 
 interface CopiperToolbarProps {
   onOpenColumnEditor: () => void
   onOpenExportModal: () => void
+  onOpenFeishuLink?: () => void
+  onSyncNow?: () => void
+}
+
+/** Wrap disabled buttons so Tooltip can still receive hover events. */
+function IconActionButton({
+  title,
+  icon,
+  disabled,
+  onClick,
+  danger
+}: {
+  title: string
+  icon: React.ReactNode
+  disabled?: boolean
+  onClick?: () => void | Promise<void>
+  danger?: boolean
+}) {
+  return (
+    <Tooltip title={title}>
+      <span style={{ display: 'inline-flex' }}>
+        <Button
+          size="small"
+          icon={icon}
+          disabled={disabled}
+          danger={danger}
+          onClick={() => {
+            void onClick?.()
+          }}
+        />
+      </span>
+    </Tooltip>
+  )
 }
 
 const CopiperToolbar: React.FC<CopiperToolbarProps> = ({
   onOpenColumnEditor,
-  onOpenExportModal
+  onOpenExportModal,
+  onOpenFeishuLink,
+  onSyncNow
 }) => {
   const t = useT()
   const { token } = theme.useToken()
   const { message } = App.useApp()
 
   const activeTableName = useCopiperStore((s) => s.activeTableName)
+  const activeFilePath = useCopiperStore((s) => s.activeFilePath)
+  const activeDatabase = useCopiperStore((s) => s.activeDatabase)
   const selectedRowIndices = useCopiperStore((s) => s.selectedRowIndices)
   const searchText = useCopiperStore((s) => s.searchText)
   const addRow = useCopiperStore((s) => s.addRow)
@@ -31,6 +71,12 @@ const CopiperToolbar: React.FC<CopiperToolbarProps> = ({
   const validateCurrentTable = useCopiperStore((s) => s.validateCurrentTable)
   const setSearchText = useCopiperStore((s) => s.setSearchText)
 
+  const [feishuAvailable, setFeishuAvailable] = useState(false)
+  useEffect(() => {
+    void window.api.copiper.feishuAvailability().then((a) => setFeishuAvailable(a.available))
+  }, [])
+
+  const feishuLinked = !!(getFeishuLinkFromDb(activeDatabase)?.enabled)
   const disabled = !activeTableName
 
   return (
@@ -45,32 +91,42 @@ const CopiperToolbar: React.FC<CopiperToolbarProps> = ({
       }}
     >
       <Space>
-        <Button
-          size="small"
+        <IconActionButton
+          title={t('copiper.addRow')}
           icon={<PlusOutlined />}
           disabled={disabled}
           onClick={addRow}
-        >
-          {t('copiper.addRow')}
-        </Button>
-        <Button
-          size="small"
+        />
+        <IconActionButton
+          title={t('copiper.deleteSelected')}
           icon={<DeleteOutlined />}
           disabled={disabled || selectedRowIndices.length === 0}
           onClick={deleteSelectedRows}
-        >
-          {t('copiper.deleteSelected')}
-        </Button>
-        <Button
-          size="small"
+        />
+        <IconActionButton
+          title={t('copiper.columnManager')}
           icon={<SettingOutlined />}
           disabled={disabled}
           onClick={onOpenColumnEditor}
-        >
-          {t('copiper.columnManager')}
-        </Button>
-        <Button
-          size="small"
+        />
+        {feishuAvailable && (
+          <>
+            <IconActionButton
+              title={t('copiper.feishu.connectMenu')}
+              icon={<LinkOutlined />}
+              disabled={!activeFilePath}
+              onClick={onOpenFeishuLink}
+            />
+            <IconActionButton
+              title={t('copiper.feishu.syncNow')}
+              icon={<CloudSyncOutlined />}
+              disabled={!activeFilePath || !feishuLinked}
+              onClick={onSyncNow}
+            />
+          </>
+        )}
+        <IconActionButton
+          title={t('copiper.validate')}
           icon={<CheckCircleOutlined />}
           disabled={disabled}
           onClick={async () => {
@@ -84,17 +140,13 @@ const CopiperToolbar: React.FC<CopiperToolbarProps> = ({
               message.warning(t('copiper.validationIssues', errors, warnings))
             }
           }}
-        >
-          {t('copiper.validate')}
-        </Button>
-        <Button
-          size="small"
+        />
+        <IconActionButton
+          title={t('copiper.export')}
           icon={<ExportOutlined />}
           disabled={disabled}
           onClick={onOpenExportModal}
-        >
-          {t('copiper.export')}
-        </Button>
+        />
       </Space>
       <Input.Search
         size="small"

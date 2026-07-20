@@ -538,7 +538,52 @@ export const api = {
     saveSettings: (settings: Record<string, unknown>) =>
       ipcRenderer.invoke('copiper:save-settings', settings),
     loadReferenceData: (workspacePath: string, tableNames: string[]) =>
-      ipcRenderer.invoke('copiper:load-reference-data', workspacePath, tableNames)
+      ipcRenderer.invoke('copiper:load-reference-data', workspacePath, tableNames),
+
+    // Feishu spreadsheet link & sync
+    feishuAvailability: () =>
+      ipcRenderer.invoke('copiper:feishu-availability') as Promise<{
+        available: boolean
+        reason: string
+        mode: string
+      }>,
+    feishuGetLink: (filePath: string) =>
+      ipcRenderer.invoke('copiper:feishu-get-link', filePath),
+    feishuSaveLink: (filePath: string, link: Record<string, unknown>) =>
+      ipcRenderer.invoke('copiper:feishu-save-link', filePath, link),
+    feishuDisconnect: (filePath: string, removeMeta?: boolean) =>
+      ipcRenderer.invoke('copiper:feishu-disconnect', filePath, removeMeta),
+    feishuTest: (filePathOrToken: string, tokenOverride?: string) =>
+      ipcRenderer.invoke('copiper:feishu-test', filePathOrToken, tokenOverride),
+    feishuCreateSpreadsheet: (filePath: string, title: string) =>
+      ipcRenderer.invoke('copiper:feishu-create-spreadsheet', filePath, title),
+    feishuListSheets: (tokenOrUrl: string) =>
+      ipcRenderer.invoke('copiper:feishu-list-sheets', tokenOrUrl),
+    feishuSyncNow: (
+      filePath: string,
+      conflictResolutions?: Record<string, 'local' | 'remote' | 'skip'>
+    ) => ipcRenderer.invoke('copiper:feishu-sync-now', filePath, conflictResolutions),
+    feishuGetStatus: (filePath: string) =>
+      ipcRenderer.invoke('copiper:feishu-get-status', filePath),
+    feishuRefreshWatchers: (workspacePath: string) =>
+      ipcRenderer.invoke('copiper:feishu-refresh-watchers', workspacePath),
+    feishuParseToken: (urlOrToken: string) =>
+      ipcRenderer.invoke('copiper:feishu-parse-token', urlOrToken) as Promise<string | null>,
+    onFeishuStatus: (callback: (status: unknown) => void) => {
+      const handler = (_: unknown, status: unknown) => callback(status)
+      ipcRenderer.on('copiper:feishu-status', handler)
+      return () => ipcRenderer.removeListener('copiper:feishu-status', handler)
+    },
+    onFeishuConflict: (callback: (payload: unknown) => void) => {
+      const handler = (_: unknown, payload: unknown) => callback(payload)
+      ipcRenderer.on('copiper:feishu-conflict', handler)
+      return () => ipcRenderer.removeListener('copiper:feishu-conflict', handler)
+    },
+    onFeishuSyncResult: (callback: (result: unknown) => void) => {
+      const handler = (_: unknown, result: unknown) => callback(result)
+      ipcRenderer.on('copiper:feishu-sync-result', handler)
+      return () => ipcRenderer.removeListener('copiper:feishu-sync-result', handler)
+    }
   },
 
   aiCoding: {

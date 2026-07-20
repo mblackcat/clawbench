@@ -4,6 +4,7 @@ import { PlusOutlined, DeleteOutlined } from '@ant-design/icons'
 import { useCopiperStore } from '../../stores/useCopiperStore'
 import { useT } from '../../i18n'
 import type { ColDef } from '../../types/copiper'
+import { getTableData } from '../../types/copiper'
 
 const { Text } = Typography
 
@@ -43,8 +44,7 @@ const ColumnEditor: React.FC<ColumnEditorProps> = ({ open, onClose }) => {
 
   // Sync local state when opening
   const tableData = useMemo(() => {
-    if (!activeDatabase || !activeTableName) return null
-    return activeDatabase[activeTableName] ?? null
+    return getTableData(activeDatabase, activeTableName)
   }, [activeDatabase, activeTableName])
 
   if (open && !initialized && tableData) {
@@ -101,7 +101,7 @@ const ColumnEditor: React.FC<ColumnEditorProps> = ({ open, onClose }) => {
     // Apply changes: replace columns in the active table
     // Use updateCell pattern -- since the store manages activeDatabase immutably,
     // we construct the updated table and set it via internal state
-    const table = activeDatabase[activeTableName]
+    const table = getTableData(activeDatabase, activeTableName)
     if (!table) return
 
     // Rebuild: we rely on the store being updated externally via IPC in production;

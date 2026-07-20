@@ -9,6 +9,7 @@ import type {
   TableInfo,
   RowData
 } from '../types/copiper'
+import { listTableNames, getTableData } from '../types/copiper'
 
 interface CopiperState {
   // Data
@@ -95,7 +96,7 @@ export const useCopiperStore = create<CopiperState>((set, get) => ({
     set({ loading: true })
     try {
       const db = await window.api.copiper.loadDatabase(filePath)
-      const tableNames = Object.keys(db)
+      const tableNames = listTableNames(db)
       set({
         activeFilePath: filePath,
         activeDatabase: db,
@@ -127,13 +128,15 @@ export const useCopiperStore = create<CopiperState>((set, get) => ({
 
     // Collect all source table names from index/indices columns across all tables
     const neededTables = new Set<string>()
-    for (const table of Object.values(activeDatabase)) {
+    for (const name of listTableNames(activeDatabase)) {
+      const table = getTableData(activeDatabase, name)
+      if (!table) continue
       for (const col of table.columns) {
         const type = col.type || ''
         const baseType = type.split('/')[0].split(':')[0]
         if ((baseType === 'index' || baseType === 'indices') && type.includes('/')) {
           const srcTable = col.src || type.split('/')[1]
-          if (srcTable && !activeDatabase[srcTable]) {
+          if (srcTable && !getTableData(activeDatabase, srcTable)) {
             neededTables.add(srcTable)
           }
         }
@@ -163,7 +166,7 @@ export const useCopiperStore = create<CopiperState>((set, get) => ({
     const { activeDatabase, activeTableName } = get()
     if (!activeDatabase || !activeTableName) return
 
-    const table = activeDatabase[activeTableName]
+    const table = getTableData(activeDatabase, activeTableName)
     if (!table || rowIndex < 0 || rowIndex >= table.rows.length) return
 
     const newRows = [...table.rows]
@@ -182,7 +185,7 @@ export const useCopiperStore = create<CopiperState>((set, get) => ({
     const { activeDatabase, activeTableName } = get()
     if (!activeDatabase || !activeTableName) return
 
-    const table = activeDatabase[activeTableName]
+    const table = getTableData(activeDatabase, activeTableName)
     if (!table) return
 
     // Auto-increment id: find max numeric id and add 1
@@ -210,7 +213,7 @@ export const useCopiperStore = create<CopiperState>((set, get) => ({
     const { activeDatabase, activeTableName, selectedRowIndices } = get()
     if (!activeDatabase || !activeTableName || selectedRowIndices.length === 0) return
 
-    const table = activeDatabase[activeTableName]
+    const table = getTableData(activeDatabase, activeTableName)
     if (!table) return
 
     const indicesToDelete = new Set(selectedRowIndices)
@@ -246,7 +249,7 @@ export const useCopiperStore = create<CopiperState>((set, get) => ({
       await window.api.copiper.createDatabase(filePath, tableName)
       // Reload the new database
       const db = await window.api.copiper.loadDatabase(filePath)
-      const tableNames = Object.keys(db)
+      const tableNames = listTableNames(db)
       set({
         activeFilePath: filePath,
         activeDatabase: db,
@@ -306,7 +309,7 @@ export const useCopiperStore = create<CopiperState>((set, get) => ({
 
     try {
       const db = await window.api.copiper.removeTable(activeFilePath, tableName)
-      const tableNames = Object.keys(db)
+      const tableNames = listTableNames(db)
       set({
         activeDatabase: db,
         activeTableName:

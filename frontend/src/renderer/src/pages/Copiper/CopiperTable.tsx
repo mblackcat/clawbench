@@ -9,6 +9,7 @@ import { useCopiperStore } from '../../stores/useCopiperStore'
 import { useT, getT } from '../../i18n'
 import { useHandsontableTheme, HOT_MAIN_ATTR } from '../../utils/handsontable-theme'
 import type { ColDef } from '../../types/copiper'
+import { getTableData } from '../../types/copiper'
 
 registerAllModules()
 registerLanguageDictionary(zhCN)
@@ -231,8 +232,7 @@ const CopiperTable: React.FC<CopiperTableProps> = ({ onRowDoubleClick }) => {
   }, [])
 
   const tableData = useMemo(() => {
-    if (!activeDatabase || !activeTableName) return null
-    return activeDatabase[activeTableName] ?? null
+    return getTableData(activeDatabase, activeTableName)
   }, [activeDatabase, activeTableName])
 
   const columns = useMemo(() => {
@@ -299,8 +299,9 @@ const CopiperTable: React.FC<CopiperTableProps> = ({ onRowDoubleClick }) => {
           const srcTable = col.src || type.split('/')[1]
           if (srcTable) {
             let options: string[] = []
-            if (activeDatabase?.[srcTable]) {
-              const srcRows = activeDatabase[srcTable].rows
+            const srcData = getTableData(activeDatabase, srcTable)
+            if (srcData) {
+              const srcRows = srcData.rows
               options = srcRows
                 .map((r) => (r.idx_name != null ? String(r.idx_name) : String(r.id)))
                 .filter(Boolean)
@@ -323,8 +324,9 @@ const CopiperTable: React.FC<CopiperTableProps> = ({ onRowDoubleClick }) => {
           const srcTable = col.src || type.split('/')[1]
           if (srcTable) {
             let options: string[] = []
-            if (activeDatabase?.[srcTable]) {
-              const srcRows = activeDatabase[srcTable].rows
+            const srcData = getTableData(activeDatabase, srcTable)
+            if (srcData) {
+              const srcRows = srcData.rows
               options = srcRows
                 .map((r) => (r.idx_name != null ? String(r.idx_name) : String(r.id)))
                 .filter(Boolean)

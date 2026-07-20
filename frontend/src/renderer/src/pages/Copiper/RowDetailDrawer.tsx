@@ -3,6 +3,7 @@ import { Drawer, Form, Typography, Divider, theme } from 'antd'
 import { useCopiperStore } from '../../stores/useCopiperStore'
 import { useT } from '../../i18n'
 import type { ColDef } from '../../types/copiper'
+import { getTableData } from '../../types/copiper'
 import StringEditor from './editors/StringEditor'
 import NumberEditor from './editors/NumberEditor'
 import BoolEditor from './editors/BoolEditor'
@@ -78,8 +79,7 @@ const RowDetailDrawer: React.FC<RowDetailDrawerProps> = ({ open, rowIndex, onClo
   const updateCell = useCopiperStore((s) => s.updateCell)
 
   const tableData = useMemo(() => {
-    if (!activeDatabase || !activeTableName) return null
-    return activeDatabase[activeTableName] ?? null
+    return getTableData(activeDatabase, activeTableName)
   }, [activeDatabase, activeTableName])
 
   const row = useMemo(() => {

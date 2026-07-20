@@ -25,6 +25,7 @@ import {
   setIsQuitting,
   getIsQuitting
 } from './services/tray-attention.service'
+import { setMainWindowGetter as setFeishuWatcherMainWindow } from './services/copiper-feishu-watcher.service'
 
 const PROTOCOL = 'clawbench'
 
@@ -224,6 +225,7 @@ app.whenReady().then(() => {
   createWindow()
   createAppTray({ onQuit: quitApplication })
   registerAllIpcHandlers()
+  setFeishuWatcherMainWindow(() => getMainWindow())
   registerGlobalShortcuts()
   initAutoUpdater()
   initScheduler()

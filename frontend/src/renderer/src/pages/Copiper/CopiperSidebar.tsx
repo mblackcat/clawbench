@@ -1,5 +1,5 @@
-import React, { useMemo, useState, useRef, useCallback } from 'react'
-import { Tree, Dropdown, Input, App, Modal, theme } from 'antd'
+import React, { useMemo, useState, useRef, useCallback, useEffect } from 'react'
+import { Tree, Dropdown, Input, App, Modal, theme, Tooltip } from 'antd'
 import type { MenuProps } from 'antd'
 import {
   DatabaseOutlined,
@@ -7,13 +7,40 @@ import {
   PlusOutlined,
   DeleteOutlined,
   EditOutlined,
-  SearchOutlined
+  SearchOutlined,
+  LinkOutlined,
+  CloudSyncOutlined,
+  DisconnectOutlined
 } from '@ant-design/icons'
 import { useCopiperStore } from '../../stores/useCopiperStore'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { useT } from '../../i18n'
+import type { FeishuFileSyncStatus, FeishuSyncStatusLight } from '../../types/copiper'
 
-const CopiperSidebar: React.FC = () => {
+function statusLightColor(light: FeishuSyncStatusLight, token: ReturnType<typeof theme.useToken>['token']): string | null {
+  switch (light) {
+    case 'ok':
+    case 'syncing':
+      return token.colorSuccess
+    case 'error':
+    case 'disconnected':
+      return token.colorError
+    case 'conflict':
+      return token.colorWarning
+    default:
+      return null
+  }
+}
+
+interface CopiperSidebarProps {
+  onOpenFeishuLink?: (filePath: string) => void
+  onSyncNow?: (filePath: string) => void
+}
+
+const CopiperSidebar: React.FC<CopiperSidebarProps> = ({
+  onOpenFeishuLink,
+  onSyncNow
+}) => {
   const t = useT()
   const { token } = theme.useToken()
   const { message, modal } = App.useApp()
@@ -30,6 +57,28 @@ const CopiperSidebar: React.FC = () => {
   const renameTable = useCopiperStore((s) => s.renameTable)
   const fetchDatabases = useCopiperStore((s) => s.fetchDatabases)
   const activeWorkspace = useWorkspaceStore((s) => s.activeWorkspace)
+
+  const [feishuStatus, setFeishuStatus] = useState<Record<string, FeishuFileSyncStatus>>({})
+  const [feishuAvailable, setFeishuAvailable] = useState(false)
+
+  useEffect(() => {
+    void window.api.copiper.feishuAvailability().then((a) => setFeishuAvailable(a.available))
+    const off = window.api.copiper.onFeishuStatus((status) => {
+      setFeishuStatus((prev) => ({ ...prev, [status.filePath]: status }))
+    })
+    return off
+  }, [])
+
+  // Seed status for linked files from list meta
+  useEffect(() => {
+    for (const db of databases) {
+      if (db.feishuLinked && !feishuStatus[db.filePath]) {
+        void window.api.copiper.feishuGetStatus(db.filePath).then((s) => {
+          setFeishuStatus((prev) => ({ ...prev, [db.filePath]: s }))
+        })
+      }
+    }
+  }, [databases])
 
   const [sidebarWidth, setSidebarWidth] = useState(240)
   const isResizing = useRef(false)
@@ -94,46 +143,87 @@ const CopiperSidebar: React.FC = () => {
   }, [databases, filterText])
 
   const treeData = useMemo(() => {
-    return filteredDatabases.map((db) => ({
-      key: db.filePath,
-      title: (
-        <span
-          title={db.fileName}
-          style={{
-            display: 'inline-block',
-            maxWidth: sidebarWidth - 56,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            verticalAlign: 'middle',
-          }}
-        >
-          {db.fileName}
-        </span>
-      ),
-      icon: <DatabaseOutlined style={{ fontSize: 12 }} />,
-      children: db.tableNames.map((tn) => ({
-        key: `${db.filePath}::${tn}`,
+    return filteredDatabases.map((db) => {
+      const st = feishuStatus[db.filePath]
+      const light = st?.light || (db.feishuLinked ? 'ok' : 'none')
+      const color = statusLightColor(light, token)
+      return {
+        key: db.filePath,
         title: (
           <span
-            title={tn}
+            title={db.fileName + (st?.message ? ` — ${st.message}` : '')}
             style={{
-              display: 'inline-block',
-              maxWidth: sidebarWidth - 72,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              verticalAlign: 'middle',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              maxWidth: sidebarWidth - 56,
+              verticalAlign: 'middle'
             }}
           >
-            {tn}
+            <span
+              style={{
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                flex: 1,
+                minWidth: 0
+              }}
+            >
+              {db.fileName}
+            </span>
+            {color && (
+              <Tooltip
+                title={
+                  light === 'syncing'
+                    ? t('copiper.feishu.statusSyncing')
+                    : light === 'ok'
+                      ? t('copiper.feishu.statusOk')
+                      : light === 'conflict'
+                        ? t('copiper.feishu.statusConflict')
+                        : t('copiper.feishu.statusError')
+                }
+              >
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: color,
+                    flexShrink: 0,
+                    boxShadow:
+                      light === 'syncing'
+                        ? `0 0 0 2px ${token.colorSuccessBg}`
+                        : undefined
+                  }}
+                />
+              </Tooltip>
+            )}
           </span>
         ),
-        icon: <TableOutlined style={{ fontSize: 12 }} />,
-        isLeaf: true
-      }))
-    }))
-  }, [filteredDatabases, sidebarWidth])
+        icon: <DatabaseOutlined style={{ fontSize: 12 }} />,
+        children: db.tableNames.map((tn) => ({
+          key: `${db.filePath}::${tn}`,
+          title: (
+            <span
+              title={tn}
+              style={{
+                display: 'inline-block',
+                maxWidth: sidebarWidth - 72,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                verticalAlign: 'middle'
+              }}
+            >
+              {tn}
+            </span>
+          ),
+          icon: <TableOutlined style={{ fontSize: 12 }} />,
+          isLeaf: true
+        }))
+      }
+    })
+  }, [filteredDatabases, sidebarWidth, feishuStatus, token, t])
 
   const selectedKeys = useMemo(() => {
     if (activeFilePath && activeTableName) {
@@ -277,6 +367,73 @@ const CopiperSidebar: React.FC = () => {
         setNewTableOpen(true)
       }
     },
+    ...(feishuAvailable
+      ? ([
+          { type: 'divider' as const },
+          {
+            key: 'feishu-link',
+            icon: <LinkOutlined />,
+            label: t('copiper.feishu.connectMenu'),
+            disabled: !contextMenuTarget,
+            onClick: () => {
+              if (contextMenuTarget && onOpenFeishuLink) {
+                if (contextMenuTarget.filePath !== activeFilePath) {
+                  void loadDatabase(contextMenuTarget.filePath)
+                }
+                onOpenFeishuLink(contextMenuTarget.filePath)
+              }
+            }
+          },
+          {
+            key: 'feishu-sync',
+            icon: <CloudSyncOutlined />,
+            label: t('copiper.feishu.syncNow'),
+            disabled:
+              !contextMenuTarget ||
+              !(
+                feishuStatus[contextMenuTarget?.filePath || '']?.linked ||
+                databases.find((d) => d.filePath === contextMenuTarget?.filePath)?.feishuLinked
+              ),
+            onClick: () => {
+              if (contextMenuTarget && onSyncNow) {
+                onSyncNow(contextMenuTarget.filePath)
+              }
+            }
+          },
+          {
+            key: 'feishu-disconnect',
+            icon: <DisconnectOutlined />,
+            label: t('copiper.feishu.disconnect'),
+            disabled:
+              !contextMenuTarget ||
+              !(
+                feishuStatus[contextMenuTarget?.filePath || '']?.linked ||
+                databases.find((d) => d.filePath === contextMenuTarget?.filePath)?.feishuLinked
+              ),
+            onClick: () => {
+              if (!contextMenuTarget) return
+              const fp = contextMenuTarget.filePath
+              modal.confirm({
+                title: t('copiper.feishu.disconnect'),
+                content: t('copiper.feishu.disconnectConfirm'),
+                onOk: async () => {
+                  const res = await window.api.copiper.feishuDisconnect(fp, false)
+                  if (res.ok) {
+                    message.success(t('copiper.feishu.disconnected'))
+                    setFeishuStatus((prev) => ({
+                      ...prev,
+                      [fp]: { filePath: fp, linked: false, light: 'none' }
+                    }))
+                    if (activeWorkspace) await fetchDatabases(activeWorkspace.path)
+                  } else {
+                    message.error(res.error || t('copiper.feishu.disconnectFailed'))
+                  }
+                }
+              })
+            }
+          }
+        ] as NonNullable<MenuProps['items']>)
+      : []),
     { type: 'divider' },
     {
       key: 'delete-db',
