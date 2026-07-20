@@ -263,16 +263,18 @@ const MCPServerSettings: React.FC = () => {
   ]
 
   return (
-    <div>
+    <div style={{ minWidth: 0, maxWidth: '100%' }}>
       <div
         style={{
           marginBottom: 16,
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
+          gap: 12,
+          minWidth: 0,
         }}
       >
-        <Text type="secondary" style={{ fontSize: 13 }}>
+        <Text type="secondary" style={{ fontSize: 13, flex: 1, minWidth: 0 }}>
           {t('mcp.desc')}
         </Text>
         <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
@@ -283,7 +285,7 @@ const MCPServerSettings: React.FC = () => {
       <Card
         size="small"
         className="settings-table-card"
-        style={{ borderRadius: token.borderRadiusLG, borderColor: token.colorPrimaryBorder, overflow: 'hidden' }}
+        style={{ borderRadius: token.borderRadiusLG, borderColor: token.colorPrimaryBorder, overflow: 'hidden', maxWidth: '100%' }}
         styles={{ body: { padding: 0 } }}
       >
         <Table
@@ -293,6 +295,8 @@ const MCPServerSettings: React.FC = () => {
           loading={loading}
           pagination={false}
           size="small"
+          tableLayout="fixed"
+          scroll={{ x: true }}
         />
       </Card>
 

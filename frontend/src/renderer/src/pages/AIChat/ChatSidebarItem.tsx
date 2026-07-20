@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Dropdown, Modal, Input, App, theme, Tag } from 'antd'
+import { Badge, Dropdown, Modal, Input, App, theme, Tag } from 'antd'
 import {
   MoreOutlined,
   StarOutlined,
@@ -10,6 +10,7 @@ import {
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import { useChatStore } from '../../stores/useChatStore'
+import { useAttentionStore } from '../../stores/useAttentionStore'
 import type { Conversation } from '../../types/chat'
 import { ProviderIcon, guessProviderFromModelId } from '../../components/ProviderIcons'
 import { useT } from '../../i18n'
@@ -26,6 +27,9 @@ const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({ conversation, isActiv
   const { message, modal } = App.useApp()
   const { token } = theme.useToken()
   const { renameConversation, toggleFavorite, deleteConversation, exportConversation } = useChatStore()
+  const hasAttention = useAttentionStore((s) =>
+    s.items.some((i) => i.source === 'ai-chat' && i.targetId === conversation.conversationId)
+  )
   const [renameModalOpen, setRenameModalOpen] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [hovering, setHovering] = useState(false)
@@ -159,6 +163,9 @@ const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({ conversation, isActiv
             {conversation.title}
           </span>
         </div>
+        {hasAttention && (
+          <Badge status="error" style={{ flexShrink: 0, marginLeft: 4 }} />
+        )}
         {(hovering || isActive) && (
           <Dropdown menu={{ items: menuItems }} trigger={['click']} placement="bottomRight">
             <MoreOutlined

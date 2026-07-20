@@ -398,6 +398,10 @@ export interface ClawBenchAPI {
       }) => void
     ) => () => void
   }
+  attention: {
+    setTrayState: (state: { flash: boolean; hasDot: boolean }) => Promise<void>
+    onActivateFirst: (callback: () => void) => () => void
+  }
   localEnv: {
     detectAll: () => Promise<import('./local-env').LocalEnvDetectionResult>
     detectOne: (toolId: string) => Promise<import('./local-env').ToolDetectionResult>

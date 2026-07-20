@@ -1,7 +1,7 @@
 import log from 'electron-log/main'
 log.initialize()
 
-import { app, BrowserWindow, Menu, nativeImage, shell, Tray } from 'electron'
+import { app, BrowserWindow, nativeImage, shell } from 'electron'
 import { existsSync } from 'fs'
 import { join, resolve } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -19,10 +19,14 @@ import { initScheduler } from './services/scheduled-task.service'
 import { initAppScheduler } from './services/app-schedule.service'
 import { startMemoryUpdater } from './services/memory-updater.service'
 import { flushPendingUsageEvents } from './services/usage-tracking.service'
+import {
+  createAppTray,
+  destroyAppTray,
+  setIsQuitting,
+  getIsQuitting
+} from './services/tray-attention.service'
 
 const PROTOCOL = 'clawbench'
-let tray: Tray | null = null
-let isQuitting = false
 
 // 注册自定义协议（必须在 app.ready 之前调用）
 if (process.defaultApp) {
@@ -62,25 +66,6 @@ function getResourcePath(fileName: string): string {
   return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0]
 }
 
-function createTrayIcon(): Electron.NativeImage {
-  const iconFile = process.platform === 'win32' ? 'icon.ico' : 'icon.png'
-  let trayIcon = nativeImage.createFromPath(getResourcePath(iconFile))
-
-  if (trayIcon.isEmpty() && iconFile !== 'icon.png') {
-    trayIcon = nativeImage.createFromPath(getResourcePath('icon.png'))
-  }
-
-  if (process.platform === 'darwin') {
-    return trayIcon.resize({ width: 18, height: 18 })
-  }
-
-  if (process.platform === 'win32') {
-    return trayIcon
-  }
-
-  return trayIcon.resize({ width: 16, height: 16 })
-}
-
 function showMainWindow(): BrowserWindow {
   let mainWindow = getMainWindow()
 
@@ -102,38 +87,8 @@ function showMainWindow(): BrowserWindow {
 }
 
 function quitApplication(): void {
-  isQuitting = true
+  setIsQuitting(true)
   app.quit()
-}
-
-function createTray(): void {
-  if (tray) {
-    return
-  }
-
-  const trayIcon = createTrayIcon()
-
-  if (trayIcon.isEmpty()) {
-    logger.warn('Tray icon is empty; check packaged resources.')
-  }
-
-  tray = new Tray(trayIcon)
-  tray.setToolTip('ClawBench')
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      {
-        label: '打开界面',
-        click: () => showMainWindow()
-      },
-      { type: 'separator' },
-      {
-        label: '退出',
-        click: () => quitApplication()
-      }
-    ])
-  )
-  tray.on('click', () => showMainWindow())
-  tray.on('double-click', () => showMainWindow())
 }
 
 /**
@@ -208,7 +163,7 @@ function createWindow(): BrowserWindow {
   })
 
   mainWindow.on('close', (event) => {
-    if (!isQuitting) {
+    if (!getIsQuitting()) {
       event.preventDefault()
       mainWindow.hide()
     }
@@ -267,7 +222,7 @@ app.whenReady().then(() => {
   })
 
   createWindow()
-  createTray()
+  createAppTray({ onQuit: quitApplication })
   registerAllIpcHandlers()
   registerGlobalShortcuts()
   initAutoUpdater()
@@ -317,11 +272,10 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
-  isQuitting = true
+  setIsQuitting(true)
 })
 
 app.on('will-quit', () => {
-  tray?.destroy()
-  tray = null
+  destroyAppTray()
   unregisterGlobalShortcuts()
 })

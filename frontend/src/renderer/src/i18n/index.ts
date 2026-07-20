@@ -201,9 +201,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'settings.tabAITools': 'AI 工具',
     'settings.aiTools.webSearchGroup': '网络搜索',
     'settings.aiTools.webSearchGroupDesc': '对应 AI 助理中的「网络搜索」开关，启用后 AI 可联网搜索并浏览网页获取最新信息。',
-    'settings.aiTools.webToolsAutoDesc': '开箱即用：在 AI 聊天打开「网络搜索」即可。搜索默认 DuckDuckGo；若本机已配置 Brave Key 或安装 Lightpanda 会自动使用。策略已内化到工具（含 Sources 引用），无需再配置引擎。',
+    'settings.aiTools.webToolsAutoDesc': '开箱即用：在 AI 聊天打开「网络搜索」即可。搜索默认 DuckDuckGo；若本机已配置 Brave Key 或安装 Lightpanda 会自动使用。策略已内化到工具（含 Sources 引用），无需再配置引擎。',
     'settings.aiTools.toolBehavior': '工具行为',
-    'settings.aiTools.toolBehaviorHint': 'Agent 工具循环已内置（不限制步数，自动去重防死循环）。仅保留单次工具超时。',
+    'settings.aiTools.toolBehaviorHint': 'Agent 工具循环已内置（不限制步数，自动去重防死循环）。仅保留单次工具超时。',
     'settings.aiTools.toolTimeout': '工具超时时间（秒）',
 
     // 模块设置
@@ -283,6 +283,21 @@ const translations: Record<Lang, Record<string, string>> = {
     'statusbar.weather': '氛围效果',
     'statusbar.weatherClickHint': '{0} · 点击关闭 / 右键切换',
     'statusbar.notifications': '通知',
+    'attention.workbenchDone': '{0} 执行完成',
+    'attention.workbenchDoneBody': '任务已成功完成',
+    'attention.chatDone': 'AI Chat 回复完成',
+    'attention.chatDoneBody': '有新的回复消息',
+    'attention.chatAction': 'AI Chat 需要确认',
+    'attention.chatActionBody': '有工具调用等待批准',
+    'attention.chatToolPending': '工具待确认: {0}',
+    'attention.codingDone': 'AI Coding 回复完成',
+    'attention.codingDoneBody': '会话有新的回复',
+    'attention.codingAction': 'AI Coding 需要确认',
+    'attention.codingActionBody': '有权限或问答等待确认',
+    'attention.codingQuestion': '有问答等待确认',
+    'attention.codingPermission': '权限确认: {0}',
+    'attention.codingWaitingInput': '等待输入确认',
+    'attention.codingAuth': '需要认证确认',
     'statusbar.weatherSnow': '雪',
     'statusbar.weatherRain': '雨',
     'statusbar.weatherLeaves': '风',
@@ -427,7 +442,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'settings.aiAssistant.autoApproveSession': '全部自动',
     'settings.aiAssistant.autoApproveSessionDesc': '所有工具自动执行，无需审批',
     'settings.aiAssistant.askEveryTime': '每次确认',
-    'settings.aiAssistant.askEveryTimeDesc': '每个工具调用都需手动审批',
+    'settings.aiAssistant.askEveryTimeDesc': '每个工具调用都需手动审批',
     'settings.aiAssistant.soulTitle': 'AI 人设',
     'settings.aiAssistant.soulDesc': '定义 AI 助手的身份、风格和行为规则（会注入系统提示词）。可选手设模板，或自行编辑。',
     'settings.aiAssistant.restoreDefault': '恢复默认',
@@ -2463,6 +2478,21 @@ const translations: Record<Lang, Record<string, string>> = {
     'statusbar.weather': 'Atmosphere Effect',
     'statusbar.weatherClickHint': '{0} · Click to close / Right-click to switch',
     'statusbar.notifications': 'Notifications',
+    'attention.workbenchDone': '{0} finished',
+    'attention.workbenchDoneBody': 'Task completed successfully',
+    'attention.chatDone': 'AI Chat reply ready',
+    'attention.chatDoneBody': 'There is a new reply',
+    'attention.chatAction': 'AI Chat needs confirmation',
+    'attention.chatActionBody': 'A tool call is waiting for approval',
+    'attention.chatToolPending': 'Tool pending: {0}',
+    'attention.codingDone': 'AI Coding reply ready',
+    'attention.codingDoneBody': 'Session has a new reply',
+    'attention.codingAction': 'AI Coding needs confirmation',
+    'attention.codingActionBody': 'Permission or question awaiting confirmation',
+    'attention.codingQuestion': 'Question awaiting answer',
+    'attention.codingPermission': 'Permission: {0}',
+    'attention.codingWaitingInput': 'Waiting for input',
+    'attention.codingAuth': 'Authentication required',
     'statusbar.weatherSnow': 'Snow',
     'statusbar.weatherRain': 'Rain',
     'statusbar.weatherLeaves': 'Wind',

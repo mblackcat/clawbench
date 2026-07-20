@@ -836,6 +836,15 @@ b, strong {
   50% { opacity: 0.55; }
 }
 
+/* --- Status bar / tray attention flash (action-needed) --- */
+@keyframes cb-attention-flash {
+  0%, 100% { opacity: 1; color: #ff4d4f; }
+  50% { opacity: 0.25; color: #ff4d4f; }
+}
+.cb-attention-flash {
+  animation: cb-attention-flash 0.8s ease-in-out infinite;
+}
+
 /* --- Dark mode secondary UI text that often goes too dim --- */
 [data-theme="dark"] .ant-menu-item,
 [data-theme="dark"] .ant-menu-submenu-title {

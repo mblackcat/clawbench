@@ -357,6 +357,16 @@ export const api = {
     }
   },
 
+  attention: {
+    setTrayState: (state: { flash: boolean; hasDot: boolean }) =>
+      ipcRenderer.invoke('attention:set-tray-state', state),
+    onActivateFirst: (callback: () => void) => {
+      const handler = () => callback()
+      ipcRenderer.on('attention:activate-first', handler)
+      return () => ipcRenderer.removeListener('attention:activate-first', handler)
+    }
+  },
+
   updater: {
     check: () => ipcRenderer.invoke('updater:check'),
     install: () => ipcRenderer.invoke('updater:install'),
