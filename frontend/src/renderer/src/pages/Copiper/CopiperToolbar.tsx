@@ -20,6 +20,37 @@ interface CopiperToolbarProps {
   onSyncNow?: () => void
 }
 
+/** Wrap disabled buttons so Tooltip can still receive hover events. */
+function IconActionButton({
+  title,
+  icon,
+  disabled,
+  onClick,
+  danger
+}: {
+  title: string
+  icon: React.ReactNode
+  disabled?: boolean
+  onClick?: () => void | Promise<void>
+  danger?: boolean
+}) {
+  return (
+    <Tooltip title={title}>
+      <span style={{ display: 'inline-flex' }}>
+        <Button
+          size="small"
+          icon={icon}
+          disabled={disabled}
+          danger={danger}
+          onClick={() => {
+            void onClick?.()
+          }}
+        />
+      </span>
+    </Tooltip>
+  )
+}
+
 const CopiperToolbar: React.FC<CopiperToolbarProps> = ({
   onOpenColumnEditor,
   onOpenExportModal,
@@ -60,50 +91,42 @@ const CopiperToolbar: React.FC<CopiperToolbarProps> = ({
       }}
     >
       <Space>
-        <Button
-          size="small"
+        <IconActionButton
+          title={t('copiper.addRow')}
           icon={<PlusOutlined />}
           disabled={disabled}
           onClick={addRow}
-        >
-          {t('copiper.addRow')}
-        </Button>
-        <Button
-          size="small"
+        />
+        <IconActionButton
+          title={t('copiper.deleteSelected')}
           icon={<DeleteOutlined />}
           disabled={disabled || selectedRowIndices.length === 0}
           onClick={deleteSelectedRows}
-        >
-          {t('copiper.deleteSelected')}
-        </Button>
-        <Button
-          size="small"
+        />
+        <IconActionButton
+          title={t('copiper.columnManager')}
           icon={<SettingOutlined />}
           disabled={disabled}
           onClick={onOpenColumnEditor}
-        >
-          {t('copiper.columnManager')}
-        </Button>
-        <Tooltip title={!feishuAvailable ? t('copiper.feishu.needLogin') : undefined}>
-          <Button
-            size="small"
-            icon={<LinkOutlined />}
-            disabled={!activeFilePath || !feishuAvailable}
-            onClick={onOpenFeishuLink}
-          >
-            {t('copiper.feishu.connectMenu')}
-          </Button>
-        </Tooltip>
-        <Button
-          size="small"
-          icon={<CloudSyncOutlined />}
-          disabled={!activeFilePath || !feishuAvailable || !feishuLinked}
-          onClick={onSyncNow}
-        >
-          {t('copiper.feishu.syncNow')}
-        </Button>
-        <Button
-          size="small"
+        />
+        {feishuAvailable && (
+          <>
+            <IconActionButton
+              title={t('copiper.feishu.connectMenu')}
+              icon={<LinkOutlined />}
+              disabled={!activeFilePath}
+              onClick={onOpenFeishuLink}
+            />
+            <IconActionButton
+              title={t('copiper.feishu.syncNow')}
+              icon={<CloudSyncOutlined />}
+              disabled={!activeFilePath || !feishuLinked}
+              onClick={onSyncNow}
+            />
+          </>
+        )}
+        <IconActionButton
+          title={t('copiper.validate')}
           icon={<CheckCircleOutlined />}
           disabled={disabled}
           onClick={async () => {
@@ -117,17 +140,13 @@ const CopiperToolbar: React.FC<CopiperToolbarProps> = ({
               message.warning(t('copiper.validationIssues', errors, warnings))
             }
           }}
-        >
-          {t('copiper.validate')}
-        </Button>
-        <Button
-          size="small"
+        />
+        <IconActionButton
+          title={t('copiper.export')}
           icon={<ExportOutlined />}
           disabled={disabled}
           onClick={onOpenExportModal}
-        >
-          {t('copiper.export')}
-        </Button>
+        />
       </Space>
       <Input.Search
         size="small"

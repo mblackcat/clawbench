@@ -367,71 +367,73 @@ const CopiperSidebar: React.FC<CopiperSidebarProps> = ({
         setNewTableOpen(true)
       }
     },
-    { type: 'divider' },
-    {
-      key: 'feishu-link',
-      icon: <LinkOutlined />,
-      label: t('copiper.feishu.connectMenu'),
-      disabled: !contextMenuTarget || !feishuAvailable,
-      title: !feishuAvailable ? t('copiper.feishu.needLogin') : undefined,
-      onClick: () => {
-        if (contextMenuTarget && onOpenFeishuLink) {
-          if (contextMenuTarget.filePath !== activeFilePath) {
-            void loadDatabase(contextMenuTarget.filePath)
-          }
-          onOpenFeishuLink(contextMenuTarget.filePath)
-        }
-      }
-    },
-    {
-      key: 'feishu-sync',
-      icon: <CloudSyncOutlined />,
-      label: t('copiper.feishu.syncNow'),
-      disabled:
-        !contextMenuTarget ||
-        !feishuAvailable ||
-        !(
-          feishuStatus[contextMenuTarget?.filePath || '']?.linked ||
-          databases.find((d) => d.filePath === contextMenuTarget?.filePath)?.feishuLinked
-        ),
-      onClick: () => {
-        if (contextMenuTarget && onSyncNow) {
-          onSyncNow(contextMenuTarget.filePath)
-        }
-      }
-    },
-    {
-      key: 'feishu-disconnect',
-      icon: <DisconnectOutlined />,
-      label: t('copiper.feishu.disconnect'),
-      disabled:
-        !contextMenuTarget ||
-        !(
-          feishuStatus[contextMenuTarget?.filePath || '']?.linked ||
-          databases.find((d) => d.filePath === contextMenuTarget?.filePath)?.feishuLinked
-        ),
-      onClick: () => {
-        if (!contextMenuTarget) return
-        const fp = contextMenuTarget.filePath
-        modal.confirm({
-          title: t('copiper.feishu.disconnect'),
-          content: t('copiper.feishu.disconnectConfirm'),
-          onOk: async () => {
-            const res = await window.api.copiper.feishuDisconnect(fp, false)
-            if (res.ok) {
-              message.success(t('copiper.feishu.disconnected'))
-              setFeishuStatus((prev) => ({
-                ...prev,
-                [fp]: { filePath: fp, linked: false, light: 'none' }
-              }))
-              if (activeWorkspace) await fetchDatabases(activeWorkspace.path)
-            } else {
-              message.error(res.error || t('copiper.feishu.disconnectFailed'))
+    ...(feishuAvailable
+      ? ([
+          { type: 'divider' as const },
+          {
+            key: 'feishu-link',
+            icon: <LinkOutlined />,
+            label: t('copiper.feishu.connectMenu'),
+            disabled: !contextMenuTarget,
+            onClick: () => {
+              if (contextMenuTarget && onOpenFeishuLink) {
+                if (contextMenuTarget.filePath !== activeFilePath) {
+                  void loadDatabase(contextMenuTarget.filePath)
+                }
+                onOpenFeishuLink(contextMenuTarget.filePath)
+              }
+            }
+          },
+          {
+            key: 'feishu-sync',
+            icon: <CloudSyncOutlined />,
+            label: t('copiper.feishu.syncNow'),
+            disabled:
+              !contextMenuTarget ||
+              !(
+                feishuStatus[contextMenuTarget?.filePath || '']?.linked ||
+                databases.find((d) => d.filePath === contextMenuTarget?.filePath)?.feishuLinked
+              ),
+            onClick: () => {
+              if (contextMenuTarget && onSyncNow) {
+                onSyncNow(contextMenuTarget.filePath)
+              }
+            }
+          },
+          {
+            key: 'feishu-disconnect',
+            icon: <DisconnectOutlined />,
+            label: t('copiper.feishu.disconnect'),
+            disabled:
+              !contextMenuTarget ||
+              !(
+                feishuStatus[contextMenuTarget?.filePath || '']?.linked ||
+                databases.find((d) => d.filePath === contextMenuTarget?.filePath)?.feishuLinked
+              ),
+            onClick: () => {
+              if (!contextMenuTarget) return
+              const fp = contextMenuTarget.filePath
+              modal.confirm({
+                title: t('copiper.feishu.disconnect'),
+                content: t('copiper.feishu.disconnectConfirm'),
+                onOk: async () => {
+                  const res = await window.api.copiper.feishuDisconnect(fp, false)
+                  if (res.ok) {
+                    message.success(t('copiper.feishu.disconnected'))
+                    setFeishuStatus((prev) => ({
+                      ...prev,
+                      [fp]: { filePath: fp, linked: false, light: 'none' }
+                    }))
+                    if (activeWorkspace) await fetchDatabases(activeWorkspace.path)
+                  } else {
+                    message.error(res.error || t('copiper.feishu.disconnectFailed'))
+                  }
+                }
+              })
             }
           }
-        })
-      }
-    },
+        ] as NonNullable<MenuProps['items']>)
+      : []),
     { type: 'divider' },
     {
       key: 'delete-db',
