@@ -15,7 +15,7 @@ import { useT } from '../../i18n'
 import { useAICodingStore } from '../../stores/useAICodingStore'
 import { useAttentionStore } from '../../stores/useAttentionStore'
 import { MONO_FONT_STACK } from '../../utils/mono-font'
-import type { AIToolType } from '../../types/ai-coding'
+import type { AICodingSession, AIToolType } from '../../types/ai-coding'
 
 interface AICodingSidebarProps {
   onNewWorkspace: () => void
@@ -25,6 +25,12 @@ interface AICodingSidebarProps {
 
 const NATIVE_HISTORY_PAGE_SIZE = 5
 const WORKSPACE_COLLAPSE_STORAGE_KEY = 'cb-workbench-collapsed-workspaces'
+/** Background re-scan of native CLI history while a workspace is expanded. */
+const NATIVE_SESSION_POLL_MS = 12_000
+/** Faster scan while opened sessions still lack a toolSessionId (e.g. fresh Grok). */
+const NATIVE_SESSION_POLL_UNLINKED_MS = 3_000
+/** Allow small clock skew when matching a new native session to an opened one. */
+const NATIVE_LINK_CLOCK_SKEW_MS = 5_000
 
 interface SidebarNativeSession {
   sessionId: string
@@ -50,6 +56,12 @@ interface SidebarSessionRow {
   openedSessionId?: string
 }
 
+interface NativeSessionLink {
+  sessionId: string
+  toolSessionId: string
+  title?: string
+}
+
 function loadCollapsedWorkspaceIds(): Set<string> {
   try {
     const raw = localStorage.getItem(WORKSPACE_COLLAPSE_STORAGE_KEY)
@@ -66,6 +78,77 @@ function persistCollapsedWorkspaceIds(ids: Set<string>): void {
   } catch {
     // ignore storage failures
   }
+}
+
+/**
+ * Pair opened ClawBench sessions that lack toolSessionId with unmatched native
+ * CLI sessions of the same tool. PTY tools (Grok/Gemini/etc.) never emit a
+ * session_id event, so without this the sidebar shows both "Grok session" and
+ * the real native history entry for the same conversation.
+ */
+function resolveNativeSessionLinks(
+  workspaceSessions: AICodingSession[],
+  nativeSessions: SidebarNativeSession[]
+): NativeSessionLink[] {
+  const claimedNativeKeys = new Set(
+    workspaceSessions
+      .filter((session) => session.toolSessionId)
+      .map((session) => `${session.toolType}:${session.toolSessionId}`)
+  )
+
+  const unlinkedSessions = workspaceSessions
+    .filter((session) => session.toolType !== 'terminal' && !session.toolSessionId)
+    .slice()
+
+  if (unlinkedSessions.length === 0) return []
+
+  const unmatchedNatives = nativeSessions
+    .filter((native) => !claimedNativeKeys.has(`${native.toolType}:${native.sessionId}`))
+    .slice()
+    .sort((a, b) => b.modifiedAt - a.modifiedAt)
+
+  if (unmatchedNatives.length === 0) return []
+
+  const usedSessionIds = new Set<string>()
+  const links: NativeSessionLink[] = []
+
+  for (const native of unmatchedNatives) {
+    const candidates = unlinkedSessions.filter((session) => {
+      if (usedSessionIds.has(session.id)) return false
+      if (session.toolType !== native.toolType) return false
+      const sessionStart = session.startedAt || session.createdAt
+      // Still-running sessions can claim natives written any time after they started.
+      // Closed sessions only claim natives written before/around their last update,
+      // so a stale "Grok session" from last week won't swallow today's history.
+      const sessionEnd =
+        session.status === 'idle' || session.status === 'running'
+          ? Date.now()
+          : (session.updatedAt || sessionStart)
+      return (
+        native.modifiedAt >= sessionStart - NATIVE_LINK_CLOCK_SKEW_MS &&
+        native.modifiedAt <= sessionEnd + NATIVE_LINK_CLOCK_SKEW_MS
+      )
+    })
+    if (candidates.length === 0) continue
+
+    // Prefer the opened session whose start time is closest to the native mtime.
+    candidates.sort((a, b) => {
+      const aStart = a.startedAt || a.createdAt
+      const bStart = b.startedAt || b.createdAt
+      return Math.abs(native.modifiedAt - aStart) - Math.abs(native.modifiedAt - bStart)
+    })
+
+    const session = candidates[0]
+    usedSessionIds.add(session.id)
+    claimedNativeKeys.add(`${native.toolType}:${native.sessionId}`)
+    links.push({
+      sessionId: session.id,
+      toolSessionId: native.sessionId,
+      title: native.title || undefined
+    })
+  }
+
+  return links
 }
 
 const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
@@ -114,17 +197,27 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
   // Diff stats per workspace (keyed by workspace id)
   const [diffStats, setDiffStats] = useState<Record<string, { additions: number; deletions: number }>>({})
 
-  const syncOpenedSessionTitles = useCallback(async (wsId: string, nativeSessions: SidebarNativeSession[]) => {
-    const nativeByKey = new Map(nativeSessions.map((ns) => [`${ns.toolType}:${ns.sessionId}`, ns]))
+  /** Bind toolSessionId for PTY sessions + pull native titles onto opened rows. */
+  const syncOpenedSessionsWithNative = useCallback(async (wsId: string, nativeSessions: SidebarNativeSession[]) => {
     const currentSessions = useAICodingStore.getState().sessions
-    const updates = currentSessions
-      .filter((session) => session.workspaceId === wsId && session.toolSessionId)
-      .map((session) => {
-        const nativeSession = nativeByKey.get(`${session.toolType}:${session.toolSessionId}`)
-        if (!nativeSession?.title || nativeSession.title === session.title) return null
-        return updateSession(session.id, { title: nativeSession.title })
+    const workspaceSessions = currentSessions.filter((session) => session.workspaceId === wsId)
+    const links = resolveNativeSessionLinks(workspaceSessions, nativeSessions)
+    const linkedIds = new Set(links.map((link) => link.sessionId))
+    const nativeByKey = new Map(nativeSessions.map((ns) => [`${ns.toolType}:${ns.sessionId}`, ns]))
+
+    const updates: Array<Promise<void>> = links.map((link) =>
+      updateSession(link.sessionId, {
+        toolSessionId: link.toolSessionId,
+        ...(link.title ? { title: link.title } : {})
       })
-      .filter(Boolean) as Array<Promise<void>>
+    )
+
+    for (const session of workspaceSessions) {
+      if (!session.toolSessionId || linkedIds.has(session.id)) continue
+      const nativeSession = nativeByKey.get(`${session.toolType}:${session.toolSessionId}`)
+      if (!nativeSession?.title || nativeSession.title === session.title) continue
+      updates.push(updateSession(session.id, { title: nativeSession.title }))
+    }
 
     if (updates.length > 0) {
       await Promise.all(updates)
@@ -180,13 +273,13 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
       const merged = results.flat()
         .sort((a, b) => b.modifiedAt - a.modifiedAt)
       setNativeSessionsMap(prev => ({ ...prev, [wsId]: { sessions: merged, loading: false, loaded: true, workingDir: ws.workingDir } }))
-      await syncOpenedSessionTitles(wsId, merged)
+      await syncOpenedSessionsWithNative(wsId, merged)
     } catch {
       setNativeSessionsMap(prev => ({ ...prev, [wsId]: { sessions: [], loading: false, loaded: true, workingDir: ws.workingDir } }))
     } finally {
       nativeFetchInFlightRef.current.delete(wsId)
     }
-  }, [syncOpenedSessionTitles, workspaces])
+  }, [syncOpenedSessionsWithNative, workspaces])
 
   const ensureNativeSessions = useCallback((wsId: string) => {
     const ws = workspaces.find(w => w.id === wsId)
@@ -256,6 +349,24 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
     }, 500)
     return () => clearTimeout(timer)
   }, [sessionRefreshKey, workspaces, collapsedWorkspaces, fetchNativeSessions])
+
+  // PTY tools (Grok etc.) don't update ClawBench session state while the user
+  // types in xterm, so re-scan native history periodically while expanded.
+  // Poll faster when any opened session is still missing toolSessionId.
+  const hasUnlinkedOpenedSessions = useMemo(
+    () => sessions.some((s) => s.toolType !== 'terminal' && !s.toolSessionId),
+    [sessions]
+  )
+  useEffect(() => {
+    if (workspaces.length === 0) return
+    const intervalMs = hasUnlinkedOpenedSessions ? NATIVE_SESSION_POLL_UNLINKED_MS : NATIVE_SESSION_POLL_MS
+    const timer = setInterval(() => {
+      for (const ws of workspaces) {
+        if (!collapsedWorkspaces.has(ws.id)) fetchNativeSessions(ws.id)
+      }
+    }, intervalMs)
+    return () => clearInterval(timer)
+  }, [workspaces, collapsedWorkspaces, fetchNativeSessions, hasUnlinkedOpenedSessions])
 
   /** Resume a native session into a workspace */
   const handleResumeNativeSession = useCallback(async (wsId: string, toolType: AIToolType, nativeSessionId: string, title?: string) => {
@@ -599,28 +710,41 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
                   const availableNativeSessions = nativeState?.sessions || []
                   const visibleNativeSessions = availableNativeSessions.slice(0, nativeVisibleCount)
                   const hasMoreNativeSessions = availableNativeSessions.length > nativeVisibleCount
+                  const workspaceSessions = sessions.filter(
+                    (session) => session.workspaceId === ws.id && session.toolType !== 'terminal'
+                  )
                   const nativeByKey = new Map(
                     availableNativeSessions.map((nativeSession) => [
                       `${nativeSession.toolType}:${nativeSession.sessionId}`,
                       nativeSession
                     ])
                   )
+                  // Provisional links hide the duplicate native row immediately while
+                  // syncOpenedSessionsWithNative persists toolSessionId asynchronously.
+                  const provisionalLinks = resolveNativeSessionLinks(workspaceSessions, availableNativeSessions)
+                  const provisionalBySessionId = new Map(
+                    provisionalLinks.map((link) => [link.sessionId, link] as const)
+                  )
                   const openedNativeKeys = new Set<string>()
-                  const openedRows: SidebarSessionRow[] = sessions
-                    .filter((session) => session.workspaceId === ws.id && session.toolType !== 'terminal')
-                    .map((session) => {
-                      const nativeKey = session.toolSessionId ? `${session.toolType}:${session.toolSessionId}` : ''
-                      const nativeSession = nativeKey ? nativeByKey.get(nativeKey) : undefined
-                      if (nativeKey) openedNativeKeys.add(nativeKey)
-                      return {
-                        key: `opened-${session.id}`,
-                        toolType: session.toolType,
-                        title: session.title || nativeSession?.title || `${AI_TOOL_SHORT_NAMES[session.toolType] || session.toolType} session`,
-                        modifiedAt: Math.max(session.updatedAt || 0, nativeSession?.modifiedAt || 0),
-                        nativeSessionId: session.toolSessionId,
-                        openedSessionId: session.id
-                      }
-                    })
+                  const openedRows: SidebarSessionRow[] = workspaceSessions.map((session) => {
+                    const provisional = provisionalBySessionId.get(session.id)
+                    const toolSessionId = session.toolSessionId || provisional?.toolSessionId
+                    const nativeKey = toolSessionId ? `${session.toolType}:${toolSessionId}` : ''
+                    const nativeSession = nativeKey ? nativeByKey.get(nativeKey) : undefined
+                    if (nativeKey) openedNativeKeys.add(nativeKey)
+                    return {
+                      key: `opened-${session.id}`,
+                      toolType: session.toolType,
+                      title:
+                        session.title ||
+                        provisional?.title ||
+                        nativeSession?.title ||
+                        `${AI_TOOL_SHORT_NAMES[session.toolType] || session.toolType} session`,
+                      modifiedAt: Math.max(session.updatedAt || 0, nativeSession?.modifiedAt || 0),
+                      nativeSessionId: toolSessionId,
+                      openedSessionId: session.id
+                    }
+                  })
                   const nativeRows: SidebarSessionRow[] = visibleNativeSessions
                     .filter((nativeSession) => !openedNativeKeys.has(`${nativeSession.toolType}:${nativeSession.sessionId}`))
                     .map((nativeSession) => ({
