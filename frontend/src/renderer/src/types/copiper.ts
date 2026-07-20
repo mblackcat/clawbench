@@ -122,10 +122,39 @@ export interface TableInfo {
   desc?: string
 }
 
+/** 导出格式：原生 CoPiper（python/json）+ Luban 桥接 */
+export type ExportFormat = 'python' | 'json' | 'luban'
+
+/** Luban 导出选项（方案 1：中间产物 + 可选 CLI） */
+export interface LubanExportOptions {
+  /** 中间 JSON 目录（相对工作区或绝对路径）。默认 config/Datas/_jdb */
+  intermediateDataDir?: string
+  /** 中间 schema 目录。默认 config/Defines/_jdb_gen */
+  intermediateSchemaDir?: string
+  /** Luban.dll 路径。默认 tools/Luban/Luban.dll */
+  lubanDllPath?: string
+  /** luban.conf 路径。默认 config/luban.conf */
+  lubanConfPath?: string
+  /** 写完中间产物后是否调用 Luban CLI。默认：dll+conf 存在时 true */
+  runLuban?: boolean
+  /** -x outputCodeDir（默认 output/luban/code） */
+  outputCodeDir?: string
+  /** -x outputDataDir（默认 output/luban/data） */
+  outputDataDir?: string
+  /** -t target。默认 all */
+  target?: string
+  /** 生成 schema 的 module 名。默认 jdb */
+  moduleName?: string
+  /** -c code target。默认 cpp-sharedptr-bin */
+  codeTarget?: string
+  /** -d data targets。默认 ['bin','json'] */
+  dataTargets?: string[]
+}
+
 /** 导出配置 */
 export interface ExportConfig {
-  /** 导出格式 */
-  formats: ('python' | 'json')[]
+  /** 导出格式（可多选；python/json 与 luban 可并存，互不影响） */
+  formats: ExportFormat[]
   /** 输出基础目录（默认使用工作区路径） */
   outputDir?: string
   /** Python 文件头模板 */
@@ -134,12 +163,14 @@ export interface ExportConfig {
   tableNames?: string[]
   /** 导出的子目录（如 "game/common/data"） */
   exportSubDir?: string
+  /** Luban 方案选项（仅 formats 含 luban 时生效） */
+  luban?: LubanExportOptions
 }
 
 /** 单张表的导出结果 */
 export interface ExportResult {
   tableName: string
-  format: 'python' | 'json'
+  format: ExportFormat
   outputPath: string
   success: boolean
   error?: string
@@ -150,6 +181,8 @@ export interface ExportResult {
   checkInfo?: string
   /** 后处理脚本执行信息 */
   postProcessInfo?: string
+  /** Luban 生成的 schema 路径（format=luban） */
+  schemaPath?: string
 }
 
 /** 数据验证问题 */
@@ -171,9 +204,11 @@ export interface ValidationIssue {
 /** CoPiper 设置（持久化） */
 export interface CopiperSettings {
   /** 默认导出格式 */
-  defaultFormats: ('python' | 'json')[]
+  defaultFormats: ExportFormat[]
   /** Python 文件头模板 */
   pythonHeader: string
   /** 导出子目录 */
   exportSubDir: string
+  /** Luban 导出默认选项 */
+  luban?: LubanExportOptions
 }

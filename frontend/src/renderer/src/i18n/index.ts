@@ -201,9 +201,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'settings.tabAITools': 'AI 工具',
     'settings.aiTools.webSearchGroup': '网络搜索',
     'settings.aiTools.webSearchGroupDesc': '对应 AI 助理中的「网络搜索」开关，启用后 AI 可联网搜索并浏览网页获取最新信息。',
-    'settings.aiTools.webToolsAutoDesc': '开箱即用：在 AI 聊天打开「网络搜索」即可。搜索默认 DuckDuckGo；若本机已配置 Brave Key 或安装 Lightpanda 会自动使用。策略已内化到工具（含 Sources 引用），无需再配置引擎。',
+    'settings.aiTools.webToolsAutoDesc': '开箱即用：在 AI 聊天打开「网络搜索」即可。搜索默认 DuckDuckGo；若本机已配置 Brave Key 或安装 Lightpanda 会自动使用。策略已内化到工具（含 Sources 引用），无需再配置引擎。',
     'settings.aiTools.toolBehavior': '工具行为',
-    'settings.aiTools.toolBehaviorHint': 'Agent 工具循环已内置（不限制步数，自动去重防死循环）。仅保留单次工具超时。',
+    'settings.aiTools.toolBehaviorHint': 'Agent 工具循环已内置（不限制步数，自动去重防死循环）。仅保留单次工具超时。',
     'settings.aiTools.toolTimeout': '工具超时时间（秒）',
 
     // 模块设置
@@ -442,7 +442,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'settings.aiAssistant.autoApproveSession': '全部自动',
     'settings.aiAssistant.autoApproveSessionDesc': '所有工具自动执行，无需审批',
     'settings.aiAssistant.askEveryTime': '每次确认',
-    'settings.aiAssistant.askEveryTimeDesc': '每个工具调用都需手动审批',
+    'settings.aiAssistant.askEveryTimeDesc': '每个工具调用都需手动审批',
     'settings.aiAssistant.soulTitle': 'AI 人设',
     'settings.aiAssistant.soulDesc': '定义 AI 助手的身份、风格和行为规则（会注入系统提示词）。可选手设模板，或自行编辑。',
     'settings.aiAssistant.restoreDefault': '恢复默认',
@@ -1885,6 +1885,25 @@ const translations: Record<Lang, Record<string, string>> = {
     'copiper.exporting': '导出中...',
     'copiper.close': '关闭',
     'copiper.exportFormat': '导出格式',
+    'copiper.exportFormatNativeKeep': '可多选：Python / JSON 为原生 CoPiper 导出；Luban 为兼容桥接，互不影响。',
+    'copiper.lubanFormatHint': '(JDB→中间产物→Luban)',
+    'copiper.lubanSectionTitle': 'Luban 兼容导出',
+    'copiper.lubanDocsLink': '官方文档',
+    'copiper.lubanGithubLink': 'GitHub 源码',
+    'copiper.lubanPipelineHint': '方案说明（中间产物桥接）',
+    'copiper.lubanPipelineStep1': '1. 从 JDB 生成 Luban JSON 记录列表 → config/Datas/_jdb/',
+    'copiper.lubanPipelineStep2': '2. 生成可审查的 schema XML 草稿 → config/Defines/_jdb_gen/',
+    'copiper.lubanPipelineStep3': '3. 若开启且工具链就绪，调用 tools/Luban 导出 bin + C++ schema 到工程目录',
+    'copiper.lubanRunCli': '写完中间产物后调用 Luban CLI（需工作区含 tools/Luban 与 config/luban.conf）',
+    'copiper.lubanAdvancedPaths': '高级路径（相对工作区，可留空用默认）',
+    'copiper.lubanModuleName': 'Schema module 名',
+    'copiper.lubanDllPath': 'Luban.dll 路径',
+    'copiper.lubanConfPath': 'luban.conf 路径',
+    'copiper.lubanIntermediateData': '中间 JSON 目录',
+    'copiper.lubanIntermediateSchema': '中间 Schema 目录',
+    'copiper.lubanOutputCodeDir': 'Luban 代码输出目录',
+    'copiper.lubanOutputDataDir': 'Luban 数据输出目录',
+    'copiper.lubanPathHint': '默认相对工作区：tools/Luban/Luban.dll、config/luban.conf、config/Datas/_jdb、config/Defines/_jdb_gen、output/luban/code、output/luban/data。可按工程覆盖。',
     'copiper.exportTables': '导出表 ({0}/{1})',
     'copiper.exportResults': '导出结果',
     'copiper.scriptExecution': '脚本执行情况',
@@ -4154,6 +4173,25 @@ const translations: Record<Lang, Record<string, string>> = {
     'copiper.exporting': 'Exporting...',
     'copiper.close': 'Close',
     'copiper.exportFormat': 'Export Format',
+    'copiper.exportFormatNativeKeep': 'Multi-select: Python / JSON are native CoPiper exports; Luban is a bridge pipeline — they do not replace each other.',
+    'copiper.lubanFormatHint': '(JDB → intermediates → Luban)',
+    'copiper.lubanSectionTitle': 'Luban-compatible export',
+    'copiper.lubanDocsLink': 'Official docs',
+    'copiper.lubanGithubLink': 'GitHub source',
+    'copiper.lubanPipelineHint': 'How it works (intermediate bridge)',
+    'copiper.lubanPipelineStep1': '1. Emit Luban JSON record lists from JDB → config/Datas/_jdb/',
+    'copiper.lubanPipelineStep2': '2. Emit reviewable schema XML drafts → config/Defines/_jdb_gen/',
+    'copiper.lubanPipelineStep3': '3. If enabled and toolchain is present, run tools/Luban to produce bin + code into the output dirs',
+    'copiper.lubanRunCli': 'Run Luban CLI after intermediates (needs tools/Luban and config/luban.conf under the workspace)',
+    'copiper.lubanAdvancedPaths': 'Advanced paths (workspace-relative; leave empty for defaults)',
+    'copiper.lubanModuleName': 'Schema module name',
+    'copiper.lubanDllPath': 'Luban.dll path',
+    'copiper.lubanConfPath': 'luban.conf path',
+    'copiper.lubanIntermediateData': 'Intermediate JSON directory',
+    'copiper.lubanIntermediateSchema': 'Intermediate schema directory',
+    'copiper.lubanOutputCodeDir': 'Luban code output directory',
+    'copiper.lubanOutputDataDir': 'Luban data output directory',
+    'copiper.lubanPathHint': 'Defaults (relative to workspace): tools/Luban/Luban.dll, config/luban.conf, config/Datas/_jdb, config/Defines/_jdb_gen, output/luban/code, output/luban/data. Override per project as needed.',
     'copiper.exportTables': 'Export Tables ({0}/{1})',
     'copiper.exportResults': 'Export Results',
     'copiper.scriptExecution': 'Script Execution',
