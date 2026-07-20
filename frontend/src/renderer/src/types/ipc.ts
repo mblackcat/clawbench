@@ -522,6 +522,72 @@ export interface ClawBenchAPI {
       workspacePath: string,
       tableNames: string[]
     ) => Promise<Record<string, Array<{ id: number | string; idx_name?: string }>>>
+    feishuAvailability: () => Promise<{ available: boolean; reason: string; mode: string }>
+    feishuGetLink: (filePath: string) => Promise<import('./copiper').FeishuLinkConfig | null>
+    feishuSaveLink: (
+      filePath: string,
+      link: import('./copiper').FeishuLinkConfig
+    ) => Promise<{ ok: boolean; error?: string; link?: import('./copiper').FeishuLinkConfig }>
+    feishuDisconnect: (
+      filePath: string,
+      removeMeta?: boolean
+    ) => Promise<{ ok: boolean; error?: string }>
+    feishuTest: (
+      filePathOrToken: string,
+      tokenOverride?: string
+    ) => Promise<import('./copiper').FeishuTestResult>
+    feishuCreateSpreadsheet: (
+      filePath: string,
+      title: string
+    ) => Promise<{
+      ok: boolean
+      meta?: { spreadsheetToken: string; title: string; url?: string }
+      error?: string
+    }>
+    feishuListSheets: (tokenOrUrl: string) => Promise<{
+      ok: boolean
+      token?: string
+      meta?: { spreadsheetToken: string; title: string; url?: string }
+      sheets?: Array<{ sheetId: string; title: string; index: number }>
+      error?: string
+    }>
+    feishuSyncNow: (
+      filePath: string,
+      conflictResolutions?: Record<string, 'local' | 'remote' | 'skip'>
+    ) => Promise<{
+      ok: boolean
+      filePath: string
+      conflicts: Array<{
+        tableName: string
+        rowKey: string
+        local: import('./copiper').RowData | null
+        remote: import('./copiper').RowData | null
+        reason: string
+      }>
+      schemaChanges: Array<{ tableName: string; type: string; detail: string; applied: boolean }>
+      warnings: string[]
+      error?: string
+      errorKind?: string
+    }>
+    feishuGetStatus: (filePath: string) => Promise<import('./copiper').FeishuFileSyncStatus>
+    feishuRefreshWatchers: (workspacePath: string) => Promise<{ ok: boolean }>
+    feishuParseToken: (urlOrToken: string) => Promise<string | null>
+    onFeishuStatus: (
+      callback: (status: import('./copiper').FeishuFileSyncStatus) => void
+    ) => () => void
+    onFeishuConflict: (
+      callback: (payload: {
+        filePath: string
+        conflicts: Array<{
+          tableName: string
+          rowKey: string
+          local: import('./copiper').RowData | null
+          remote: import('./copiper').RowData | null
+          reason: string
+        }>
+      }) => void
+    ) => () => void
+    onFeishuSyncResult: (callback: (result: unknown) => void) => () => void
   }
   aiCoding: {
     getWorkspaces: () => Promise<import('./ai-coding').AICodingWorkspace[]>

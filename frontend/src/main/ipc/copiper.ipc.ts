@@ -1,5 +1,8 @@
 import { ipcMain } from 'electron'
 import * as copiperService from '../services/copiper.service'
+import * as feishuSync from '../services/copiper-feishu-sync.service'
+import * as feishuWatcher from '../services/copiper-feishu-watcher.service'
+import type { FeishuLinkConfig } from '../services/jdb-meta'
 
 export function registerCopiperIpc(): void {
   ipcMain.handle('copiper:list-databases', async (_event, workspacePath: string) => {
@@ -129,4 +132,81 @@ export function registerCopiperIpc(): void {
       return copiperService.loadReferenceData(workspacePath, tableNames)
     }
   )
+
+  // ── Feishu spreadsheet link & sync ──
+
+  ipcMain.handle('copiper:feishu-availability', async () => {
+    return feishuSync.getAvailability()
+  })
+
+  ipcMain.handle('copiper:feishu-get-link', async (_event, filePath: string) => {
+    return feishuSync.getLink(filePath)
+  })
+
+  ipcMain.handle(
+    'copiper:feishu-save-link',
+    async (_event, filePath: string, link: FeishuLinkConfig) => {
+      const result = await feishuSync.saveLink(filePath, link)
+      if (result.ok && link.enabled) {
+        feishuWatcher.startWatching(filePath)
+      } else if (result.ok && !link.enabled) {
+        feishuWatcher.stopWatching(filePath)
+      }
+      return result
+    }
+  )
+
+  ipcMain.handle(
+    'copiper:feishu-disconnect',
+    async (_event, filePath: string, removeMeta?: boolean) => {
+      const result = await feishuSync.disconnect(filePath, !!removeMeta)
+      feishuWatcher.stopWatching(filePath)
+      return result
+    }
+  )
+
+  ipcMain.handle(
+    'copiper:feishu-test',
+    async (_event, filePathOrToken: string, tokenOverride?: string) => {
+      return feishuSync.testLink(filePathOrToken, tokenOverride)
+    }
+  )
+
+  ipcMain.handle(
+    'copiper:feishu-create-spreadsheet',
+    async (_event, filePath: string, title: string) => {
+      const result = await feishuSync.createSpreadsheetForFile(filePath, title)
+      if (result.ok) feishuWatcher.startWatching(filePath)
+      return result
+    }
+  )
+
+  ipcMain.handle('copiper:feishu-list-sheets', async (_event, tokenOrUrl: string) => {
+    return feishuSync.listRemoteSheets(tokenOrUrl)
+  })
+
+  ipcMain.handle(
+    'copiper:feishu-sync-now',
+    async (
+      _event,
+      filePath: string,
+      conflictResolutions?: Record<string, 'local' | 'remote' | 'skip'>
+    ) => {
+      const result = await feishuSync.syncFile(filePath, 'manual', { conflictResolutions })
+      return result
+    }
+  )
+
+  ipcMain.handle('copiper:feishu-get-status', async (_event, filePath: string) => {
+    return feishuSync.getStatus(filePath)
+  })
+
+  ipcMain.handle('copiper:feishu-refresh-watchers', async (_event, workspacePath: string) => {
+    feishuWatcher.refreshWorkspaceWatchers(workspacePath)
+    return { ok: true }
+  })
+
+  ipcMain.handle('copiper:feishu-parse-token', async (_event, urlOrToken: string) => {
+    return feishuSync.parseToken(urlOrToken)
+  })
 }

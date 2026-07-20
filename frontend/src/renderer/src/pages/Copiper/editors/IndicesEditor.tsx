@@ -2,6 +2,7 @@ import React, { useMemo } from 'react'
 import { Select, Tooltip } from 'antd'
 import { useCopiperStore } from '../../../stores/useCopiperStore'
 import type { ColDef } from '../../../types/copiper'
+import { getTableData } from '../../../types/copiper'
 
 interface IndicesEditorProps {
   value: unknown
@@ -21,8 +22,9 @@ const IndicesEditor: React.FC<IndicesEditorProps> = ({ value, colDef, onChange, 
   const selectOptions = useMemo(() => {
     if (!srcTable) return []
     let rows: Array<{ id: number | string; idx_name?: string }> = []
-    if (activeDatabase?.[srcTable]) {
-      rows = activeDatabase[srcTable].rows
+    const localTable = getTableData(activeDatabase, srcTable)
+    if (localTable) {
+      rows = localTable.rows
     } else if (referenceData[srcTable]) {
       rows = referenceData[srcTable]
     }

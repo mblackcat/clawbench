@@ -1,29 +1,38 @@
-import React from 'react'
-import { Button, Space, Input, App, theme } from 'antd'
+import React, { useEffect, useState } from 'react'
+import { Button, Space, Input, App, theme, Tooltip } from 'antd'
 import {
   PlusOutlined,
   DeleteOutlined,
   SettingOutlined,
   CheckCircleOutlined,
-  ExportOutlined
+  ExportOutlined,
+  CloudSyncOutlined,
+  LinkOutlined
 } from '@ant-design/icons'
 import { useCopiperStore } from '../../stores/useCopiperStore'
 import { useT } from '../../i18n'
+import { getFeishuLinkFromDb } from '../../types/copiper'
 
 interface CopiperToolbarProps {
   onOpenColumnEditor: () => void
   onOpenExportModal: () => void
+  onOpenFeishuLink?: () => void
+  onSyncNow?: () => void
 }
 
 const CopiperToolbar: React.FC<CopiperToolbarProps> = ({
   onOpenColumnEditor,
-  onOpenExportModal
+  onOpenExportModal,
+  onOpenFeishuLink,
+  onSyncNow
 }) => {
   const t = useT()
   const { token } = theme.useToken()
   const { message } = App.useApp()
 
   const activeTableName = useCopiperStore((s) => s.activeTableName)
+  const activeFilePath = useCopiperStore((s) => s.activeFilePath)
+  const activeDatabase = useCopiperStore((s) => s.activeDatabase)
   const selectedRowIndices = useCopiperStore((s) => s.selectedRowIndices)
   const searchText = useCopiperStore((s) => s.searchText)
   const addRow = useCopiperStore((s) => s.addRow)
@@ -31,6 +40,12 @@ const CopiperToolbar: React.FC<CopiperToolbarProps> = ({
   const validateCurrentTable = useCopiperStore((s) => s.validateCurrentTable)
   const setSearchText = useCopiperStore((s) => s.setSearchText)
 
+  const [feishuAvailable, setFeishuAvailable] = useState(false)
+  useEffect(() => {
+    void window.api.copiper.feishuAvailability().then((a) => setFeishuAvailable(a.available))
+  }, [])
+
+  const feishuLinked = !!(getFeishuLinkFromDb(activeDatabase)?.enabled)
   const disabled = !activeTableName
 
   return (
@@ -68,6 +83,24 @@ const CopiperToolbar: React.FC<CopiperToolbarProps> = ({
           onClick={onOpenColumnEditor}
         >
           {t('copiper.columnManager')}
+        </Button>
+        <Tooltip title={!feishuAvailable ? t('copiper.feishu.needLogin') : undefined}>
+          <Button
+            size="small"
+            icon={<LinkOutlined />}
+            disabled={!activeFilePath || !feishuAvailable}
+            onClick={onOpenFeishuLink}
+          >
+            {t('copiper.feishu.connectMenu')}
+          </Button>
+        </Tooltip>
+        <Button
+          size="small"
+          icon={<CloudSyncOutlined />}
+          disabled={!activeFilePath || !feishuAvailable || !feishuLinked}
+          onClick={onSyncNow}
+        >
+          {t('copiper.feishu.syncNow')}
         </Button>
         <Button
           size="small"

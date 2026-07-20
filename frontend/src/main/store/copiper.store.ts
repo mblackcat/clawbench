@@ -14,6 +14,26 @@ export interface LubanExportSettings {
   dataTargets?: string[]
 }
 
+/** Local-only row fingerprints after last successful Feishu sync (per file → table → rowKey → hash) */
+export type FeishuRowHashStore = Record<string, Record<string, Record<string, string>>>
+
+export type FeishuSyncStatusLight =
+  | 'none'
+  | 'syncing'
+  | 'ok'
+  | 'error'
+  | 'conflict'
+  | 'disconnected'
+
+export interface FeishuFileSyncStatus {
+  filePath: string
+  linked: boolean
+  light: FeishuSyncStatusLight
+  message?: string
+  lastSyncedAt?: number
+  lastError?: string
+}
+
 interface CopiperSchema {
   recentFiles: Record<string, string[]>
   exportSettings: {
@@ -22,6 +42,10 @@ interface CopiperSchema {
     exportSubDir: string
     luban?: LubanExportSettings
   }
+  /** Local Feishu row hashes — not shared in jdb */
+  feishuRowHashes: FeishuRowHashStore
+  /** Runtime status cache for UI lights */
+  feishuStatusByFile: Record<string, FeishuFileSyncStatus>
 }
 
 export const copiperStore = new Store<CopiperSchema>({
@@ -52,6 +76,14 @@ export const copiperStore = new Store<CopiperSchema>({
         exportSubDir: { type: 'string' },
         luban: { type: 'object' }
       }
+    },
+    feishuRowHashes: {
+      type: 'object',
+      default: {}
+    },
+    feishuStatusByFile: {
+      type: 'object',
+      default: {}
     }
   }
 })
@@ -87,4 +119,35 @@ export function setExportSettings(
       : current.luban
   }
   copiperStore.set('exportSettings', next)
+}
+
+// ── Feishu sync local state (row fingerprints + status lights) ──
+
+export function getRowHashes(filePath: string): Record<string, Record<string, string>> {
+  const all = copiperStore.get('feishuRowHashes') || {}
+  return all[filePath] || {}
+}
+
+export function setRowHashes(
+  filePath: string,
+  hashes: Record<string, Record<string, string>>
+): void {
+  const all = { ...(copiperStore.get('feishuRowHashes') || {}) }
+  all[filePath] = hashes
+  copiperStore.set('feishuRowHashes', all)
+}
+
+export function getFileSyncStatus(filePath: string): FeishuFileSyncStatus | undefined {
+  const all = copiperStore.get('feishuStatusByFile') || {}
+  return all[filePath]
+}
+
+export function setFileSyncStatus(filePath: string, status: FeishuFileSyncStatus): void {
+  const all = { ...(copiperStore.get('feishuStatusByFile') || {}) }
+  all[filePath] = status
+  copiperStore.set('feishuStatusByFile', all)
+}
+
+export function getAllFileSyncStatuses(): Record<string, FeishuFileSyncStatus> {
+  return copiperStore.get('feishuStatusByFile') || {}
 }

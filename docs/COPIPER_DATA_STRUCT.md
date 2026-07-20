@@ -107,10 +107,21 @@ CoPiper 使用**单行表头 + 数据行**的简洁电子表格结构（不是 E
 
 ## 6. 磁盘 JSON 形态（.jdb 文件）
 
-`.jdb` 本质是 JSON：
+`.jdb` 本质是 JSON。顶层 key 为表名；保留键 `__copiper__` 存放文件级元数据（如飞书连接，团队共享），**不是数据表**，导出/侧栏/引用解析会过滤它。
 
 ```json
 {
+  "__copiper__": {
+    "version": 1,
+    "feishu": {
+      "spreadsheetUrl": "https://xxx.feishu.cn/sheets/shtxxx",
+      "spreadsheetToken": "shtxxx",
+      "enabled": true,
+      "syncMode": "bidirectional",
+      "pollIntervalSec": 15,
+      "sheetMaps": []
+    }
+  },
   "ItemData": {
     "columns": [
       { "id":"rdesc",          "name":"rdesc",          "rname":"注释",   "j_type":"str",  "c_type":"rdesc", "c_index":0, "req_or_opt":"optional", "src":"" },

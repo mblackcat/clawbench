@@ -14,6 +14,7 @@ import { authRouter } from './routes/authRoutes';
 import { releaseRouter } from './routes/releaseRoutes';
 import { agentMemoryRouter } from './routes/agentMemoryRoutes';
 import { adminRouter } from './routes/adminRoutes';
+import { feishuEventRouter } from './routes/feishuEventRoutes';
 
 /**
  * 创建 Express 应用
@@ -113,6 +114,9 @@ export function createApp(): Application {
 
   // Admin routes (require auth + admin role)
   app.use('/api/v1/admin', adminRouter);
+
+  // Feishu drive events (callback + SSE for CoPiper sync)
+  app.use('/api/v1/feishu', feishuEventRouter);
 
   // 默认路由重定向到管理面板
   app.get('/', (req, res) => res.redirect('/admin/dashboard'));

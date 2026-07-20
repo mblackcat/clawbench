@@ -1,6 +1,13 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import * as logger from '../utils/logger'
+import {
+  COPIPER_META_KEY,
+  getFeishuLink,
+  isTableKey,
+  listTables,
+  type CopiperFileMeta
+} from './jdb-meta'
 
 // ── Local type definitions (mirror renderer types for main process use) ──
 
@@ -36,7 +43,14 @@ export interface JDBTableData {
   rows: RowData[]
 }
 
-export type JDBDatabase = Record<string, JDBTableData>
+/**
+ * Full .jdb root object. Table names map to JDBTableData;
+ * reserved key `__copiper__` holds file metadata (Feishu link, etc.).
+ */
+export type JDBDatabase = {
+  [COPIPER_META_KEY]?: CopiperFileMeta
+  [tableName: string]: JDBTableData | CopiperFileMeta | undefined
+}
 
 export interface JDBFileInfo {
   fileName: string
@@ -45,6 +59,8 @@ export interface JDBFileInfo {
   size: number
   modifiedAt: number
   tableNames: string[]
+  /** True when file has an enabled Feishu link in __copiper__ meta */
+  feishuLinked?: boolean
 }
 
 // ── Public API ──
@@ -64,15 +80,16 @@ export async function listJDBFiles(dir: string): Promise<JDBFileInfo[]> {
 
 /**
  * Read and parse a .jdb file. Normalizes column options from pipe-separated
- * strings to arrays.
+ * strings to arrays. Reserved meta key `__copiper__` is left intact.
  */
 export function loadDatabase(filePath: string): JDBDatabase {
   const raw = fs.readFileSync(filePath, 'utf-8')
   const data: JDBDatabase = JSON.parse(raw)
 
-  // Normalize column options
-  for (const tableName of Object.keys(data)) {
-    const table = data[tableName]
+  // Normalize table column options only — never mutate __copiper__ meta
+  for (const tableName of listTables(data)) {
+    const table = data[tableName] as JDBTableData
+    if (!table || typeof table !== 'object') continue
     if (!table.columns) table.columns = []
     if (!table.rows) table.rows = []
 
@@ -184,13 +201,27 @@ export function deleteDatabase(filePath: string): void {
 }
 
 /**
- * Quick-read a .jdb file and return its table names.
+ * Quick-read a .jdb file and return its table names (excludes __copiper__).
  */
 export function getTableNames(filePath: string): string[] {
   const raw = fs.readFileSync(filePath, 'utf-8')
   const data = JSON.parse(raw)
-  return Object.keys(data)
+  return listTables(data)
 }
+
+/** Whether the file has an enabled Feishu connection in meta */
+export function hasFeishuLink(filePath: string): boolean {
+  try {
+    const raw = fs.readFileSync(filePath, 'utf-8')
+    const data = JSON.parse(raw)
+    const link = getFeishuLink(data)
+    return !!(link && link.enabled && link.spreadsheetToken)
+  } catch {
+    return false
+  }
+}
+
+export { COPIPER_META_KEY, isTableKey, listTables }
 
 // ── Internal helpers ──
 
@@ -216,14 +247,18 @@ async function scanDirectory(
     } else if (entry.isFile() && entry.name.endsWith('.jdb')) {
       try {
         const stat = fs.statSync(fullPath)
-        const tableNames = getTableNames(fullPath)
+        const raw = fs.readFileSync(fullPath, 'utf-8')
+        const data = JSON.parse(raw)
+        const tableNames = listTables(data)
+        const link = getFeishuLink(data)
         results.push({
           fileName: entry.name,
           filePath: fullPath,
           relativePath: path.relative(baseDir, fullPath),
           size: stat.size,
           modifiedAt: stat.mtimeMs,
-          tableNames
+          tableNames,
+          feishuLinked: !!(link && link.enabled && link.spreadsheetToken)
         })
       } catch (err) {
         logger.warn('Failed to read JDB file:', fullPath, err)

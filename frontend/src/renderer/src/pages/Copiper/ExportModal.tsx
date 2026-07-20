@@ -27,6 +27,7 @@ import { useCopiperStore } from '../../stores/useCopiperStore'
 import { useT } from '../../i18n'
 import { openExternalLink } from '../../utils/markdown-links'
 import type { ExportConfig, ExportFormat, ExportResult, LubanExportOptions } from '../../types/copiper'
+import { listTableNames } from '../../types/copiper'
 
 const { Text, Link } = Typography
 
@@ -112,7 +113,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ open, onClose }) => {
 
   const tableNames = useMemo(() => {
     if (!activeDatabase) return []
-    return Object.keys(activeDatabase)
+    return listTableNames(activeDatabase)
   }, [activeDatabase])
 
   const wantLuban = formats.includes('luban')

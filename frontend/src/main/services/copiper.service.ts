@@ -8,6 +8,13 @@ import * as jdb2luban from './jdb2luban.service'
 import { resolvePythonCommand } from './python-runner.service'
 import { getExportSettings, setExportSettings, addRecentFile } from '../store/copiper.store'
 import type { JDBDatabase, JDBTableData, ColDef, RowData, JDBFileInfo } from './jdb.service'
+import { listTables, tablesOnly, getTable, isTableKey } from './jdb-meta'
+
+function requireTable(db: JDBDatabase, tableName: string): JDBTableData {
+  const table = getTable(db, tableName)
+  if (!table) throw new Error(`Table "${tableName}" does not exist`)
+  return table
+}
 import type { LubanExportOptions } from './jdb2luban.service'
 
 // ── Local types for validation / export (avoid importing from renderer) ──
@@ -65,6 +72,14 @@ export function loadDatabase(filePath: string): JDBDatabase {
 
 export function saveDatabase(filePath: string, data: JDBDatabase): void {
   jdbService.saveDatabase(filePath, data)
+  // Trigger Feishu push when file is linked (debounced in watcher)
+  try {
+    // Lazy require to avoid circular init
+    const watcher = require('./copiper-feishu-watcher.service') as typeof import('./copiper-feishu-watcher.service')
+    watcher.notifyLocalSaved(filePath)
+  } catch {
+    /* watcher optional during early boot */
+  }
 }
 
 export function createDatabase(filePath: string, tableName: string): void {
@@ -79,7 +94,10 @@ export function deleteDatabase(filePath: string): void {
 
 export function addTable(filePath: string, tableName: string): JDBDatabase {
   const db = jdbService.loadDatabase(filePath)
-  if (db[tableName]) {
+  if (!isTableKey(tableName)) {
+    throw new Error(`"${tableName}" is a reserved name and cannot be used as a table`)
+  }
+  if (getTable(db, tableName)) {
     throw new Error(`Table "${tableName}" already exists`)
   }
   db[tableName] = {
@@ -139,7 +157,7 @@ export function addTable(filePath: string, tableName: string): JDBDatabase {
 
 export function removeTable(filePath: string, tableName: string): JDBDatabase {
   const db = jdbService.loadDatabase(filePath)
-  if (!db[tableName]) {
+  if (!isTableKey(tableName) || !getTable(db, tableName)) {
     throw new Error(`Table "${tableName}" does not exist`)
   }
   delete db[tableName]
@@ -153,13 +171,16 @@ export function renameTable(
   newName: string
 ): JDBDatabase {
   const db = jdbService.loadDatabase(filePath)
-  if (!db[oldName]) {
+  if (!isTableKey(oldName) || !getTable(db, oldName)) {
     throw new Error(`Table "${oldName}" does not exist`)
   }
-  if (db[newName]) {
+  if (!isTableKey(newName)) {
+    throw new Error(`"${newName}" is a reserved name and cannot be used as a table`)
+  }
+  if (getTable(db, newName)) {
     throw new Error(`Table "${newName}" already exists`)
   }
-  // Preserve key order: rebuild the object
+  // Preserve key order (including __copiper__ meta): rebuild the object
   const newDb: JDBDatabase = {}
   for (const key of Object.keys(db)) {
     if (key === oldName) {
@@ -180,8 +201,7 @@ export function addColumn(
   column: ColDef
 ): JDBDatabase {
   const db = jdbService.loadDatabase(filePath)
-  const table = db[tableName]
-  if (!table) throw new Error(`Table "${tableName}" does not exist`)
+  const table = requireTable(db, tableName)
   table.columns.push(column)
   jdbService.saveDatabase(filePath, db)
   return db
@@ -194,8 +214,7 @@ export function updateColumn(
   updates: Partial<ColDef>
 ): JDBDatabase {
   const db = jdbService.loadDatabase(filePath)
-  const table = db[tableName]
-  if (!table) throw new Error(`Table "${tableName}" does not exist`)
+  const table = requireTable(db, tableName)
   const idx = table.columns.findIndex((c) => c.id === columnId)
   if (idx === -1) throw new Error(`Column "${columnId}" not found`)
   table.columns[idx] = { ...table.columns[idx], ...updates }
@@ -209,8 +228,7 @@ export function removeColumn(
   columnId: string
 ): JDBDatabase {
   const db = jdbService.loadDatabase(filePath)
-  const table = db[tableName]
-  if (!table) throw new Error(`Table "${tableName}" does not exist`)
+  const table = requireTable(db, tableName)
   // Find the column name before removing it
   const removedCol = table.columns.find((c) => c.id === columnId)
   table.columns = table.columns.filter((c) => c.id !== columnId)
@@ -232,8 +250,7 @@ export function addRow(
   row: RowData
 ): JDBDatabase {
   const db = jdbService.loadDatabase(filePath)
-  const table = db[tableName]
-  if (!table) throw new Error(`Table "${tableName}" does not exist`)
+  const table = requireTable(db, tableName)
   table.rows.push(row)
   jdbService.saveDatabase(filePath, db)
   return db
@@ -246,8 +263,7 @@ export function updateRow(
   updates: Partial<RowData>
 ): JDBDatabase {
   const db = jdbService.loadDatabase(filePath)
-  const table = db[tableName]
-  if (!table) throw new Error(`Table "${tableName}" does not exist`)
+  const table = requireTable(db, tableName)
   if (rowIndex < 0 || rowIndex >= table.rows.length) {
     throw new Error(`Row index ${rowIndex} out of range`)
   }
@@ -262,8 +278,7 @@ export function deleteRows(
   rowIndices: number[]
 ): JDBDatabase {
   const db = jdbService.loadDatabase(filePath)
-  const table = db[tableName]
-  if (!table) throw new Error(`Table "${tableName}" does not exist`)
+  const table = requireTable(db, tableName)
   const indexSet = new Set(rowIndices)
   table.rows = table.rows.filter((_, i) => !indexSet.has(i))
   jdbService.saveDatabase(filePath, db)
@@ -278,7 +293,7 @@ export function validateTable(
   allTables?: JDBDatabase
 ): ValidationIssue[] {
   const db = allTables || jdbService.loadDatabase(filePath)
-  const table = db[tableName]
+  const table = getTable(db, tableName)
   if (!table) return [{ level: 'error', tableName, rowIndex: -1, message: `Table "${tableName}" not found` }]
 
   const issues: ValidationIssue[] = []
@@ -357,10 +372,11 @@ export function validateTable(
           // Check if referenced value exists in source table
           if (allTables) {
             const srcTable = col.type.split('/')[1]
-            if (srcTable && allTables[srcTable]) {
-              const srcRows = allTables[srcTable].rows
+            const srcData = srcTable ? getTable(allTables, srcTable) : undefined
+            if (srcData) {
+              const srcRows = srcData.rows
               const exists = srcRows.some(
-                (sr) => sr.idx_name === String(value) || String(sr.id) === String(value)
+                (sr: RowData) => sr.idx_name === String(value) || String(sr.id) === String(value)
               )
               if (!exists) {
                 issues.push({
@@ -379,12 +395,13 @@ export function validateTable(
         case 'indices': {
           if (allTables) {
             const srcTable = col.type.split('/')[1]
-            if (srcTable && allTables[srcTable]) {
-              const srcRows = allTables[srcTable].rows
+            const srcData = srcTable ? getTable(allTables, srcTable) : undefined
+            if (srcData) {
+              const srcRows = srcData.rows
               const vals = String(value).split('|').map((v) => v.trim()).filter(Boolean)
               for (const v of vals) {
                 const exists = srcRows.some(
-                  (sr) => sr.idx_name === v || String(sr.id) === v
+                  (sr: RowData) => sr.idx_name === v || String(sr.id) === v
                 )
                 if (!exists) {
                   issues.push({
@@ -674,7 +691,7 @@ export async function exportTable(
   _skipPostProcess?: boolean
 ): Promise<ExportResult[]> {
   const db = allTables || jdbService.loadDatabase(filePath)
-  const table = db[tableName]
+  const table = getTable(db, tableName)
   if (!table) {
     return [{
       tableName,
@@ -867,8 +884,8 @@ export async function exportAll(
 ): Promise<ExportResult[]> {
   const db = jdbService.loadDatabase(filePath)
   const tableNames = config.tableNames && config.tableNames.length > 0
-    ? config.tableNames
-    : Object.keys(db)
+    ? config.tableNames.filter(isTableKey)
+    : listTables(db)
 
   // Preload all workspace tables once for cross-file reference resolution
   const allWorkspaceTables = loadAllWorkspaceTables(workspacePath, db)
@@ -957,7 +974,8 @@ export function getTableInfos(workspacePath: string): any[] {
   try {
     const db = jdbService.loadDatabase(infoPath)
     // tb_infos.jdb typically has a single table
-    const firstTable = Object.values(db)[0]
+    const names = listTables(db)
+    const firstTable = names.length > 0 ? getTable(db, names[0]) : undefined
     return firstTable ? firstTable.rows : []
   } catch (err) {
     logger.error('Failed to load tb_infos.jdb:', err)
@@ -974,9 +992,10 @@ export function saveTableInfos(workspacePath: string, infos: any[]): void {
 
   try {
     const db = jdbService.loadDatabase(infoPath)
-    const tableName = Object.keys(db)[0]
-    if (tableName) {
-      db[tableName].rows = infos
+    const tableName = listTables(db)[0]
+    const table = tableName ? getTable(db, tableName) : undefined
+    if (table) {
+      table.rows = infos
       jdbService.saveDatabase(infoPath, db)
     }
   } catch (err) {
@@ -1028,14 +1047,15 @@ function loadAllWorkspaceTables(workspacePath: string, currentDb?: JDBDatabase):
     for (const filePath of jdbPaths) {
       try {
         const db = jdbService.loadDatabase(filePath)
-        Object.assign(all, db)
+        // Only merge real tables — never inject __copiper__ meta as a table
+        Object.assign(all, tablesOnly(db))
       } catch {
         // skip unreadable files
       }
     }
   }
   // Current DB overrides (may have unsaved in-memory changes)
-  if (currentDb) Object.assign(all, currentDb)
+  if (currentDb) Object.assign(all, tablesOnly(currentDb))
   return all
 }
 
@@ -1059,9 +1079,11 @@ export function loadReferenceData(
     if (needed.size === 0) break
     try {
       const db = jdbService.loadDatabase(filePath)
-      for (const tblName of Object.keys(db)) {
+      for (const tblName of listTables(db)) {
         if (needed.has(tblName)) {
-          result[tblName] = db[tblName].rows.map((r) => ({
+          const table = getTable(db, tblName)
+          if (!table) continue
+          result[tblName] = table.rows.map((r) => ({
             id: r.id,
             idx_name: r.idx_name
           }))
@@ -1109,7 +1131,9 @@ function buildExportContext(allTables: JDBDatabase): ExportContext {
   const srcToFromMap: Record<string, Record<string, string>> = {}
   const allColsInfo: Record<string, Record<string, ColDef>> = {}
 
-  for (const [tableName, tableData] of Object.entries(allTables)) {
+  for (const tableName of listTables(allTables)) {
+    const tableData = getTable(allTables, tableName)
+    if (!tableData) continue
     // Build cols info map
     const colMap: Record<string, ColDef> = {}
     for (const col of tableData.columns) {
@@ -1310,13 +1334,13 @@ function resolveIndex(
   }
 
   // 3. Fallback: try direct lookup in source table rows
-  const srcTable = ctx.allTables[srcTableName]
+  const srcTable = getTable(ctx.allTables, srcTableName)
   if (srcTable) {
-    const match = srcTable.rows.find((r) => r.idx_name === strVal)
+    const match = srcTable.rows.find((r: RowData) => r.idx_name === strVal)
     if (match) return match.id
     const numVal = Number(strVal)
     if (!isNaN(numVal)) {
-      const idMatch = srcTable.rows.find((r) => r.id === numVal)
+      const idMatch = srcTable.rows.find((r: RowData) => r.id === numVal)
       if (idMatch) return numVal
     }
   }

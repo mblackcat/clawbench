@@ -77,8 +77,96 @@ export interface JDBTableData {
   rows: RowData[]
 }
 
-/** 整个 JDB 文件 — tableName → 表数据 */
-export type JDBDatabase = Record<string, JDBTableData>
+/** Reserved root key for file-level metadata (never a data table) */
+export const COPIPER_META_KEY = '__copiper__' as const
+
+export type FeishuSyncMode = 'bidirectional' | 'push' | 'pull'
+export type FeishuHeaderMode = 'name' | 'rname'
+export type FeishuOnRemoteDelete = 'prompt' | 'apply' | 'ignore'
+
+export interface FeishuSheetMap {
+  jdbTable: string
+  sheetId: string
+  sheetTitle: string
+  headerMode: FeishuHeaderMode
+  keyColumn: string
+  headerRow: number
+  dataStartRow: number
+}
+
+export interface FeishuTestResult {
+  ok: boolean
+  canRead: boolean
+  canWrite: boolean
+  message: string
+  checkedAt: number
+}
+
+export interface FeishuLinkConfig {
+  spreadsheetUrl: string
+  spreadsheetToken: string
+  title?: string
+  enabled: boolean
+  syncMode: FeishuSyncMode
+  pollIntervalSec: number
+  sheetMaps: FeishuSheetMap[]
+  onRemoteDelete?: FeishuOnRemoteDelete
+  lastRemoteRevision?: number
+  lastTestAt?: number
+  lastTestResult?: FeishuTestResult | null
+  lastSyncedAt?: number
+  createdAt?: number
+  updatedAt?: number
+  createdBy?: { openId?: string; name?: string }
+}
+
+export interface CopiperFileMeta {
+  version: number
+  feishu?: FeishuLinkConfig | null
+}
+
+/** 整个 JDB 文件 — 表名 → 表数据；保留键 `__copiper__` 为文件元数据 */
+export type JDBDatabase = {
+  [COPIPER_META_KEY]?: CopiperFileMeta
+  [tableName: string]: JDBTableData | CopiperFileMeta | undefined
+}
+
+/** 过滤掉保留元数据键后的表名列表 */
+export function listTableNames(db: JDBDatabase | null | undefined): string[] {
+  if (!db) return []
+  return Object.keys(db).filter((k) => k !== COPIPER_META_KEY)
+}
+
+/** Safe table accessor — skips reserved meta key */
+export function getTableData(
+  db: JDBDatabase | null | undefined,
+  name: string | null | undefined
+): JDBTableData | null {
+  if (!db || !name || name === COPIPER_META_KEY) return null
+  const t = db[name]
+  if (!t || typeof t !== 'object') return null
+  if (!('columns' in t) || !('rows' in t)) return null
+  return t as JDBTableData
+}
+
+export function getFeishuLinkFromDb(db: JDBDatabase | null | undefined): FeishuLinkConfig | null {
+  if (!db) return null
+  const meta = db[COPIPER_META_KEY]
+  if (!meta || typeof meta !== 'object' || !('feishu' in meta)) return null
+  return (meta as CopiperFileMeta).feishu ?? null
+}
+
+/** Feishu sync status light for sidebar */
+export type FeishuSyncStatusLight = 'none' | 'syncing' | 'ok' | 'error' | 'conflict' | 'disconnected'
+
+export interface FeishuFileSyncStatus {
+  filePath: string
+  linked: boolean
+  light: FeishuSyncStatusLight
+  message?: string
+  lastSyncedAt?: number
+  lastError?: string
+}
 
 /** JDB 文件元信息 */
 export interface JDBFileInfo {
@@ -94,6 +182,8 @@ export interface JDBFileInfo {
   modifiedAt: number
   /** 包含的表名列表 */
   tableNames: string[]
+  /** 是否已配置飞书连接 */
+  feishuLinked?: boolean
 }
 
 /** 表元数据 — 对应 tb_infos.jdb 的行 */

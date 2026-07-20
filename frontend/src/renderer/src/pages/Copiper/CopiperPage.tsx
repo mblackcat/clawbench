@@ -12,6 +12,9 @@ import ColumnEditor from './ColumnEditor'
 import ExportModal from './ExportModal'
 import RowDetailDrawer from './RowDetailDrawer'
 import ValidationPanel from './ValidationPanel'
+import FeishuLinkModal from './FeishuLinkModal'
+import SyncConflictModal, { type SyncConflictItem } from './SyncConflictModal'
+import { getTableData } from '../../types/copiper'
 
 const CopiperPage: React.FC = () => {
   const t = useT()
@@ -33,13 +36,30 @@ const CopiperPage: React.FC = () => {
   const [exportModalOpen, setExportModalOpen] = useState(false)
   const [rowDetailOpen, setRowDetailOpen] = useState(false)
   const [rowDetailIndex, setRowDetailIndex] = useState<number | null>(null)
+  const [feishuLinkOpen, setFeishuLinkOpen] = useState(false)
+  const [feishuLinkPath, setFeishuLinkPath] = useState<string | null>(null)
+  const [conflictOpen, setConflictOpen] = useState(false)
+  const [conflictPath, setConflictPath] = useState<string | null>(null)
+  const [conflicts, setConflicts] = useState<SyncConflictItem[]>([])
 
-  // Fetch databases when workspace changes
+  // Fetch databases when workspace changes + start Feishu watchers
   useEffect(() => {
     if (activeWorkspace?.path) {
       fetchDatabases(activeWorkspace.path)
+      void window.api.copiper.feishuRefreshWatchers(activeWorkspace.path)
     }
   }, [activeWorkspace?.path])
+
+  // Feishu conflict push events
+  useEffect(() => {
+    const off = window.api.copiper.onFeishuConflict((payload) => {
+      setConflictPath(payload.filePath)
+      setConflicts(payload.conflicts as SyncConflictItem[])
+      setConflictOpen(true)
+      message.warning(t('copiper.feishu.conflictDetected'))
+    })
+    return off
+  }, [message, t])
 
   // Ctrl+S keyboard shortcut to save
   const handleKeyDown = useCallback(
@@ -72,6 +92,39 @@ const CopiperPage: React.FC = () => {
     return () => window.removeEventListener('beforeunload', handler)
   }, [dirty])
 
+  const handleOpenFeishuLink = (filePath: string) => {
+    setFeishuLinkPath(filePath)
+    setFeishuLinkOpen(true)
+  }
+
+  const handleSyncNow = async (filePath: string) => {
+    try {
+      message.loading({ content: t('copiper.feishu.syncing'), key: 'feishu-sync' })
+      const result = await window.api.copiper.feishuSyncNow(filePath)
+      if (result.conflicts?.length) {
+        message.warning({ content: t('copiper.feishu.conflictDetected'), key: 'feishu-sync' })
+        setConflictPath(filePath)
+        setConflicts(result.conflicts as SyncConflictItem[])
+        setConflictOpen(true)
+      } else if (result.ok) {
+        message.success({ content: t('copiper.feishu.syncDone'), key: 'feishu-sync' })
+        // reload if this file is active
+        const { activeFilePath, loadDatabase } = useCopiperStore.getState()
+        if (activeFilePath === filePath) {
+          await loadDatabase(filePath)
+        }
+      } else {
+        const errMsg =
+          result.error === 'feishu_login_required'
+            ? t('copiper.feishu.needLogin')
+            : result.error || t('copiper.feishu.syncFailed')
+        message.error({ content: errMsg, key: 'feishu-sync' })
+      }
+    } catch {
+      message.error({ content: t('copiper.feishu.syncFailed'), key: 'feishu-sync' })
+    }
+  }
+
   const handleSave = async () => {
     try {
       await saveCurrentDatabase()
@@ -103,14 +156,19 @@ const CopiperPage: React.FC = () => {
     )
   }
 
-  // Get current table data for display
+  // Get current table data for empty-state checks
   const currentTable =
-    activeDatabase && activeTableName ? activeDatabase[activeTableName] : null
+    activeDatabase && activeTableName
+      ? getTableData(activeDatabase, activeTableName)
+      : null
 
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
       {/* Sidebar */}
-      <CopiperSidebar />
+      <CopiperSidebar
+        onOpenFeishuLink={handleOpenFeishuLink}
+        onSyncNow={handleSyncNow}
+      />
 
       {/* Main content area */}
       <div
@@ -126,6 +184,14 @@ const CopiperPage: React.FC = () => {
         <CopiperToolbar
           onOpenColumnEditor={() => setColumnEditorOpen(true)}
           onOpenExportModal={() => setExportModalOpen(true)}
+          onOpenFeishuLink={() => {
+            const fp = useCopiperStore.getState().activeFilePath
+            if (fp) handleOpenFeishuLink(fp)
+          }}
+          onSyncNow={() => {
+            const fp = useCopiperStore.getState().activeFilePath
+            if (fp) void handleSyncNow(fp)
+          }}
         />
 
         {/* Table content area */}
@@ -204,6 +270,33 @@ const CopiperPage: React.FC = () => {
         onClose={() => {
           setRowDetailOpen(false)
           setRowDetailIndex(null)
+        }}
+      />
+
+      <FeishuLinkModal
+        open={feishuLinkOpen}
+        filePath={feishuLinkPath}
+        onClose={() => setFeishuLinkOpen(false)}
+        onSaved={() => {
+          if (activeWorkspace?.path) {
+            void fetchDatabases(activeWorkspace.path)
+            void window.api.copiper.feishuRefreshWatchers(activeWorkspace.path)
+          }
+        }}
+      />
+
+      <SyncConflictModal
+        open={conflictOpen}
+        filePath={conflictPath}
+        conflicts={conflicts}
+        onClose={() => setConflictOpen(false)}
+        onResolved={async () => {
+          if (conflictPath) {
+            const { activeFilePath, loadDatabase } = useCopiperStore.getState()
+            if (activeFilePath === conflictPath) {
+              await loadDatabase(conflictPath)
+            }
+          }
         }}
       />
     </div>

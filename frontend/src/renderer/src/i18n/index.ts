@@ -201,7 +201,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'settings.tabAITools': 'AI 工具',
     'settings.aiTools.webSearchGroup': '网络搜索',
     'settings.aiTools.webSearchGroupDesc': '对应 AI 助理中的「网络搜索」开关，启用后 AI 可联网搜索并浏览网页获取最新信息。',
-    'settings.aiTools.webToolsAutoDesc': '开箱即用：在 AI 聊天打开「网络搜索」即可。搜索默认 DuckDuckGo；若本机已配置 Brave Key 或安装 Lightpanda 会自动使用。策略已内化到工具（含 Sources 引用），无需再配置引擎。',
+    'settings.aiTools.webToolsAutoDesc': '开箱即用：在 AI 聊天打开「网络搜索」即可。搜索默认 DuckDuckGo；若本机已配置 Brave Key 或安装 Lightpanda 会自动使用。策略已内化到工具（含 Sources 引用），无需再配置引擎。',
     'settings.aiTools.toolBehavior': '工具行为',
     'settings.aiTools.toolBehaviorHint': 'Agent 工具循环已内置（不限制步数，自动去重防死循环）。仅保留单次工具超时。',
     'settings.aiTools.toolTimeout': '工具超时时间（秒）',
@@ -1927,6 +1927,58 @@ const translations: Record<Lang, Record<string, string>> = {
     'copiper.optionsPlaceholder': '选项1|选项2|...',
     'copiper.addColumn': '添加列',
     'copiper.groupDataFields': 'Data Fields',
+    // Feishu spreadsheet sync
+    'copiper.feishu.linkTitle': '飞书电子表格连接',
+    'copiper.feishu.connectMenu': '连接飞书表格',
+    'copiper.feishu.syncNow': '立即同步',
+    'copiper.feishu.disconnect': '断开飞书连接',
+    'copiper.feishu.disconnectConfirm': '断开后将停止同步；连接配置仍保留在 JDB 中（enabled=false）。确定？',
+    'copiper.feishu.disconnected': '已断开飞书连接',
+    'copiper.feishu.disconnectFailed': '断开失败',
+    'copiper.feishu.needLogin': '需要飞书登录',
+    'copiper.feishu.needLoginDesc': '飞书表格同步仅在使用服务端飞书 OAuth 登录后可用。请先用飞书账号登录 ClawBench。',
+    'copiper.feishu.modeLink': '关联已有表格',
+    'copiper.feishu.modeCreate': '创建新表格',
+    'copiper.feishu.createHint': '将在你的飞书云空间创建电子表格，并为每个本地子表建立映射。',
+    'copiper.feishu.sheetTitle': '表格标题',
+    'copiper.feishu.createAndMap': '创建并自动映射',
+    'copiper.feishu.urlPlaceholder': '粘贴飞书电子表格 URL 或 spreadsheet token',
+    'copiper.feishu.fetchSheets': '读取子表列表',
+    'copiper.feishu.needUrl': '请填写表格 URL 或 token',
+    'copiper.feishu.listFailed': '读取子表失败',
+    'copiper.feishu.sheetsLoaded': '已加载子表列表',
+    'copiper.feishu.created': '云端表格已创建',
+    'copiper.feishu.createFailed': '创建云端表格失败',
+    'copiper.feishu.token': 'Token',
+    'copiper.feishu.sheetMapping': '子表映射（必须全部指定）',
+    'copiper.feishu.mappingHint': '一个 JDB 文件对应一张飞书电子表格；每个本地表必须映射到一个工作表。',
+    'copiper.feishu.localTable': '本地表',
+    'copiper.feishu.remoteSheet': '飞书工作表',
+    'copiper.feishu.selectSheet': '选择工作表',
+    'copiper.feishu.mappingRequired': '请为每个本地表指定飞书工作表映射',
+    'copiper.feishu.test': '测试连通性',
+    'copiper.feishu.saveLink': '保存连接',
+    'copiper.feishu.saved': '飞书连接已保存到 JDB',
+    'copiper.feishu.saveFailed': '保存连接失败',
+    'copiper.feishu.syncing': '正在同步飞书表格…',
+    'copiper.feishu.syncDone': '同步完成',
+    'copiper.feishu.syncFailed': '同步失败',
+    'copiper.feishu.conflictDetected': '检测到同步冲突，请手动解决',
+    'copiper.feishu.conflictTitle': '飞书同步冲突',
+    'copiper.feishu.conflictHint': '以下行在本地与云端均有修改。请选择保留哪一侧，然后应用。',
+    'copiper.feishu.reason': '原因',
+    'copiper.feishu.local': '本地',
+    'copiper.feishu.remote': '云端',
+    'copiper.feishu.resolution': '处理',
+    'copiper.feishu.keepLocal': '保留本地',
+    'copiper.feishu.keepRemote': '保留云端',
+    'copiper.feishu.skip': '跳过',
+    'copiper.feishu.applyResolutions': '应用并同步',
+    'copiper.feishu.conflictsRemain': '仍有未解决冲突',
+    'copiper.feishu.statusSyncing': '同步中',
+    'copiper.feishu.statusOk': '已连接 · 同步正常',
+    'copiper.feishu.statusConflict': '存在冲突',
+    'copiper.feishu.statusError': '断开或错误',
     'copiper.groupSupplementaryFields': 'Supplementary Fields',
     'copiper.groupDescriptionFields': 'Description Fields',
     'copiper.rowDetail': '行详情',
@@ -4215,6 +4267,58 @@ const translations: Record<Lang, Record<string, string>> = {
     'copiper.optionsPlaceholder': 'option1|option2|...',
     'copiper.addColumn': 'Add Column',
     'copiper.groupDataFields': 'Data Fields',
+    // Feishu spreadsheet sync
+    'copiper.feishu.linkTitle': 'Feishu Spreadsheet Link',
+    'copiper.feishu.connectMenu': 'Connect Feishu Sheet',
+    'copiper.feishu.syncNow': 'Sync Now',
+    'copiper.feishu.disconnect': 'Disconnect Feishu',
+    'copiper.feishu.disconnectConfirm': 'Stop syncing? Link config stays in the JDB (enabled=false).',
+    'copiper.feishu.disconnected': 'Feishu disconnected',
+    'copiper.feishu.disconnectFailed': 'Disconnect failed',
+    'copiper.feishu.needLogin': 'Feishu login required',
+    'copiper.feishu.needLoginDesc': 'Spreadsheet sync is only available after server-side Feishu OAuth login. Please sign in with Feishu.',
+    'copiper.feishu.modeLink': 'Link existing',
+    'copiper.feishu.modeCreate': 'Create new',
+    'copiper.feishu.createHint': 'Creates a spreadsheet in your Feishu cloud and maps each local table.',
+    'copiper.feishu.sheetTitle': 'Spreadsheet title',
+    'copiper.feishu.createAndMap': 'Create & auto-map',
+    'copiper.feishu.urlPlaceholder': 'Paste Feishu spreadsheet URL or token',
+    'copiper.feishu.fetchSheets': 'Load sheets',
+    'copiper.feishu.needUrl': 'Please enter a URL or token',
+    'copiper.feishu.listFailed': 'Failed to list sheets',
+    'copiper.feishu.sheetsLoaded': 'Sheets loaded',
+    'copiper.feishu.created': 'Cloud spreadsheet created',
+    'copiper.feishu.createFailed': 'Failed to create spreadsheet',
+    'copiper.feishu.token': 'Token',
+    'copiper.feishu.sheetMapping': 'Sheet mapping (all required)',
+    'copiper.feishu.mappingHint': 'One JDB file maps to one Feishu spreadsheet; every local table must map to a worksheet.',
+    'copiper.feishu.localTable': 'Local table',
+    'copiper.feishu.remoteSheet': 'Feishu sheet',
+    'copiper.feishu.selectSheet': 'Select sheet',
+    'copiper.feishu.mappingRequired': 'Map every local table to a Feishu sheet',
+    'copiper.feishu.test': 'Test connection',
+    'copiper.feishu.saveLink': 'Save link',
+    'copiper.feishu.saved': 'Feishu link saved to JDB',
+    'copiper.feishu.saveFailed': 'Failed to save link',
+    'copiper.feishu.syncing': 'Syncing Feishu spreadsheet…',
+    'copiper.feishu.syncDone': 'Sync complete',
+    'copiper.feishu.syncFailed': 'Sync failed',
+    'copiper.feishu.conflictDetected': 'Sync conflicts detected — resolve manually',
+    'copiper.feishu.conflictTitle': 'Feishu sync conflicts',
+    'copiper.feishu.conflictHint': 'These rows changed on both sides. Choose which side to keep, then apply.',
+    'copiper.feishu.reason': 'Reason',
+    'copiper.feishu.local': 'Local',
+    'copiper.feishu.remote': 'Remote',
+    'copiper.feishu.resolution': 'Resolution',
+    'copiper.feishu.keepLocal': 'Keep local',
+    'copiper.feishu.keepRemote': 'Keep remote',
+    'copiper.feishu.skip': 'Skip',
+    'copiper.feishu.applyResolutions': 'Apply & sync',
+    'copiper.feishu.conflictsRemain': 'Unresolved conflicts remain',
+    'copiper.feishu.statusSyncing': 'Syncing',
+    'copiper.feishu.statusOk': 'Connected · healthy',
+    'copiper.feishu.statusConflict': 'Conflicts',
+    'copiper.feishu.statusError': 'Disconnected or error',
     'copiper.groupSupplementaryFields': 'Supplementary Fields',
     'copiper.groupDescriptionFields': 'Description Fields',
     'copiper.rowDetail': 'Row Detail',
