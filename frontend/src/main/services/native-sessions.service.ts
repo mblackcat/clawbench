@@ -210,6 +210,54 @@ async function listClaudeStyleSessions(projectDirs: string[]): Promise<NativeSes
   return sessions
 }
 
+/** Claude Code local-command caveat boilerplate (often first "user" message). */
+function isClaudeCaveatBoilerplate(text: string): boolean {
+  return /caveat:\s*the messages below were generated/i.test(text.trim())
+}
+
+/**
+ * Whether a Claude user row is synthetic noise (slash commands, IDE context,
+ * local-command caveats) and should not become a session title.
+ */
+function isClaudeSyntheticUserText(text: string, data?: { isMeta?: boolean }): boolean {
+  if (data?.isMeta) return true
+  const trimmed = text.trim()
+  if (!trimmed) return true
+  // IDE-injected context blocks
+  if (trimmed.startsWith('<ide_')) return true
+  // Slash-command / bash payload wrappers (not real prompts)
+  if (/^<(?:command-name|command-message|command-args|bash-input|bash-stdout|bash-stderr)\b/i.test(trimmed)) {
+    return true
+  }
+  // Pure local-command caveat (with or without tags after sanitize)
+  if (isClaudeCaveatBoilerplate(trimmed)) return true
+  if (/^<local-command/i.test(trimmed) && isClaudeCaveatBoilerplate(sanitizeClaudeTitleText(trimmed))) {
+    return true
+  }
+  return false
+}
+
+/** Strip Claude Code XML-like tags from title text; keep human-readable content. */
+function sanitizeClaudeTitleText(text: string): string {
+  let result = text.trim()
+  // Remove complete open/close tags like <local-command-caveat>…</local-command-caveat>
+  result = result.replace(/<\/?[a-zA-Z][\w-]*(?:\s[^>]*)?>/g, ' ')
+  // Drop leftover partial open tags truncated by length limit
+  result = result.replace(/<[a-zA-Z][\w-]*[^>]*$/g, '')
+  return result.replace(/\s+/g, ' ').trim()
+}
+
+/** Extract a clean display title from raw Claude user message text. */
+function extractClaudeSessionTitle(rawText: string, data?: { isMeta?: boolean }): string {
+  const raw = rawText.trim()
+  if (!raw || isClaudeSyntheticUserText(raw, data)) return ''
+  const cleaned = sanitizeClaudeTitleText(raw)
+  if (!cleaned || isClaudeCaveatBoilerplate(cleaned)) return ''
+  // Still looks like an unstripped XML tag after sanitize — not a real title
+  if (cleaned.startsWith('<') && cleaned.includes('>')) return ''
+  return cleaned.length > 80 ? cleaned.slice(0, 80) + '…' : cleaned
+}
+
 /** Extract title and slug from a Claude session JSONL (reads first ~1MB). */
 async function parseClaudeSession(
   filePath: string
@@ -237,14 +285,16 @@ async function parseClaudeSession(
         const data = JSON.parse(line)
         if (!slug && data.slug) slug = data.slug
         if (!foundTitle && data.type === 'user' && data.message?.content) {
+          // isMeta user rows are Claude-injected caveats / local-command noise
+          if (data.isMeta) return
           const contents = typeof data.message.content === 'string'
             ? [{ type: 'text', text: data.message.content }]
             : Array.isArray(data.message.content) ? data.message.content : []
           for (const block of contents) {
             if (block.type === 'text' && block.text) {
-              const text = block.text.trim()
-              if (text.startsWith('<ide_')) continue
-              title = text.length > 80 ? text.slice(0, 80) + '…' : text
+              const extracted = extractClaudeSessionTitle(String(block.text), data)
+              if (!extracted) continue
+              title = extracted
               foundTitle = true
               break
             }
@@ -266,6 +316,9 @@ function isValidSessionTitle(title: string): boolean {
   // Tool interruption / error noise
   if (title.startsWith('[Request interrupted')) return false
   if (title.startsWith('[Error')) return false
+  // Claude Code synthetic XML / caveat leftovers
+  if (isClaudeSyntheticUserText(title)) return false
+  if (title.startsWith('<') && /<\/?[a-zA-Z]/.test(title)) return false
   return true
 }
 
