@@ -201,7 +201,23 @@ const translations: Record<Lang, Record<string, string>> = {
     'settings.tabAITools': 'AI 工具',
     'settings.aiTools.webSearchGroup': '网络搜索',
     'settings.aiTools.webSearchGroupDesc': '对应 AI 助理中的「网络搜索」开关，启用后 AI 可联网搜索并浏览网页获取最新信息。',
-    'settings.aiTools.webToolsAutoDesc': '开箱即用：在 AI 聊天打开「网络搜索」即可。搜索默认 DuckDuckGo；若本机已配置 Brave Key 或安装 Lightpanda 会自动使用。策略已内化到工具（含 Sources 引用），无需再配置引擎。',
+    'settings.aiTools.webToolsAutoDesc': '开箱即用：在 AI 聊天打开「网络搜索」即可。搜索默认 DuckDuckGo；若本机已配置 Brave Key 或安装 Lightpanda 会自动使用。策略已内化到工具（含 Sources 引用），无需再配置引擎。',
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     'settings.aiTools.toolBehavior': '工具行为',
     'settings.aiTools.toolBehaviorHint': 'Agent 工具循环已内置（不限制步数，自动去重防死循环）。仅保留单次工具超时。',
     'settings.aiTools.toolTimeout': '工具超时时间（秒）',
@@ -2616,8 +2632,8 @@ const translations: Record<Lang, Record<string, string>> = {
 
     // AI Chat
     'chat.newChat': 'New Chat',
-    'chat.expandSidebar': 'Expand sidebar',
-    'chat.collapseSidebar': 'Collapse sidebar',
+    'chat.expandSidebar': 'Expand',
+    'chat.collapseSidebar': 'Collapse',
     'chat.favChats': 'Favorites',
     'chat.history': 'History',
     'chat.imHistory': 'Feishu IM',
@@ -3732,8 +3748,8 @@ const translations: Record<Lang, Record<string, string>> = {
     'common.saved': 'Saved',
     'common.saveFailed': 'Save failed',
     'common.create': 'Create',
-    'common.expandSidebar': 'Expand sidebar',
-    'common.collapseSidebar': 'Collapse sidebar',
+    'common.expandSidebar': 'Expand',
+    'common.collapseSidebar': 'Collapse',
 
     // AppEditor
     'appEditor.createTitle': 'Create New App',
