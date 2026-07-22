@@ -17,11 +17,12 @@ import {
   FolderOpenOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
+  CloseOutlined,
   CodeOutlined,
   SearchOutlined,
   QuestionCircleOutlined
 } from '@ant-design/icons'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { SETTINGS_MODULE_CARDS } from '../../constants/module-visibility'
 import AIModelSettings from './AIModelSettings'
@@ -102,6 +103,7 @@ const VALID_TAB_KEYS = ['general', 'modules', 'ai-models', 'ai-tools', 'ai-assis
 const SettingsPage: React.FC = () => {
   const { message } = App.useApp()
   const location = useLocation()
+  const navigate = useNavigate()
   const hashTab = location.hash.replace('#', '')
   const [activeTab, setActiveTab] = useState(
     VALID_TAB_KEYS.includes(hashTab) ? hashTab : 'general'
@@ -244,6 +246,15 @@ const SettingsPage: React.FC = () => {
     }
   }
 
+  // 关闭设置页：优先返回上一页，无历史时回到工作台
+  const handleClose = (): void => {
+    if (window.history.length > 1) {
+      navigate(-1)
+    } else {
+      navigate('/workbench/installed')
+    }
+  }
+
   return (
     <div
       style={{
@@ -275,9 +286,27 @@ const SettingsPage: React.FC = () => {
           max-width: 100%;
         }
       `}</style>
-      <Title level={4} style={{ marginBottom: 24 }}>
-        {t('settings.title')}
-      </Title>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 8,
+          marginBottom: 24
+        }}
+      >
+        <Title level={4} style={{ marginBottom: 0 }}>
+          {t('settings.title')}
+        </Title>
+        <Tooltip title={t('settings.close')}>
+          <Button
+            type="text"
+            icon={<CloseOutlined />}
+            onClick={handleClose}
+            aria-label={t('settings.close')}
+          />
+        </Tooltip>
+      </div>
       <Tabs
         className="settings-tabs"
         activeKey={activeTab}

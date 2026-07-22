@@ -158,6 +158,7 @@ const translations: Record<Lang, Record<string, string>> = {
 
     // Settings 页面
     'settings.title': '设置',
+    'settings.close': '关闭',
     'settings.language': '界面语言',
     'settings.tabGeneral': '通用',
     'settings.tabModules': '功能模块',
@@ -247,6 +248,11 @@ const translations: Record<Lang, Record<string, string>> = {
     'topbar.imConnectionFailed': '连接失败',
     'topbar.lightMode': '浅色模式',
     'topbar.darkMode': '深色模式',
+    'topbar.theme': '外观',
+    'topbar.language': '语言',
+    'topbar.currentVersion': '版本 v{0}',
+    'topbar.updateAvailableShort': '新版本 v{0}',
+    'topbar.installUpdate': '安装 v{0}',
     'topbar.minimize': '最小化',
     'topbar.maximize': '最大化',
     'topbar.restore': '还原',
@@ -2413,6 +2419,7 @@ const translations: Record<Lang, Record<string, string>> = {
 
     // Settings page
     'settings.title': 'Settings',
+    'settings.close': 'Close',
     'settings.language': 'Language',
     'settings.tabGeneral': 'General',
     'settings.tabModules': 'Modules',
@@ -2512,6 +2519,11 @@ const translations: Record<Lang, Record<string, string>> = {
     'topbar.imConnectionFailed': 'Connection failed',
     'topbar.lightMode': 'Light Mode',
     'topbar.darkMode': 'Dark Mode',
+    'topbar.theme': 'Appearance',
+    'topbar.language': 'Language',
+    'topbar.currentVersion': 'Version v{0}',
+    'topbar.updateAvailableShort': 'New v{0}',
+    'topbar.installUpdate': 'Install v{0}',
     'topbar.minimize': 'Minimize',
     'topbar.maximize': 'Maximize',
     'topbar.restore': 'Restore',
