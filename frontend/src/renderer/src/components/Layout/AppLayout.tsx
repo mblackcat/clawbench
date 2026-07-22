@@ -87,15 +87,7 @@ const AppLayout: React.FC = () => {
         >
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
             <div style={{ flex: 1, overflow: 'auto' }}>
-              <Sidebar collapsed={collapsed} variant="main" />
-            </div>
-            <div
-              style={{
-                borderTop: `1px solid ${token.colorBorderSecondary}`,
-                paddingTop: 4
-              }}
-            >
-              <Sidebar collapsed={collapsed} variant="settings" />
+              <Sidebar collapsed={collapsed} />
             </div>
             <Tooltip title={collapsed ? t('common.expandSidebar') : ''} placement="right">
               <div

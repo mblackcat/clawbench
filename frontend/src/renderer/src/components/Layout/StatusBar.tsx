@@ -1,23 +1,16 @@
-import React, { useState } from 'react'
-import { Button, Spin, Space, theme, Popover, Switch, Badge, App, Typography, Tooltip } from 'antd'
+import React from 'react'
+import { Button, Spin, Space, theme, Badge, Tooltip } from 'antd'
 import {
   FileTextOutlined,
   ExclamationCircleOutlined,
-  BellOutlined,
   CheckCircleOutlined,
-  CloseCircleOutlined,
-  LoadingOutlined,
   CloudOutlined
 } from '@ant-design/icons'
 import { useTaskStore } from '../../stores/useTaskStore'
-import { useUpdaterStore } from '../../stores/useUpdaterStore'
-import { useSettingsStore } from '../../stores/useSettingsStore'
 import { useNotificationStore } from '../../stores/useNotificationStore'
 import { useAttentionStore } from '../../stores/useAttentionStore'
 import type { WeatherType } from '../WeatherEffect'
 import { useT } from '../../i18n'
-
-const { Text } = Typography
 
 interface StatusBarProps {
   onToggleErrorLog: () => void
@@ -25,176 +18,6 @@ interface StatusBarProps {
   onToggleWeather: () => void
   onCycleWeather: () => void
   weatherType: WeatherType
-}
-
-// ---- Notification Bell Popover Content ----
-
-const NotificationList: React.FC = () => {
-  const notifications = useNotificationStore((state) => state.notifications)
-  const unreadCount = useNotificationStore((state) => state.unreadCount)
-  const dismiss = useNotificationStore((state) => state.dismiss)
-  const dismissAll = useNotificationStore((state) => state.dismissAll)
-  const { token } = theme.useToken()
-  const t = useT()
-
-  if (notifications.length === 0) {
-    return (
-      <div style={{ padding: '16px 0', textAlign: 'center', color: token.colorTextSecondary }}>
-        {t('statusbar.noNotifications')}
-      </div>
-    )
-  }
-
-  return (
-    <div style={{ width: 300, maxHeight: 400, overflow: 'auto' }}>
-      {unreadCount > 0 && (
-        <div style={{ textAlign: 'right', marginBottom: 8 }}>
-          <Button type="link" size="small" onClick={dismissAll} style={{ fontSize: 12, padding: 0 }}>
-            {t('statusbar.markAllRead')}
-          </Button>
-        </div>
-      )}
-      {notifications.map((n) => (
-        <div
-          key={n.id}
-          style={{
-            padding: '8px 0',
-            borderBottom: `1px solid ${token.colorBorderSecondary}`,
-            opacity: n.read ? 0.6 : 1
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div style={{ flex: 1, marginRight: 8 }}>
-              <Text strong style={{ fontSize: 13 }}>{n.title}</Text>
-              <div style={{ fontSize: 12, color: token.colorTextSecondary, marginTop: 2 }}>
-                {n.body}
-              </div>
-              <div style={{ fontSize: 11, color: token.colorTextQuaternary, marginTop: 4 }}>
-                {new Date(n.timestamp).toLocaleTimeString()}
-              </div>
-            </div>
-            {!n.read && (
-              <Button
-                type="link"
-                size="small"
-                onClick={() => dismiss(n.id)}
-                style={{ fontSize: 12, padding: 0, whiteSpace: 'nowrap' }}
-              >
-                {t('statusbar.gotIt')}
-              </Button>
-            )}
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-// ---- Version Popover Content ----
-
-const VersionPopoverContent: React.FC = () => {
-  const { status, version, downloadPercent, errorMessage, checked, check, install } = useUpdaterStore()
-  const { autoUpdate, updateSetting } = useSettingsStore()
-  const { token } = theme.useToken()
-  const { message } = App.useApp()
-  const t = useT()
-  const [checking, setChecking] = useState(false)
-
-  const handleCheck = async (): Promise<void> => {
-    setChecking(true)
-    try {
-      const result = await check()
-      if (!result.success) {
-        message.error(result.error || t('statusbar.checkUpdateFailed'))
-      }
-    } catch {
-      message.error(t('statusbar.checkUpdateFailed'))
-    } finally {
-      setChecking(false)
-    }
-  }
-
-  const renderStatus = (): React.ReactNode => {
-    if (status === 'checking') {
-      return (
-        <Space size={6}>
-          <LoadingOutlined spin style={{ fontSize: 12 }} />
-          <Text type="secondary" style={{ fontSize: 12 }}>{t('statusbar.checkingUpdate')}</Text>
-        </Space>
-      )
-    }
-    if (status === 'available') {
-      return (
-        <Text style={{ fontSize: 12, color: token.colorPrimary }}>
-          <LoadingOutlined style={{ marginRight: 4 }} />
-          {t('statusbar.newVersion', version || '')}
-        </Text>
-      )
-    }
-    if (status === 'downloading') {
-      return (
-        <Text style={{ fontSize: 12, color: token.colorPrimary }}>
-          <LoadingOutlined style={{ marginRight: 4 }} />
-          {t('statusbar.downloading', String(downloadPercent))}
-        </Text>
-      )
-    }
-    if (status === 'downloaded') {
-      return (
-        <Button
-          type="primary"
-          size="small"
-          onClick={install}
-          style={{ fontSize: 12 }}
-        >
-          {t('statusbar.restartInstall', version || '')}
-        </Button>
-      )
-    }
-    if (status === 'error') {
-      return (
-        <Text type="danger" style={{ fontSize: 12 }}>
-          <CloseCircleOutlined style={{ marginRight: 4 }} />
-          {errorMessage || t('statusbar.checkUpdateFailed')}
-        </Text>
-      )
-    }
-    if (checked) {
-      return (
-        <Text style={{ fontSize: 12, color: token.colorSuccess }}>
-          <CheckCircleOutlined style={{ marginRight: 4 }} />
-          {t('statusbar.upToDate')}
-        </Text>
-      )
-    }
-    return null
-  }
-
-  const canCheck = status === 'idle' || status === 'error'
-
-  return (
-    <div style={{ width: 260 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <Text strong style={{ fontSize: 13 }}>{t('statusbar.autoUpdate')}</Text>
-        <Switch
-          size="small"
-          checked={autoUpdate}
-          onChange={(val) => updateSetting('autoUpdate', val)}
-        />
-      </div>
-      <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 12 }}>
-        {t('statusbar.autoUpdateDesc')}
-      </Text>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 28 }}>
-        <span>{renderStatus()}</span>
-        {canCheck && (
-          <Button size="small" loading={checking} onClick={handleCheck}>
-            {t('statusbar.checkUpdate')}
-          </Button>
-        )}
-      </div>
-    </div>
-  )
 }
 
 // ---- Weather mini SVG icons (avoid emoji → CoreText warning) ----
@@ -301,33 +124,34 @@ const useWeatherNames = (): Record<WeatherType, string> => {
 }
 
 // ---- StatusBar ----
+// Right cluster only: weather → status → logs
+// Version/update moved to the avatar menu; the notification bell is merged
+// into the log icon's badge (errors / attention / legacy notifications).
 
 const StatusBar: React.FC<StatusBarProps> = ({ onToggleErrorLog, weatherVisible, onToggleWeather, onCycleWeather, weatherType }) => {
   const tasks = useTaskStore((state) => state.tasks)
   const { token } = theme.useToken()
-  const updaterStatus = useUpdaterStore((state) => state.status)
   const unreadCount = useNotificationStore((state) => state.unreadCount)
   const attentionItems = useAttentionStore((state) => state.items)
   const attentionHasAction = useAttentionStore((state) => {
     // Inline so Zustand tracks item/context changes via selector return value
     return state.hasAction()
   })
-  const openFirstAttention = useAttentionStore((state) => state.openFirst)
   const t = useT()
   const weatherNames = useWeatherNames()
 
-  const runningTasks = Object.values(tasks).filter((t) => t.status === 'running')
+  const runningTasks = Object.values(tasks).filter((task) => task.status === 'running')
   const isRunning = runningTasks.length > 0
   const activeTaskName = runningTasks.length > 0 ? runningTasks[0].appName : ''
 
   const hasErrors = Object.values(tasks).some(
-    (t) => t.status === 'failed' || t.outputs.some((o) => o.type === 'error')
+    (task) => task.status === 'failed' || task.outputs.some((o) => o.type === 'error')
   )
 
-  const hasUpdate = updaterStatus === 'available' || updaterStatus === 'downloading' || updaterStatus === 'downloaded'
   const attentionCount = attentionItems.length
-  // Prefer attention count; fall back to legacy notification unread
-  const bellBadgeCount = attentionCount > 0 ? attentionCount : unreadCount
+  // Log entry absorbs the former notification bell: badge for errors / attention / legacy notifications
+  const logBadgeCount = attentionCount > 0 ? attentionCount : unreadCount
+  const logHasAlert = hasErrors || attentionCount > 0 || unreadCount > 0
 
   return (
     <div
@@ -336,35 +160,13 @@ const StatusBar: React.FC<StatusBarProps> = ({ onToggleErrorLog, weatherVisible,
         height: 28,
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between',
+        justifyContent: 'flex-end',
         padding: '0 12px',
         fontSize: 12
       }}
     >
-      <Space size="small">
-        <Tooltip title={t('statusbar.logs')}>
-          <Button
-            type="text"
-            size="small"
-            icon={hasErrors ? <ExclamationCircleOutlined style={{ color: token.colorError }} /> : <FileTextOutlined />}
-            onClick={onToggleErrorLog}
-            style={{ fontSize: 12, height: 22, padding: '0 4px' }}
-          />
-        </Tooltip>
-        {isRunning ? (
-          <Tooltip title={t('statusbar.working', activeTaskName)}>
-            <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-              <Spin size="small" />
-            </span>
-          </Tooltip>
-        ) : (
-          <Tooltip title={t('statusbar.ready')}>
-            <CheckCircleOutlined style={{ color: token.colorTextSecondary }} />
-          </Tooltip>
-        )}
-      </Space>
-
-      <Space size="middle">
+      {/* Right cluster only: weather → status → logs */}
+      <Space size="middle" align="center">
         {/* Weather toggle */}
         <Tooltip title={weatherVisible ? t('statusbar.weatherClickHint', weatherNames[weatherType]) : t('statusbar.weather')}>
           <span
@@ -378,7 +180,9 @@ const StatusBar: React.FC<StatusBarProps> = ({ onToggleErrorLog, weatherVisible,
               fontSize: 14,
               display: 'inline-flex',
               alignItems: 'center',
-              height: 20,
+              justifyContent: 'center',
+              height: 22,
+              width: 22,
               lineHeight: 1,
               color: weatherVisible ? token.colorPrimary : token.colorTextSecondary,
               userSelect: 'none'
@@ -386,59 +190,52 @@ const StatusBar: React.FC<StatusBarProps> = ({ onToggleErrorLog, weatherVisible,
           >
             {weatherVisible
               ? <WeatherIcon type={weatherType} color={token.colorPrimary} />
-              : <CloudOutlined style={{ display: 'block', lineHeight: 0}} />}
+              : <CloudOutlined style={{ display: 'block', lineHeight: 0 }} />}
           </span>
         </Tooltip>
 
-        {/* Notification bell — left click jumps to first attention when any */}
-        <Popover
-          content={<NotificationList />}
-          title={t('statusbar.notifications')}
-          trigger={attentionCount > 0 ? [] : 'click'}
-          placement="topRight"
-        >
+        {/* Ready / running status */}
+        {isRunning ? (
+          <Tooltip title={t('statusbar.working', activeTaskName)}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', height: 22 }}>
+              <Spin size="small" />
+            </span>
+          </Tooltip>
+        ) : (
+          <Tooltip title={t('statusbar.ready')}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', height: 22 }}>
+              <CheckCircleOutlined style={{ color: token.colorTextSecondary, fontSize: 14 }} />
+            </span>
+          </Tooltip>
+        )}
+
+        {/* Logs + merged attention/notification badge */}
+        <Tooltip title={t('statusbar.logs')}>
           <Badge
-            count={bellBadgeCount}
+            count={logBadgeCount > 0 ? logBadgeCount : 0}
             size="small"
             offset={[-2, 2]}
-            color={attentionHasAction ? token.colorError : undefined}
-            dot={attentionCount > 0 && !attentionHasAction && unreadCount === 0}
+            color={attentionHasAction || hasErrors ? token.colorError : undefined}
+            dot={logHasAlert && logBadgeCount === 0}
           >
-            <BellOutlined
-              className={attentionHasAction ? 'cb-attention-flash' : undefined}
-              onClick={() => {
-                if (attentionCount > 0) {
-                  openFirstAttention()
-                }
-              }}
-              style={{
-                fontSize: 14,
-                cursor: 'pointer',
-                color: attentionCount > 0 ? token.colorError : token.colorTextSecondary
-              }}
+            <Button
+              type="text"
+              size="small"
+              icon={
+                logHasAlert ? (
+                  <ExclamationCircleOutlined
+                    className={attentionHasAction ? 'cb-attention-flash' : undefined}
+                    style={{ color: token.colorError }}
+                  />
+                ) : (
+                  <FileTextOutlined />
+                )
+              }
+              onClick={onToggleErrorLog}
+              style={{ fontSize: 12, height: 22, width: 22, padding: 0 }}
             />
           </Badge>
-        </Popover>
-
-        {/* Version with update popover */}
-        <Popover
-          content={<VersionPopoverContent />}
-          trigger="click"
-          placement="topRight"
-        >
-          <span style={{ cursor: 'pointer', color: token.colorTextSecondary, userSelect: 'none' }}>
-            <Badge dot={hasUpdate} offset={[4, 0]}>
-              <span style={{ color: token.colorTextSecondary }}>
-                v{import.meta.env.VITE_APP_VERSION ?? '0.1.0'}
-              </span>
-            </Badge>
-            {hasUpdate && (
-              <span style={{ color: token.colorError, fontSize: 10, marginLeft: 4, fontWeight: 600 }}>
-                [new]
-              </span>
-            )}
-          </span>
-        </Popover>
+        </Tooltip>
       </Space>
     </div>
   )

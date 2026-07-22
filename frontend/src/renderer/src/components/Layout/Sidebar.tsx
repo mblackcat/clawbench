@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo } from 'react'
 import { Badge, Menu } from 'antd'
 import {
-  SettingOutlined,
   LaptopOutlined,
   CodeOutlined
 } from '@ant-design/icons'
@@ -20,8 +19,6 @@ import {
 
 interface SidebarProps {
   collapsed: boolean
-  /** 'main' renders all items except settings; 'settings' renders only the settings item */
-  variant?: 'main' | 'settings'
 }
 
 // OpenClaw SVG icon — monochrome, follows theme via currentColor
@@ -48,7 +45,7 @@ const withMenuDot = (label: string, showDot: boolean) =>
     label
   )
 
-const Sidebar: React.FC<SidebarProps> = ({ collapsed, variant = 'main' }) => {
+const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
   const navigate = useNavigate()
   const location = useLocation()
   const { moduleVisibility } = useSettingsStore()
@@ -118,16 +115,10 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, variant = 'main' }) => {
       icon: <CopiperIcon />,
       label: t('menu.copiper'),
       moduleKey: 'copiper'
-    },
-    {
-      key: '/settings',
-      icon: <SettingOutlined />,
-      label: t('menu.settings')
     }
   ]
 
   const menuItems: MenuProps['items'] = allItems
-    .filter((item) => (variant === 'settings' ? item.key === '/settings' : item.key !== '/settings'))
     .filter((item) => {
       if (!item.moduleKey) return true
       return moduleVisibility[item.moduleKey as keyof typeof moduleVisibility]

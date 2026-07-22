@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react'
-import { Space, Button, Typography, Dropdown, Tooltip, theme } from 'antd'
+import React, { useEffect, useState, useCallback, useMemo } from 'react'
+import { Space, Button, Typography, Dropdown, Tooltip, Badge, Divider, theme } from 'antd'
 import {
   LoginOutlined,
   LogoutOutlined,
@@ -7,7 +7,13 @@ import {
   CloseOutlined,
   BorderOutlined,
   BlockOutlined,
-  GlobalOutlined
+  GlobalOutlined,
+  BgColorsOutlined,
+  SunOutlined,
+  MoonOutlined,
+  SettingOutlined,
+  InfoCircleOutlined,
+  CheckOutlined
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useT } from '../../i18n'
@@ -23,8 +29,14 @@ import GitBranchSelector from '../GitBranchSelector'
 import AICodingIMConfigModal from '../../pages/AICoding/AICodingIMConfigModal'
 import { UserAvatar } from '../ProviderIcons'
 import { FeishuIcon, FeishuDisconnectedIcon } from '../icons/FeishuIcon'
+import ClientUpdatePanel from '../ClientUpdatePanel'
+import verifiedBadge from '../../assets/claude-fable-5-verified.png'
 
 const { Text } = Typography
+
+const CAPSULE_H = 26
+const CAPSULE_PAD = 2
+const CAPSULE_INNER_H = CAPSULE_H - CAPSULE_PAD * 2
 
 const TopBar: React.FC = () => {
   const navigate = useNavigate()
@@ -38,6 +50,7 @@ const TopBar: React.FC = () => {
   const updateSetting = useSettingsStore((state) => state.updateSetting)
 
   const initUpdater = useUpdaterStore((state) => state.init)
+  const updaterStatus = useUpdaterStore((state) => state.status)
   const initNotifications = useNotificationStore((state) => state.init)
 
   const imConfig = useAICodingStore((state) => state.imConfig)
@@ -49,9 +62,15 @@ const TopBar: React.FC = () => {
 
   const [imModalOpen, setIMModalOpen] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
 
   const isMac = window.api.platform === 'darwin'
   const isWin = window.api.platform === 'win32'
+
+  const hasUpdate =
+    updaterStatus === 'available' ||
+    updaterStatus === 'downloading' ||
+    updaterStatus === 'downloaded'
 
   useEffect(() => {
     const cleanupUpdater = initUpdater()
@@ -65,24 +84,6 @@ const TopBar: React.FC = () => {
   const handleLogout = async (): Promise<void> => {
     await useAuthStore.getState().logout()
     navigate('/login')
-  }
-
-  const dropdownItems = {
-    items: [
-      {
-        key: 'language',
-        icon: <GlobalOutlined />,
-        label: language === 'zh-CN' ? 'English' : '中文',
-        onClick: () => updateSetting('language', language === 'zh-CN' ? 'en' : 'zh-CN'),
-      },
-      { type: 'divider' as const },
-      {
-        key: 'logout',
-        icon: <LogoutOutlined />,
-        label: t('topbar.logout'),
-        onClick: handleLogout,
-      },
-    ],
   }
 
   // ── IM icon state ──
@@ -126,6 +127,231 @@ const TopBar: React.FC = () => {
     window.addEventListener('resize', syncMaximized)
     return () => window.removeEventListener('resize', syncMaximized)
   }, [isWin])
+
+  /** Unified 2-option capsule: equal halves, sliding indicator, centered content */
+  const renderCapsule = (
+    leftActive: boolean,
+    left: { key: string; content: React.ReactNode; onClick: () => void; title?: string },
+    right: { key: string; content: React.ReactNode; onClick: () => void; title?: string },
+    opts?: { minWidth?: number }
+  ) => (
+    <div
+      style={{
+        display: 'inline-flex',
+        alignItems: 'stretch',
+        height: CAPSULE_H,
+        background: token.colorFillTertiary,
+        borderRadius: 8,
+        padding: CAPSULE_PAD,
+        position: 'relative',
+        boxSizing: 'border-box',
+        minWidth: opts?.minWidth
+      }}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          top: CAPSULE_PAD,
+          left: leftActive ? CAPSULE_PAD : '50%',
+          width: `calc(50% - ${CAPSULE_PAD}px)`,
+          height: CAPSULE_INNER_H,
+          borderRadius: 6,
+          background: token.colorPrimary,
+          transition: 'left 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+          zIndex: 0,
+          boxSizing: 'border-box'
+        }}
+      />
+      {[left, right].map((item, idx) => {
+        const active = idx === 0 ? leftActive : !leftActive
+        return (
+          <button
+            key={item.key}
+            type="button"
+            title={item.title}
+            onClick={item.onClick}
+            style={{
+              flex: 1,
+              height: CAPSULE_INNER_H,
+              minWidth: 0,
+              border: 'none',
+              borderRadius: 6,
+              background: 'transparent',
+              color: active ? '#fff' : token.colorTextSecondary,
+              cursor: 'pointer',
+              fontSize: 12,
+              fontWeight: 500,
+              lineHeight: 1,
+              padding: '0 10px',
+              position: 'relative',
+              zIndex: 1,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'color 0.2s',
+              boxSizing: 'border-box'
+            }}
+          >
+            {item.content}
+          </button>
+        )
+      })}
+    </div>
+  )
+
+  const menuRowBase: React.CSSProperties = {
+    padding: '8px 12px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 13,
+    minHeight: 36,
+    boxSizing: 'border-box'
+  }
+
+  const menuIconStyle: React.CSSProperties = {
+    fontSize: 14,
+    width: 16,
+    flexShrink: 0,
+    color: token.colorTextSecondary
+  }
+
+  const userMenu = useMemo(
+    () => (
+      <div
+        style={{
+          background: token.colorBgElevated,
+          borderRadius: token.borderRadiusLG,
+          boxShadow: token.boxShadowSecondary,
+          width: 248,
+          padding: '4px 0',
+          border: `1px solid ${token.colorBorderSecondary}`
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Group 1: 外观 / 语言 / 设置 — unified icon + label rows */}
+        <div style={{ ...menuRowBase, gap: 8 }}>
+          <BgColorsOutlined style={menuIconStyle} />
+          <Text style={{ fontSize: 13, flex: 1, minWidth: 0 }}>{t('topbar.theme')}</Text>
+          {renderCapsule(
+            currentTheme === 'light',
+            {
+              key: 'light',
+              title: t('topbar.lightMode'),
+              content: <SunOutlined style={{ fontSize: 13 }} />,
+              onClick: () => updateSetting('theme', 'light')
+            },
+            {
+              key: 'dark',
+              title: t('topbar.darkMode'),
+              content: <MoonOutlined style={{ fontSize: 13 }} />,
+              onClick: () => updateSetting('theme', 'dark')
+            },
+            { minWidth: 72 }
+          )}
+        </div>
+
+        <div style={{ ...menuRowBase, gap: 8 }}>
+          <GlobalOutlined style={menuIconStyle} />
+          <Text style={{ fontSize: 13, flex: 1, minWidth: 0 }}>{t('topbar.language')}</Text>
+          {renderCapsule(
+            language === 'en',
+            {
+              key: 'en',
+              content: 'EN',
+              onClick: () => updateSetting('language', 'en')
+            },
+            {
+              key: 'zh',
+              content: 'CH',
+              onClick: () => updateSetting('language', 'zh-CN')
+            },
+            { minWidth: 72 }
+          )}
+        </div>
+
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            setUserMenuOpen(false)
+            navigate('/settings')
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              setUserMenuOpen(false)
+              navigate('/settings')
+            }
+          }}
+          style={{ ...menuRowBase, cursor: 'pointer' }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = token.colorFillTertiary
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent'
+          }}
+        >
+          <SettingOutlined style={menuIconStyle} />
+          <span style={{ flex: 1 }}>{t('menu.settings')}</span>
+        </div>
+
+        <Divider style={{ margin: '4px 0' }} />
+
+        {/* Group 2: 版本 / Fable 5 认证 */}
+        <div style={{ ...menuRowBase, gap: 8 }}>
+          <InfoCircleOutlined style={menuIconStyle} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <ClientUpdatePanel />
+          </div>
+        </div>
+        <div style={{ ...menuRowBase, gap: 8 }}>
+          <CheckOutlined style={menuIconStyle} />
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', justifyContent: 'center' }}>
+            <img
+              src={verifiedBadge}
+              alt="Claude Fable 5 verified"
+              draggable={false}
+              style={{ display: 'block', maxWidth: '100%', borderRadius: 4 }}
+            />
+          </div>
+        </div>
+
+        <Divider style={{ margin: '4px 0' }} />
+
+        {/* Group 3: 退出 */}
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            setUserMenuOpen(false)
+            void handleLogout()
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              setUserMenuOpen(false)
+              void handleLogout()
+            }
+          }}
+          style={{
+            ...menuRowBase,
+            cursor: 'pointer',
+            color: token.colorError
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = token.colorFillTertiary
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent'
+          }}
+        >
+          <LogoutOutlined style={{ ...menuIconStyle, color: token.colorError }} />
+          <span>{t('topbar.logout')}</span>
+        </div>
+      </div>
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [token, t, currentTheme, language, updateSetting, handleLogout, navigate]
+  )
 
   return (
     <div
@@ -175,75 +401,41 @@ const TopBar: React.FC = () => {
           </>
         )}
 
-        {/* Theme toggle capsule */}
-        <div style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          background: token.colorFillTertiary,
-          borderRadius: 8,
-          padding: 2,
-          gap: 2,
-          position: 'relative',
-        }}>
-          <div style={{
-            position: 'absolute',
-            left: 2,
-            width: 22,
-            height: 22,
-            borderRadius: 6,
-            background: token.colorPrimary,
-            transform: currentTheme === 'light' ? 'translateX(0)' : 'translateX(24px)',
-            transition: 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-            zIndex: 0,
-          }} />
-          <Tooltip title={t('topbar.lightMode')}>
-            <button
-              onClick={() => updateSetting('theme', 'light')}
-              style={{
-                width: 22, height: 22, borderRadius: 6, border: 'none',
-                background: 'transparent',
-                color: currentTheme === 'light' ? '#fff' : token.colorTextSecondary,
-                cursor: 'pointer', display: 'flex', alignItems: 'center',
-                justifyContent: 'center', fontSize: 13,
-                transition: 'color 0.2s',
-                position: 'relative', zIndex: 1,
-              }}
-            >
-              <svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor"><path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.55 0 1-.45 1-1s-.45-1-1-1H2c-.55 0-1 .45-1 1s.45 1 1 1zm18 0h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1zM11 2v2c0 .55.45 1 1 1s1-.45 1-1V2c0-.55-.45-1-1-1s-1 .45-1 1zm0 18v2c0 .55.45 1 1 1s1-.45 1-1v-2c0-.55-.45-1-1-1s-1 .45-1 1zM5.99 4.58a.996.996 0 00-1.41 0 .996.996 0 000 1.41l1.06 1.06c.39.39 1.03.39 1.41 0s.39-1.03 0-1.41L5.99 4.58zm12.37 12.37a.996.996 0 00-1.41 0 .996.996 0 000 1.41l1.06 1.06c.39.39 1.03.39 1.41 0a.996.996 0 000-1.41l-1.06-1.06zm1.06-10.96a.996.996 0 000-1.41.996.996 0 00-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06zM7.05 18.36a.996.996 0 000-1.41.996.996 0 00-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06z"/></svg>
-            </button>
-          </Tooltip>
-          <Tooltip title={t('topbar.darkMode')}>
-            <button
-              onClick={() => updateSetting('theme', 'dark')}
-              style={{
-                width: 22, height: 22, borderRadius: 6, border: 'none',
-                background: 'transparent',
-                color: currentTheme === 'dark' ? '#fff' : token.colorTextSecondary,
-                cursor: 'pointer', display: 'flex', alignItems: 'center',
-                justifyContent: 'center', fontSize: 13,
-                transition: 'color 0.2s',
-                position: 'relative', zIndex: 1,
-              }}
-            >
-              <svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor"><path d="M12 3a9 9 0 109 9c0-.46-.04-.92-.1-1.36a5.389 5.389 0 01-4.4 2.26 5.403 5.403 0 01-3.14-9.8c-.44-.06-.9-.1-1.36-.1z"/></svg>
-            </button>
-          </Tooltip>
-        </div>
-
-        <div style={{ width: 1, height: 16, background: token.colorBorderSecondary }} />
-
         {loggedIn && user ? (
-          <Dropdown menu={dropdownItems} trigger={['click']}>
-            <Space style={{ cursor: 'pointer' }}>
-              <UserAvatar
-                size={24}
-                primaryColor={token.colorPrimary}
-                avatarUrl={user.avatarUrl || undefined}
-                userName={user.name}
-                userId={user.id}
-              />
-              <Text style={{ fontSize: 12 }}>{user.name}</Text>
-            </Space>
+          <Dropdown
+            open={userMenuOpen}
+            onOpenChange={setUserMenuOpen}
+            dropdownRender={() => userMenu}
+            trigger={['click']}
+            placement="bottomRight"
+          >
+            {/* inline-flex (not Space): Badge is inline-block and otherwise sits on the top edge */}
+            <div
+              style={{
+                cursor: 'pointer',
+                height: 26,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                lineHeight: 1
+              }}
+            >
+              <Badge
+                dot={hasUpdate}
+                offset={[-2, 2]}
+                color={token.colorError}
+                style={{ display: 'inline-flex', alignItems: 'center', lineHeight: 0 }}
+              >
+                <UserAvatar
+                  size={24}
+                  primaryColor={token.colorPrimary}
+                  avatarUrl={user.avatarUrl || undefined}
+                  userName={user.name}
+                  userId={user.id}
+                />
+              </Badge>
+              <Text style={{ fontSize: 12, lineHeight: '26px' }}>{user.name}</Text>
+            </div>
           </Dropdown>
         ) : (
           <Space>
