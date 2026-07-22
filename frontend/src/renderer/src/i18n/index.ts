@@ -158,6 +158,7 @@ const translations: Record<Lang, Record<string, string>> = {
 
     // Settings 页面
     'settings.title': '设置',
+    'settings.close': '关闭',
     'settings.language': '界面语言',
     'settings.tabGeneral': '通用',
     'settings.tabModules': '功能模块',
@@ -2418,6 +2419,7 @@ const translations: Record<Lang, Record<string, string>> = {
 
     // Settings page
     'settings.title': 'Settings',
+    'settings.close': 'Close',
     'settings.language': 'Language',
     'settings.tabGeneral': 'General',
     'settings.tabModules': 'Modules',
