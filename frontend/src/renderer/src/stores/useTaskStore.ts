@@ -11,6 +11,8 @@ interface TaskState {
   tasks: Record<string, TaskInfo>
   activeTaskId: string | null
   systemLogs: SystemLogEntry[]
+  /** True while there are task errors the user hasn't viewed in the app-log tab */
+  hasUnseenErrors: boolean
   startTask: (taskId: string, appId: string, appName: string, opts?: { scheduled?: boolean }) => void
   updateOutput: (taskId: string, output: SubAppOutput) => void
   updateProgress: (taskId: string, percent: number) => void
@@ -24,12 +26,14 @@ interface TaskState {
   clearCompleted: () => void
   addSystemLog: (entry: SystemLogEntry) => void
   clearSystemLogs: () => void
+  markErrorsSeen: () => void
 }
 
 export const useTaskStore = create<TaskState>((set, get) => ({
   tasks: {},
   activeTaskId: null,
   systemLogs: [],
+  hasUnseenErrors: false,
 
   startTask: (taskId: string, appId: string, appName: string, opts?: { scheduled?: boolean }) => {
     const task: TaskInfo = {
@@ -58,7 +62,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
             ...task,
             outputs: [...task.outputs, output]
           }
-        }
+        },
+        hasUnseenErrors: output.type === 'error' ? true : state.hasUnseenErrors
       }
     })
   },
@@ -96,7 +101,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
                 ? Date.now()
                 : task.completedAt
           }
-        }
+        },
+        hasUnseenErrors: status === 'failed' ? true : state.hasUnseenErrors
       }
     })
   },
@@ -119,7 +125,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       }
       const activeTaskId =
         state.activeTaskId && tasks[state.activeTaskId] ? state.activeTaskId : null
-      return { tasks, activeTaskId }
+      return { tasks, activeTaskId, hasUnseenErrors: false }
     })
   },
 
@@ -131,5 +137,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   clearSystemLogs: () => {
     set({ systemLogs: [] })
+  },
+
+  markErrorsSeen: () => {
+    set({ hasUnseenErrors: false })
   }
 }))
