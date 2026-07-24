@@ -279,24 +279,32 @@ export function registerSubAppIpc(): void {
    */
   ipcMain.handle(
     'subapp:update-from-market',
-    async (_event, appId: string, downloadUrl: string, token?: string) => {
-      logger.info(`[Marketplace] Updating app from market: ${appId}`)
+    async (
+      _event,
+      appId: string,
+      downloadUrl: string,
+      token?: string,
+      opts?: { force?: boolean }
+    ) => {
+      const force = !!opts?.force
+      logger.info(`[Marketplace] ${force ? 'Resetting' : 'Updating'} app from market: ${appId}`)
 
       const { sourceDir, cleanup } = await downloadAndExtractMarketPackage(
         appId,
         downloadUrl,
         token,
-        'market-update'
+        force ? 'market-reset' : 'market-update'
       )
 
-      const result = installApp(sourceDir, { preserveLocal: true })
+      // force=true: full replace (reset to online). Otherwise merge so local data survives.
+      const result = installApp(sourceDir, { preserveLocal: !force })
       cleanup()
 
       if (!result.success) {
-        throw new Error(result.error || '更新失败')
+        throw new Error(result.error || (force ? '重置失败' : '更新失败'))
       }
 
-      logger.info(`[Marketplace] Updated (merged): ${result.manifest?.name} (${appId})`)
+      logger.info(`[Marketplace] ${force ? 'Reset' : 'Updated'}: ${result.manifest?.name} (${appId})`)
       recordDownloadEvent(appId, result.manifest?.version)
       return { success: true, manifest: result.manifest }
     }

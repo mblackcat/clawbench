@@ -189,16 +189,25 @@ class ApplicationManager {
   /**
    * 更新已安装应用（非破坏性合并：新版本文件覆盖同名旧文件，本地生成的文件保留）
    * 通过 IPC 在 main process 中完成下载、解压、合并安装。
+   * opts.force = true 时执行完整替换（重置为线上版本）。
    */
-  async updateInstalledApp(applicationId: string): Promise<boolean> {
+  async updateInstalledApp(
+    applicationId: string,
+    opts?: { force?: boolean }
+  ): Promise<boolean> {
     try {
       const downloadUrl = `${API_BASE_URL}/applications/${encodeURIComponent(applicationId)}/download`;
       const token = apiClient.getToken() || undefined;
 
-      const result = await window.api.subapp.updateFromMarket(applicationId, downloadUrl, token);
+      const result = await window.api.subapp.updateFromMarket(
+        applicationId,
+        downloadUrl,
+        token,
+        opts
+      );
 
       if (!result.success) {
-        throw new Error('更新失败');
+        throw new Error(opts?.force ? '重置失败' : '更新失败');
       }
 
       return true;
@@ -206,6 +215,11 @@ class ApplicationManager {
       console.error('Failed to update application:', error);
       throw error;
     }
+  }
+
+  /** 用市场包完整替换本地安装（重置为线上版本，丢弃本地改动）。 */
+  async resetInstalledApp(applicationId: string): Promise<boolean> {
+    return this.updateInstalledApp(applicationId, { force: true });
   }
 
   /**
