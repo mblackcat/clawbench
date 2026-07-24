@@ -15,5 +15,13 @@ export async function cleanAllTables(): Promise<void> {
   await database.run('DELETE FROM applications');
   await database.run('DELETE FROM auth_tokens');
   await database.run('DELETE FROM oauth_states');
+  // projects / common-apps layer (children before parents; all reference users)
+  await database.run('DELETE FROM common_app_version_history');
+  await database.run('DELETE FROM common_app_events');
+  await database.run('DELETE FROM common_app_execution_errors');
+  await database.run('DELETE FROM project_app_configs');
+  await database.run('DELETE FROM project_members');
+  await database.run('DELETE FROM common_apps');
+  await database.run('DELETE FROM projects');
   await database.run('DELETE FROM users');
 }

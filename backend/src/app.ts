@@ -14,6 +14,8 @@ import { authRouter } from './routes/authRoutes';
 import { releaseRouter } from './routes/releaseRoutes';
 import { agentMemoryRouter } from './routes/agentMemoryRoutes';
 import { adminRouter } from './routes/adminRoutes';
+import { projectRouter } from './routes/projectRoutes';
+import { commonAppRouter } from './routes/commonAppRoutes';
 import { feishuEventRouter } from './routes/feishuEventRoutes';
 
 /**
@@ -114,6 +116,10 @@ export function createApp(): Application {
 
   // Admin routes (require auth + admin role)
   app.use('/api/v1/admin', adminRouter);
+
+  // Projects (multi-tenant) + common apps (builtin registry, kill-switch/pin)
+  app.use('/api/v1/projects', projectRouter);
+  app.use('/api/v1/common-apps', commonAppRouter);
 
   // Feishu drive events (callback + SSE for CoPiper sync)
   app.use('/api/v1/feishu', feishuEventRouter);
