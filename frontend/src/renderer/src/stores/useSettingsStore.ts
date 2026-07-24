@@ -5,8 +5,25 @@ import {
   normalizeModuleVisibility,
   type ModuleVisibility
 } from '../constants/module-visibility'
+import {
+  APP_MODE_STORAGE_KEY,
+  DEFAULT_APP_MODE,
+  parseStoredAppMode,
+  type AppMode
+} from '../constants/app-mode'
 
 export type { ModuleVisibility } from '../constants/module-visibility'
+export type { AppMode } from '../constants/app-mode'
+
+/** Read the persisted app mode; falls back to the default on any error. */
+function readStoredAppMode(): AppMode {
+  try {
+    if (typeof localStorage === 'undefined') return DEFAULT_APP_MODE
+    return parseStoredAppMode(localStorage.getItem(APP_MODE_STORAGE_KEY))
+  } catch {
+    return DEFAULT_APP_MODE
+  }
+}
 
 interface SettingsState {
   pythonPath: string
@@ -22,12 +39,15 @@ interface SettingsState {
   appShortcutModifier: string
   appOrder: string[]
   aiToolsConfig: AiToolsConfig | null
+  /** App shell mode: 通用 (general) hides the sider; 研发 (pro) shows it. */
+  appMode: AppMode
   loading: boolean
   fetchSettings: () => Promise<void>
   updateSetting: (key: string, value: unknown) => Promise<void>
   fetchAiToolsConfig: () => Promise<void>
   updateAiToolsConfig: (config: AiToolsConfig) => Promise<void>
   completeSetup: () => Promise<void>
+  setAppMode: (mode: AppMode) => void
 }
 
 export const useSettingsStore = create<SettingsState>((set) => ({
@@ -44,6 +64,10 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   appShortcutModifier: 'Control+Shift',
   appOrder: [],
   aiToolsConfig: null,
+  // Initialize from localStorage so the very first render (before
+  // fetchSettings resolves) already reflects the persisted mode — otherwise
+  // the sider would flash visible/hidden on boot.
+  appMode: readStoredAppMode(),
   // Starts true: RootRedirect gates on this before the very first render
   // decides whether to send the user to /setup, so it must reflect
   // "not fetched yet" from the start instead of defaulting to false.
@@ -65,7 +89,9 @@ export const useSettingsStore = create<SettingsState>((set) => ({
         moduleVisibility: normalizeModuleVisibility(settings.moduleVisibility),
         appShortcutEnabled: (settings.appShortcutEnabled as boolean) ?? true,
         appShortcutModifier: (settings.appShortcutModifier as string) ?? 'Control+Shift',
-        appOrder: (settings.appOrder as string[]) ?? []
+        appOrder: (settings.appOrder as string[]) ?? [],
+        // Re-read mode from localStorage in case it changed in another window.
+        appMode: readStoredAppMode()
       })
     } finally {
       set({ loading: false })
@@ -80,6 +106,15 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   completeSetup: async () => {
     await window.api.settings.set('hasCompletedSetup', true)
     set({ hasCompletedSetup: true })
+  },
+
+  setAppMode: (mode) => {
+    try {
+      localStorage.setItem(APP_MODE_STORAGE_KEY, mode)
+    } catch {
+      // ignore persistence errors (private mode / quota)
+    }
+    set({ appMode: mode })
   },
 
   fetchAiToolsConfig: async () => {
