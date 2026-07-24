@@ -12,6 +12,11 @@ import {
 } from '../services/python-runner.service'
 import { resolveSubAppSlot } from '../services/subapp-slot.service'
 import { getActiveWorkspace } from '../services/workspace.service'
+import {
+  AppDisabledError,
+  BUILTIN_APP_ID_PREFIX,
+  enrichBuiltinAppParams
+} from '../services/project.service'
 import { installSkill, InstallMode, SkillTool } from '../services/skill-install.service'
 import { getPythonSdkPath, getTempDir } from '../utils/paths'
 import { unzipArchive } from '../utils/zip'
@@ -145,6 +150,35 @@ export function registerSubAppIpc(): void {
         throw new Error('Cannot find browser window')
       }
 
+      // Builtin enable gate (admin kill-switch) + config injection before
+      // announcing the task, so disabled apps surface immediately with the
+      // disabled reason rather than flashing as "running". Surfaced via the
+      // existing task-started/task-status channels (status 'failed' carries
+      // the disabled i18n message) so no renderer contract change is needed.
+      let effectiveParams: Record<string, unknown> = params || {}
+      if (appId.startsWith(BUILTIN_APP_ID_PREFIX)) {
+        try {
+          effectiveParams = await enrichBuiltinAppParams(appId, manifest.name, effectiveParams)
+        } catch (err) {
+          const isDisabled = err instanceof AppDisabledError
+          const message = err instanceof Error ? err.message : String(err)
+          webContents.send('subapp:task-started', {
+            taskId,
+            appId,
+            appName: manifest.name
+          })
+          webContents.send('subapp:task-status', {
+            taskId,
+            status: 'failed',
+            success: false,
+            summary: message,
+            summaryI18nKey: isDisabled ? err.i18nKey : undefined,
+            summaryI18nArgs: isDisabled ? err.i18nArgs : undefined
+          })
+          return taskId
+        }
+      }
+
       webContents.send('subapp:task-started', {
         taskId,
         appId,
@@ -185,7 +219,7 @@ export function registerSubAppIpc(): void {
         manifest.version,
         appPath,
         manifest.entry,
-        params || {},
+        effectiveParams,
         workspace,
         pythonPath,
         sdkPath,

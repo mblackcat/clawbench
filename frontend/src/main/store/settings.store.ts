@@ -34,6 +34,20 @@ export interface ImageGenConfig {
   enabled: boolean
 }
 
+/** Server-side project selected during setup (drives builtin common apps). */
+export interface ActiveProjectInfo {
+  projectId: string
+  name: string
+  vcsType: string
+  repoUrl?: string
+}
+
+/**
+ * 收藏栏置顶的 app id 列表（内置 app 的置顶状态由服务端 common_apps.pinned 同步）。
+ * ClawBench 默认不预置内置应用，故初始为空。
+ */
+export const DEFAULT_PINNED_APP_IDS: string[] = []
+
 interface SettingsSchema {
   pythonPath: string
   language: string
@@ -49,6 +63,12 @@ interface SettingsSchema {
   appShortcutEnabled: boolean
   appShortcutModifier: string
   appOrder: string[]
+  /** 收藏栏置顶的 app id 列表（内置 app 的置顶状态由服务端 common_apps.pinned 同步） */
+  pinnedApps: string[]
+  /** Selected server project ({} when none selected). */
+  activeProject: Partial<ActiveProjectInfo>
+  /** Last-fetched common-app configs per projectId (offline fallback). */
+  commonAppConfigCache: Record<string, unknown>
   lastChatModelConfigId: string
   lastChatModelId: string
   lastBuiltinChatModelId: string
@@ -97,6 +117,8 @@ interface PublicSettings {
   appShortcutEnabled: boolean
   appShortcutModifier: string
   appOrder: string[]
+  pinnedApps: string[]
+  activeProject: Partial<ActiveProjectInfo>
 }
 
 export const settingsStore = new Store<SettingsSchema>({
@@ -194,6 +216,25 @@ export const settingsStore = new Store<SettingsSchema>({
       type: 'array',
       default: [],
       items: { type: 'string' }
+    },
+    pinnedApps: {
+      type: 'array',
+      default: DEFAULT_PINNED_APP_IDS,
+      items: { type: 'string' }
+    },
+    activeProject: {
+      type: 'object',
+      default: {},
+      properties: {
+        projectId: { type: 'string' },
+        name: { type: 'string' },
+        vcsType: { type: 'string' },
+        repoUrl: { type: 'string' }
+      }
+    },
+    commonAppConfigCache: {
+      type: 'object',
+      default: {}
     },
     lastChatModelConfigId: {
       type: 'string',
@@ -348,8 +389,39 @@ export function getSettings(): PublicSettings {
     moduleVisibility: settingsStore.get('moduleVisibility') ?? { aiChat: true, copiper: false, aiAgents: true, openClaw: false, aiTerminal: true, localEnv: true, aiCoding: true },
     appShortcutEnabled: settingsStore.get('appShortcutEnabled') ?? true,
     appShortcutModifier: settingsStore.get('appShortcutModifier') ?? 'Control+Shift',
-    appOrder: settingsStore.get('appOrder') ?? []
+    appOrder: settingsStore.get('appOrder') ?? [],
+    pinnedApps: settingsStore.get('pinnedApps') ?? DEFAULT_PINNED_APP_IDS,
+    activeProject: settingsStore.get('activeProject') ?? {}
   }
+}
+
+/** Returns the selected server project, or null when none has been chosen. */
+export function getActiveProject(): ActiveProjectInfo | null {
+  const value = settingsStore.get('activeProject')
+  if (!value || typeof value.projectId !== 'string' || !value.projectId) {
+    return null
+  }
+  return {
+    projectId: value.projectId,
+    name: value.name || '',
+    vcsType: value.vcsType || 'none',
+    repoUrl: value.repoUrl
+  }
+}
+
+/** Persist the selected server project. */
+export function setActiveProject(project: ActiveProjectInfo | null): void {
+  settingsStore.set('activeProject', project ?? {})
+}
+
+export function getCommonAppConfigCache(projectId: string): unknown {
+  const cache = settingsStore.get('commonAppConfigCache') ?? {}
+  return cache[projectId]
+}
+
+export function setCommonAppConfigCache(projectId: string, apps: unknown): void {
+  const cache = settingsStore.get('commonAppConfigCache') ?? {}
+  settingsStore.set('commonAppConfigCache', { ...cache, [projectId]: apps })
 }
 
 export function getAiModelConfigs(): AIModelConfig[] {

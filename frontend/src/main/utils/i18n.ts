@@ -15,7 +15,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'subapp.processExitedWithCode': '进程退出，退出码：{0}',
     'subapp.executionSucceeded': '执行成功',
     'subapp.executionFailed': '执行失败',
-    'subapp.executionCompleted': '执行完成'
+    'subapp.executionCompleted': '执行完成',
+    'subapp.appDisabled': '当前应用已禁用',
+    'subapp.appDisabledNamed': '「{0}」已被管理员禁用'
   },
   en: {
     'subapp.pythonConfiguredPathUnavailable':
@@ -29,7 +31,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'subapp.processExitedWithCode': 'Process exited with code {0}',
     'subapp.executionSucceeded': 'Execution succeeded',
     'subapp.executionFailed': 'Execution failed',
-    'subapp.executionCompleted': 'Execution completed'
+    'subapp.executionCompleted': 'Execution completed',
+    'subapp.appDisabled': 'This app is disabled',
+    'subapp.appDisabledNamed': '"{0}" has been disabled by an administrator'
   }
 }
 

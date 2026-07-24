@@ -6,6 +6,10 @@
 import type {
   ApiResponse,
   ApiError,
+  Project,
+  ProjectMember,
+  ListProjectsResponse,
+  ListCommonAppsResponse,
   RegisterRequest,
   RegisterResponse,
   LoginRequest,
@@ -551,6 +555,40 @@ class ApiClient {
    */
   onUnauthorized(handler: () => void): void {
     this.httpClient.onUnauthorized = handler;
+  }
+
+  // ============ 项目 API ============
+
+  /** 获取项目列表（默认仅 active） */
+  async listProjects(): Promise<Project[]> {
+    const response = await this.httpClient.get<ListProjectsResponse>(
+      '/projects',
+      true
+    );
+    return response.projects;
+  }
+
+  /** 加入项目（幂等：已是成员时返回现有记录） */
+  async joinProject(projectId: string): Promise<ProjectMember> {
+    const response = await this.httpClient.post<{ member: ProjectMember }>(
+      `/projects/${projectId}/join`,
+      {},
+      true
+    );
+    return response.member;
+  }
+
+  /** 获取项目启用的通用 app（含合并后的配置） */
+  async listProjectCommonApps(projectId: string): Promise<ListCommonAppsResponse> {
+    return this.httpClient.get<ListCommonAppsResponse>(
+      `/projects/${projectId}/common-apps`,
+      true
+    );
+  }
+
+  /** 获取全局通用 app 列表（含 disabled 与置顶标记） */
+  async listCommonApps(): Promise<ListCommonAppsResponse> {
+    return this.httpClient.get<ListCommonAppsResponse>('/common-apps', true);
   }
 
   // ============ 应用 API ============

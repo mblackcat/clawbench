@@ -27,6 +27,7 @@ import { useNotificationStore } from '../../stores/useNotificationStore'
 import { useAICodingStore } from '../../stores/useAICodingStore'
 import WorkspaceSwitcher from '../WorkspaceSwitcher'
 import GitBranchSelector from '../GitBranchSelector'
+import ProjectSwitcher from '../ProjectSwitcher'
 import AICodingIMConfigModal from '../../pages/AICoding/AICodingIMConfigModal'
 import { UserAvatar } from '../ProviderIcons'
 import { FeishuIcon, FeishuDisconnectedIcon } from '../icons/FeishuIcon'
@@ -402,6 +403,7 @@ const TopBar: React.FC = () => {
           { minWidth: 96 }
         )}
         <div style={{ width: 1, height: 16, background: token.colorBorderSecondary }} />
+        <ProjectSwitcher />
         <WorkspaceSwitcher />
         {activeWorkspace?.vcsType === 'git' && (
           <GitBranchSelector workspacePath={activeWorkspace.path} />
