@@ -25,6 +25,10 @@ describe('Projects & Common Apps', () => {
     app = createApp();
     await database.connect();
     await initializeSchema();
+    // Defensive clean: this suite relies on `admin` being the FIRST user
+    // (first-user-wins grants the admin role). Stale rows from other suites
+    // sharing the file DB would otherwise grant it `user` and cascade failures.
+    await cleanAllTables();
 
     // First registered user becomes global admin (first-user-wins).
     const admin = await createUser({
