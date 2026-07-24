@@ -26,6 +26,7 @@ import { useAuthStore } from '../../stores/useAuthStore';
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore';
 import CreateTypeModal from '../../components/CreateTypeModal';
 import SkillInstallModal from '../../components/SkillInstallModal';
+import { AppVersionTag } from '../../components/AppStatusTag';
 import type { SkillInstallMode, SkillTool } from '../../types/skill';
 import { useT } from '../../i18n';
 
@@ -426,7 +427,17 @@ const AppLibraryPage: React.FC = () => {
             </Tooltip>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            {app.version && <Tag style={{ margin: 0 }}>v{app.version}</Tag>}
+            {app.version && (
+              <AppVersionTag
+                localVersion={
+                  status === 'update'
+                    ? updateInfoMap.get(app.applicationId)?.currentVersion
+                    : undefined
+                }
+                remoteVersion={app.version}
+                status={status === 'update' ? 'pending_update' : 'not_installed'}
+              />
+            )}
             {app.category && app.category !== 'general' && <Tag style={{ margin: 0 }}>{app.category}</Tag>}
             {status === 'update' && updateInfoMap.get(app.applicationId)?.latestVersion && (
               <Tag color="processing" icon={<SyncOutlined spin />} style={{ margin: 0, fontWeight: 600 }}>
