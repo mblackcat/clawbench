@@ -5,6 +5,9 @@ import {
   DashboardOutlined,
   UserOutlined,
   AppstoreOutlined,
+  ProjectOutlined,
+  BlockOutlined,
+  WalletOutlined,
   LogoutOutlined,
   HomeOutlined,
   SunOutlined,
@@ -67,8 +70,16 @@ const Layout: React.FC<Props> = ({ admin, children }) => {
 
   const menuItems = [
     { key: '/admin/dashboard', icon: <DashboardOutlined />, label: 'Dashboard' },
-    { key: '/admin/resources', icon: <AppstoreOutlined />, label: 'Resources' },
-    ...(role === 'admin' ? [{ key: '/admin/users', icon: <UserOutlined />, label: 'Users' }] : []),
+    // Management entries are admin-only; regular users see just the dashboard.
+    ...(role === 'admin'
+      ? [
+          { key: '/admin/apps', icon: <AppstoreOutlined />, label: 'Apps' },
+          { key: '/admin/common-apps', icon: <BlockOutlined />, label: 'Common Apps' },
+          { key: '/admin/resources', icon: <WalletOutlined />, label: 'Resources' },
+          { key: '/admin/projects', icon: <ProjectOutlined />, label: 'Projects' },
+          { key: '/admin/users', icon: <UserOutlined />, label: 'Users' },
+        ]
+      : []),
   ];
 
   const isActive = (key: string) => {

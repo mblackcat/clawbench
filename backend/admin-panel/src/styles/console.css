@@ -837,3 +837,149 @@ body {
 .status-dot--off {
   background: var(--text-tertiary);
 }
+
+/* ===== Common Apps management: draggable app cards ===== */
+.app-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.app-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 16px;
+  transition: box-shadow var(--transition), border-color var(--transition), opacity var(--transition), transform var(--transition);
+}
+
+.app-card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-strong);
+}
+
+.app-card--over {
+  border-color: var(--accent);
+  border-style: dashed;
+}
+
+.app-card--dragging {
+  opacity: 0.5;
+}
+
+.app-card--disabled {
+  opacity: 0.62;
+}
+
+.app-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.app-card-handle {
+  cursor: grab;
+  color: var(--text-tertiary);
+  padding-top: 3px;
+}
+
+.app-card-handle:active {
+  cursor: grabbing;
+}
+
+.app-card-titles {
+  flex: 1;
+  min-width: 0;
+}
+
+.app-card-title {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-card-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font-family: 'SF Mono', 'Roboto Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.app-card-subtitle .app-card-key {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-card-version {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.app-card-desc {
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  min-height: 59px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.app-card-metrics {
+  display: flex;
+  gap: 18px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text-secondary);
+  flex-wrap: wrap;
+}
+
+.app-card-metrics .metric-label {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.app-card-metrics .metric-value {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.app-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.app-card-footer .app-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-card-updated {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}

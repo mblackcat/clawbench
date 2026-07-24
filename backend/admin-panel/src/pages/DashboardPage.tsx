@@ -73,8 +73,8 @@ const DashboardPage: React.FC = () => {
           <h1>Dashboard</h1>
           <p className="page-desc">Platform overview — users, resources, and marketplace activity.</p>
         </div>
-        <Button type="primary" onClick={() => navigate('/admin/resources')}>
-          Manage resources <ArrowRightOutlined />
+        <Button type="primary" onClick={() => navigate('/admin/apps')}>
+          Manage apps <ArrowRightOutlined />
         </Button>
       </div>
 
@@ -114,7 +114,13 @@ const DashboardPage: React.FC = () => {
                 <button
                   key={type}
                   type="button"
-                  onClick={() => navigate(`/admin/resources?type=${encodeURIComponent(type)}`)}
+                  onClick={() => {
+                    const target =
+                      type === 'app'
+                        ? '/admin/apps'
+                        : `/admin/resources?type=${encodeURIComponent(type)}`;
+                    navigate(target);
+                  }}
                   style={{
                     minWidth: 132,
                     padding: '14px 18px',
@@ -165,7 +171,7 @@ const DashboardPage: React.FC = () => {
         <div className="panel-body">
           <h2 className="panel-title">Quick actions</h2>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <Button onClick={() => navigate('/admin/resources')}>Browse all resources</Button>
+            <Button onClick={() => navigate('/admin/apps')}>Browse apps</Button>
             <Button onClick={() => navigate('/admin/resources?type=link')}>View links</Button>
             <Button onClick={() => navigate('/admin/users')}>Manage users</Button>
             <Button onClick={() => window.open('/store', '_blank')}>Open public marketplace</Button>

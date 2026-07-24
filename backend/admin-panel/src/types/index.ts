@@ -122,3 +122,95 @@ export const TYPE_LABELS: Record<ApplicationType | string, string> = {
   prompt: 'Prompt',
   link: 'Link',
 };
+
+// ── Projects ───────────────────────────────────────────────
+
+/** Project VCS backends */
+export type VcsType = 'git' | 'svn' | 'none';
+
+export type ProjectStatus = 'active' | 'archived';
+
+export interface Project {
+  projectId: string;
+  name: string;
+  description?: string | null;
+  vcsType: VcsType;
+  repoUrl?: string | null;
+  status: ProjectStatus;
+  createdBy?: string;
+  createdAt: number;
+  updatedAt: number;
+  memberCount?: number;
+  myRole?: 'admin' | 'member' | null;
+}
+
+export interface ProjectMember {
+  projectId: string;
+  userId: string;
+  username?: string;
+  role: 'admin' | 'member';
+  joinedAt: number;
+}
+
+// ── Common / builtin apps ──────────────────────────────────
+
+export interface CommonApp {
+  appKey: string;
+  name: string;
+  description?: string | null;
+  /** Version (builtin apps ship with the client bundle) */
+  version?: string | null;
+  /** True for builtin apps; distinguishes them from user-developed apps */
+  builtin: boolean;
+  enabled: boolean;
+  sortOrder: number;
+  /** Pinned to the top section of the client workbench */
+  pinned: boolean;
+  /** Client-reported install/download count */
+  downloadCount: number;
+  /** Client-reported run count */
+  executionCount: number;
+  config: Record<string, unknown>;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CommonAppExecutionError {
+  errorId: string;
+  appKey: string;
+  userId: string;
+  username?: string;
+  version: string | null;
+  message: string;
+  details: string | null;
+  createdAt: number;
+}
+
+export type CommonAppEventType = 'download' | 'execution' | 'error' | 'version';
+
+/** A download or execution event row (admin stats tabs). */
+export interface CommonAppEvent {
+  eventId: string;
+  appKey: string;
+  userId: string;
+  username?: string;
+  eventType: 'download' | 'execution';
+  success: boolean;
+  /** User-initiated cancel — distinct from failure (grey Cancelled in Runs). */
+  cancelled?: boolean;
+  version: string | null;
+  errorMessage: string | null;
+  errorDetails: string | null;
+  createdAt: number;
+}
+
+/** A version-change history row (admin stats version tab). */
+export interface CommonAppVersionHistory {
+  versionHistId: string;
+  appKey: string;
+  version: string;
+  changedBy: string | null;
+  changedByName?: string | null;
+  source: string;
+  createdAt: number;
+}

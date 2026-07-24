@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
@@ -7,12 +7,31 @@ import DashboardPage from './pages/DashboardPage';
 import UserManagementPage from './pages/UserManagementPage';
 import ResourceListPage from './pages/ResourceListPage';
 import ResourceDetailPage from './pages/ResourceDetailPage';
+import ResourcesPage from './pages/ResourcesPage';
+import CommonAppsPage from './pages/CommonAppsPage';
+import ProjectManagementPage from './pages/ProjectManagementPage';
 import { useApi } from './hooks/useApi';
 
 const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { getToken } = useApi();
   const token = getToken();
   if (!token) return <Navigate to="/admin/login" replace />;
+  return <>{children}</>;
+};
+
+// Gate sensitive admin CRUD routes to global admins. While the role is loading
+// we render nothing; non-admins are bounced to the dashboard.
+const RequireAdmin: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { getMe } = useApi();
+  const [role, setRole] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    getMe()
+      .then(setRole)
+      .finally(() => setReady(true));
+  }, [getMe]);
+  if (!ready) return null;
+  if (role !== 'admin') return <Navigate to="/admin/dashboard" replace />;
   return <>{children}</>;
 };
 
@@ -27,10 +46,32 @@ const AdminShell: React.FC = () => (
       <Routes>
         <Route index element={<DashboardPage />} />
         <Route path="dashboard" element={<DashboardPage />} />
-        <Route path="users" element={<UserManagementPage />} />
-        {/* New resources routes */}
-        <Route path="resources" element={<ResourceListPage />} />
+        {/* Apps — marketplace app-type resources (vexelbench-style management) */}
+        <Route path="apps" element={<ResourceListPage fixedType="app" />} />
+        <Route path="apps/:appId" element={<ResourceDetailPage />} />
+        {/* Common Apps — builtin/common app registry (kill-switch, pin, order, config) */}
+        <Route
+          path="common-apps"
+          element={
+            <RequireAdmin>
+              <CommonAppsPage />
+            </RequireAdmin>
+          }
+        />
+        {/* Resources — AI Skill / Prompt / Link, tabbed by type */}
+        <Route path="resources" element={<ResourcesPage />} />
         <Route path="resources/:appId" element={<ResourceDetailPage />} />
+        {/* Projects — multi-tenant projects + members + per-project app configs */}
+        <Route
+          path="projects"
+          element={
+            <RequireAdmin>
+              <ProjectManagementPage />
+            </RequireAdmin>
+          }
+        />
+        {/* Users — admin-only (unchanged) */}
+        <Route path="users" element={<UserManagementPage />} />
         {/* Legacy /admin/store redirects for bookmarks */}
         <Route path="store" element={<Navigate to="/admin/resources" replace />} />
         <Route path="store/:appId" element={<StoreRedirect />} />

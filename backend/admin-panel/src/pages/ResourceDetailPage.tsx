@@ -180,8 +180,11 @@ const ResourceDetailPage: React.FC = () => {
     if (fav) setCoverInput(fav);
   };
 
-  const goBack = () =>
-    isAdmin ? navigate('/admin/resources') : navigate('/store');
+  const goBack = () => {
+    if (!isAdmin) return navigate('/store');
+    if (location.pathname.startsWith('/admin/apps')) return navigate('/admin/apps');
+    return navigate('/admin/resources');
+  };
 
   if (loading) {
     return (
@@ -214,7 +217,12 @@ const ResourceDetailPage: React.FC = () => {
   return (
     <div>
       <button type="button" className="back-link" onClick={goBack}>
-        <ArrowLeftOutlined /> {isAdmin ? 'Back to resources' : 'Back to marketplace'}
+        <ArrowLeftOutlined />{' '}
+        {isAdmin
+          ? location.pathname.startsWith('/admin/apps')
+            ? 'Back to apps'
+            : 'Back to resources'
+          : 'Back to marketplace'}
       </button>
 
       {/* Header */}
