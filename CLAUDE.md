@@ -66,7 +66,7 @@ backend/src/
 | 收藏栏 | `/workbench/installed` | 已收藏资源卡片（应用/技能/提示词），拖拽排序，按类型执行不同操作 |
 | 发现 | `/workbench/library` | 多资源发现市场：3 Tab（应用/AI 技能/提示词），搜索、安装、发布 |
 | 我的 | `/workbench/my-contributions` | 本地创建的所有资源管理（草稿/本地/已发布状态） |
-| Developer | `/developer/*` | App editor (4-step), SkillEditor (3-step), PromptEditor, Monaco code editor, publisher |
+| Developer | `/developer/*` | App editor (3-step), SkillEditor (3-step), PromptEditor, LinkEditor, Monaco code editor, publisher |
 | AI Chat | `/ai-chat` | Multi-model chat (OpenAI/Claude/Gemini), streaming, tool calling, MCP, welcome view |
 | AI Agents | `/ai-agents` | AI agent management hub; OpenClaw at `/ai-agents/openclaw`; Hermes Agent at `/ai-agents/hermes` |
 | AI Coding | `/ai-coding` | AI coding sessions (Claude Code/Codex/Gemini), Feishu IM control |
@@ -84,7 +84,7 @@ backend/src/
 | `frontend/src/renderer/src/pages/AIAgents/HermesCard.tsx` | AI Agents hub preview card: brand logo + 4-stat info panel (version/status/model/channels) |
 | `frontend/src/renderer/src/pages/Hermes/HermesPage.tsx` | Hermes detail page: StatusBar + 6-tab config (Providers/Channels/Skills/Tools/Memory/Cron) + BottomBar |
 | `frontend/src/main/services/python-runner.service.ts` | Spawns Python sub-apps, parses JSON-line stdout, manages task lifecycle |
-| `frontend/src/main/services/skill-activation.service.ts` | AI 技能部署：检测工作区 AI 工具类型，部署 SKILL.md 到 .claude/commands、.codex/agents、.gemini/commands |
+| `frontend/src/main/services/skill-activation.service.ts` | AI 技能部署：检测工作区 AI 工具类型，部署 SKILL.md 到 .claude/skills、.codex/skills、.gemini/skills |
 | `frontend/src/preload/api.ts` | Typed bridge defining the entire `window.api` surface (incl. `skill` namespace) |
 | `frontend/src/main/services/ai.service.ts` | AI provider adapters (OpenAI-compatible, Claude, Google) + streaming via StreamEmitter + tool calling |
 | `frontend/src/main/services/mcp/mcp-client.service.ts` | MCP client: stdio/SSE transport, tool listing, tool calling |
@@ -140,7 +140,7 @@ backend/src/
 
 | Type | Entry File | 编辑器 | 收藏栏操作 |
 |---|---|---|---|
-| `app`（默认） | `main.py` | AppEditor (4-step) | 运行 Python 子应用 |
+| `app`（默认） | `main.py` | AppEditor (3-step) | 运行 Python 子应用 |
 | `ai-skill` | `SKILL.md` | SkillEditor (3-step) | 激活到工作区 AI 工具（Claude/Codex/Gemini） |
 | `prompt` | `prompt.md` | PromptEditor (single page) | 复制提示词到剪贴板 |
 
@@ -151,7 +151,7 @@ backend/src/
 2. `activate(skillId, path)` — 部署 SKILL.md 到对应 commands 目录
 3. `deactivate(skillId, path)` — 移除已部署的技能
 
-部署目标：`.claude/commands`、`.codex/agents`、`.gemini/commands`
+部署目标：`.claude/skills`、`.codex/skills`、`.gemini/skills`
 
 ### manifest.json
 
@@ -263,6 +263,30 @@ if __name__ == "__main__":
 | Scheduled Tasks | Lists files from `~/.hermes/cron/`; Empty state when none |
 
 **Install implementation note**: uses `spawn` (not `execAsync`) to avoid timeout — `uv pip install` can take 10+ minutes. Pass `--skip-setup` so app manages config itself.
+
+## Shell Mode (通用 / 研发)
+
+Top-bar capsule toggle (`constants/app-mode.ts`, `AppMode = 'general' | 'pro'`, persisted under `cb-app-mode`).
+
+- **研发 (pro)** — default; full left sidebar (all modules incl. AI Chat/Agents).
+- **通用 (general)** — left sidebar hidden; workbench-focused. **All product routes remain reachable** (AI-inclusive allow-list in `isGeneralModePath`) — only the sider collapses.
+- `resolveDefaultRoute(lastRoute, mode)` drives root + post-login landing. Unlike the Vexelbench fork, it **never drops** `/ai-chat`, `/ai-agents/*`, `/openclaw` — pro mode preserves them; general mode restores an allowed lastRoute else falls back to `/workbench/installed`.
+- Sidebar gating: `AppLayout` renders `<Sider>` only when `shouldShowLeftSider(appMode)`; a misroute-guard redirects stale paths to workbench in general mode.
+- Mode state lives in `useSettingsStore` (`appMode` / `setAppMode`), hydrated from localStorage on boot.
+
+## Projects & Common Apps (admin layer)
+
+Multi-tenant **Projects** + **common-apps** (builtin app registry with admin kill-switch + admin-pin). Ported from Vexelbench; AI chat/agent code is untouched.
+
+**Backend** (`backend/src/`): `models/project.ts`, `controllers/{project,commonApp}Controller.ts`, `routes/{project,commonApp}Routes.ts`, `repositories/{project,commonApp}Repository.ts`, `database/schema/common-apps.seed.ts`. Mounted at `/api/v1/projects` and `/api/v1/common-apps`. 7 tables (`projects`, `project_members`, `project_app_configs`, `common_apps`, `common_app_events`, `common_app_version_history`, `common_app_execution_errors`) across all 3 DB dialects. Two-tier roles: global `users.role` (`admin|user`) vs project-scoped `project_members.role` (`admin|member`); last-project-admin protected. First registered user becomes global admin (first-user-wins in `userRepository`). ClawBench ships an **empty common-apps seed** — admins create builtins via `POST /api/v1/common-apps` (no CREATE in the fork; added here).
+
+**Desktop consumer side** (no admin UI — actions live in the web panel):
+- `main/services/project.service.ts`: `enrichBuiltinAppParams` (kill-switch gate: project && global enable; throws `AppDisabledError`) + config injection (`__project`, `__app_config`). `BUILTIN_APP_ID_PREFIX = 'com.clawbench.builtin.'`.
+- `main/ipc/subapp.ipc.ts`: gates builtin runs before `task-started`; on `AppDisabledError` surfaces via the existing `task-status` channel (status `failed` carries the disabled i18n message — no execute-return-contract change).
+- `components/ProjectSwitcher.tsx` (read-only; TopBar; hidden in local mode), `apiClient.{listProjects,joinProject,listProjectCommonApps,listCommonApps}`.
+- `store/settings.store.ts`: `activeProject`, `pinnedApps`, `commonAppConfigCache`.
+
+**Web admin panel** (`backend/admin-panel/`): app management (incl. Common Apps: kill-switch/pin/sort/config/stats), Projects (members CRUD), and a tabbed Resources page for ai-skill/prompt/link.
 
 ## General Rules
 
