@@ -270,13 +270,13 @@ Top-bar capsule toggle (`constants/app-mode.ts`, `AppMode = 'general' | 'pro'`, 
 
 - **研发 (pro)** — default; full left sidebar (all modules incl. AI Chat/Agents).
 - **通用 (general)** — left sidebar hidden; workbench-focused. **All product routes remain reachable** (AI-inclusive allow-list in `isGeneralModePath`) — only the sider collapses.
-- `resolveDefaultRoute(lastRoute, mode)` drives root + post-login landing. Unlike the Vexelbench fork, it **never drops** `/ai-chat`, `/ai-agents/*`, `/openclaw` — pro mode preserves them; general mode restores an allowed lastRoute else falls back to `/workbench/installed`.
+- `resolveDefaultRoute(lastRoute, mode)` drives root + post-login landing. It **never drops** `/ai-chat`, `/ai-agents/*`, `/openclaw` — pro mode preserves them; general mode restores an allowed lastRoute else falls back to `/workbench/installed`.
 - Sidebar gating: `AppLayout` renders `<Sider>` only when `shouldShowLeftSider(appMode)`; a misroute-guard redirects stale paths to workbench in general mode.
 - Mode state lives in `useSettingsStore` (`appMode` / `setAppMode`), hydrated from localStorage on boot.
 
 ## Projects & Common Apps (admin layer)
 
-Multi-tenant **Projects** + **common-apps** (builtin app registry with admin kill-switch + admin-pin). Ported from Vexelbench; AI chat/agent code is untouched.
+Multi-tenant **Projects** + **common-apps** (builtin app registry with admin kill-switch + admin-pin). AI chat/agent code is untouched.
 
 **Backend** (`backend/src/`): `models/project.ts`, `controllers/{project,commonApp}Controller.ts`, `routes/{project,commonApp}Routes.ts`, `repositories/{project,commonApp}Repository.ts`, `database/schema/common-apps.seed.ts`. Mounted at `/api/v1/projects` and `/api/v1/common-apps`. 7 tables (`projects`, `project_members`, `project_app_configs`, `common_apps`, `common_app_events`, `common_app_version_history`, `common_app_execution_errors`) across all 3 DB dialects. Two-tier roles: global `users.role` (`admin|user`) vs project-scoped `project_members.role` (`admin|member`); last-project-admin protected. First registered user becomes global admin (first-user-wins in `userRepository`). ClawBench ships an **empty common-apps seed** — admins create builtins via `POST /api/v1/common-apps` (no CREATE in the fork; added here).
 

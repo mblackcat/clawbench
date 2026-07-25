@@ -9,7 +9,7 @@ import { createUser } from '../repositories/userRepository';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
- * Projects + common-apps API integration tests (ported from Vexelbench).
+ * Projects + common-apps API integration tests.
  * Covers: first-user-is-admin, project CRUD/join/members, common-app create +
  * admin kill-switch, and per-project effective-enable enforcement.
  */

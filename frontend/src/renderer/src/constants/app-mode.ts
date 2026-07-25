@@ -7,8 +7,8 @@
  * sider collapses. Dev (研发) mode shows the full left menu.
  *
  * Pure helpers — no React / Electron dependencies so unit tests can exercise
- * them directly. Mirrors the Vexelbench design but defaults to `pro` to
- * preserve ClawBench's historical UX and NEVER drops AI routes.
+ * them directly. Defaults to `pro` to preserve ClawBench's historical UX
+ * and NEVER drops AI routes.
  */
 
 export type AppMode = 'general' | 'pro'
@@ -84,7 +84,7 @@ export function generalModeFallbackPath(): string {
  *   workbench fallback.
  * - Pro: preserve the historical behaviour — lastRoute wins; auth routes and
  *   empty values fall back to `/ai-chat`. AI routes are ALWAYS preserved
- *   (never redirected away), unlike the Vexelbench fork which dropped them.
+ *   (never redirected away).
  */
 export function resolveDefaultRoute(
   lastRoute: string | null | undefined,
