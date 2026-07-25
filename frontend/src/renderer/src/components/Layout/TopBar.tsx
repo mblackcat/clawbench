@@ -13,12 +13,14 @@ import {
   MoonOutlined,
   SettingOutlined,
   InfoCircleOutlined,
-  CheckOutlined
+  CheckOutlined,
+  CompassOutlined
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useT } from '../../i18n'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useSettingsStore } from '../../stores/useSettingsStore'
+import { generalModeFallbackPath, type AppMode } from '../../constants/app-mode'
 
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { useUpdaterStore } from '../../stores/useUpdaterStore'
@@ -26,6 +28,7 @@ import { useNotificationStore } from '../../stores/useNotificationStore'
 import { useAICodingStore } from '../../stores/useAICodingStore'
 import WorkspaceSwitcher from '../WorkspaceSwitcher'
 import GitBranchSelector from '../GitBranchSelector'
+import ProjectSwitcher from '../ProjectSwitcher'
 import AICodingIMConfigModal from '../../pages/AICoding/AICodingIMConfigModal'
 import { UserAvatar } from '../ProviderIcons'
 import { FeishuIcon, FeishuDisconnectedIcon } from '../icons/FeishuIcon'
@@ -48,6 +51,8 @@ const TopBar: React.FC = () => {
   const currentTheme = useSettingsStore((state) => state.theme)
   const language = useSettingsStore((state) => state.language)
   const updateSetting = useSettingsStore((state) => state.updateSetting)
+  const appMode = useSettingsStore((state) => state.appMode)
+  const setAppMode = useSettingsStore((state) => state.setAppMode)
 
   const initUpdater = useUpdaterStore((state) => state.init)
   const updaterStatus = useUpdaterStore((state) => state.status)
@@ -85,6 +90,19 @@ const TopBar: React.FC = () => {
     await useAuthStore.getState().logout()
     navigate('/login')
   }
+
+  // ── App shell mode (通用 / 研发) ──
+  const handleModeChange = useCallback(
+    (mode: AppMode) => {
+      setAppMode(mode)
+      // Collapsing into general mode lands on the workbench; expanding into
+      // pro leaves the user on whatever route they're already viewing.
+      if (mode === 'general') {
+        navigate(generalModeFallbackPath())
+      }
+    },
+    [setAppMode, navigate]
+  )
 
   // ── IM icon state ──
   const isConfigured =
@@ -275,6 +293,31 @@ const TopBar: React.FC = () => {
           tabIndex={0}
           onClick={() => {
             setUserMenuOpen(false)
+            navigate('/setup', { state: { forceShow: true } })
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              setUserMenuOpen(false)
+              navigate('/setup', { state: { forceShow: true } })
+            }
+          }}
+          style={{ ...menuRowBase, cursor: 'pointer' }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = token.colorFillTertiary
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent'
+          }}
+        >
+          <CompassOutlined style={menuIconStyle} />
+          <span style={{ flex: 1 }}>{t('topbar.guide')}</span>
+        </div>
+
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            setUserMenuOpen(false)
             navigate('/settings')
           }}
           onKeyDown={(e) => {
@@ -369,6 +412,24 @@ const TopBar: React.FC = () => {
       } as React.CSSProperties}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        {renderCapsule(
+          appMode === 'general',
+          {
+            key: 'general',
+            title: t('topbar.modeGeneral'),
+            content: t('topbar.modeGeneral'),
+            onClick: () => handleModeChange('general')
+          },
+          {
+            key: 'pro',
+            title: t('topbar.modePro'),
+            content: t('topbar.modePro'),
+            onClick: () => handleModeChange('pro')
+          },
+          { minWidth: 96 }
+        )}
+        <div style={{ width: 1, height: 16, background: token.colorBorderSecondary }} />
+        <ProjectSwitcher />
         <WorkspaceSwitcher />
         {activeWorkspace?.vcsType === 'git' && (
           <GitBranchSelector workspacePath={activeWorkspace.path} />

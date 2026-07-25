@@ -130,6 +130,9 @@ const useWeatherNames = (): Record<WeatherType, string> => {
 
 const StatusBar: React.FC<StatusBarProps> = ({ onToggleErrorLog, weatherVisible, onToggleWeather, onCycleWeather, weatherType }) => {
   const tasks = useTaskStore((state) => state.tasks)
+  // Unseen-based so viewing the app-log tab clears the alert (derived-from-tasks
+  // would keep the red dot until logs are cleared entirely)
+  const hasErrors = useTaskStore((state) => state.hasUnseenErrors)
   const { token } = theme.useToken()
   const unreadCount = useNotificationStore((state) => state.unreadCount)
   const attentionItems = useAttentionStore((state) => state.items)
@@ -143,10 +146,6 @@ const StatusBar: React.FC<StatusBarProps> = ({ onToggleErrorLog, weatherVisible,
   const runningTasks = Object.values(tasks).filter((task) => task.status === 'running')
   const isRunning = runningTasks.length > 0
   const activeTaskName = runningTasks.length > 0 ? runningTasks[0].appName : ''
-
-  const hasErrors = Object.values(tasks).some(
-    (task) => task.status === 'failed' || task.outputs.some((o) => o.type === 'error')
-  )
 
   const attentionCount = attentionItems.length
   // Log entry absorbs the former notification bell: badge for errors / attention / legacy notifications

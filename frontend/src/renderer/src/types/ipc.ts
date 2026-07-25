@@ -90,7 +90,12 @@ export interface ClawBenchAPI {
       success: boolean
       manifest?: Record<string, any>
     }>
-    updateFromMarket: (appId: string, downloadUrl: string, token?: string) => Promise<{
+    updateFromMarket: (
+      appId: string,
+      downloadUrl: string,
+      token?: string,
+      opts?: { force?: boolean }
+    ) => Promise<{
       success: boolean
       manifest?: Record<string, any>
     }>

@@ -1,8 +1,9 @@
-import React, { useState } from 'react'
-import { Drawer, Button, Typography, Tag, Empty, Divider, theme, Segmented } from 'antd'
+import React, { useState, useEffect } from 'react'
+import { Drawer, Button, Typography, Tag, Empty, Divider, theme, Segmented, Badge } from 'antd'
 import { DeleteOutlined } from '@ant-design/icons'
 import { useTaskStore } from '../stores/useTaskStore'
 import type { SystemLogEntry } from '../stores/useTaskStore'
+import { useNotificationStore } from '../stores/useNotificationStore'
 import { useT } from '../i18n'
 import type { TaskInfo } from '../types/subapp'
 
@@ -16,9 +17,22 @@ interface ErrorLogDrawerProps {
 const ErrorLogDrawer: React.FC<ErrorLogDrawerProps> = ({ open, onClose }) => {
   const tasks = useTaskStore((state) => state.tasks)
   const systemLogs = useTaskStore((state) => state.systemLogs)
+  const hasUnseenErrors = useTaskStore((state) => state.hasUnseenErrors)
+  const unreadCount = useNotificationStore((state) => state.unreadCount)
   const { token } = theme.useToken()
   const t = useT()
   const [tab, setTab] = useState<'system' | 'app'>('system')
+
+  // The status-bar red dot is driven by task errors + unread notifications,
+  // both app-level — surface it on the App Logs tab and clear it once viewed
+  const appLogAlert = hasUnseenErrors || unreadCount > 0
+
+  useEffect(() => {
+    if (open && tab === 'app' && appLogAlert) {
+      useTaskStore.getState().markErrorsSeen()
+      useNotificationStore.getState().dismissAll()
+    }
+  }, [open, tab, appLogAlert])
 
   // 将任务转换为数组并按开始时间倒序排序
   const taskList: TaskInfo[] = Object.values(tasks).sort((a, b) => b.startedAt - a.startedAt)
@@ -270,7 +284,14 @@ const ErrorLogDrawer: React.FC<ErrorLogDrawerProps> = ({ open, onClose }) => {
             onChange={(v) => setTab(v as 'system' | 'app')}
             options={[
               { label: t('logs.systemLogs'), value: 'system' },
-              { label: t('logs.appLogs'), value: 'app' }
+              {
+                label: (
+                  <Badge dot={appLogAlert} offset={[4, 0]}>
+                    {t('logs.appLogs')}
+                  </Badge>
+                ),
+                value: 'app'
+              }
             ]}
           />
           <Button

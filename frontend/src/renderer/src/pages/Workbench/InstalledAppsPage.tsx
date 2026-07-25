@@ -25,7 +25,9 @@ import {
   AppstoreOutlined,
   ProfileOutlined,
   FileTextOutlined,
-  CloudDownloadOutlined
+  CloudDownloadOutlined,
+  PushpinOutlined,
+  PushpinFilled
 } from '@ant-design/icons';
 import {
   DndContext,
@@ -56,6 +58,13 @@ import type { ScannedSkill } from '../../types/skill';
 import dayjs from 'dayjs';
 import ParamDrawer from '../../components/ParamDrawer';
 import CreateTypeModal from '../../components/CreateTypeModal';
+import { AppStatusTag, AppVersionTag } from '../../components/AppStatusTag';
+import {
+  isBuiltinAppId,
+  resolveLocalAppStatus,
+  type AppCardStatus,
+  type AppOrigin
+} from '../../utils/app-status';
 import { openExternalLink } from '../../utils/markdown-links';
 import { buildInitialAppParams, saveAppParams } from '../../utils/subapp-params';
 import { useT } from '../../i18n';
@@ -83,6 +92,12 @@ type AppType = 'published' | 'draft' | 'local';
 
 interface AppWithType extends SubAppInfo {
   appType: AppType
+  /** Card status used by AppStatusTag / AppVersionTag (status model). */
+  status: AppCardStatus
+  /** Marketplace version when known (drives the version-diff tag). */
+  remoteVersion?: string
+  /** App origin: own / builtin / installed. */
+  origin: AppOrigin
 }
 
 /**
@@ -106,7 +121,6 @@ interface SortableCardProps {
   shortcutLabel: string | null
   token: any
   t: (key: string, ...args: string[]) => string
-  getAppTypeTag: (appType: AppType) => React.ReactNode
   getManifestTypeTag: (type?: string) => React.ReactNode
   onRun: (id: string, name: string, manifest: SubAppManifest) => void
   onUninstall: (id: string, name: string) => void
@@ -125,6 +139,10 @@ interface SortableCardProps {
   scheduleEnabled?: boolean
   /** 下次执行时间戳（scheduleEnabled 为 true 时展示） */
   scheduleNextRunAt?: number
+  /** 是否置顶到收藏栏分组顶部 */
+  pinned?: boolean
+  /** 切换置顶状态 */
+  onTogglePin?: (id: string) => void
 }
 
 const SortableAppCard: React.FC<SortableCardProps> = ({
@@ -133,7 +151,6 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
   shortcutLabel,
   token,
   t,
-  getAppTypeTag,
   getManifestTypeTag,
   onRun,
   onUninstall,
@@ -146,9 +163,11 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
   latestVersion,
   onUpdate,
   scheduleEnabled,
-  scheduleNextRunAt
+  scheduleNextRunAt,
+  pinned,
+  onTogglePin
 }) => {
-  const { id, manifest, appType } = appWithType;
+  const { id, manifest } = appWithType;
   const app = manifest;
   const manifestType = app.type || 'app';
 
@@ -174,7 +193,7 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
         className="cb-glass-card"
         style={{ position: 'relative' }}
       >
-        {/* Drag handle + shortcut label in top-right */}
+        {/* Pin + drag handle + shortcut label in top-right */}
         <div
           style={{
             position: 'absolute',
@@ -185,22 +204,22 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
             gap: 4
           }}
         >
-          {shortcutLabel && (
-            <Tooltip title={t('workbench.shortcutTooltip', shortcutLabel)}>
+          {onTogglePin && (
+            <Tooltip title={pinned ? t('workbench.unpin') : t('workbench.pin')}>
               <div
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onTogglePin(id)
+                }}
                 style={{
-                  padding: '1px 6px',
-                  borderRadius: 4,
-                  background: token.colorFillSecondary,
-                  color: token.colorTextSecondary,
-                  fontSize: 10,
-                  fontWeight: 600,
-                  lineHeight: '18px',
-                  whiteSpace: 'nowrap',
-                  fontFamily: 'inherit'
+                  cursor: 'pointer',
+                  color: pinned ? token.colorPrimary : token.colorTextQuaternary,
+                  fontSize: 14,
+                  padding: '2px 0',
+                  lineHeight: 1
                 }}
               >
-                {shortcutLabel}
+                {pinned ? <PushpinFilled /> : <PushpinOutlined />}
               </div>
             </Tooltip>
           )}
@@ -233,7 +252,18 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
             marginBottom: 8,
             minHeight: 44
           }}>
-            <Tooltip title={app.name}>
+            <Tooltip
+              title={
+                <div>
+                  <div>{t('workbench.cardTipClick')}</div>
+                  {shortcutLabel && (
+                    <div style={{ marginTop: 4 }}>
+                      {t('workbench.shortcutTooltip', shortcutLabel)}
+                    </div>
+                  )}
+                </div>
+              }
+            >
               <Text
                 strong
                 style={{
@@ -252,9 +282,13 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
             </Tooltip>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Tag style={{ margin: 0 }}>v{app.version}</Tag>
+            <AppVersionTag
+              localVersion={app.version}
+              remoteVersion={appWithType.remoteVersion}
+              status={appWithType.status}
+            />
             {getManifestTypeTag(app.type)}
-            {getAppTypeTag(appType)}
+            <AppStatusTag status={appWithType.status} />
             {hasUpdate && (
               <Tag
                 color="processing"
@@ -639,6 +673,8 @@ const InstalledAppsPage: React.FC = () => {
   const appOrder = useSettingsStore((state) => state.appOrder);
   const updateSetting = useSettingsStore((state) => state.updateSetting);
   const fetchSettings = useSettingsStore((state) => state.fetchSettings);
+  const pinnedApps = useSettingsStore((state) => state.pinnedApps);
+  const togglePinnedApp = useSettingsStore((state) => state.togglePinnedApp);
 
   // Workspace skills for the AI Skills tab
   const projectSkills = useSkillStore((s) => s.projectSkills)
@@ -719,7 +755,8 @@ const InstalledAppsPage: React.FC = () => {
   // 监听 appInfos 变化，分类应用
   useEffect(() => {
     classifyApps();
-  }, [appInfos, user, appOrder, publishedAppNames]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appInfos, user, appOrder, publishedAppNames, pinnedApps, updateMap]);
 
   const loadApps = async () => {
     try {
@@ -744,32 +781,44 @@ const InstalledAppsPage: React.FC = () => {
         let appType: AppType = 'local';
 
         const isPublished = resolveAppPublished(manifest, publishedAppNames);
+        const authorId = getAuthorId(manifest.author);
+        const currentUserId = user?.feishu_id || user?.id;
+        const isOwn = !!(authorId && currentUserId && authorId === currentUserId);
+        const origin: AppOrigin = isBuiltinAppId(info.id) ? 'builtin' : isOwn ? 'own' : 'installed';
 
         if (isPublished) {
           appType = 'published';
+        } else if (isOwn) {
+          appType = 'draft';
         } else {
-          const authorId = getAuthorId(manifest.author);
-          const currentUserId = user?.feishu_id || user?.id;
-
-          if (authorId && currentUserId && authorId === currentUserId) {
-            appType = 'draft';
-          } else {
-            appType = 'local';
-          }
+          appType = 'local';
         }
 
-        return { ...info, appType };
+        // Status-model fields for AppStatusTag / AppVersionTag.
+        const upd = updateMap[info.id];
+        const remoteVersion = upd?.hasUpdate ? upd.latestVersion : undefined;
+        const status = resolveLocalAppStatus({
+          origin,
+          isPublished,
+          localVersion: manifest.version,
+          remoteVersion
+        });
+
+        return { ...info, appType, status, remoteVersion, origin };
       });
 
-    // Sort by persisted order; unknown apps go to the end in their original order
-    if (appOrder.length > 0) {
-      const orderMap = new Map(appOrder.map((id, i) => [id, i]));
-      classified.sort((a, b) => {
-        const ia = orderMap.get(a.id) ?? Infinity;
-        const ib = orderMap.get(b.id) ?? Infinity;
-        return ia - ib;
-      });
-    }
+    // Sort: pinned apps first (within their type group — grouping happens
+    // after), then by persisted drag order; unknown apps go to the end.
+    const pinnedSet = new Set(pinnedApps);
+    const orderMap = new Map(appOrder.map((id, i) => [id, i]));
+    classified.sort((a, b) => {
+      const pa = pinnedSet.has(a.id) ? 0 : 1;
+      const pb = pinnedSet.has(b.id) ? 0 : 1;
+      if (pa !== pb) return pa - pb;
+      const ia = orderMap.get(a.id) ?? Infinity;
+      const ib = orderMap.get(b.id) ?? Infinity;
+      return ia - ib;
+    });
 
     setApps(classified);
   };
@@ -916,17 +965,6 @@ const InstalledAppsPage: React.FC = () => {
       message.error(reason ? t('workbench.runFailedReason', reason) : t('workbench.runFailed'));
     }
   };
-
-  const getAppTypeTag = useCallback((appType: AppType) => {
-    switch (appType) {
-      case 'published':
-        return <Tag color="green" style={{ margin: 0 }}>{t('workbench.tagPublished')}</Tag>;
-      case 'draft':
-        return <Tag color="orange" style={{ margin: 0 }}>{t('workbench.tagDraft')}</Tag>;
-      case 'local':
-        return <Tag color="default" style={{ margin: 0 }}>{t('workbench.tagLocal')}</Tag>;
-    }
-  }, []);
 
   const getManifestTypeTag = useCallback((type?: string) => {
     switch (type) {
@@ -1167,7 +1205,6 @@ const InstalledAppsPage: React.FC = () => {
               shortcutLabel={shortcutLabel}
               token={token}
               t={t}
-              getAppTypeTag={getAppTypeTag}
               getManifestTypeTag={getManifestTypeTag}
               onRun={handleRun}
               onUninstall={handleUninstall}
@@ -1181,6 +1218,8 @@ const InstalledAppsPage: React.FC = () => {
               onUpdate={handleUpdate}
               scheduleEnabled={!!sched?.enabled}
               scheduleNextRunAt={sched?.nextRunAt}
+              pinned={pinnedApps.includes(app.id)}
+              onTogglePin={togglePinnedApp}
             />
           );
         })}

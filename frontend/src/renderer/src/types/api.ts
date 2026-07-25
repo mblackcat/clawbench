@@ -206,3 +206,50 @@ export enum ErrorCode {
   FILE_SYSTEM_ERROR = 'FILE_SYSTEM_ERROR',
   INTERNAL_ERROR = 'INTERNAL_ERROR',
 }
+
+// ============ 项目 / 通用应用类型 ============
+
+export interface Project {
+  projectId: string;
+  name: string;
+  description: string | null;
+  vcsType: 'git' | 'svn' | 'none';
+  repoUrl: string | null;
+  status: 'active' | 'archived';
+  createdBy: string;
+  createdAt: number;
+  updatedAt: number;
+  memberCount?: number;
+  myRole?: 'admin' | 'member' | null;
+}
+
+export interface ProjectMember {
+  projectId: string;
+  userId: string;
+  username?: string;
+  role: 'admin' | 'member';
+  joinedAt: number;
+}
+
+export interface CommonAppInfo {
+  appKey: string;
+  name: string;
+  description: string | null;
+  version: string | null;
+  enabled: boolean;
+  globalEnabled?: boolean;
+  projectEnabled?: boolean;
+  sortOrder: number;
+  pinned: boolean;
+  downloadCount?: number;
+  executionCount?: number;
+  config: Record<string, unknown>;
+}
+
+export interface ListCommonAppsResponse {
+  commonApps: CommonAppInfo[];
+}
+
+export interface ListProjectsResponse {
+  projects: Project[];
+}

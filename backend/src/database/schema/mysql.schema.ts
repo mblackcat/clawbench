@@ -1,5 +1,6 @@
 import { DatabaseAdapter } from '../adapters/types';
 import { logger } from '../../utils/logger';
+import { COMMON_APP_SEEDS } from './common-apps.seed';
 
 /**
  * Run a DDL statement with graceful fallback for restricted MySQL users.
@@ -243,6 +244,123 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 
+  // 项目表（多租户）
+  await safeDDL(database,`
+    CREATE TABLE IF NOT EXISTS projects (
+      project_id VARCHAR(36) PRIMARY KEY,
+      name VARCHAR(255) UNIQUE NOT NULL,
+      description TEXT,
+      vcs_type VARCHAR(20) NOT NULL DEFAULT 'none',
+      repo_url TEXT,
+      status VARCHAR(20) NOT NULL DEFAULT 'active',
+      created_by VARCHAR(36) NOT NULL,
+      created_at BIGINT NOT NULL,
+      updated_at BIGINT NOT NULL,
+      FOREIGN KEY (created_by) REFERENCES users(user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  // 项目成员表（两级角色）
+  await safeDDL(database,`
+    CREATE TABLE IF NOT EXISTS project_members (
+      project_id VARCHAR(36) NOT NULL,
+      user_id VARCHAR(36) NOT NULL,
+      role VARCHAR(20) NOT NULL DEFAULT 'member',
+      joined_at BIGINT NOT NULL,
+      PRIMARY KEY (project_id, user_id),
+      FOREIGN KEY (project_id) REFERENCES projects(project_id),
+      FOREIGN KEY (user_id) REFERENCES users(user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  // 项目级通用应用配置表
+  await safeDDL(database,`
+    CREATE TABLE IF NOT EXISTS project_app_configs (
+      project_id VARCHAR(36) NOT NULL,
+      app_key VARCHAR(64) NOT NULL,
+      config TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      updated_at BIGINT NOT NULL,
+      PRIMARY KEY (project_id, app_key),
+      FOREIGN KEY (project_id) REFERENCES projects(project_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  // 通用应用表（内置 / admin 登记，kill-switch + 置顶 + 全局配置）
+  await safeDDL(database,`
+    CREATE TABLE IF NOT EXISTS common_apps (
+      app_key VARCHAR(64) PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      description TEXT,
+      version VARCHAR(32),
+      builtin INTEGER NOT NULL DEFAULT 1,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      pinned INTEGER NOT NULL DEFAULT 0,
+      download_count INTEGER NOT NULL DEFAULT 0,
+      execution_count INTEGER NOT NULL DEFAULT 0,
+      config TEXT,
+      created_at BIGINT NOT NULL,
+      updated_at BIGINT NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  // 幂等 seed 内置通用应用（ClawBench 默认空种子）
+  const seedNow = Date.now();
+  for (const seed of COMMON_APP_SEEDS) {
+    await database.run(
+      `INSERT IGNORE INTO common_apps (app_key, name, description, version, builtin, enabled, sort_order, pinned, config, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [seed.appKey, seed.name, seed.description, seed.version ?? '1.0.0', 1, 1, seed.sortOrder, seed.pinned ? 1 : 0, seed.config, seedNow, seedNow]
+    );
+  }
+
+  // 通用应用执行错误日志表
+  await safeDDL(database,`
+    CREATE TABLE IF NOT EXISTS common_app_execution_errors (
+      error_id VARCHAR(36) PRIMARY KEY,
+      app_key VARCHAR(64) NOT NULL,
+      user_id VARCHAR(36) NOT NULL,
+      version VARCHAR(32),
+      message TEXT NOT NULL,
+      details TEXT,
+      created_at BIGINT NOT NULL,
+      FOREIGN KEY (app_key) REFERENCES common_apps(app_key),
+      FOREIGN KEY (user_id) REFERENCES users(user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  // 通用应用事件表
+  await safeDDL(database,`
+    CREATE TABLE IF NOT EXISTS common_app_events (
+      event_id VARCHAR(36) PRIMARY KEY,
+      app_key VARCHAR(64) NOT NULL,
+      user_id VARCHAR(36) NOT NULL,
+      event_type VARCHAR(16) NOT NULL,
+      success INTEGER NOT NULL DEFAULT 1,
+      cancelled INTEGER NOT NULL DEFAULT 0,
+      version VARCHAR(32),
+      error_message TEXT,
+      error_details TEXT,
+      created_at BIGINT NOT NULL,
+      FOREIGN KEY (app_key) REFERENCES common_apps(app_key),
+      FOREIGN KEY (user_id) REFERENCES users(user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  // 通用应用版本历史表
+  await safeDDL(database,`
+    CREATE TABLE IF NOT EXISTS common_app_version_history (
+      version_hist_id VARCHAR(36) PRIMARY KEY,
+      app_key VARCHAR(64) NOT NULL,
+      version VARCHAR(32) NOT NULL,
+      changed_by VARCHAR(36),
+      source VARCHAR(16) NOT NULL DEFAULT 'admin',
+      created_at BIGINT NOT NULL,
+      FOREIGN KEY (app_key) REFERENCES common_apps(app_key)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
   // 创建索引
   const ensureIndex = async (table: string, name: string, ddl: string) => {
     const exists = await database.get<{ cnt: number }>(
@@ -269,6 +387,13 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
     await ensureIndex('chat_attachments', 'idx_attachments_message', 'CREATE INDEX idx_attachments_message ON chat_attachments(message_id)');
     await ensureIndex('users', 'idx_users_feishu_open_id', 'CREATE UNIQUE INDEX idx_users_feishu_open_id ON users(feishu_open_id)');
     await ensureIndex('application_execution_errors', 'idx_exec_errors_application', 'CREATE INDEX idx_exec_errors_application ON application_execution_errors(application_id, created_at)');
+    await ensureIndex('common_app_execution_errors', 'idx_common_app_exec_errors', 'CREATE INDEX idx_common_app_exec_errors ON common_app_execution_errors(app_key, created_at)');
+    await ensureIndex('common_app_events', 'idx_common_app_events', 'CREATE INDEX idx_common_app_events ON common_app_events(app_key, event_type, created_at)');
+    await ensureIndex('common_app_version_history', 'idx_common_app_version_hist', 'CREATE INDEX idx_common_app_version_hist ON common_app_version_history(app_key, created_at)');
+    await ensureIndex('projects', 'idx_projects_status', 'CREATE INDEX idx_projects_status ON projects(status)');
+    await ensureIndex('projects', 'idx_projects_created_by', 'CREATE INDEX idx_projects_created_by ON projects(created_by)');
+    await ensureIndex('project_members', 'idx_project_members_user', 'CREATE INDEX idx_project_members_user ON project_members(user_id)');
+    await ensureIndex('common_apps', 'idx_common_apps_enabled_sort', 'CREATE INDEX idx_common_apps_enabled_sort ON common_apps(enabled, sort_order)');
   }
 
   logger.info('MySQL schema initialized successfully');

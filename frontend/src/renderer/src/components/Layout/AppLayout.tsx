@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { Layout, Tooltip, theme as antTheme } from 'antd'
 import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons'
-import { Outlet, useLocation } from 'react-router-dom'
+import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import TopBar from './TopBar'
 import StatusBar from './StatusBar'
@@ -13,7 +13,13 @@ import AttentionManager from '../AttentionManager'
 import { useTaskStore } from '../../stores/useTaskStore'
 import { useSubAppExecution } from '../../hooks/useSubAppExecution'
 import { useAICodingStore } from '../../stores/useAICodingStore'
+import { useSettingsStore } from '../../stores/useSettingsStore'
 import { localStorageManager } from '../../services/localStorageManager'
+import {
+  generalModeFallbackPath,
+  isGeneralModePath,
+  shouldShowLeftSider
+} from '../../constants/app-mode'
 import { useT } from '../../i18n'
 
 const { Header, Sider, Content, Footer } = Layout
@@ -23,8 +29,11 @@ const AppLayout: React.FC = () => {
   const [errorLogOpen, setErrorLogOpen] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
   const location = useLocation()
+  const navigate = useNavigate()
 
   const activeTaskId = useTaskStore((state) => state.activeTaskId)
+  const appMode = useSettingsStore((state) => state.appMode)
+  const showSider = shouldShowLeftSider(appMode)
   const { token } = antTheme.useToken()
   const { weatherType, weatherVisible, toggleWeather, cycleWeather } = useWeatherEffect()
   const t = useT()
@@ -61,6 +70,17 @@ const AppLayout: React.FC = () => {
     }
   }, [location.pathname])
 
+  // General-mode safety net: if the user lands on a route that isn't a live
+  // center surface (e.g. a stale lastRoute), redirect to the workbench.
+  // Because isGeneralModePath is AI-inclusive, real product routes are never
+  // redirected — only genuinely unknown paths.
+  useEffect(() => {
+    if (appMode !== 'general') return
+    if (!isGeneralModePath(location.pathname)) {
+      navigate(generalModeFallbackPath(), { replace: true })
+    }
+  }, [appMode, location.pathname, navigate])
+
   const toggleErrorLog = useCallback(() => {
     setErrorLogOpen((prev) => !prev)
   }, [])
@@ -79,43 +99,45 @@ const AppLayout: React.FC = () => {
       </Header>
 
       <Layout style={{ flex: 1, overflow: 'hidden', background: 'transparent' }}>
-        <Sider
-          className="cb-sidebar"
-          collapsed={collapsed}
-          width={176}
-          collapsedWidth={56}
-        >
-          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-            <div style={{ flex: 1, overflow: 'auto' }}>
-              <Sidebar collapsed={collapsed} />
-            </div>
-            <Tooltip title={collapsed ? t('common.expandSidebar') : ''} placement="right">
-              <div
-                onClick={() => {
-                  const next = !collapsed
-                  setCollapsed(next)
-                  localStorageManager.saveSidebarCollapsed(next)
-                }}
-                style={{
-                  height: 36,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: collapsed ? 'center' : 'flex-start',
-                  gap: 10,
-                  paddingInline: collapsed ? 0 : 24,
-                  cursor: 'pointer',
-                  color: token.colorTextSecondary,
-                  fontSize: 14
-                }}
-              >
-                {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-                {!collapsed && (
-                  <span>{t('common.collapseSidebar')}</span>
-                )}
+        {showSider && (
+          <Sider
+            className="cb-sidebar"
+            collapsed={collapsed}
+            width={176}
+            collapsedWidth={56}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+              <div style={{ flex: 1, overflow: 'auto' }}>
+                <Sidebar collapsed={collapsed} />
               </div>
-            </Tooltip>
-          </div>
-        </Sider>
+              <Tooltip title={collapsed ? t('common.expandSidebar') : ''} placement="right">
+                <div
+                  onClick={() => {
+                    const next = !collapsed
+                    setCollapsed(next)
+                    localStorageManager.saveSidebarCollapsed(next)
+                  }}
+                  style={{
+                    height: 36,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: collapsed ? 'center' : 'flex-start',
+                    gap: 10,
+                    paddingInline: collapsed ? 0 : 24,
+                    cursor: 'pointer',
+                    color: token.colorTextSecondary,
+                    fontSize: 14
+                  }}
+                >
+                  {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+                  {!collapsed && (
+                    <span>{t('common.collapseSidebar')}</span>
+                  )}
+                </div>
+              </Tooltip>
+            </div>
+          </Sider>
+        )}
 
         <Layout style={{ display: 'flex', flexDirection: 'column', background: 'transparent', minHeight: 0, minWidth: 0 }}>
           <Content

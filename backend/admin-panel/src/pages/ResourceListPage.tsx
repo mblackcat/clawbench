@@ -25,13 +25,20 @@ const TYPE_FILTERS: { key: string; label: string }[] = [
   { key: 'link', label: 'Links' },
 ];
 
-const ResourceListPage: React.FC = () => {
+interface ResourceListPageProps {
+  /** Lock the list to a single resource type and hide the type filter pills. */
+  fixedType?: ApplicationType;
+  /** Hide the page header (title + refresh) — for embedding inside another page's tabs. */
+  hidePageHeader?: boolean;
+}
+
+const ResourceListPage: React.FC<ResourceListPageProps> = ({ fixedType, hidePageHeader }) => {
   const [apps, setApps] = useState<ApplicationResponse[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [searchParams, setSearchParams] = useSearchParams();
-  const initialType = searchParams.get('type') || 'all';
+  const initialType = fixedType || searchParams.get('type') || 'all';
   const [activeType, setActiveType] = useState(initialType);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
@@ -41,6 +48,7 @@ const ResourceListPage: React.FC = () => {
   const isAdmin = location.pathname.startsWith('/admin');
 
   useEffect(() => {
+    if (fixedType) return; // locked to a single type
     const t = searchParams.get('type');
     if (t && t !== activeType) setActiveType(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -91,7 +99,10 @@ const ResourceListPage: React.FC = () => {
   };
 
   const goDetail = (app: ApplicationResponse) => {
-    const prefix = isAdmin ? '/admin/resources' : '/store/app';
+    let prefix: string;
+    if (!isAdmin) prefix = '/store/app';
+    else if (fixedType === 'app') prefix = '/admin/apps';
+    else prefix = '/admin/resources';
     navigate(`${prefix}/${app.applicationId}`);
   };
 
@@ -282,21 +293,24 @@ const ResourceListPage: React.FC = () => {
   }
 
   // ── Admin table view ───────────────────────────────────
+  const adminTitle = fixedType ? `${TYPE_LABELS[fixedType] || fixedType}s` : 'Resources';
   return (
     <div>
-      <div className="page-header">
-        <div>
-          <h1>Resources</h1>
-          <p className="page-desc">
-            Manage marketplace resources — apps, AI skills, prompts, and links.
-          </p>
+      {!hidePageHeader && (
+        <div className="page-header">
+          <div>
+            <h1>{adminTitle}</h1>
+            <p className="page-desc">
+              Manage marketplace resources — apps, AI skills, prompts, and links.
+            </p>
+          </div>
+          <Space>
+            <Button icon={<ReloadOutlined />} onClick={loadApps}>
+              Refresh
+            </Button>
+          </Space>
         </div>
-        <Space>
-          <Button icon={<ReloadOutlined />} onClick={loadApps}>
-            Refresh
-          </Button>
-        </Space>
-      </div>
+      )}
 
       <div className="page-toolbar">
         <SearchBar
@@ -307,17 +321,19 @@ const ResourceListPage: React.FC = () => {
           }}
           placeholder="Search by name or description…"
         />
-        <div className="type-pills">
-          {TYPE_FILTERS.map((cat) => (
-            <div
-              key={cat.key}
-              className={`type-pill ${activeType === cat.key ? 'active' : ''}`}
-              onClick={() => setType(cat.key)}
-            >
-              {cat.label}
-            </div>
-          ))}
-        </div>
+        {!fixedType && (
+          <div className="type-pills">
+            {TYPE_FILTERS.map((cat) => (
+              <div
+                key={cat.key}
+                className={`type-pill ${activeType === cat.key ? 'active' : ''}`}
+                onClick={() => setType(cat.key)}
+              >
+                {cat.label}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="panel console-table" style={{ overflow: 'hidden' }}>

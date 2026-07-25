@@ -19,6 +19,8 @@ export interface SubAppManifest {
   author: string | { name: string; email?: string; feishu_id?: string }
   icon?: string
   type?: 'app' | 'ai-skill' | 'prompt' | 'link'
+  /** Marketplace category (e.g. productivity, dev-tools) shown as a tag. */
+  category?: string
   entry: string
   url?: string // for type 'link'
   mini?: boolean // for type 'link' — render as compact 1/4-size card

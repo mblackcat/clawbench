@@ -87,6 +87,11 @@ export async function deleteUser(userId: string): Promise<boolean> {
 
 /**
  * Get dashboard aggregate stats.
+ *
+ * `applicationByType` / `downloadsByType` / `executionsByType` break the
+ * marketplace down per resource type (app / ai-skill / prompt / link) so the
+ * admin dashboard can render per-type stat cards. `totalErrors` is the overall
+ * marketplace execution-error count.
  */
 export interface DashboardStats {
   totalUsers: number;
@@ -94,10 +99,22 @@ export interface DashboardStats {
   totalDownloads: number;
   publishedApplications: number;
   applicationByType: Record<string, number>;
+  downloadsByType: Record<string, number>;
+  executionsByType: Record<string, number>;
+  totalErrors: number;
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
-  const [userRow, appRow, downloadRow, publishedRow, typeRows] = await Promise.all([
+  const [
+    userRow,
+    appRow,
+    downloadRow,
+    publishedRow,
+    typeRows,
+    downloadByTypeRows,
+    executionByTypeRows,
+    errorRow,
+  ] = await Promise.all([
     database.get<{ cnt: number }>(`SELECT COUNT(*) AS cnt FROM users`),
     database.get<{ cnt: number }>(`SELECT COUNT(*) AS cnt FROM applications`),
     database.get<{ cnt: number }>(
@@ -109,11 +126,30 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     database.all<{ type: string; cnt: number }>(
       `SELECT type, COUNT(*) AS cnt FROM applications GROUP BY type`
     ),
+    database.all<{ type: string; cnt: number }>(
+      `SELECT type, COALESCE(SUM(download_count), 0) AS cnt FROM applications GROUP BY type`
+    ),
+    database.all<{ type: string; cnt: number }>(
+      `SELECT type, COALESCE(SUM(execution_count), 0) AS cnt FROM applications GROUP BY type`
+    ),
+    database.get<{ cnt: number }>(
+      `SELECT COUNT(*) AS cnt FROM application_execution_errors`
+    ),
   ]);
 
   const applicationByType: Record<string, number> = {};
   for (const row of typeRows) {
     applicationByType[row.type || 'app'] = row.cnt;
+  }
+
+  const downloadsByType: Record<string, number> = {};
+  for (const row of downloadByTypeRows) {
+    downloadsByType[row.type || 'app'] = row.cnt;
+  }
+
+  const executionsByType: Record<string, number> = {};
+  for (const row of executionByTypeRows) {
+    executionsByType[row.type || 'app'] = row.cnt;
   }
 
   return {
@@ -122,6 +158,9 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     totalDownloads: downloadRow?.cnt ?? 0,
     publishedApplications: publishedRow?.cnt ?? 0,
     applicationByType,
+    downloadsByType,
+    executionsByType,
+    totalErrors: errorRow?.cnt ?? 0,
   };
 }
 

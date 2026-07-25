@@ -10,6 +10,7 @@ import InstalledAppsPage from './pages/Workbench/InstalledAppsPage'
 import AppLibraryPage from './pages/Workbench/AppLibraryPage'
 import AppDetailPage from './pages/Workbench/AppDetailPage'
 import { useSettingsStore } from './stores/useSettingsStore'
+import { resolveDefaultRoute } from './constants/app-mode'
 
 // Lazy-loaded pages: deferred until the user navigates to them
 const AIChatPage = React.lazy(() => import('./pages/AIChat/AIChatPage'))
@@ -47,10 +48,10 @@ const AppsRedirect: React.FC = () => {
 
 // Root redirect that checks setup status
 const RootRedirect: React.FC = () => {
-  const { hasCompletedSetup, loading } = useSettingsStore()
+  const { hasCompletedSetup, loading, appMode } = useSettingsStore()
   if (loading) return <AppSplashScreen />
   if (!hasCompletedSetup) return <Navigate to="/setup" replace />
-  return <Navigate to={localStorage.getItem('lastRoute') || '/ai-chat'} replace />
+  return <Navigate to={resolveDefaultRoute(localStorage.getItem('lastRoute'), appMode)} replace />
 }
 
 const AppRoutes: React.FC = () => {
