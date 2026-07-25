@@ -223,25 +223,6 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
               </div>
             </Tooltip>
           )}
-          {shortcutLabel && (
-            <Tooltip title={t('workbench.shortcutTooltip', shortcutLabel)}>
-              <div
-                style={{
-                  padding: '1px 6px',
-                  borderRadius: 4,
-                  background: token.colorFillSecondary,
-                  color: token.colorTextSecondary,
-                  fontSize: 10,
-                  fontWeight: 600,
-                  lineHeight: '18px',
-                  whiteSpace: 'nowrap',
-                  fontFamily: 'inherit'
-                }}
-              >
-                {shortcutLabel}
-              </div>
-            </Tooltip>
-          )}
           <div
             {...attributes}
             {...listeners}
@@ -271,7 +252,18 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
             marginBottom: 8,
             minHeight: 44
           }}>
-            <Tooltip title={app.name}>
+            <Tooltip
+              title={
+                <div>
+                  <div>{t('workbench.cardTipClick')}</div>
+                  {shortcutLabel && (
+                    <div style={{ marginTop: 4 }}>
+                      {t('workbench.shortcutTooltip', shortcutLabel)}
+                    </div>
+                  )}
+                </div>
+              }
+            >
               <Text
                 strong
                 style={{
