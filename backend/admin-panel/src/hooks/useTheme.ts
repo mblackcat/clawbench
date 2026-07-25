@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 
 export type Theme = 'light' | 'dark';
 
@@ -13,22 +13,46 @@ function getInitialTheme(): Theme {
   return 'dark';
 }
 
+// ── Module-level singleton store ───────────────────────────
+// Theme state must be shared: `main.tsx` reads it to drive the antd
+// ConfigProvider (algorithm + tokens), while `Layout.tsx` renders the toggle.
+// If each caller kept its own useState, toggling from Layout would flip the
+// CSS variables (via <html data-theme>) but the ConfigProvider would never
+// re-render — leaving antd tables / inputs / dropdowns stuck on the old theme.
+let currentTheme: Theme = getInitialTheme();
+const listeners = new Set<() => void>();
+
+function applyTheme(t: Theme) {
+  currentTheme = t;
+  document.documentElement.setAttribute('data-theme', t);
+  localStorage.setItem(THEME_KEY, t);
+  listeners.forEach((fn) => fn());
+}
+
+// Correct the <html data-theme> attribute (index.html defaults to "dark")
+// before first paint so it matches the stored/system preference.
+if (typeof document !== 'undefined') {
+  document.documentElement.setAttribute('data-theme', currentTheme);
+}
+
+function subscribe(callback: () => void) {
+  listeners.add(callback);
+  return () => {
+    listeners.delete(callback);
+  };
+}
+
+function getSnapshot(): Theme {
+  return currentTheme;
+}
+
 export function useTheme() {
-  const [theme, setThemeState] = useState<Theme>(getInitialTheme);
-
-  // Apply to <html data-theme>
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem(THEME_KEY, theme);
-  }, [theme]);
-
+  const theme = useSyncExternalStore(subscribe, getSnapshot);
   const toggleTheme = useCallback(() => {
-    setThemeState((prev) => (prev === 'dark' ? 'light' : 'dark'));
+    applyTheme(currentTheme === 'dark' ? 'light' : 'dark');
   }, []);
-
   const setTheme = useCallback((t: Theme) => {
-    setThemeState(t);
+    applyTheme(t);
   }, []);
-
   return { theme, toggleTheme, setTheme };
 }

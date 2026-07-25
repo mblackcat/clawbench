@@ -35,9 +35,9 @@ interface Props {
  */
 const TypeStatCard: React.FC<Props> = ({ type, label, count, downloads, runs }) => {
   const metrics = [
-    { icon: TYPE_ICONS[type] ?? <AppstoreOutlined />, value: count, caption: 'Count' },
-    { icon: <DownloadOutlined />, value: downloads, caption: 'Downloads' },
-    { icon: <PlayCircleOutlined />, value: runs, caption: 'Runs' },
+    { key: 'count', icon: TYPE_ICONS[type] ?? <AppstoreOutlined />, value: count },
+    { key: 'downloads', icon: <DownloadOutlined />, value: downloads },
+    { key: 'runs', icon: <PlayCircleOutlined />, value: runs },
   ];
 
   return (
@@ -48,10 +48,9 @@ const TypeStatCard: React.FC<Props> = ({ type, label, count, downloads, runs }) 
       </div>
       <div className="type-stat-metrics">
         {metrics.map((m) => (
-          <div className="type-stat-cell" key={m.caption}>
+          <div className="type-stat-cell" key={m.key}>
             <span className="type-stat-cell-icon">{m.icon}</span>
             <span className="type-stat-cell-value">{formatNumber(m.value)}</span>
-            <span className="type-stat-cell-caption">{m.caption}</span>
           </div>
         ))}
       </div>
