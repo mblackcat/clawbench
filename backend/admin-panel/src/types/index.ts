@@ -77,6 +77,12 @@ export interface DashboardStats {
   totalDownloads: number;
   publishedApplications: number;
   applicationByType: Record<string, number>;
+  /** SUM(download_count) per resource type */
+  downloadsByType: Record<string, number>;
+  /** SUM(execution_count) per resource type */
+  executionsByType: Record<string, number>;
+  /** Total marketplace execution-error count */
+  totalErrors: number;
 }
 
 export interface ReleaseFile {

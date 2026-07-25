@@ -6,8 +6,6 @@ import {
   UserOutlined,
   AppstoreOutlined,
   ProjectOutlined,
-  BlockOutlined,
-  WalletOutlined,
   LogoutOutlined,
   HomeOutlined,
   SunOutlined,
@@ -73,9 +71,7 @@ const Layout: React.FC<Props> = ({ admin, children }) => {
     // Management entries are admin-only; regular users see just the dashboard.
     ...(role === 'admin'
       ? [
-          { key: '/admin/apps', icon: <AppstoreOutlined />, label: 'Apps' },
-          { key: '/admin/common-apps', icon: <BlockOutlined />, label: 'Common Apps' },
-          { key: '/admin/resources', icon: <WalletOutlined />, label: 'Resources' },
+          { key: '/admin/apps', icon: <AppstoreOutlined />, label: 'App Manage' },
           { key: '/admin/projects', icon: <ProjectOutlined />, label: 'Projects' },
           { key: '/admin/users', icon: <UserOutlined />, label: 'Users' },
         ]
@@ -83,10 +79,11 @@ const Layout: React.FC<Props> = ({ admin, children }) => {
   ];
 
   const isActive = (key: string) => {
-    if (key === '/admin/resources') {
+    if (key === '/admin/apps') {
+      // App Manage owns both /admin/apps and the legacy /admin/common-apps route.
       return (
-        currentPath.startsWith('/admin/resources') ||
-        currentPath.startsWith('/admin/store')
+        currentPath.startsWith('/admin/apps') ||
+        currentPath.startsWith('/admin/common-apps')
       );
     }
     if (key === '/admin/dashboard') {

@@ -7,7 +7,6 @@ import DashboardPage from './pages/DashboardPage';
 import UserManagementPage from './pages/UserManagementPage';
 import ResourceListPage from './pages/ResourceListPage';
 import ResourceDetailPage from './pages/ResourceDetailPage';
-import ResourcesPage from './pages/ResourcesPage';
 import CommonAppsPage from './pages/CommonAppsPage';
 import ProjectManagementPage from './pages/ProjectManagementPage';
 import { useApi } from './hooks/useApi';
@@ -46,21 +45,24 @@ const AdminShell: React.FC = () => (
       <Routes>
         <Route index element={<DashboardPage />} />
         <Route path="dashboard" element={<DashboardPage />} />
-        {/* Apps — marketplace app-type resources (vexelbench-style management) */}
-        <Route path="apps" element={<ResourceListPage fixedType="app" />} />
-        <Route path="apps/:appId" element={<ResourceDetailPage />} />
-        {/* Common Apps — builtin/common app registry (kill-switch, pin, order, config) */}
+        {/* App Manage — card-based management of common/builtin apps (内置 + 用户) */}
         <Route
-          path="common-apps"
+          path="apps"
           element={
             <RequireAdmin>
               <CommonAppsPage />
             </RequireAdmin>
           }
         />
-        {/* Resources — AI Skill / Prompt / Link, tabbed by type */}
-        <Route path="resources" element={<ResourcesPage />} />
+        {/* Common apps have no detail page; redirect stale links to marketplace detail */}
+        <Route path="apps/:appId" element={<StoreRedirect />} />
+        <Route path="common-apps" element={<Navigate to="/admin/apps" replace />} />
+        {/* Marketplace detail pages (linked from the dashboard listing) */}
         <Route path="resources/:appId" element={<ResourceDetailPage />} />
+        {/* Legacy list/store routes now fold into the dashboard */}
+        <Route path="resources" element={<Navigate to="/admin/dashboard" replace />} />
+        <Route path="store" element={<Navigate to="/admin/dashboard" replace />} />
+        <Route path="store/:appId" element={<StoreRedirect />} />
         {/* Projects — multi-tenant projects + members + per-project app configs */}
         <Route
           path="projects"
@@ -72,9 +74,6 @@ const AdminShell: React.FC = () => (
         />
         {/* Users — admin-only (unchanged) */}
         <Route path="users" element={<UserManagementPage />} />
-        {/* Legacy /admin/store redirects for bookmarks */}
-        <Route path="store" element={<Navigate to="/admin/resources" replace />} />
-        <Route path="store/:appId" element={<StoreRedirect />} />
       </Routes>
     </Layout>
   </RequireAuth>

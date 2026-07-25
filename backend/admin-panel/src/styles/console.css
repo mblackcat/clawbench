@@ -337,6 +337,82 @@ body {
   line-height: 1.15;
 }
 
+/* Triple-metric type stat cards (dashboard per-type overview) */
+.type-stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.type-stat-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+}
+
+.type-stat-head-icon {
+  font-size: 16px;
+  color: var(--text-tertiary);
+}
+
+.type-stat-head-label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.type-stat-metrics {
+  display: flex;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.type-stat-cell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+}
+
+.type-stat-cell-icon {
+  font-size: 14px;
+  color: var(--text-tertiary);
+}
+
+.type-stat-cell-value {
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  line-height: 1.15;
+}
+
+.type-stat-cell-caption {
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Per-type accent on the header icon */
+.type-stat-card--app .type-stat-head-icon {
+  color: var(--type-app);
+}
+.type-stat-card--ai-skill .type-stat-head-icon {
+  color: var(--type-skill);
+}
+.type-stat-card--prompt .type-stat-head-icon {
+  color: var(--type-prompt);
+}
+.type-stat-card--link .type-stat-head-icon {
+  color: var(--type-link);
+}
+
 /* ── Type filters ───────────────────────────────────── */
 
 .type-pills {

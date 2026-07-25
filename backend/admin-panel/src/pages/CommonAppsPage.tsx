@@ -254,9 +254,9 @@ const CommonAppsPage: React.FC = () => {
     <div>
       <div className="page-header">
         <div>
-          <h1>Common Apps</h1>
+          <h1>App Manage</h1>
           <p className="page-desc">
-            内置与通用应用管理 — 拖动卡片调整在客户端收藏栏的顺序，开关控制是否生效。
+            内置与用户应用统一管理 — 拖动卡片调整在客户端收藏栏的顺序，开关控制是否生效。
           </p>
         </div>
         <Space>
