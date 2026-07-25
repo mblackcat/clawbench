@@ -13,7 +13,8 @@ import {
   MoonOutlined,
   SettingOutlined,
   InfoCircleOutlined,
-  CheckOutlined
+  CheckOutlined,
+  CompassOutlined
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useT } from '../../i18n'
@@ -285,6 +286,31 @@ const TopBar: React.FC = () => {
             },
             { minWidth: 72 }
           )}
+        </div>
+
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            setUserMenuOpen(false)
+            navigate('/setup', { state: { forceShow: true } })
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              setUserMenuOpen(false)
+              navigate('/setup', { state: { forceShow: true } })
+            }
+          }}
+          style={{ ...menuRowBase, cursor: 'pointer' }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = token.colorFillTertiary
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent'
+          }}
+        >
+          <CompassOutlined style={menuIconStyle} />
+          <span style={{ flex: 1 }}>{t('topbar.guide')}</span>
         </div>
 
         <div

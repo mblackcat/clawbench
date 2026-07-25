@@ -19,7 +19,7 @@ import {
   SettingOutlined,
   CheckCircleOutlined
 } from '@ant-design/icons'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import {
@@ -436,13 +436,16 @@ const SetupWizard: React.FC = () => {
 
   const { updateSetting, completeSetup, hasCompletedSetup } = useSettingsStore()
   const settingsLoaded = useSettingsStore((s) => !s.loading)
+  // forceShow (set by the avatar-menu "引导" entry) re-opens the wizard even
+  // after setup is complete.
+  const forceShow = (useLocation().state as { forceShow?: boolean } | null)?.forceShow === true
 
-  // Redirect if already completed setup
+  // Redirect if already completed setup (unless the user explicitly re-opened it)
   useEffect(() => {
-    if (settingsLoaded && hasCompletedSetup) {
+    if (!forceShow && settingsLoaded && hasCompletedSetup) {
       navigate('/ai-chat', { replace: true })
     }
-  }, [settingsLoaded, hasCompletedSetup, navigate])
+  }, [forceShow, settingsLoaded, hasCompletedSetup, navigate])
 
   const handleFinish = useCallback(async () => {
     try {

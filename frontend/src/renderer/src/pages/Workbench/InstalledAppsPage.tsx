@@ -58,6 +58,13 @@ import type { ScannedSkill } from '../../types/skill';
 import dayjs from 'dayjs';
 import ParamDrawer from '../../components/ParamDrawer';
 import CreateTypeModal from '../../components/CreateTypeModal';
+import { AppStatusTag, AppVersionTag } from '../../components/AppStatusTag';
+import {
+  isBuiltinAppId,
+  resolveLocalAppStatus,
+  type AppCardStatus,
+  type AppOrigin
+} from '../../utils/app-status';
 import { openExternalLink } from '../../utils/markdown-links';
 import { buildInitialAppParams, saveAppParams } from '../../utils/subapp-params';
 import { useT } from '../../i18n';
@@ -85,6 +92,12 @@ type AppType = 'published' | 'draft' | 'local';
 
 interface AppWithType extends SubAppInfo {
   appType: AppType
+  /** Card status used by AppStatusTag / AppVersionTag (status model). */
+  status: AppCardStatus
+  /** Marketplace version when known (drives the version-diff tag). */
+  remoteVersion?: string
+  /** App origin: own / builtin / installed. */
+  origin: AppOrigin
 }
 
 /**
@@ -108,7 +121,6 @@ interface SortableCardProps {
   shortcutLabel: string | null
   token: any
   t: (key: string, ...args: string[]) => string
-  getAppTypeTag: (appType: AppType) => React.ReactNode
   getManifestTypeTag: (type?: string) => React.ReactNode
   onRun: (id: string, name: string, manifest: SubAppManifest) => void
   onUninstall: (id: string, name: string) => void
@@ -139,7 +151,6 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
   shortcutLabel,
   token,
   t,
-  getAppTypeTag,
   getManifestTypeTag,
   onRun,
   onUninstall,
@@ -156,7 +167,7 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
   pinned,
   onTogglePin
 }) => {
-  const { id, manifest, appType } = appWithType;
+  const { id, manifest } = appWithType;
   const app = manifest;
   const manifestType = app.type || 'app';
 
@@ -279,9 +290,13 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
             </Tooltip>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Tag style={{ margin: 0 }}>v{app.version}</Tag>
+            <AppVersionTag
+              localVersion={app.version}
+              remoteVersion={appWithType.remoteVersion}
+              status={appWithType.status}
+            />
             {getManifestTypeTag(app.type)}
-            {getAppTypeTag(appType)}
+            <AppStatusTag status={appWithType.status} />
             {hasUpdate && (
               <Tag
                 color="processing"
@@ -749,7 +764,7 @@ const InstalledAppsPage: React.FC = () => {
   useEffect(() => {
     classifyApps();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appInfos, user, appOrder, publishedAppNames, pinnedApps]);
+  }, [appInfos, user, appOrder, publishedAppNames, pinnedApps, updateMap]);
 
   const loadApps = async () => {
     try {
@@ -774,21 +789,30 @@ const InstalledAppsPage: React.FC = () => {
         let appType: AppType = 'local';
 
         const isPublished = resolveAppPublished(manifest, publishedAppNames);
+        const authorId = getAuthorId(manifest.author);
+        const currentUserId = user?.feishu_id || user?.id;
+        const isOwn = !!(authorId && currentUserId && authorId === currentUserId);
+        const origin: AppOrigin = isBuiltinAppId(info.id) ? 'builtin' : isOwn ? 'own' : 'installed';
 
         if (isPublished) {
           appType = 'published';
+        } else if (isOwn) {
+          appType = 'draft';
         } else {
-          const authorId = getAuthorId(manifest.author);
-          const currentUserId = user?.feishu_id || user?.id;
-
-          if (authorId && currentUserId && authorId === currentUserId) {
-            appType = 'draft';
-          } else {
-            appType = 'local';
-          }
+          appType = 'local';
         }
 
-        return { ...info, appType };
+        // Status-model fields for AppStatusTag / AppVersionTag.
+        const upd = updateMap[info.id];
+        const remoteVersion = upd?.hasUpdate ? upd.latestVersion : undefined;
+        const status = resolveLocalAppStatus({
+          origin,
+          isPublished,
+          localVersion: manifest.version,
+          remoteVersion
+        });
+
+        return { ...info, appType, status, remoteVersion, origin };
       });
 
     // Sort: pinned apps first (within their type group — grouping happens
@@ -949,17 +973,6 @@ const InstalledAppsPage: React.FC = () => {
       message.error(reason ? t('workbench.runFailedReason', reason) : t('workbench.runFailed'));
     }
   };
-
-  const getAppTypeTag = useCallback((appType: AppType) => {
-    switch (appType) {
-      case 'published':
-        return <Tag color="green" style={{ margin: 0 }}>{t('workbench.tagPublished')}</Tag>;
-      case 'draft':
-        return <Tag color="orange" style={{ margin: 0 }}>{t('workbench.tagDraft')}</Tag>;
-      case 'local':
-        return <Tag color="default" style={{ margin: 0 }}>{t('workbench.tagLocal')}</Tag>;
-    }
-  }, []);
 
   const getManifestTypeTag = useCallback((type?: string) => {
     switch (type) {
@@ -1200,7 +1213,6 @@ const InstalledAppsPage: React.FC = () => {
               shortcutLabel={shortcutLabel}
               token={token}
               t={t}
-              getAppTypeTag={getAppTypeTag}
               getManifestTypeTag={getManifestTypeTag}
               onRun={handleRun}
               onUninstall={handleUninstall}
