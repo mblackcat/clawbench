@@ -3,7 +3,7 @@ module.exports = {
     {
       name: "clawbench-backend",
       script: "./dist/index.js",
-      instances: "max", // Enable cluster mode (use all CPU cores)
+      instances: 8, // Enable cluster mode (use all CPU cores) , "max"
       exec_mode: "cluster",
       watch: false,
       max_memory_restart: "1G",
