@@ -18,7 +18,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { applicationManager } from '../../services/applicationManager';
 import type { Application } from '../../types/api';
 import { useSubAppStore } from '../../stores/useSubAppStore';
-import { useAuthStore } from '../../stores/useAuthStore';
+import { useAuthStore, useIsAdmin } from '../../stores/useAuthStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import type { SubAppManifest } from '../../types/subapp';
 import { resolveAppPublished } from '../../types/subapp';
@@ -27,7 +27,6 @@ import SkillsManager, { type SelfSkill } from '../../components/SkillsManager';
 import { useT } from '../../i18n';
 import { seedTaskFromExecuteResult, describeEarlyTerminal } from '../../utils/subapp-execute';
 import { isAuthoredByCurrentUser } from '../../utils/app-identity';
-import { isAdminUser } from '../../utils/is-admin-user';
 import { isBuiltinAppId, resolveLocalAppStatus, type AppCardStatus } from '../../utils/app-status';
 import { AppVersionTag } from '../../components/AppStatusTag';
 import { AppIcon } from '../../components/AppIcon';
@@ -151,7 +150,7 @@ const MyContributionsPage: React.FC = () => {
   const user = useAuthStore((state) => state.user);
   const isLocalMode = useAuthStore((state) => state.isLocalMode);
   const loggedIn = useAuthStore((state) => state.loggedIn);
-  const isAdmin = isAdminUser(user);
+  const isAdmin = useIsAdmin();
   const pinnedApps = useSettingsStore((state) => state.pinnedApps);
 
   useEffect(() => {

@@ -3,6 +3,7 @@ import type { User } from '../types/auth'
 import apiClient, { ApiClientError } from '../services/apiClient'
 import { localStorageManager } from '../services/localStorageManager'
 import { getT } from '../i18n'
+import { isAdminUser } from '../utils/is-admin-user'
 
 interface AuthState {
   loggedIn: boolean
@@ -262,5 +263,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 }))
 
-/** 当前登录用户是否为全局 admin（本地模式/未登录恒为 false）。 */
-export const useIsAdmin = (): boolean => useAuthStore((s) => s.user?.role === 'admin')
+/**
+ * 当前登录用户是否为全局 admin（本地模式/未登录恒为 false）。
+ * Canonical React hook; non-React code (e.g. inside callbacks) uses the pure
+ * `isAdminUser(useAuthStore.getState().user)` helper from utils/is-admin-user.
+ */
+export const useIsAdmin = (): boolean => useAuthStore((s) => isAdminUser(s.user))
