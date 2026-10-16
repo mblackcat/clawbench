@@ -18,7 +18,8 @@ import {
   getConnections as getTerminalConnections,
   executeCommandAndWait,
 } from './ai-terminal.service'
-import { executeSubAppWithCallbacks, resolvePythonCommand } from './python-runner.service'
+import { executeSubAppWithCallbacks } from './python-runner.service'
+import { prepareSubAppRun } from './subapp-run.service'
 import { getActiveWorkspace } from './workspace.service'
 import { listRecentMarketApps, searchMarketApps, installMarketApp } from './im/marketplace.service'
 import { getPythonSdkPath } from '../utils/paths'
@@ -243,13 +244,20 @@ class WorkbenchToolProvider implements InternalToolProvider {
     const appPath = getSubAppPath(app.manifest.id)
     if (!appPath) return { content: `Cannot resolve path for ${app.manifest.id}`, isError: true }
 
-    let pythonPath: string
-    try {
-      const python = await resolvePythonCommand(appPath)
-      pythonPath = python.path
-    } catch (err: any) {
-      return { content: `Python not available: ${err.message}`, isError: true }
+    // Shared pre-run pipeline: AI-supplied params lose reserved `__` keys,
+    // builtins honour the admin kill-switch, deps go into the run interpreter.
+    const prep = await prepareSubAppRun(
+      { appId: app.manifest.id, appName: app.manifest.name, appPath },
+      params
+    )
+    if (!prep.ok) {
+      return {
+        content:
+          prep.stage === 'python' ? `Python not available: ${prep.message}` : prep.message,
+        isError: true
+      }
     }
+    const pythonPath = prep.python.path
 
     const active = getActiveWorkspace()
     const workspace = active
@@ -275,7 +283,7 @@ class WorkbenchToolProvider implements InternalToolProvider {
         app.manifest.version,
         appPath,
         app.manifest.entry,
-        params,
+        prep.params,
         workspace,
         pythonPath,
         sdkPath,

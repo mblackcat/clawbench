@@ -25,6 +25,8 @@ import type { ProtocolCommandConfig, ProtocolExecutionContext } from '../types'
 import * as subappService from '../../subapp.service'
 import * as pythonRunnerService from '../../python-runner.service'
 import * as marketplaceService from '../../im/marketplace.service'
+import * as subappRunService from '../../subapp-run.service'
+import { formatProtocolParams } from '../commands/app.command'
 
 describe('Protocol Router and Registry', () => {
   let mockMainWindow: unknown
@@ -142,23 +144,69 @@ describe('Protocol Router and Registry', () => {
       expect(result.error).toBe('MISSING_APP_ID')
     })
 
-    it('executes directly when app is installed locally', async () => {
+    const okPrep = (params: Record<string, unknown>) => ({
+      ok: true as const,
+      params,
+      python: { path: '/usr/bin/python3', version: '3.11.0', source: 'system' as const }
+    })
+
+    it('asks for confirmation (even when silent) and runs an installed app', async () => {
       vi.spyOn(subappService, 'listSubApps').mockReturnValue([
         { id: mockManifest.id, manifest: mockManifest, path: '/mock/apps/tool', source: 'user' }
       ])
-      vi.spyOn(pythonRunnerService, 'resolvePythonCommand').mockResolvedValue({
-        path: '/usr/bin/python3',
-        version: '3.11.0',
-        source: 'system'
-      })
+      const prepSpy = vi
+        .spyOn(subappRunService, 'prepareSubAppRun')
+        .mockImplementation(async (_t, params) => okPrep(params as Record<string, unknown>))
       const executeSubAppSpy = vi.spyOn(pythonRunnerService, 'executeSubApp').mockImplementation(() => {})
+      mockShowMessageBox.mockResolvedValue({ response: 0 })
 
-      const result = await handleProtocolUrl('clawbench://app?id=com.example.tool&silent=true')
+      const params = encodeURIComponent(JSON.stringify({ branch: 'main', __user: { userId: 'x' } }))
+      const result = await handleProtocolUrl(
+        `clawbench://app?id=com.example.tool&silent=true&params=${params}`
+      )
       expect(result.success).toBe(true)
       expect(result.data).toHaveProperty('appId', 'com.example.tool')
+      expect(mockShowMessageBox).toHaveBeenCalledTimes(1)
+      const options = mockShowMessageBox.mock.calls[0][mockShowMessageBox.mock.calls[0].length - 1]
+      expect(options.detail).toContain('com.example.tool')
+      expect(options.detail).toContain('branch')
+      expect(options.detail).not.toContain('__user')
+      // reserved keys are stripped before the shared pipeline
+      expect(prepSpy.mock.calls[0][1]).toEqual({ branch: 'main' })
+      expect(prepSpy.mock.calls[0][0]).toMatchObject({ appPath: '/mock/apps/tool' })
       expect(executeSubAppSpy).toHaveBeenCalled()
-      expect(mockShowMessageBox).not.toHaveBeenCalled()
-      expect(showMainWindowCalled).toBe(false)
+      expect(executeSubAppSpy.mock.calls[0][6]).toEqual({ branch: 'main' })
+    })
+
+    it('does not run an installed app when the user declines', async () => {
+      vi.spyOn(subappService, 'listSubApps').mockReturnValue([
+        { id: mockManifest.id, manifest: mockManifest, path: '/mock/apps/tool', source: 'user' }
+      ])
+      const prepSpy = vi.spyOn(subappRunService, 'prepareSubAppRun')
+      const executeSubAppSpy = vi.spyOn(pythonRunnerService, 'executeSubApp').mockImplementation(() => {})
+      mockShowMessageBox.mockResolvedValue({ response: 1 })
+
+      const result = await handleProtocolUrl('clawbench://app?id=com.example.tool')
+      expect(result.success).toBe(false)
+      expect(result.error).toBe('USER_CANCELLED')
+      expect(prepSpy).not.toHaveBeenCalled()
+      expect(executeSubAppSpy).not.toHaveBeenCalled()
+    })
+
+    it('shows the hidden window before prompting on a silent request', async () => {
+      ;(mockMainWindow as { isVisible: ReturnType<typeof vi.fn> }).isVisible.mockReturnValue(false)
+      vi.spyOn(subappService, 'listSubApps').mockReturnValue([
+        { id: mockManifest.id, manifest: mockManifest, path: '/mock/apps/tool', source: 'user' }
+      ])
+      mockShowMessageBox.mockResolvedValue({ response: 1 })
+      await handleProtocolUrl('clawbench://app?id=com.example.tool&silent=true')
+      expect(showMainWindowCalled).toBe(true)
+      expect(mockShowMessageBox).toHaveBeenCalled()
+    })
+
+    it('formats empty params as a placeholder', () => {
+      expect(formatProtocolParams({})).not.toBe('{}')
+      expect(formatProtocolParams({ a: 1 })).toContain('"a": 1')
     })
 
     it('refuses to run non-app resources (skills/prompts)', async () => {
@@ -211,16 +259,15 @@ describe('Protocol Router and Registry', () => {
         installed = true
         return { success: true, name: 'Market Tool' }
       })
-      vi.spyOn(pythonRunnerService, 'resolvePythonCommand').mockResolvedValue({
-        path: '/usr/bin/python3',
-        version: '3.11.0',
-        source: 'system'
-      })
+      vi.spyOn(subappRunService, 'prepareSubAppRun').mockImplementation(async (_t, params) =>
+        okPrep(params as Record<string, unknown>)
+      )
       const executeSubAppSpy = vi.spyOn(pythonRunnerService, 'executeSubApp').mockImplementation(() => {})
       mockShowMessageBox.mockResolvedValue({ response: 0 })
 
       const result = await handleProtocolUrl('clawbench://app?id=com.market.tool&autoInstall=true&silent=true')
-      expect(mockShowMessageBox).toHaveBeenCalled()
+      // one combined install-and-run prompt
+      expect(mockShowMessageBox).toHaveBeenCalledTimes(1)
       expect(installSpy).toHaveBeenCalledWith('com.market.tool')
       expect(result.success).toBe(true)
       expect(executeSubAppSpy).toHaveBeenCalled()

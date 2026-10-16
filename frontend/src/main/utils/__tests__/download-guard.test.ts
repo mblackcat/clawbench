@@ -57,6 +57,22 @@ describe('fetchPackageArchive', () => {
     ).rejects.toThrow(/exceeds/)
   })
 
+  it('aborts a streamed body without content-length once it crosses the cap', async () => {
+    let pulled = 0
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled++
+        controller.enqueue(new Uint8Array(64))
+        if (pulled > 1000) controller.close()
+      }
+    })
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(stream)))
+    await expect(
+      fetchPackageArchive('http://localhost/a.zip', undefined, { maxBytes: 100 })
+    ).rejects.toThrow(/exceeds/)
+    expect(pulled).toBeLessThan(10)
+  })
+
   it('surfaces HTTP errors and passes the bearer token', async () => {
     const fetchMock = vi.fn(async () => new Response('nope', { status: 404 }))
     vi.stubGlobal('fetch', fetchMock)

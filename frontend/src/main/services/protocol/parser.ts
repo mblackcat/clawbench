@@ -5,6 +5,46 @@ export const PROTOCOL_SCHEME = 'clawbench'
 const PROTOCOL_PREFIX = PROTOCOL_SCHEME
 
 /**
+ * decodeURIComponent that never throws: malformed `%` sequences are returned
+ * as-is instead of aborting the whole parse.
+ */
+export function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
+/** Query keys whose values must never reach the logs (OAuth / session secrets). */
+const SENSITIVE_KEYS = [
+  'token',
+  'code',
+  'state',
+  'client_state',
+  'uat',
+  'urt',
+  'access_token',
+  'refresh_token'
+]
+const SENSITIVE_QUERY_RE = new RegExp(`([?&](?:${SENSITIVE_KEYS.join('|')})=)[^&#]*`, 'gi')
+
+/** Masks sensitive query values (token, code, state, uat, urt, …) in a URL for logging. */
+export function redactProtocolUrl(rawUrl: string): string {
+  if (!rawUrl || typeof rawUrl !== 'string') return String(rawUrl ?? '')
+  return rawUrl.replace(SENSITIVE_QUERY_RE, '$1***')
+}
+
+/** Shallow copy of parsed params with sensitive values masked, for logging. */
+export function redactProtocolParams(params: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(params || {})) {
+    out[key] = SENSITIVE_KEYS.includes(key.toLowerCase()) ? '***' : value
+  }
+  return out
+}
+
+/**
  * 将布尔类型值解析为 boolean
  */
 export function parseBooleanFlag(val: unknown, defaultValue = false): boolean {
@@ -40,6 +80,9 @@ export function parseProtocolUrl(rawUrl: string): ParsedProtocolRequest {
     }
   }
   let sanitizedUrl = rawUrl.trim().replace(/^["']|["']$/g, '').trim()
+  // Windows may append a '/' to the URL passed on the command line; that only
+  // ever lands at the very end (i.e. on the last query value), so strip it
+  // there instead of from every value.
   if (sanitizedUrl.includes('?') && sanitizedUrl.endsWith('/')) {
     sanitizedUrl = sanitizedUrl.replace(/\/+$/, '')
   }
@@ -62,15 +105,14 @@ export function parseProtocolUrl(rawUrl: string): ParsedProtocolRequest {
   // 提取 searchParams
   const params: Record<string, unknown> = {}
   for (const [key, value] of urlObj.searchParams.entries()) {
-    // 如果已经存在同一 key，且多次出现则转为数组或保留最新；清理末尾可能的 trailing slash
-    const cleanVal = typeof value === 'string' ? value.replace(/\/+$/, '') : value
-    params[key] = cleanVal
+    // 同一 key 多次出现时保留最后一个
+    params[key] = value
   }
 
   // 确定 action
   let hostPart = (urlObj.hostname || '').toLowerCase()
   const rawPath = urlObj.pathname.replace(/^\/+/, '') // 去掉前导 /
-  const pathSegments = rawPath.split('/').filter(Boolean).map((s) => decodeURIComponent(s))
+  const pathSegments = rawPath.split('/').filter(Boolean).map((s) => safeDecode(s))
 
   let action = ''
 
@@ -92,13 +134,13 @@ export function parseProtocolUrl(rawUrl: string): ParsedProtocolRequest {
     if (params.action) {
       action = String(params.action).toLowerCase()
       delete params.action
-    } else if (params.command && !params.id && !params.args) {
-      // 避免误吞 cmd 命令中的 command 参数
-      action = String(params.command).toLowerCase()
-      delete params.command
-    } else if (params.cmd && !params.id && !params.args) {
+    } else if (params.cmd) {
+      // clawbench://run?cmd=app&id=...
       action = String(params.cmd).toLowerCase()
       delete params.cmd
+    } else if (params.command) {
+      action = String(params.command).toLowerCase()
+      delete params.command
     }
   }
 
@@ -206,13 +248,15 @@ function fallbackParse(rawUrl: string): ParsedProtocolRequest {
   const params: Record<string, unknown> = {}
   if (queryString) {
     for (const pair of queryString.split('&')) {
-      const [k, v] = pair.split('=')
-      if (k) params[decodeURIComponent(k)] = v ? decodeURIComponent(v) : ''
+      const eq = pair.indexOf('=')
+      const k = eq === -1 ? pair : pair.slice(0, eq)
+      const v = eq === -1 ? '' : pair.slice(eq + 1)
+      if (k) params[safeDecode(k.replace(/\+/g, ' '))] = safeDecode(v.replace(/\+/g, ' '))
     }
   }
 
   if (parts.length > 1 && !params.id && !params.appId) {
-    params.id = decodeURIComponent(parts[1])
+    params.id = safeDecode(parts[1])
   }
 
   normalizeParams(params)

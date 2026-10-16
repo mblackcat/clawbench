@@ -8,31 +8,32 @@ import {
   executeSubApp,
   cancelTask,
   resolvePythonCommand,
-  getI18nPayload,
   sendUiEventToSubApp
 } from '../services/python-runner.service'
+import { gateSubAppRun, prepareSubAppPython } from '../services/subapp-run.service'
 import { resolveSubAppSlot } from '../services/subapp-slot.service'
 import { getActiveWorkspace } from '../services/workspace.service'
-import {
-  AppDisabledError,
-  BUILTIN_APP_ID_PREFIX,
-  enrichBuiltinAppParams
-} from '../services/project.service'
 import { installSkill, InstallMode, SkillTool } from '../services/skill-install.service'
-import { getUser } from '../store/auth.store'
 import { getPythonSdkPath, getTempDir } from '../utils/paths'
 import { unzipArchive } from '../utils/zip'
 import { recordDownloadEvent } from '../services/usage-tracking.service'
 import { installAppRequirements } from '../services/python-venv.service'
 import { fetchPackageArchive } from '../utils/download-guard'
 import * as logger from '../utils/logger'
+import { mainT } from '../utils/i18n'
 
-/** Best-effort requirements install for an installed app (sha256-cached). */
-async function ensureAppRequirements(appId: string): Promise<void> {
-  const installedAppPath = getSubAppPath(appId)
-  if (!installedAppPath) return
+/** App ids whose `subapp:execute` is still preparing (gate / Python / requirements). */
+const preparingApps = new Set<string>()
+
+/**
+ * Best-effort requirements install for a freshly installed app (sha256-cached;
+ * targets the interpreter the app will run with).
+ */
+async function ensureAppRequirements(appId: string, installedAppPath?: string): Promise<void> {
+  const appPath = installedAppPath || getSubAppPath(appId)
+  if (!appPath) return
   try {
-    await installAppRequirements(installedAppPath)
+    await installAppRequirements(appPath)
   } catch (reqErr) {
     logger.warn(`Failed to install requirements for ${appId}:`, reqErr)
   }
@@ -188,49 +189,40 @@ export function registerSubAppIpc(): void {
         }
       })
 
-      // Builtin enable gate (admin kill-switch) + config/user injection.
-      let effectiveParams: Record<string, unknown> = params || {}
-      if (appId.startsWith(BUILTIN_APP_ID_PREFIX)) {
-        try {
-          effectiveParams = await enrichBuiltinAppParams(appId, manifest.name, effectiveParams)
-          const user = getUser()
-          if (user) {
-            effectiveParams.__user = {
-              userId: user.id,
-              username: user.name,
-              email: user.email || '',
-              feishuId: user.feishuId || ''
-            }
-          }
-        } catch (err) {
-          if (err instanceof AppDisabledError) {
-            return finishEarly('disabled', err.message, err.i18nKey, err.i18nArgs)
-          }
-          const message = err instanceof Error ? err.message : String(err)
-          return finishEarly('failed', message)
-        }
-      }
-
-      let pythonPath: string
-      try {
-        const python = await resolvePythonCommand(appPath)
-        pythonPath = python.path
-        logger.info(
-          `Using ${python.source} Python for sub-app ${appId}: ${python.path} (${python.version})`
+      // Refuse a second concurrent start of the same app while it is still
+      // preparing (venv creation / pip install can take a while).
+      if (preparingApps.has(appId)) {
+        return finishEarly(
+          'failed',
+          mainT('subapp.alreadyStarting', manifest.name),
+          'subapp.alreadyStarting',
+          [manifest.name]
         )
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        const i18nPayload = getI18nPayload(err)
-        logger.error(`Failed to resolve Python for sub-app ${appId}:`, message)
-        return finishEarly('failed', message, i18nPayload.i18nKey, i18nPayload.i18nArgs)
+      }
+      preparingApps.add(appId)
+
+      const target = { appId, appName: manifest.name, appPath }
+      let released = false
+      const release = (): void => {
+        if (released) return
+        released = true
+        preparingApps.delete(appId)
       }
 
-      // Install / verify requirements.txt (no-op when the sha256 is unchanged)
+      // Builtin kill-switch gate + config/user injection. Runs before
+      // task-started so disabled apps never flash as "running".
+      let gate: Awaited<ReturnType<typeof gateSubAppRun>>
       try {
-        await installAppRequirements(appPath)
-      } catch (reqErr) {
-        logger.warn(`Failed to verify requirements for ${appId}:`, reqErr)
+        gate = await gateSubAppRun(target, params)
+      } catch (err) {
+        release()
+        throw err
       }
+      if (!gate.ok) {
+        release()
+        return finishEarly(gate.status, gate.message, gate.i18nKey, gate.i18nArgs)
+      }
+      const effectiveParams = gate.params
 
       webContents.send('subapp:task-started', {
         taskId,
@@ -238,19 +230,59 @@ export function registerSubAppIpc(): void {
         appName: manifest.name
       })
 
-      executeSubApp(
-        taskId,
-        appId,
-        manifest.name,
-        manifest.version,
-        appPath,
-        manifest.entry,
-        effectiveParams,
-        workspace,
-        pythonPath,
-        sdkPath,
-        webContents
-      )
+      // Python resolution + requirements run after task-started; progress is
+      // streamed as task output and failures end the task via task-status.
+      const send = (channel: string, payload: Record<string, unknown>): void => {
+        if (!webContents.isDestroyed()) webContents.send(channel, payload)
+      }
+      setImmediate(() => {
+        void (async () => {
+          try {
+            const py = await prepareSubAppPython(target, (message, level) =>
+              send('subapp:output', { taskId, type: 'output', level, message, timestamp: Date.now() })
+            )
+            if (!py.ok) {
+              send('subapp:output', {
+                taskId,
+                type: 'error',
+                level: 'error',
+                message: py.message,
+                i18nKey: py.i18nKey,
+                i18nArgs: py.i18nArgs
+              })
+              send('subapp:task-status', {
+                taskId,
+                status: 'failed',
+                success: false,
+                summary: py.message,
+                summaryI18nKey: py.i18nKey,
+                summaryI18nArgs: py.i18nArgs
+              })
+              return
+            }
+            if (webContents.isDestroyed()) return
+            executeSubApp(
+              taskId,
+              appId,
+              manifest.name,
+              manifest.version,
+              appPath,
+              manifest.entry,
+              effectiveParams,
+              workspace,
+              py.python.path,
+              sdkPath,
+              webContents
+            )
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err)
+            logger.error(`Failed to start sub-app ${appId}:`, message)
+            send('subapp:task-status', { taskId, status: 'failed', success: false, summary: message })
+          } finally {
+            release()
+          }
+        })()
+      })
 
       const result: SubAppExecuteResult = { taskId }
       return result
@@ -286,14 +318,14 @@ export function registerSubAppIpc(): void {
         'market'
       )
 
-      const result = installApp(sourceDir)
+      const result = installApp(sourceDir, { expectedId: appId })
       cleanup()
 
       if (!result.success) {
         throw new Error(result.error || '安装失败')
       }
 
-      await ensureAppRequirements(appId)
+      await ensureAppRequirements(appId, result.targetDir)
 
       logger.info(`[Marketplace] Installed: ${result.manifest?.name} (${appId})`)
       recordDownloadEvent(appId, result.manifest?.version)
@@ -326,14 +358,14 @@ export function registerSubAppIpc(): void {
       )
 
       // force=true: full replace (reset to online). Otherwise merge so local data survives.
-      const result = installApp(sourceDir, { preserveLocal: !force })
+      const result = installApp(sourceDir, { preserveLocal: !force, expectedId: appId })
       cleanup()
 
       if (!result.success) {
         throw new Error(result.error || (force ? '重置失败' : '更新失败'))
       }
 
-      await ensureAppRequirements(appId)
+      await ensureAppRequirements(appId, result.targetDir)
 
       logger.info(`[Marketplace] ${force ? 'Reset' : 'Updated'}: ${result.manifest?.name} (${appId})`)
       recordDownloadEvent(appId, result.manifest?.version)

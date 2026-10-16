@@ -8,7 +8,9 @@ import {
   installAppRequirements,
   extractExternalRequirements,
   buildPipIndexArgs,
-  resolvePipIndexUrl
+  resolvePipIndexUrl,
+  isVenvPython,
+  enableSystemSitePackages
 } from '../python-venv.service'
 import { settingsStore } from '../../store/settings.store'
 
@@ -99,6 +101,54 @@ describe('python-venv.service', () => {
       const result = await installAppRequirements(tmpDir)
       expect(result.success).toBe(true)
       expect(result.installed).toBe(true)
+    })
+  })
+
+  describe('system site-packages / venv detection', () => {
+    function makeVenv(cfg: string): { dir: string; python: string } {
+      const dir = path.join(tmpDir, 'venv')
+      const bin = path.join(dir, process.platform === 'win32' ? 'Scripts' : 'bin')
+      fs.mkdirSync(bin, { recursive: true })
+      const python = path.join(bin, process.platform === 'win32' ? 'python.exe' : 'python')
+      fs.writeFileSync(python, '')
+      fs.writeFileSync(path.join(dir, 'pyvenv.cfg'), cfg)
+      return { dir, python }
+    }
+
+    it('detects venv interpreters but not bare commands or system paths', () => {
+      const { python } = makeVenv('home = /usr/bin\n')
+      expect(isVenvPython(python)).toBe(true)
+      expect(isVenvPython('python3')).toBe(false)
+      expect(isVenvPython(path.join(tmpDir, 'nope', 'bin', 'python'))).toBe(false)
+    })
+
+    it('flips include-system-site-packages to true once', () => {
+      const { dir } = makeVenv('home = /usr/bin\ninclude-system-site-packages = false\nversion = 3.12.1\n')
+      expect(enableSystemSitePackages(dir)).toBe(true)
+      const cfg = fs.readFileSync(path.join(dir, 'pyvenv.cfg'), 'utf-8')
+      expect(cfg).toContain('include-system-site-packages = true')
+      expect(cfg).toContain('version = 3.12.1')
+      expect(enableSystemSitePackages(dir)).toBe(false)
+    })
+
+    it('appends the flag when missing and ignores missing cfg', () => {
+      const { dir } = makeVenv('home = /usr/bin')
+      expect(enableSystemSitePackages(dir)).toBe(true)
+      expect(fs.readFileSync(path.join(dir, 'pyvenv.cfg'), 'utf-8')).toMatch(
+        /home = \/usr\/bin\ninclude-system-site-packages = true/
+      )
+      expect(enableSystemSitePackages(path.join(tmpDir, 'missing'))).toBe(false)
+    })
+
+    it('skips auto-install for a non-venv interpreter and reports why', async () => {
+      fs.writeFileSync(path.join(tmpDir, 'requirements.txt'), 'requests\n')
+      const lines: string[] = []
+      const result = await installAppRequirements(tmpDir, {
+        pythonPath: '/usr/bin/python3',
+        onOutput: (m) => lines.push(m)
+      })
+      expect(result).toMatchObject({ success: true, installed: false, skipped: true })
+      expect(lines.length).toBe(1)
     })
   })
 

@@ -1,5 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
-import { generateAuthUrl, handleCallback, refreshFeishuUserToken } from '../services/feishuAuthService';
+import {
+  generateAuthUrl,
+  handleCallback,
+  refreshFeishuUserToken,
+  isValidClientState,
+} from '../services/feishuAuthService';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 
@@ -27,7 +32,14 @@ export async function feishuAuthorize(
     }
 
     const source = req.query.source === 'web' ? 'web' : 'electron';
-    const { url } = await generateAuthUrl(source);
+    // Desktop login nonce, echoed back in the deep-link callback (optional:
+    // older clients do not send it; malformed values are ignored).
+    const rawClientState = req.query.client_state;
+    const clientState = isValidClientState(rawClientState) ? rawClientState : undefined;
+    if (rawClientState !== undefined && !clientState) {
+      logger.warn('Feishu OAuth: ignoring malformed client_state');
+    }
+    const { url } = await generateAuthUrl(source, clientState);
     logger.info(`Feishu OAuth: redirecting to authorization URL (source=${source})`);
     res.redirect(url);
   } catch (error) {
@@ -89,6 +101,10 @@ export async function feishuCallback(
       uexp: String(loginResponse.feishuTokenExpiresIn),
       appId: config.feishu.appId || '',
     });
+    // Echo the desktop client's login nonce so it can verify the callback.
+    if (loginResponse.clientState) {
+      params.set('state', loginResponse.clientState);
+    }
     const redirectUrl = `clawbench://auth/callback?${params.toString()}`;
     logger.info(`Feishu OAuth callback successful, redirecting to custom protocol`);
 

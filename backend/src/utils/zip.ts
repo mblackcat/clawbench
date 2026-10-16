@@ -35,6 +35,9 @@ export function zipDirectory(sourceDir: string, destZip: string): Promise<void> 
   });
 }
 
+/** Default cap for a single decompressed entry read by {@link readZipEntry}. */
+export const DEFAULT_MAX_ENTRY_BYTES = 5 * 1024 * 1024;
+
 /**
  * Reads the text content of an entry from a zip archive (stored or deflated entries).
  * Matches `targetName` exactly or as the basename of a nested path (`dir/targetName`).
@@ -42,9 +45,16 @@ export function zipDirectory(sourceDir: string, destZip: string): Promise<void> 
  *
  * @param zipPathOrBuffer zip file path or buffer
  * @param targetName      entry name, e.g. "manifest.json"
- * @returns entry content, or null when not found / unreadable
+ * @param opts.maxOutputLength cap on the (decompressed) entry size; larger
+ *        entries — including zip bombs — yield null. Default 5 MiB.
+ * @returns entry content, or null when not found / unreadable / too large
  */
-export function readZipEntry(zipPathOrBuffer: string | Buffer, targetName: string): string | null {
+export function readZipEntry(
+  zipPathOrBuffer: string | Buffer,
+  targetName: string,
+  opts: { maxOutputLength?: number } = {}
+): string | null {
+  const maxOutputLength = opts.maxOutputLength ?? DEFAULT_MAX_ENTRY_BYTES;
   try {
     const buffer =
       typeof zipPathOrBuffer === 'string' ? fs.readFileSync(zipPathOrBuffer) : zipPathOrBuffer;
@@ -85,12 +95,51 @@ export function readZipEntry(zipPathOrBuffer: string | Buffer, targetName: strin
       const dataOffset = localHeaderOffset + 30 + localFileNameLen + localExtraLen;
       const dataSlice = buffer.subarray(dataOffset, dataOffset + compressedSize);
 
-      if (compression === 0) return dataSlice.toString('utf8');
-      if (compression === 8) return zlib.inflateRawSync(dataSlice).toString('utf8');
+      if (compression === 0) {
+        return dataSlice.length > maxOutputLength ? null : dataSlice.toString('utf8');
+      }
+      if (compression === 8) {
+        // maxOutputLength makes zlib throw (caught below) instead of inflating a bomb.
+        return zlib.inflateRawSync(dataSlice, { maxOutputLength }).toString('utf8');
+      }
       return null;
     }
   } catch {
     // unreadable / corrupt archive
+  }
+  return null;
+}
+
+/** Allowed manifest id: it becomes a directory name on the desktop client. */
+export const MANIFEST_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+/**
+ * Validates `manifest.json` inside an uploaded package.
+ * Lenient: archives without a (parseable) manifest, or whose manifest has no
+ * `id`, are accepted. A present but unsafe id (path traversal, separators…)
+ * is rejected because the desktop client uses it as an install directory.
+ *
+ * @returns an error message, or null when acceptable
+ */
+export function validatePackageManifestId(zip: Buffer | string): string | null {
+  const content = readZipEntry(zip, 'manifest.json', { maxOutputLength: 1024 * 1024 });
+  if (content === null) return null;
+  let manifest: unknown;
+  try {
+    manifest = JSON.parse(content);
+  } catch {
+    return null;
+  }
+  if (!manifest || typeof manifest !== 'object') return null;
+  const id = (manifest as Record<string, unknown>).id;
+  if (id === undefined || id === null) return null;
+  if (
+    typeof id !== 'string' ||
+    id.length > 200 ||
+    !MANIFEST_ID_PATTERN.test(id) ||
+    id.includes('..')
+  ) {
+    return `Invalid manifest id in package: ${String(id).slice(0, 80)}`;
   }
   return null;
 }

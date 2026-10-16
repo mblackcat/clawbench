@@ -10,6 +10,8 @@ import { createApplication } from '../repositories/applicationRepository';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
+import { zipDirectory } from '../utils/zip';
 
 /**
  * 应用包上传 API 测试
@@ -98,6 +100,28 @@ describe('POST /api/v1/applications/:applicationId/upload - Upload Application P
     });
     expect(response.body.data.fileSize).toBe(fileContent.length);
     expect(response.body.data.uploadedAt).toBeDefined();
+  });
+
+  it('should reject a package whose manifest id is unsafe', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cb-bad-manifest-'));
+    try {
+      const src = path.join(dir, 'src');
+      fs.mkdirSync(src);
+      fs.writeFileSync(path.join(src, 'manifest.json'), JSON.stringify({ id: '../../evil' }));
+      const zipPath = path.join(dir, 'bad.zip');
+      await zipDirectory(src, zipPath);
+
+      const response = await request(app)
+        .post(`/api/v1/applications/${testApplicationId}/upload`)
+        .set('Authorization', `Bearer ${testToken}`)
+        .field('version', '9.9.9')
+        .attach('file', fs.readFileSync(zipPath), 'bad.zip');
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.code).toBe('INVALID_MANIFEST');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('should upload application package without changelog', async () => {

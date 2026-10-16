@@ -9,6 +9,7 @@ import { registerAllIpcHandlers } from './ipc'
 import {
   handleProtocolUrl as routeProtocolUrl,
   isProtocolSilent,
+  redactProtocolUrl,
   setProtocolWindowProvider
 } from './services/protocol'
 import { initAutoUpdater, checkForUpdates } from './services/updater.service'
@@ -116,25 +117,41 @@ function quitApplication(): void {
  * 处理自定义协议 URL
  */
 function handleProtocolUrl(url: string): void {
-  logger.info(`Received protocol URL: ${url}`)
+  // Never let a malformed / hostile URL break startup or the event loop.
+  try {
+    logger.info(`Received protocol URL: ${redactProtocolUrl(url)}`)
 
-  if (!app.isReady()) {
-    app.whenReady().then(() => handleProtocolUrl(url))
-    return
-  }
+    if (!app.isReady()) {
+      app.whenReady().then(() => handleProtocolUrl(url))
+      return
+    }
 
-  // Let the renderer finish loading first so pushed events (task-started,
-  // protocol:install-app, auth results) have a listener.
-  const win = getMainWindow()
-  if (win && !win.isDestroyed() && win.webContents.isLoading()) {
-    win.webContents.once('did-finish-load', () => handleProtocolUrl(url))
-    return
-  }
+    // Let the renderer finish loading first so pushed events (task-started,
+    // protocol:install-app, auth results) have a listener.
+    const win = getMainWindow()
+    if (win && !win.isDestroyed() && win.webContents.isLoading()) {
+      win.webContents.once('did-finish-load', () => handleProtocolUrl(url))
+      return
+    }
 
-  // Routed through the protocol command registry (app / auth / install).
-  routeProtocolUrl(url).catch((err) => {
+    // Routed through the protocol command registry (app / auth / install).
+    routeProtocolUrl(url).catch((err) => {
+      logger.error('Failed to handle protocol URL:', err)
+    })
+  } catch (err) {
     logger.error('Failed to handle protocol URL:', err)
-  })
+  }
+}
+
+/** Silent flag of a cold-start protocol URL; any parse problem means "not silent". */
+function isColdStartSilent(url: string | undefined): boolean {
+  if (!url) return false
+  try {
+    return isProtocolSilent(url)
+  } catch (err) {
+    logger.warn('Failed to read silent flag from protocol URL:', err)
+    return false
+  }
 }
 
 function createWindow(options?: { showOnReady?: boolean }): BrowserWindow {
@@ -242,8 +259,13 @@ app.whenReady().then(() => {
   setProtocolWindowProvider({ getMainWindow, showMainWindow })
 
   // Cold start launched by a protocol URL (Windows/Linux pass it in argv)
-  const coldStartProtocolUrl = extractProtocolUrl(process.argv)
-  const isColdSilent = !!coldStartProtocolUrl && isProtocolSilent(coldStartProtocolUrl)
+  let coldStartProtocolUrl: string | undefined
+  try {
+    coldStartProtocolUrl = extractProtocolUrl(process.argv)
+  } catch (err) {
+    logger.warn('Failed to read protocol URL from argv:', err)
+  }
+  const isColdSilent = isColdStartSilent(coldStartProtocolUrl)
 
   createWindow({ showOnReady: !isColdSilent })
   createAppTray({ onQuit: quitApplication })

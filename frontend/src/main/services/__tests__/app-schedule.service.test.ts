@@ -47,8 +47,15 @@ interface MockCallbacks {
 }
 
 const mockExecuteCallbacks = vi.fn()
+vi.mock('../subapp-run.service', () => ({
+  prepareSubAppRun: vi.fn(async (_target: unknown, params: Record<string, unknown>) => ({
+    ok: true,
+    params,
+    python: { path: 'python', version: 'Python 3.12.0', source: 'system' }
+  }))
+}))
+
 vi.mock('../python-runner.service', () => ({
-  resolvePythonCommand: vi.fn(async () => ({ path: 'python' })),
   executeSubAppWithCallbacks: vi.fn((...args: unknown[]) => {
     mockExecuteCallbacks(...args)
   })

@@ -1,5 +1,5 @@
 import { BrowserWindow } from 'electron'
-import { parseProtocolUrl } from './parser'
+import { parseProtocolUrl, redactProtocolUrl, redactProtocolParams } from './parser'
 import { protocolRegistry } from './registry'
 import { showProtocolNotification } from './notification'
 import * as logger from '../../utils/logger'
@@ -47,8 +47,11 @@ export function setProtocolWindowProvider(provider: ProtocolWindowProvider): voi
  */
 export function isProtocolSilent(rawUrl: string): boolean {
   if (!rawUrl) return false
-  const parsed = parseProtocolUrl(rawUrl)
-  return parsed.silent
+  try {
+    return parseProtocolUrl(rawUrl).silent
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -65,7 +68,7 @@ export function isProtocolSilent(rawUrl: string): boolean {
  */
 export async function handleProtocolUrl(rawUrl: string): Promise<ProtocolExecutionResult> {
   const timestamp = new Date().toISOString()
-  logger.info(`[Protocol] [${timestamp}] Received protocol URL: ${rawUrl}`)
+  logger.info(`[Protocol] [${timestamp}] Received protocol URL: ${redactProtocolUrl(rawUrl)}`)
 
   if (!rawUrl || typeof rawUrl !== 'string') {
     logger.warn('[Protocol] Empty or invalid protocol URL received')
@@ -78,14 +81,14 @@ export async function handleProtocolUrl(rawUrl: string): Promise<ProtocolExecuti
     parsed = parseProtocolUrl(rawUrl)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    logger.error('[Protocol] Failed to parse protocol URL:', rawUrl, message)
+    logger.error('[Protocol] Failed to parse protocol URL:', redactProtocolUrl(rawUrl), message)
     showProtocolNotification(mainT('protocol.parseFailed', message), { type: 'error' })
     return { success: false, error: 'PARSE_FAILED' }
   }
 
   const { action, silent, params } = parsed
   logger.info(
-    `[Protocol] Parsed command: action="${action}", silent=${silent}, params=${JSON.stringify(params)}`
+    `[Protocol] Parsed command: action="${action}", silent=${silent}, params=${JSON.stringify(redactProtocolParams(params))}`
   )
 
   // 2. 查找已注册命令

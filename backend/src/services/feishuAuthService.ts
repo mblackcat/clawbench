@@ -98,21 +98,47 @@ async function getAppAccessToken(): Promise<string> {
 }
 
 /**
+ * Desktop client login nonce (`client_state`), echoed back to the client as
+ * `state` in the deep-link callback. Kept short so `<random>.<nonce>` fits the
+ * 64-char oauth_states.state column on every dialect.
+ */
+const CLIENT_STATE_PATTERN = /^[A-Za-z0-9_-]{8,24}$/;
+
+export function isValidClientState(value: unknown): value is string {
+  return typeof value === 'string' && CLIENT_STATE_PATTERN.test(value);
+}
+
+/** Client nonce embedded in an OAuth state (`<hex>.<nonce>`), or null. */
+export function extractClientState(state: string): string | null {
+  const idx = state.indexOf('.');
+  if (idx === -1) return null;
+  const nonce = state.slice(idx + 1);
+  return isValidClientState(nonce) ? nonce : null;
+}
+
+/**
  * 生成飞书授权 URL
  * @param source 来源标识：'electron' (默认) | 'web' （用于区分回调跳转目标）
+ * @param clientState 桌面端登录 nonce（可选），回调时原样回传给客户端
  * @returns 授权 URL 和 state
  */
-export async function generateAuthUrl(source: 'electron' | 'web' = 'electron'): Promise<{ url: string; state: string }> {
+export async function generateAuthUrl(
+  source: 'electron' | 'web' = 'electron',
+  clientState?: string
+): Promise<{ url: string; state: string }> {
   await cleanupStates();
 
-  const state = randomBytes(16).toString('hex');
+  const random = randomBytes(16).toString('hex');
+  // The nonce rides inside the DB-backed state (no schema change needed);
+  // the random part keeps the state unguessable.
+  const state = isValidClientState(clientState) ? `${random}.${clientState}` : random;
   await database.run(
     'INSERT INTO oauth_states (state, source, created_at) VALUES (?, ?, ?)',
     [state, source, Date.now()]
   );
 
   const redirectUri = encodeURIComponent(config.feishu.redirectUri);
-  const url = `${FEISHU_AUTH_URL}?app_id=${config.feishu.appId}&redirect_uri=${redirectUri}&state=${state}`;
+  const url = `${FEISHU_AUTH_URL}?app_id=${config.feishu.appId}&redirect_uri=${redirectUri}&state=${encodeURIComponent(state)}`;
 
   return { url, state };
 }
@@ -123,7 +149,10 @@ export async function generateAuthUrl(source: 'electron' | 'web' = 'electron'): 
  * @param state CSRF state
  * @returns JWT 登录响应 + source (来源标识)
  */
-export async function handleCallback(code: string, state: string): Promise<FeishuLoginResponse & { source: string }> {
+export async function handleCallback(
+  code: string,
+  state: string
+): Promise<FeishuLoginResponse & { source: string; clientState: string | null }> {
   // 1. 验证 state（从数据库查找）
   const stateRow = await database.get<{ state: string; source: string; created_at: number }>(
     'SELECT * FROM oauth_states WHERE state = ?', [state]
@@ -243,6 +272,7 @@ export async function handleCallback(code: string, state: string): Promise<Feish
     feishuRefreshToken,
     feishuTokenExpiresIn,
     source: oauthSource,
+    clientState: extractClientState(state),
   };
 }
 

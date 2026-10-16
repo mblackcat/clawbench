@@ -1,6 +1,6 @@
 import fs from 'fs'
-import { join, basename } from 'path'
-import { getUserAppsPath } from '../utils/paths'
+import { join, resolve, relative, isAbsolute, sep } from 'path'
+import { getUserAppsPath, getDefaultUserAppsPath } from '../utils/paths'
 import * as logger from '../utils/logger'
 
 export interface SubAppManifest {
@@ -91,6 +91,65 @@ export function getSubAppPath(appId: string): string | undefined {
   return app?.path
 }
 
+/** Allowed shape of a manifest id (it becomes a directory name under user-apps). */
+const MANIFEST_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+
+/** Builtin-app id prefix (mirrors project.service BUILTIN_APP_ID_PREFIX; kept local to avoid an import cycle). */
+const BUILTIN_PREFIX = 'com.clawbench.builtin.'
+
+/** Legacy marketplace ids fall back to a backend-generated UUID instead of manifest.id. */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Validates a manifest id before it is used as a directory name.
+ * Returns an error message, or null when the id is safe.
+ */
+export function validateManifestId(id: unknown): string | null {
+  if (typeof id !== 'string' || !id) return 'manifest.json is missing a valid "id"'
+  if (id.length > 200) return `Invalid manifest id (too long): ${id.slice(0, 40)}...`
+  if (!MANIFEST_ID_PATTERN.test(id) || id.includes('..')) {
+    return `Invalid manifest id "${id}": only letters, digits, ".", "_" and "-" are allowed`
+  }
+  return null
+}
+
+/** True when `target` resolves strictly inside `root` (never equal to it). */
+export function isStrictlyInside(root: string, target: string): boolean {
+  const rel = relative(resolve(root), resolve(target))
+  return !!rel && !rel.startsWith('..') && !isAbsolute(rel) && rel.split(sep)[0] !== '..'
+}
+
+/** Roots the app manager is allowed to delete from (configured + default user-apps). */
+function managedAppRoots(): string[] {
+  const roots = new Set<string>()
+  for (const fn of [getUserAppsPath, getDefaultUserAppsPath]) {
+    try {
+      const r = fn()
+      if (r) roots.add(resolve(r))
+    } catch {
+      // paths unavailable (early bootstrap / tests)
+    }
+  }
+  return [...roots]
+}
+
+/** True when `target` is strictly inside one of the managed user-apps roots. */
+export function isInsideManagedAppsRoot(target: string): boolean {
+  return managedAppRoots().some((root) => isStrictlyInside(root, target))
+}
+
+/**
+ * Checks a downloaded package's manifest id against the id the caller asked
+ * to install. Marketplace ids are normally the manifest id; legacy entries may
+ * carry a backend UUID instead, in which case the mismatch is tolerated —
+ * except that such a package may never claim a builtin id.
+ */
+export function checkExpectedManifestId(manifestId: string, expectedId: string): string | null {
+  if (!expectedId || manifestId === expectedId) return null
+  if (UUID_PATTERN.test(expectedId) && !manifestId.startsWith(BUILTIN_PREFIX)) return null
+  return `Package manifest id "${manifestId}" does not match the requested app "${expectedId}"`
+}
+
 /**
  * Installs a sub-app by copying it to the user apps directory.
  *
@@ -101,7 +160,7 @@ export function getSubAppPath(appId: string): string | undefined {
  */
 export function installApp(
   sourcePath: string,
-  opts: { preserveLocal?: boolean } = {}
+  opts: { preserveLocal?: boolean; expectedId?: string } = {}
 ): { success: boolean; manifest?: SubAppManifest; error?: string; targetDir?: string } {
   try {
     if (!fs.existsSync(sourcePath)) {
@@ -116,12 +175,32 @@ export function installApp(
     const manifestContent = fs.readFileSync(manifestPath, 'utf-8')
     const manifest = JSON.parse(manifestContent) as SubAppManifest
 
+    // manifest.id becomes a directory name: reject traversal / odd characters.
+    const idError = validateManifestId(manifest?.id)
+    if (idError) {
+      return { success: false, error: idError }
+    }
+    if (opts.expectedId) {
+      const mismatch = checkExpectedManifestId(manifest.id, opts.expectedId)
+      if (mismatch) {
+        return { success: false, error: mismatch }
+      }
+      if (manifest.id !== opts.expectedId) {
+        logger.warn(
+          `Installing legacy market app ${opts.expectedId} under manifest id ${manifest.id}`
+        )
+      }
+    }
+
     const userAppsDir = getUserAppsPath()
     if (!fs.existsSync(userAppsDir)) {
       fs.mkdirSync(userAppsDir, { recursive: true })
     }
 
-    const targetDir = join(userAppsDir, manifest.id || basename(sourcePath))
+    const targetDir = join(userAppsDir, manifest.id)
+    if (!isStrictlyInside(userAppsDir, targetDir)) {
+      return { success: false, error: `Refusing to install outside the apps directory: ${manifest.id}` }
+    }
     if (fs.existsSync(targetDir) && !opts.preserveLocal) {
       fs.rmSync(targetDir, { recursive: true })
     }
@@ -151,6 +230,12 @@ export function uninstallApp(appId: string): { success: boolean; error?: string 
 
     if (!app) {
       return { success: false, error: `App not found: ${appId}` }
+    }
+
+    // Only ever delete directories the app manager owns.
+    if (!isInsideManagedAppsRoot(app.path)) {
+      logger.error(`Refusing to uninstall ${appId}: ${app.path} is outside the managed apps directory`)
+      return { success: false, error: `Refusing to remove a path outside the apps directory: ${app.path}` }
     }
 
     fs.rmSync(app.path, { recursive: true })

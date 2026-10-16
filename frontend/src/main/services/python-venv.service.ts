@@ -3,7 +3,12 @@ import path from 'path'
 import { spawn } from 'child_process'
 import crypto from 'crypto'
 import { AsyncLocalStorage } from 'async_hooks'
-import { getWorkbenchVenvPath, getWorkbenchVenvPythonPath, getTempDir } from '../utils/paths'
+import {
+  getAppDataPath,
+  getWorkbenchVenvPath,
+  getWorkbenchVenvPythonPath,
+  getTempDir
+} from '../utils/paths'
 import { scanAvailablePythons } from './python-detect.service'
 import { ensureWindowsPythonPathPriority, isWindowsAppsPath } from '../utils/windows-env'
 import * as logger from '../utils/logger'
@@ -21,12 +26,30 @@ export interface RequirementsInstallResult {
   success: boolean
   installed: boolean
   cached?: boolean
+  /** Auto-install was skipped on purpose (interpreter is not a virtual env). */
+  skipped?: boolean
   error?: string
 }
 
+/** Progress sink for venv creation / pip installs (one call per output line). */
+export type PythonEnvOutput = (message: string, level: 'info' | 'warn' | 'error') => void
+
+export interface RequirementsInstallOptions {
+  force?: boolean
+  /**
+   * Interpreter that will run the app. Requirements are installed into this
+   * exact interpreter. When omitted it is derived like the runner does
+   * (app venv → configured Python → workbench venv).
+   */
+  pythonPath?: string
+  onOutput?: PythonEnvOutput
+}
+
+/** Requirement-install cache, keyed by `<sha256>|<interpreter path>`. */
 interface InstalledHashes {
-  [hash: string]: {
+  [key: string]: {
     appPath?: string
+    pythonPath?: string
     installedAt: number
   }
 }
@@ -64,7 +87,12 @@ function withResolvers<T>(): {
 function runProcess(
   command: string,
   args: string[],
-  options: { cwd?: string; timeoutMs?: number; env?: NodeJS.ProcessEnv } = {}
+  options: {
+    cwd?: string
+    timeoutMs?: number
+    env?: NodeJS.ProcessEnv
+    onData?: (chunk: string, stream: 'stdout' | 'stderr') => void
+  } = {}
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   const { promise, resolve } = withResolvers<{ code: number; stdout: string; stderr: string }>()
   let stdout = ''
@@ -93,11 +121,15 @@ function runProcess(
     : undefined
 
   proc.stdout?.on('data', (data: Buffer) => {
-    stdout += data.toString()
+    const chunk = data.toString()
+    stdout += chunk
+    options.onData?.(chunk, 'stdout')
   })
 
   proc.stderr?.on('data', (data: Buffer) => {
-    stderr += data.toString()
+    const chunk = data.toString()
+    stderr += chunk
+    options.onData?.(chunk, 'stderr')
   })
 
   proc.on('close', (code) => {
@@ -115,6 +147,64 @@ function runProcess(
   })
 
   return promise
+}
+
+/**
+ * Adapts a {@link PythonEnvOutput} line sink to runProcess' chunked `onData`.
+ * stdout lines are `info`, stderr lines `warn` (pip prints notices there).
+ */
+function lineStreamer(
+  onOutput?: PythonEnvOutput
+): ((chunk: string, stream: 'stdout' | 'stderr') => void) | undefined {
+  if (!onOutput) return undefined
+  const buffers = { stdout: '', stderr: '' }
+  return (chunk, stream) => {
+    buffers[stream] += chunk
+    const lines = buffers[stream].split(/\r?\n/)
+    buffers[stream] = lines.pop() ?? ''
+    for (const line of lines) {
+      if (line.trim()) onOutput(line, stream === 'stdout' ? 'info' : 'warn')
+    }
+  }
+}
+
+/**
+ * True when `pythonPath` is the interpreter of a virtual environment
+ * (`pyvenv.cfg` next to its bin/Scripts directory). Bare commands such as
+ * `python3` are never treated as venvs.
+ */
+export function isVenvPython(pythonPath: string): boolean {
+  if (!pythonPath || !path.isAbsolute(pythonPath)) return false
+  const binDir = path.dirname(pythonPath)
+  return (
+    fs.existsSync(path.join(path.dirname(binDir), 'pyvenv.cfg')) ||
+    fs.existsSync(path.join(binDir, 'pyvenv.cfg'))
+  )
+}
+
+/**
+ * Makes an existing venv see the host's site-packages
+ * (`include-system-site-packages = true` in pyvenv.cfg). Packages installed
+ * in the venv still take precedence. Returns true when the file was changed.
+ */
+export function enableSystemSitePackages(venvDir: string): boolean {
+  const cfgPath = path.join(venvDir, 'pyvenv.cfg')
+  try {
+    if (!fs.existsSync(cfgPath)) return false
+    const content = fs.readFileSync(cfgPath, 'utf-8')
+    const lineRe = /^(\s*include-system-site-packages\s*=\s*)(\S*)\s*$/im
+    const match = content.match(lineRe)
+    if (match && match[2].toLowerCase() === 'true') return false
+    const next = match
+      ? content.replace(lineRe, `${match[1]}true`)
+      : `${content.replace(/\s*$/, '')}\ninclude-system-site-packages = true\n`
+    fs.writeFileSync(cfgPath, next, 'utf-8')
+    logger.info(`[python-venv] Enabled system site-packages for ${venvDir}`)
+    return true
+  } catch (err) {
+    logger.warn(`[python-venv] Could not enable system site-packages for ${venvDir}:`, err)
+    return false
+  }
 }
 
 /**
@@ -250,10 +340,16 @@ export async function findHostBasePython(): Promise<string | null> {
 }
 
 /**
- * Path to the hash registry file tracking already-installed requirements.
+ * Path to the registry of already-installed requirements. Lives in userData
+ * (not inside one venv) because entries are per interpreter.
  */
 function getInstalledHashesPath(): string {
-  return path.join(getWorkbenchVenvPath(), '.installed-hashes.json')
+  return path.join(getAppDataPath(), 'python-requirements-cache.json')
+}
+
+function requirementsCacheKey(hash: string, pythonPath: string): string {
+  const normalized = path.isAbsolute(pythonPath) ? path.resolve(pythonPath) : pythonPath
+  return `${hash}|${process.platform === 'win32' ? normalized.toLowerCase() : normalized}`
 }
 
 function loadInstalledHashes(): InstalledHashes {
@@ -270,6 +366,7 @@ function loadInstalledHashes(): InstalledHashes {
 function saveInstalledHashes(hashes: InstalledHashes): void {
   const filePath = getInstalledHashesPath()
   try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true })
     fs.writeFileSync(filePath, JSON.stringify(hashes, null, 2), 'utf-8')
   } catch (err) {
     logger.warn('[python-venv] Failed to save installed requirements hash cache:', err)
@@ -281,7 +378,7 @@ function saveInstalledHashes(hashes: InstalledHashes): void {
  * Pre-seeds base dependencies (pyyaml, requests), using the optional pip
  * mirror from {@link resolvePipIndexUrl} when one is configured.
  */
-export async function ensureWorkbenchVenv(): Promise<VenvEnsureResult> {
+export async function ensureWorkbenchVenv(onOutput?: PythonEnvOutput): Promise<VenvEnsureResult> {
   return withVenvLock(async () => {
     // Ensure real Python precedes Microsoft WindowsApps on this process's PATH
     // (process-only — the registry user PATH is never touched here).
@@ -297,12 +394,15 @@ export async function ensureWorkbenchVenv(): Promise<VenvEnsureResult> {
     }
 
     const venvPython = getWorkbenchVenvPythonPath()
+    const venvDir = getWorkbenchVenvPath()
     if (fs.existsSync(venvPython)) {
+      // Venvs created by older builds lacked --system-site-packages.
+      enableSystemSitePackages(venvDir)
       return { success: true, pythonPath: venvPython }
     }
 
-    const venvDir = getWorkbenchVenvPath()
     logger.info(`[python-venv] Initializing workbench venv at: ${venvDir}`)
+    onOutput?.(mainT('pythonVenv.creating'), 'info')
 
     const hostPython = await findHostBasePython()
     if (!hostPython) {
@@ -316,7 +416,13 @@ export async function ensureWorkbenchVenv(): Promise<VenvEnsureResult> {
       fs.mkdirSync(venvDir, { recursive: true })
     }
 
-    const createRes = await runProcess(hostPython, ['-m', 'venv', venvDir], { timeoutMs: 120000 })
+    // --system-site-packages keeps packages already installed for the host
+    // Python importable (apps used to run on the system interpreter).
+    const createRes = await runProcess(
+      hostPython,
+      ['-m', 'venv', '--system-site-packages', venvDir],
+      { timeoutMs: 120000, onData: lineStreamer(onOutput) }
+    )
     if (createRes.code !== 0 || !fs.existsSync(venvPython)) {
       const errorMsg = createRes.stderr || createRes.stdout || mainT('pythonVenv.createFailed')
       logger.error(`[python-venv] Failed to create venv:`, errorMsg)
@@ -330,7 +436,7 @@ export async function ensureWorkbenchVenv(): Promise<VenvEnsureResult> {
     const seedRes = await runProcess(
       venvPython,
       ['-m', 'pip', 'install', '--prefer-binary', ...buildPipIndexArgs(), 'pyyaml', 'requests'],
-      { timeoutMs: 120000 }
+      { timeoutMs: 120000, onData: lineStreamer(onOutput) }
     )
     if (seedRes.code === 0) {
       logger.info(`[python-venv] Seed dependencies installed successfully`)
@@ -343,12 +449,39 @@ export async function ensureWorkbenchVenv(): Promise<VenvEnsureResult> {
 }
 
 /**
- * Installs dependencies specified in requirements.txt for a sub-app.
- * Uses sha256 hash caching to avoid redundant installs.
+ * Picks the interpreter requirements should go into when the caller did not
+ * say which interpreter will run the app. Mirrors the runner's order:
+ * app venv → configured Python → workbench venv.
+ */
+async function resolveRequirementsTarget(appPath: string): Promise<{ pythonPath?: string; error?: string }> {
+  const appPython = getAppVenvPython(appPath)
+  if (appPython) return { pythonPath: appPython }
+
+  let configured = ''
+  try {
+    configured = String(settingsStore.get('pythonPath') || '').trim()
+  } catch {
+    // settings store unavailable (tests)
+  }
+  if (configured) return { pythonPath: configured }
+
+  const venvRes = await ensureWorkbenchVenv()
+  if (!venvRes.success || !venvRes.pythonPath) {
+    return { error: venvRes.error || mainT('pythonVenv.notReady') }
+  }
+  return { pythonPath: venvRes.pythonPath }
+}
+
+/**
+ * Installs dependencies specified in requirements.txt for a sub-app into the
+ * interpreter that runs it. Only virtual environments are modified: for a
+ * system / configured non-venv interpreter auto-install is skipped (with an
+ * explanatory output line) rather than polluting the host Python.
+ * Uses a sha256 + interpreter keyed cache to avoid redundant installs.
  */
 export async function installAppRequirements(
   appPath: string,
-  opts?: { force?: boolean }
+  opts: RequirementsInstallOptions = {}
 ): Promise<RequirementsInstallResult> {
   if (!appPath) {
     return { success: true, installed: false }
@@ -371,40 +504,38 @@ export async function installAppRequirements(
     return { success: true, installed: false }
   }
 
-  const externalDeps = extractExternalRequirements(content)
-  const hash = crypto.createHash('sha256').update(content).digest('hex')
-  const hashes = loadInstalledHashes()
-
-  if (!opts?.force && hashes[hash]) {
-    logger.info(`[python-venv] Requirements already satisfied for ${appPath} (hash: ${hash.slice(0, 8)})`)
-    return { success: true, installed: false, cached: true }
-  }
-
   // If all lines are comments or the local SDK, no pip installation is needed
+  const externalDeps = extractExternalRequirements(content)
   if (externalDeps.length === 0) {
-    hashes[hash] = { appPath, installedAt: Date.now() }
-    saveInstalledHashes(hashes)
     logger.info(`[python-venv] No external PyPI dependencies needed for ${appPath}`)
     return { success: true, installed: true }
   }
 
+  const hash = crypto.createHash('sha256').update(content).digest('hex')
+  const { onOutput } = opts
+
   return withVenvLock(async () => {
-    // Check cache again inside lock
-    const currentHashes = loadInstalledHashes()
-    if (!opts?.force && currentHashes[hash]) {
-      return { success: true, installed: false, cached: true }
+    let targetPython = opts.pythonPath
+    if (!targetPython) {
+      const target = await resolveRequirementsTarget(appPath)
+      if (!target.pythonPath) {
+        return { success: false, installed: false, error: target.error }
+      }
+      targetPython = target.pythonPath
     }
 
-    // Determine target Python: app-specific venv takes precedence if present
-    const appPython = getAppVenvPython(appPath)
-    let targetPython = appPython
+    if (!isVenvPython(targetPython)) {
+      const msg = mainT('pythonVenv.requirementsSkipped', targetPython)
+      logger.info(`[python-venv] ${msg} (${appPath})`)
+      onOutput?.(msg, 'warn')
+      return { success: true, installed: false, skipped: true }
+    }
 
-    if (!targetPython) {
-      const venvRes = await ensureWorkbenchVenv()
-      if (!venvRes.success || !venvRes.pythonPath) {
-        return { success: false, installed: false, error: venvRes.error || mainT('pythonVenv.notReady') }
-      }
-      targetPython = venvRes.pythonPath
+    const key = requirementsCacheKey(hash, targetPython)
+    const hashes = loadInstalledHashes()
+    if (!opts.force && hashes[key]) {
+      logger.info(`[python-venv] Requirements already satisfied for ${appPath} (hash: ${hash.slice(0, 8)})`)
+      return { success: true, installed: false, cached: true }
     }
 
     // Write a filtered requirements file excluding local SDK packages
@@ -416,10 +547,11 @@ export async function installAppRequirements(
     fs.writeFileSync(filteredReqPath, externalDeps.join('\n') + '\n', 'utf-8')
 
     logger.info(`[python-venv] Installing requirements for ${appPath} via ${targetPython}: ${externalDeps.join(', ')}`)
+    onOutput?.(mainT('pythonVenv.installingRequirements', externalDeps.join(', ')), 'info')
     const installRes = await runProcess(
       targetPython,
       ['-m', 'pip', 'install', '--prefer-binary', ...buildPipIndexArgs(), '-r', filteredReqPath],
-      { timeoutMs: 180000, cwd: appPath }
+      { timeoutMs: 180000, cwd: appPath, onData: lineStreamer(onOutput) }
     )
 
     try {
@@ -430,11 +562,9 @@ export async function installAppRequirements(
 
     if (installRes.code === 0) {
       logger.info(`[python-venv] Successfully installed requirements for ${appPath}`)
-      currentHashes[hash] = {
-        appPath,
-        installedAt: Date.now()
-      }
-      saveInstalledHashes(currentHashes)
+      const current = loadInstalledHashes()
+      current[key] = { appPath, pythonPath: targetPython, installedAt: Date.now() }
+      saveInstalledHashes(current)
       return { success: true, installed: true }
     }
 

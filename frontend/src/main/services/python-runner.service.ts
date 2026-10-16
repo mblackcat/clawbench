@@ -3,11 +3,16 @@ import fs from 'fs'
 import { join } from 'path'
 import { WebContents, Notification, BrowserWindow } from 'electron'
 import { randomUUID } from 'crypto'
-import { getTempDir, getWorkbenchVenvPythonPath } from '../utils/paths'
+import { getTempDir, getWorkbenchVenvPath, getWorkbenchVenvPythonPath } from '../utils/paths'
 import { settingsStore } from '../store/settings.store'
 import { mainT } from '../utils/i18n'
 import { recordExecutionResult } from './usage-tracking.service'
-import { getAppVenvPython, ensureWorkbenchVenv } from './python-venv.service'
+import {
+  getAppVenvPython,
+  ensureWorkbenchVenv,
+  enableSystemSitePackages,
+  type PythonEnvOutput
+} from './python-venv.service'
 import { scanAvailablePythons } from './python-detect.service'
 import { isWindowsAppsPath, reorderWindowsPathString } from '../utils/windows-env'
 import * as logger from '../utils/logger'
@@ -160,7 +165,20 @@ function probePythonCommand(command: string): Promise<string | null> {
   return promise
 }
 
-export async function resolvePythonCommand(appPath?: string): Promise<PythonResolution> {
+/**
+ * Resolves the interpreter for a sub-app:
+ * app venv → configured `settings.pythonPath` → workbench venv (created with
+ * --system-site-packages so host packages stay importable) → host Python.
+ *
+ * @param appPath app directory; always pass it when known so an app-local
+ *        venv (`.venv` / `venv`) is honoured
+ * @param opts.onOutput receives progress lines while the workbench venv is
+ *        created on first use
+ */
+export async function resolvePythonCommand(
+  appPath?: string,
+  opts: { onOutput?: PythonEnvOutput } = {}
+): Promise<PythonResolution> {
   // 1. App-specific venv if present
   if (appPath) {
     const appVenvPython = getAppVenvPython(appPath)
@@ -187,13 +205,15 @@ export async function resolvePythonCommand(appPath?: string): Promise<PythonReso
   // 3. Dedicated workbench venv (existing or lazily created)
   const venvPython = getWorkbenchVenvPythonPath()
   if (fs.existsSync(venvPython)) {
+    // Venvs from older builds were created without --system-site-packages.
+    enableSystemSitePackages(getWorkbenchVenvPath())
     const version = await probePythonCommand(venvPython)
     if (version) {
       return { path: venvPython, version, source: 'venv' }
     }
   } else {
     try {
-      const venvRes = await ensureWorkbenchVenv()
+      const venvRes = await ensureWorkbenchVenv(opts.onOutput)
       if (venvRes.success && venvRes.pythonPath) {
         const version = await probePythonCommand(venvRes.pythonPath)
         if (version) {

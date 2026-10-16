@@ -1,5 +1,6 @@
 import { shell, WebContents, BrowserWindow } from 'electron'
 import { spawn } from 'child_process'
+import { randomBytes } from 'crypto'
 import * as path from 'path'
 import * as fs from 'fs'
 import {
@@ -19,6 +20,7 @@ import {
 } from '../store/auth.store'
 import * as logger from '../utils/logger'
 import { mainT } from '../utils/i18n'
+import { redactProtocolUrl } from './protocol/parser'
 
 // Backend API base URL（通过 electron-vite envPrefix 注入）
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api/v1'
@@ -34,6 +36,59 @@ let loginResolve: ((value: AuthStatus) => void) | null = null
 let loginReject: ((reason: Error) => void) | null = null
 let loginTimeout: ReturnType<typeof setTimeout> | null = null
 let activeAuthWindow: BrowserWindow | null = null
+
+/**
+ * Client nonce of the login currently in progress. Protocol callbacks are
+ * only accepted while it is set, and when the backend echoes `state` it
+ * must match — so a web page firing `clawbench://auth/callback?token=…`
+ * cannot plant an attacker session.
+ */
+let pendingLoginState: string | null = null
+let pendingStateTimer: ReturnType<typeof setTimeout> | null = null
+const LOGIN_TTL_MS = 5 * 60 * 1000
+
+function clearPendingLoginState(): void {
+  pendingLoginState = null
+  if (pendingStateTimer) {
+    clearTimeout(pendingStateTimer)
+    pendingStateTimer = null
+  }
+}
+
+/** Starts (or, with `fresh`, restarts) a pending login and returns its nonce. */
+function ensurePendingLoginState(fresh = false): string {
+  if (pendingLoginState && !fresh) return pendingLoginState
+  clearPendingLoginState()
+  // 16 random bytes → 22 base64url chars (fits the backend's state column).
+  pendingLoginState = randomBytes(16).toString('base64url')
+  pendingStateTimer = setTimeout(clearPendingLoginState, LOGIN_TTL_MS)
+  return pendingLoginState
+}
+
+/** Test helper: whether a login callback would currently be accepted. */
+export function hasPendingLogin(): boolean {
+  return !!pendingLoginState
+}
+
+/** Hosts the embedded login window may navigate to (besides the API origin). */
+const AUTH_ALLOWED_HOST_SUFFIXES = ['feishu.cn', 'feishu.net', 'larksuite.com', 'larkoffice.com']
+
+export function isAllowedAuthNavigation(targetUrl: string, apiBase: string = API_BASE_URL): boolean {
+  let target: URL
+  try {
+    target = new URL(targetUrl)
+  } catch {
+    return false
+  }
+  try {
+    if (target.origin === new URL(apiBase).origin) return true
+  } catch {
+    // malformed API base
+  }
+  if (target.protocol !== 'https:') return false
+  const host = target.hostname.toLowerCase()
+  return AUTH_ALLOWED_HOST_SUFFIXES.some((suffix) => host === suffix || host.endsWith(`.${suffix}`))
+}
 
 /** Custom protocol callback prefix (must match PROTOCOL in main/index.ts). */
 const AUTH_CALLBACK_PREFIX = 'clawbench://auth/callback'
@@ -59,10 +114,13 @@ export function openAuthModalWindow(url: string, webContents: WebContents): void
     autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: false,
-      contextIsolation: true
+      contextIsolation: true,
+      sandbox: true
     }
   })
   activeAuthWindow = authWin
+  // Callbacks from this window are only accepted for a pending login.
+  ensurePendingLoginState()
 
   const checkRedirect = (targetUrl: string): boolean => {
     if (targetUrl.startsWith(AUTH_CALLBACK_PREFIX)) {
@@ -77,12 +135,19 @@ export function openAuthModalWindow(url: string, webContents: WebContents): void
     return false
   }
 
-  authWin.webContents.on('will-navigate', (event, targetUrl) => {
-    if (checkRedirect(targetUrl)) event.preventDefault()
-  })
-  authWin.webContents.on('will-redirect', (event, targetUrl) => {
-    if (checkRedirect(targetUrl)) event.preventDefault()
-  })
+  const guardNavigation = (event: Electron.Event, targetUrl: string): void => {
+    if (checkRedirect(targetUrl)) {
+      event.preventDefault()
+      return
+    }
+    if (!isAllowedAuthNavigation(targetUrl)) {
+      logger.warn(`Blocked auth window navigation to ${redactProtocolUrl(targetUrl)}`)
+      event.preventDefault()
+    }
+  }
+  authWin.webContents.on('will-navigate', guardNavigation)
+  authWin.webContents.on('will-redirect', guardNavigation)
+  authWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
 
   authWin.on('closed', () => {
     if (activeAuthWindow === authWin) {
@@ -165,8 +230,14 @@ async function openBrowserUrl(url: string): Promise<void> {
   throw new Error(mainT('auth.openBrowserFailed', url))
 }
 
+/**
+ * Backend Feishu OAuth entry for the current pending login (one is started
+ * when none is pending). `client_state` is echoed back as `state` in the
+ * deep-link callback.
+ */
 export function getFeishuAuthUrl(): string {
-  return `${API_BASE_URL}/auth/feishu`
+  const state = ensurePendingLoginState()
+  return `${API_BASE_URL}/auth/feishu?client_state=${encodeURIComponent(state)}`
 }
 
 /**
@@ -188,9 +259,12 @@ export function startLogin(webContents: WebContents): Promise<AuthStatus> {
     loginResolve = resolve
     loginReject = reject
 
+    // Fresh nonce per login; the callback must carry it back.
+    ensurePendingLoginState(true)
+
     // 打开浏览器到后端飞书 OAuth 入口
     const authUrl = getFeishuAuthUrl()
-    logger.info(`Opening Feishu OAuth URL: ${authUrl}`)
+    logger.info(`Opening Feishu OAuth URL: ${redactProtocolUrl(authUrl)}`)
 
     openBrowserUrl(authUrl).catch((err: unknown) => {
       logger.warn('Failed to open external browser, falling back to embedded modal window:', err)
@@ -201,6 +275,7 @@ export function startLogin(webContents: WebContents): Promise<AuthStatus> {
         if (loginReject === reject) {
           loginResolve = null
           loginReject = null
+          clearPendingLoginState()
           if (loginTimeout) {
             clearTimeout(loginTimeout)
             loginTimeout = null
@@ -212,12 +287,13 @@ export function startLogin(webContents: WebContents): Promise<AuthStatus> {
 
     // 5 分钟超时
     loginTimeout = setTimeout(() => {
+      clearPendingLoginState()
       if (loginResolve) {
         loginReject?.(new Error('Login timed out'))
         loginResolve = null
         loginReject = null
       }
-    }, 5 * 60 * 1000)
+    }, LOGIN_TTL_MS)
   })
 }
 
@@ -234,6 +310,7 @@ export function cancelLogin(): void {
     clearTimeout(loginTimeout)
     loginTimeout = null
   }
+  clearPendingLoginState()
   if (!loginResolve && !loginReject) {
     return
   }
@@ -257,6 +334,27 @@ export function normalizeCallbackUrl(url: string): string {
  * Called when Electron receives clawbench://auth/callback?token=xxx
  */
 export async function handleProtocolCallback(url: string, webContents?: WebContents): Promise<void> {
+  // Only a login started from this app may complete. Rejections here do not
+  // touch the pending login, so a hostile URL cannot cancel the real one.
+  if (!pendingLoginState) {
+    logger.warn('Protocol callback ignored: no login in progress')
+    throw new Error(mainT('auth.noPendingLogin'))
+  }
+  let callbackState: string | null = null
+  try {
+    callbackState = new URL(normalizeCallbackUrl(url)).searchParams.get('state')
+  } catch {
+    // parsed again below; malformed URLs fail there
+  }
+  if (callbackState !== null && callbackState.replace(/\/+$/, '') !== pendingLoginState) {
+    logger.warn('Protocol callback ignored: state mismatch')
+    throw new Error(mainT('auth.stateMismatch'))
+  }
+  if (callbackState === null) {
+    // Older backends do not echo the client state yet.
+    logger.warn('Protocol callback without state (legacy backend); accepted for the pending login')
+  }
+
   try {
     const urlObj = new URL(normalizeCallbackUrl(url))
     const getParam = (name: string): string | null =>
@@ -272,6 +370,7 @@ export async function handleProtocolCallback(url: string, webContents?: WebConte
     }
 
     logger.info('Protocol callback: received JWT token')
+    clearPendingLoginState()
 
     // 保存 JWT token
     saveJwtToken(token)

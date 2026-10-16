@@ -2,7 +2,8 @@ import { globalShortcut, BrowserWindow, Notification } from 'electron'
 import { randomUUID } from 'crypto'
 import { settingsStore } from '../store/settings.store'
 import { listSubApps } from './subapp.service'
-import { executeSubApp, resolvePythonCommand, getI18nPayload } from './python-runner.service'
+import { executeSubApp } from './python-runner.service'
+import { prepareSubAppRun } from './subapp-run.service'
 import { getActiveWorkspace } from './workspace.service'
 import { getPythonSdkPath } from '../utils/paths'
 import { mainT } from '../utils/i18n'
@@ -98,38 +99,41 @@ async function handleShortcutTrigger(index: number): Promise<void> {
     appName: manifest.name
   })
 
-  let pythonPath: string
-  try {
-    const python = await resolvePythonCommand(appInfo.path)
-    pythonPath = python.path
-    logger.info(
-      `Using ${python.source} Python for shortcut app ${manifest.id}: ${python.path} (${python.version})`
-    )
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    const i18nPayload = getI18nPayload(err)
-    logger.error(`Global shortcut: failed to resolve Python for ${manifest.id}:`, message)
+  const prep = await prepareSubAppRun(
+    { appId: manifest.id, appName: manifest.name, appPath: appInfo.path },
+    {},
+    (message, level) => {
+      if (!win.isDestroyed()) {
+        win.webContents.send('subapp:output', { taskId, type: 'output', level, message, timestamp: Date.now() })
+      }
+    }
+  )
+  if (!prep.ok) {
+    logger.error(`Global shortcut: cannot start ${manifest.id} (${prep.stage}):`, prep.message)
+    if (win.isDestroyed()) return
+    const i18nPayload = { i18nKey: prep.i18nKey, i18nArgs: prep.i18nArgs }
     win.webContents.send('subapp:output', {
       taskId,
       type: 'error',
-      message,
+      message: prep.message,
       ...i18nPayload
     })
     win.webContents.send('subapp:task-status', {
       taskId,
-      status: 'failed',
-      summary: message,
-      summaryI18nKey: i18nPayload.i18nKey,
-      summaryI18nArgs: i18nPayload.i18nArgs
+      status: prep.status,
+      summary: prep.message,
+      summaryI18nKey: prep.i18nKey,
+      summaryI18nArgs: prep.i18nArgs
     })
     if (Notification.isSupported()) {
       new Notification({
         title: manifest.name,
-        body: mainT('subapp.pythonUnavailableNotification')
+        body: prep.stage === 'python' ? mainT('subapp.pythonUnavailableNotification') : prep.message
       }).show()
     }
     return
   }
+  if (win.isDestroyed()) return
 
   executeSubApp(
     taskId,
@@ -138,9 +142,9 @@ async function handleShortcutTrigger(index: number): Promise<void> {
     manifest.version,
     appInfo.path,
     manifest.entry,
-    {},
+    prep.params,
     workspace,
-    pythonPath,
+    prep.python.path,
     sdkPath,
     win.webContents
   )

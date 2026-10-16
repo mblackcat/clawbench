@@ -30,6 +30,8 @@ const translations: Record<Lang, Record<string, string>> = {
       '无法调用系统默认浏览器打开授权链接（错误码 0x800401F5），请在系统设置中设置默认浏览器，或复制链接在浏览器中打开：{0}',
     'auth.openBrowserFailed': '无法打开系统默认浏览器，请在浏览器中手动打开链接：{0}',
     'auth.openLoginWindowFailed': '无法启动系统默认浏览器或登录窗口，请在浏览器中手动打开：{0}',
+    'auth.noPendingLogin': '未在进行中的登录，已忽略该登录回调。请在客户端内重新发起登录',
+    'auth.stateMismatch': '登录回调校验失败（state 不匹配），已忽略。请在客户端内重新发起登录',
     'attention.ptyQuestion': '需要回答问题或确认选项',
     'attention.ptyConfirm': '等待确认或选择',
     'tray.open': '打开界面',
@@ -63,7 +65,20 @@ const translations: Record<Lang, Record<string, string>> = {
     'protocol.notRunnable': '「{0}」不是可运行的应用',
     'protocol.pythonUnavailable': 'Python 环境不可用：{0}',
     'protocol.runningInBackground': '正在后台运行：{0}',
-    'protocol.launchFailed': '应用启动异常：{0}'
+    'protocol.launchFailed': '应用启动异常：{0}',
+    // ── sub-app run preparation / protocol run confirmation ──
+    'pythonVenv.creating': '首次运行：正在创建工作台 Python 环境，可能需要一两分钟…',
+    'pythonVenv.installingRequirements': '正在安装依赖：{0}',
+    'pythonVenv.requirementsSkipped':
+      '当前 Python（{0}）不是虚拟环境，已跳过 requirements.txt 自动安装；如缺少依赖请手动安装',
+    'pythonVenv.requirementsFailed': '依赖安装失败，将继续运行：{0}',
+    'subapp.alreadyStarting': '「{0}」正在启动中，请稍候',
+    'protocol.confirmRunTitle': '运行应用',
+    'protocol.confirmRunMessage': '外部链接请求运行「{0}」，是否继续？',
+    'protocol.confirmRunDetail':
+      '应用 ID：{0}\n参数：{1}\n\n该请求来自工作台之外（例如网页链接）。如果你不认识这个链接来源，请选择取消。',
+    'protocol.confirmRunOk': '运行',
+    'protocol.noParams': '（无）'
   },
   en: {
     'subapp.pythonConfiguredPathUnavailable':
@@ -92,6 +107,8 @@ const translations: Record<Lang, Record<string, string>> = {
       'Could not launch the default browser to open the sign-in link (error 0x800401F5). Set a default browser in system settings, or copy the link into a browser: {0}',
     'auth.openBrowserFailed': 'Could not open the default browser. Please open this link manually: {0}',
     'auth.openLoginWindowFailed': 'Could not launch a browser or the sign-in window. Please open this link manually: {0}',
+    'auth.noPendingLogin': 'No sign-in is in progress, so this login callback was ignored. Start the sign-in from the app again.',
+    'auth.stateMismatch': 'Login callback verification failed (state mismatch) and was ignored. Start the sign-in from the app again.',
     'attention.ptyQuestion': 'Needs an answer or a choice',
     'attention.ptyConfirm': 'Waiting for confirmation or a choice',
     'tray.open': 'Open',
@@ -125,7 +142,20 @@ const translations: Record<Lang, Record<string, string>> = {
     'protocol.notRunnable': '"{0}" is not a runnable app',
     'protocol.pythonUnavailable': 'Python is unavailable: {0}',
     'protocol.runningInBackground': 'Running in background: {0}',
-    'protocol.launchFailed': 'Failed to launch app: {0}'
+    'protocol.launchFailed': 'Failed to launch app: {0}',
+    // ── sub-app run preparation / protocol run confirmation ──
+    'pythonVenv.creating': 'First run: creating the workbench Python environment, this may take a minute...',
+    'pythonVenv.installingRequirements': 'Installing dependencies: {0}',
+    'pythonVenv.requirementsSkipped':
+      'Python ({0}) is not a virtual environment, so requirements.txt was not installed automatically. Install missing packages manually if needed.',
+    'pythonVenv.requirementsFailed': 'Dependency install failed, continuing anyway: {0}',
+    'subapp.alreadyStarting': '"{0}" is already starting, please wait',
+    'protocol.confirmRunTitle': 'Run app',
+    'protocol.confirmRunMessage': 'An external link asks to run "{0}". Continue?',
+    'protocol.confirmRunDetail':
+      'App ID: {0}\nParameters: {1}\n\nThis request came from outside the app (for example a web link). Cancel if you do not recognize where the link came from.',
+    'protocol.confirmRunOk': 'Run',
+    'protocol.noParams': '(none)'
   }
 }
 

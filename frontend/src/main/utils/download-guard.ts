@@ -75,7 +75,8 @@ export function validateDownloadUrl(
 }
 
 /**
- * Downloads a package archive with URL validation, a timeout and a size cap.
+ * Downloads a package archive with URL validation, a timeout and a size cap
+ * (enforced while streaming, so oversized bodies are aborted early).
  */
 export async function fetchPackageArchive(
   downloadUrl: string,
@@ -102,11 +103,31 @@ export async function fetchPackageArchive(
       throw new Error(`File size exceeds ${Math.round(maxBytes / 1024 / 1024)}MB limit`)
     }
 
-    const buffer = await resp.arrayBuffer()
-    if (buffer.byteLength > maxBytes) {
-      throw new Error(`Downloaded file exceeds ${Math.round(maxBytes / 1024 / 1024)}MB limit`)
+    // Stream the body and stop as soon as the cap is crossed — a missing or
+    // lying content-length must not let a huge body be buffered in memory.
+    const tooLarge = (): Error =>
+      new Error(`Downloaded file exceeds ${Math.round(maxBytes / 1024 / 1024)}MB limit`)
+    if (!resp.body) {
+      const buffer = await resp.arrayBuffer()
+      if (buffer.byteLength > maxBytes) throw tooLarge()
+      return Buffer.from(buffer)
     }
-    return Buffer.from(buffer)
+    const reader = resp.body.getReader()
+    const chunks: Uint8Array[] = []
+    let received = 0
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (!value) continue
+      received += value.byteLength
+      if (received > maxBytes) {
+        controller.abort()
+        await reader.cancel().catch(() => {})
+        throw tooLarge()
+      }
+      chunks.push(value)
+    }
+    return Buffer.concat(chunks.map((c) => Buffer.from(c.buffer, c.byteOffset, c.byteLength)), received)
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error(`Download timeout (${Math.round(timeoutMs / 1000)}s)`)

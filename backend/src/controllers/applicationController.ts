@@ -16,6 +16,7 @@ import {
 import { getUserById } from '../repositories/userRepository';
 import { CreateApplicationInput, applicationToResponse, UpdateApplicationInput } from '../models/application';
 import { logger } from '../utils/logger';
+import { validatePackageManifestId } from '../utils/zip';
 import { storageService } from '../services/storage';
 import {
   createApplicationVersion,
@@ -822,6 +823,16 @@ export async function uploadApplicationPackageHandler(
           code: 'INVALID_FILE_FORMAT',
           message: error.message || 'Invalid file format',
         },
+      });
+      return;
+    }
+
+    // The desktop client installs into a directory named after manifest.id.
+    const manifestIdError = req.file.buffer ? validatePackageManifestId(req.file.buffer) : null;
+    if (manifestIdError) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_MANIFEST', message: manifestIdError },
       });
       return;
     }

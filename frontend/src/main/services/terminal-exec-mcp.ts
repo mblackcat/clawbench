@@ -5,7 +5,7 @@ import {
   executeCommandAndWait,
   getTerminalOutput,
   isDBConnected,
-  queryDB,
+  queryDBReadOnly,
   executeDB
 } from './ai-terminal.service'
 
@@ -30,8 +30,11 @@ export const TERMINAL_EXEC_MCP_NAME = 'clawbench-terminal'
  * server, so the commands genuinely reach that target.
  *
  * Only Claude gets these (the SDK supports in-process MCP with no subprocess).
- * Calls pass through the session's canUseTool gate, so in the default
- * ("manual") permission mode each call needs the user's confirmation.
+ * Permission gate (see sdk-session-manager `makeCanUseTool`): the side-effect
+ * tools `run_terminal_command` and `run_sql_write` always ask the user unless
+ * the session runs in bypassPermissions mode; the read tools
+ * (`read_terminal_output`, `run_sql_query`) follow the session's mode.
+ * `run_sql_query` is enforced read-only (see `queryDBReadOnly`).
  */
 export interface TerminalExecTarget {
   kind: 'shell' | 'db'
@@ -117,13 +120,16 @@ export async function createTerminalExecMcp(
     tools: [
       tool(
         'run_sql_query',
-        "Run a read-only query (SELECT / SHOW / PRAGMA / WITH ...) on the user's current database connection " +
-          'and return the result set. The connection may point at a remote database server.',
-        { sql: z.string().describe('Read-only SQL query to run') },
+        "Run one read-only query on the user's current database connection and return the result set " +
+          '(SQL: a single SELECT / SHOW / DESCRIBE / EXPLAIN / WITH statement, or an introspection PRAGMA on SQLite; ' +
+          'it runs in a read-only transaction). For MongoDB pass JSON: ' +
+          '{"collection":"name","op":"find|aggregate|count","filter":{},"projection":{},"pipeline":[],"limit":100}. ' +
+          'The connection may point at a remote database server.',
+        { sql: z.string().describe('Read-only SQL query (or MongoDB JSON request) to run') },
         async (args) => {
           if (!isDBConnected(dbConnId)) return fail(notConnected)
           try {
-            const result = await queryDB(dbConnId, args.sql)
+            const result = await queryDBReadOnly(dbConnId, args.sql)
             return ok(truncate(JSON.stringify(result, null, 2)))
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err)
