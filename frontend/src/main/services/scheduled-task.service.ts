@@ -14,7 +14,12 @@ import * as logger from '../utils/logger'
 // shared with the app-scheduling engine.
 export { computeNextRun }
 
-let schedulerTimer: ReturnType<typeof setInterval> | null = null
+let schedulerTimer: NodeJS.Timeout | null = null
+const runningTaskIds = new Set<string>()
+
+export function isScheduledTaskRunning(taskId: string): boolean {
+  return runningTaskIds.has(taskId)
+}
 
 /**
  * Start the scheduler. Call once after app.whenReady().
@@ -49,6 +54,7 @@ export function stopScheduler(): void {
     clearInterval(schedulerTimer)
     schedulerTimer = null
   }
+  runningTaskIds.clear()
 }
 
 function tick(): void {
@@ -67,26 +73,63 @@ function tick(): void {
         continue
       }
     }
+    if (runningTaskIds.has(task.id)) {
+      logger.debug(`[Scheduler] Task "${task.name}" is currently running, skipping tick`)
+      continue
+    }
 
-    // Double-execution guard: skip if lastRunAt is within the same minute
+    // Double-execution guard: skip if lastRunAt is within 55s or the same minute
     if (task.lastRunAt) {
+      if (now - task.lastRunAt < 55_000) continue
       const lastMinute = Math.floor(task.lastRunAt / 60_000)
       const nowMinute = Math.floor(now / 60_000)
       if (lastMinute === nowMinute) continue
     }
 
     if (now >= task.nextRunAt) {
-      executeTask(task).catch((err) => {
-        logger.error(`[Scheduler] Task "${task.name}" execution failed:`, err)
+      // Advance nextRunAt immediately upon trigger
+      const nextRun =
+        task.repeatRule === 'none'
+          ? undefined
+          : computeNextRun(task, now + 60_000) ?? undefined
+
+      updateScheduledTask(task.id, {
+        lastRunAt: now,
+        nextRunAt: nextRun,
+        ...(task.repeatRule === 'none' ? { enabled: false } : {})
       })
+
+      runningTaskIds.add(task.id)
+
+      runTask(task)
+        .finally(() => {
+          runningTaskIds.delete(task.id)
+        })
+        .catch((err: unknown) => {
+          logger.error(`[Scheduler] Task "${task.name}" execution failed:`, err)
+        })
     }
   }
 }
 
 /**
- * Execute a single scheduled task.
+ * Execute a single scheduled task manually (e.g. from run-now IPC).
+ * Rejects if the task is already running.
  */
 export async function executeTask(task: ScheduledTask): Promise<void> {
+  if (runningTaskIds.has(task.id)) {
+    throw new Error(`Task "${task.name}" is already running`)
+  }
+  runningTaskIds.add(task.id)
+  updateScheduledTask(task.id, { lastRunAt: Date.now() })
+  try {
+    await runTask(task)
+  } finally {
+    runningTaskIds.delete(task.id)
+  }
+}
+
+async function runTask(task: ScheduledTask): Promise<void> {
   logger.info(`[Scheduler] Executing task "${task.name}" (${task.id})`)
 
   const configId = task.modelConfigId || ''
@@ -99,22 +142,22 @@ export async function executeTask(task: ScheduledTask): Promise<void> {
 
   try {
     resultText = await completeChat(configId, messages, task.modelId, 4096)
-  } catch (err: any) {
+  } catch (err: unknown) {
     status = 'error'
-    resultText = err.message || 'Unknown error'
+    resultText = err instanceof Error ? err.message : String(err)
     logger.error(`[Scheduler] Task "${task.name}" AI call failed:`, err)
   }
 
-  // Update task tracking
-  const nextRun = task.repeatRule === 'none' ? undefined : computeNextRun(task, Date.now() + 60_000) ?? undefined
+  // Update task tracking (lastRunStatus, and fallback nextRunAt if not populated)
+  const existing = listScheduledTasks().find((t) => t.id === task.id)
+  let nextRun = existing?.nextRunAt
+  if (!nextRun && task.repeatRule !== 'none') {
+    nextRun = computeNextRun(task, Date.now() + 60_000) ?? undefined
+  }
   updateScheduledTask(task.id, {
-    lastRunAt: Date.now(),
     lastRunStatus: status,
-    nextRunAt: nextRun,
-    // Disable one-shot tasks after execution
-    ...(task.repeatRule === 'none' ? { enabled: false } : {})
+    ...(nextRun !== existing?.nextRunAt ? { nextRunAt: nextRun } : {})
   })
-
   // Broadcast to renderer (includes info for conversation creation)
   broadcastTaskExecuted({
     taskId: task.id,

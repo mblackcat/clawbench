@@ -9,6 +9,7 @@ import {
   ClockCircleOutlined,
   LoadingOutlined,
   MinusCircleOutlined,
+  ExclamationCircleOutlined,
   CloseOutlined
 } from '@ant-design/icons'
 import { useTaskStore } from '../stores/useTaskStore'
@@ -30,7 +31,8 @@ const STATUS_CONFIG: Record<
   running: { color: 'processing', label: 'logs.running', icon: <LoadingOutlined /> },
   completed: { color: 'success', label: 'logs.completed', icon: <CheckCircleOutlined /> },
   failed: { color: 'error', label: 'logs.failed', icon: <CloseCircleOutlined /> },
-  cancelled: { color: 'warning', label: 'logs.cancelled', icon: <MinusCircleOutlined /> }
+  cancelled: { color: 'default', label: 'logs.cancelled', icon: <MinusCircleOutlined /> },
+  disabled: { color: 'warning', label: 'logs.disabled', icon: <ExclamationCircleOutlined /> }
 }
 
 const OutputLine: React.FC<{ output: SubAppOutput }> = React.memo(({ output }) => {
@@ -71,7 +73,7 @@ const OutputLine: React.FC<{ output: SubAppOutput }> = React.memo(({ output }) =
   }
 
   // output or error type
-  const level = output.level || 'info'
+  const level = output.level || (output.type === 'error' ? 'error' : 'info')
   const levelColors: Record<string, string> = {
     info: token.colorText,
     warn: token.colorWarning,
@@ -92,6 +94,10 @@ const OutputLine: React.FC<{ output: SubAppOutput }> = React.memo(({ output }) =
         second: '2-digit'
       })
     : null
+
+  const messageText = output.i18nKey
+    ? t(output.i18nKey, ...(output.i18nArgs ?? []))
+    : output.message || output.content || ''
 
   return (
     <div
@@ -118,7 +124,7 @@ const OutputLine: React.FC<{ output: SubAppOutput }> = React.memo(({ output }) =
           [{timestamp}]
         </Text>
       )}
-      <span>{output.message || ''}</span>
+      <span>{messageText}</span>
     </div>
   )
 })
@@ -126,7 +132,8 @@ const OutputLine: React.FC<{ output: SubAppOutput }> = React.memo(({ output }) =
 OutputLine.displayName = 'OutputLine'
 
 const OutputPanel: React.FC<OutputPanelProps> = ({ taskId }) => {
-  const [collapsed, setCollapsed] = useState(false)
+  // Default collapsed: title + status bar only; the user expands for the log body.
+  const [collapsed, setCollapsed] = useState(true)
   const outputEndRef = useRef<HTMLDivElement>(null)
   const { token } = theme.useToken()
   const t = useT()
@@ -209,7 +216,25 @@ const OutputPanel: React.FC<OutputPanelProps> = ({ taskId }) => {
     )
   }
 
-  const statusInfo = STATUS_CONFIG[task.status]
+  const statusInfo = STATUS_CONFIG[task.status] ?? STATUS_CONFIG.failed
+
+  const resultSummary = task.result
+    ? task.result.summaryI18nKey
+      ? t(task.result.summaryI18nKey, ...(task.result.summaryI18nArgs ?? []))
+      : task.result.summary
+    : ''
+
+  // Disabled / failed-before-output runs show their reason instead of a blank body.
+  const emptyHint =
+    task.status === 'disabled'
+      ? resultSummary || t('subapp.appDisabled')
+      : task.status === 'failed' && resultSummary
+        ? resultSummary
+        : t('output.waitingOutput')
+
+  // Cancelled / disabled are not outcomes worth a success/error banner.
+  const showResultBar =
+    !!task.result && !!resultSummary && task.status !== 'cancelled' && task.status !== 'disabled'
 
   return (
     <div
@@ -303,10 +328,12 @@ const OutputPanel: React.FC<OutputPanelProps> = ({ taskId }) => {
                 height: '100%',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center'
+                justifyContent: 'center',
+                padding: '0 16px',
+                textAlign: 'center'
               }}
             >
-              <Text type="secondary">{t('output.waitingOutput')}</Text>
+              <Text type="secondary">{emptyHint}</Text>
             </div>
           ) : (
             outputs.map((output, index) => (
@@ -318,7 +345,7 @@ const OutputPanel: React.FC<OutputPanelProps> = ({ taskId }) => {
       )}
 
       {/* Result bar at the bottom when task is done */}
-      {!collapsed && task.result && (
+      {!collapsed && task.result && showResultBar && (
         <div
           style={{
             height: 32,
@@ -341,7 +368,7 @@ const OutputPanel: React.FC<OutputPanelProps> = ({ taskId }) => {
               fontSize: 13
             }}
           >
-            {task.result.summary}
+            {resultSummary}
           </Text>
         </div>
       )}

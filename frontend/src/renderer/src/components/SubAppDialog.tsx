@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { Modal, Typography, List, Button, Space, Checkbox, Radio } from 'antd'
+import { Modal, Typography, List, Button, Space, Checkbox, Radio, Input, Select } from 'antd'
 
 const { Text } = Typography
 
@@ -16,6 +16,12 @@ interface DialogComponent {
   max_height?: number
   visible?: boolean
   enabled?: boolean
+  // text_input / text_area / dropdown
+  value?: string
+  placeholder?: string
+  rows?: number
+  options?: Array<{ value: string; label: string }>
+  selected_value?: string | null
 }
 
 interface DialogButton {
@@ -159,14 +165,21 @@ function renderCheckboxList(
   )
 }
 
-function renderRadioList(comp: DialogComponent): React.ReactNode {
+function renderRadioList(
+  comp: DialogComponent,
+  onRadioChange: (componentId: string, selectedId: string) => void
+): React.ReactNode {
   const items = comp.items || []
   return (
     <div key={comp.id} style={{ marginBottom: 8 }}>
-      <Radio.Group value={comp.selected_id}>
+      <Radio.Group
+        value={comp.selected_id}
+        disabled={comp.enabled === false}
+        onChange={(event) => onRadioChange(comp.id, event.target.value)}
+      >
         <Space direction="vertical">
           {items.map((item) => (
-            <Radio key={item.id} value={item.id}>
+            <Radio key={item.id} value={item.id} disabled={item.disabled === true}>
               {item.label}
               {item.description && (
                 <Text type="secondary" style={{ marginLeft: 8 }}>
@@ -181,9 +194,59 @@ function renderRadioList(comp: DialogComponent): React.ReactNode {
   )
 }
 
+function renderTextInput(
+  comp: DialogComponent,
+  onInputChange: (componentId: string, value: string, commit: boolean) => void
+): React.ReactNode {
+  const shared = {
+    value: comp.value ?? '',
+    placeholder: comp.placeholder,
+    disabled: comp.enabled === false
+  }
+  return (
+    <div key={comp.id} style={{ marginBottom: 8 }}>
+      {comp.type === 'text_area' ? (
+        <Input.TextArea
+          {...shared}
+          rows={comp.rows || 4}
+          onChange={(event) => onInputChange(comp.id, event.target.value, false)}
+          onBlur={(event) => onInputChange(comp.id, event.target.value, true)}
+        />
+      ) : (
+        <Input
+          {...shared}
+          onChange={(event) => onInputChange(comp.id, event.target.value, false)}
+          onBlur={(event) => onInputChange(comp.id, event.target.value, true)}
+        />
+      )}
+    </div>
+  )
+}
+
+function renderDropdown(
+  comp: DialogComponent,
+  onDropdownChange: (componentId: string, value: string) => void
+): React.ReactNode {
+  return (
+    <div key={comp.id} style={{ marginBottom: 8 }}>
+      <Select
+        style={{ width: '100%' }}
+        value={comp.selected_value ?? undefined}
+        placeholder={comp.placeholder}
+        disabled={comp.enabled === false}
+        options={comp.options || []}
+        onChange={(value) => onDropdownChange(comp.id, value)}
+      />
+    </div>
+  )
+}
+
 function renderComponent(
   comp: DialogComponent,
   onSelectionChange: (componentId: string, selectedIds: string[]) => void,
+  onRadioChange: (componentId: string, selectedId: string) => void,
+  onInputChange: (componentId: string, value: string, commit: boolean) => void,
+  onDropdownChange: (componentId: string, value: string) => void,
   onButtonClick: (componentId: string) => void
 ): React.ReactNode {
   if (comp.visible === false) return null
@@ -195,7 +258,12 @@ function renderComponent(
     case 'checkbox_list':
       return renderCheckboxList(comp, onSelectionChange)
     case 'radio_list':
-      return renderRadioList(comp)
+      return renderRadioList(comp, onRadioChange)
+    case 'text_input':
+    case 'text_area':
+      return renderTextInput(comp, onInputChange)
+    case 'dropdown':
+      return renderDropdown(comp, onDropdownChange)
     case 'button':
       return (
         <Button
@@ -254,6 +322,78 @@ const SubAppDialog: React.FC = () => {
     [dialog, sendUiEvent]
   )
 
+  const handleRadioChange = useCallback(
+    (componentId: string, selectedId: string) => {
+      if (!dialog) return
+      setDialog((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          components: prev.components.map((component) =>
+            component.id === componentId ? { ...component, selected_id: selectedId } : component
+          )
+        }
+      })
+      sendUiEvent({
+        type: 'selection_change',
+        dialog_id: dialog.id,
+        component_id: componentId,
+        selected_id: selectedId,
+        selected_ids: [selectedId]
+      })
+    },
+    [dialog, sendUiEvent]
+  )
+
+  // Text edits update local state per keystroke but only notify the sub-app on
+  // blur (commit) to avoid flooding its stdin event loop. The final values are
+  // always carried by button_click as well.
+  const handleInputChange = useCallback(
+    (componentId: string, value: string, commit: boolean) => {
+      if (!dialog) return
+      setDialog((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          components: prev.components.map((component) =>
+            component.id === componentId ? { ...component, value } : component
+          )
+        }
+      })
+      if (commit) {
+        sendUiEvent({
+          type: 'input_change',
+          dialog_id: dialog.id,
+          component_id: componentId,
+          value
+        })
+      }
+    },
+    [dialog, sendUiEvent]
+  )
+
+  const handleDropdownChange = useCallback(
+    (componentId: string, value: string) => {
+      if (!dialog) return
+      setDialog((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          components: prev.components.map((component) =>
+            component.id === componentId ? { ...component, selected_value: value } : component
+          )
+        }
+      })
+      sendUiEvent({
+        type: 'selection_change',
+        dialog_id: dialog.id,
+        component_id: componentId,
+        selected_value: value
+      })
+    },
+    [dialog, sendUiEvent]
+  )
+
   const handleButtonClick = useCallback(
     (componentId: string) => {
       if (dialog) {
@@ -264,7 +404,9 @@ const SubAppDialog: React.FC = () => {
           values: Object.fromEntries(
             dialog.components.map((component) => [component.id, {
               selected_ids: component.selected_ids,
-              selected_id: component.selected_id
+              selected_id: component.selected_id,
+              value: component.value,
+              selected_value: component.selected_value
             }])
           )
         })
@@ -345,7 +487,14 @@ const SubAppDialog: React.FC = () => {
       destroyOnHidden
     >
       {dialog.components.map((component) =>
-        renderComponent(component, handleSelectionChange, handleButtonClick)
+        renderComponent(
+          component,
+          handleSelectionChange,
+          handleRadioChange,
+          handleInputChange,
+          handleDropdownChange,
+          handleButtonClick
+        )
       )}
     </Modal>
   )

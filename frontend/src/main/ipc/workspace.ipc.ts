@@ -5,7 +5,8 @@ import {
   updateWorkspace,
   deleteWorkspace,
   setActiveWorkspace,
-  getActiveWorkspace
+  getActiveWorkspace,
+  ensureDefaultGeneralWorkspacePath
 } from '../services/workspace.service'
 
 export function registerWorkspaceIpc(): void {
@@ -40,5 +41,10 @@ export function registerWorkspaceIpc(): void {
 
   ipcMain.handle('workspace:get-active', async () => {
     return getActiveWorkspace()
+  })
+
+  /** Ensures the default user-apps path exists; returns it for general-mode setup. */
+  ipcMain.handle('workspace:ensure-default-general-path', async () => {
+    return ensureDefaultGeneralWorkspacePath()
   })
 }

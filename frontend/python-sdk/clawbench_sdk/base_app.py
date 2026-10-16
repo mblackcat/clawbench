@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional
 
 from clawbench_sdk.output import (
     emit_error as _emit_error,
+    emit_cancelled as _emit_cancelled,
     emit_output as _emit_output,
     emit_progress as _emit_progress,
     emit_result as _emit_result,
@@ -106,6 +107,13 @@ class ClawBenchApp(ABC):
     ) -> None:
         """Emit the final result of the app execution."""
         _emit_result(success, summary, data)
+
+    @staticmethod
+    def emit_cancelled(
+        summary: str = "Cancelled", data: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """Emit a final result marking the run as cancelled by the user."""
+        _emit_cancelled(summary, data)
 
     @staticmethod
     def emit_error(message: str, details: str = "") -> None:

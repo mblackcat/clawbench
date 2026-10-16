@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto'
 import {
   listAppSchedules,
   updateAppSchedule,
+  deleteAppSchedule,
   AppSchedule
 } from '../store/app-schedule.store'
 import { getManifest, getSubAppPath } from './subapp.service'
@@ -15,7 +16,15 @@ import { getPythonSdkPath } from '../utils/paths'
 import { computeNextRun } from '../utils/schedule-rule'
 import * as logger from '../utils/logger'
 
-let schedulerTimer: ReturnType<typeof setInterval> | null = null
+let schedulerTimer: NodeJS.Timeout | null = null
+
+/** Active schedules and app IDs currently in-flight to prevent concurrent duplicate executions. */
+const runningScheduleIds = new Set<string>()
+const runningAppIds = new Set<string>()
+
+export function isAppScheduleRunning(scheduleId: string, appId?: string): boolean {
+  return runningScheduleIds.has(scheduleId) || (!!appId && runningAppIds.has(appId))
+}
 
 /**
  * Start the app scheduler. Call once after app.whenReady().
@@ -24,8 +33,20 @@ let schedulerTimer: ReturnType<typeof setInterval> | null = null
 export function initAppScheduler(): void {
   if (schedulerTimer) return
 
+  // Deduplicate any historical dirty data in store: keep the first entry per appId
   const schedules = listAppSchedules()
+  const seenAppIds = new Set<string>()
   for (const schedule of schedules) {
+    if (seenAppIds.has(schedule.appId)) {
+      logger.warn(`[AppScheduler] Removing duplicate schedule entry ${schedule.id} for appId "${schedule.appId}"`)
+      deleteAppSchedule(schedule.id)
+    } else {
+      seenAppIds.add(schedule.appId)
+    }
+  }
+
+  const freshSchedules = listAppSchedules()
+  for (const schedule of freshSchedules) {
     if (schedule.enabled && !schedule.nextRunAt) {
       const next = computeNextRun(schedule)
       if (next) {
@@ -48,15 +69,25 @@ export function stopAppScheduler(): void {
     clearInterval(schedulerTimer)
     schedulerTimer = null
   }
+  runningScheduleIds.clear()
+  runningAppIds.clear()
 }
 
 function tick(): void {
   const now = Date.now()
   const schedules = listAppSchedules()
+  const seenAppIds = new Set<string>()
 
   for (const schedule of schedules) {
     if (!schedule.enabled) continue
     if (!schedule.nextRunAt) continue
+
+    // Guard against duplicate appId entries in the same cycle
+    if (seenAppIds.has(schedule.appId)) {
+      logger.warn(`[AppScheduler] Duplicate schedule entry detected for appId "${schedule.appId}", skipping`)
+      continue
+    }
+    seenAppIds.add(schedule.appId)
 
     if (schedule.endDate) {
       const endTime = new Date(schedule.endDate).getTime() + 24 * 60 * 60 * 1000
@@ -66,30 +97,80 @@ function tick(): void {
       }
     }
 
-    // Double-execution guard: skip if lastRunAt is within the same minute
+    // In-flight guard: skip if this schedule or app is currently running
+    if (runningScheduleIds.has(schedule.id) || runningAppIds.has(schedule.appId)) {
+      logger.debug(`[AppScheduler] Schedule "${schedule.appName}" is currently running, skipping tick`)
+      continue
+    }
+
+    // Double-execution guard: skip if lastRunAt was within 55s or in the exact same minute
     if (schedule.lastRunAt) {
+      if (now - schedule.lastRunAt < 55_000) continue
       const lastMinute = Math.floor(schedule.lastRunAt / 60_000)
       const nowMinute = Math.floor(now / 60_000)
       if (lastMinute === nowMinute) continue
     }
 
     if (now >= schedule.nextRunAt) {
-      executeAppSchedule(schedule).catch((err) => {
+      // Advance nextRunAt and record lastRunAt immediately upon triggering to prevent
+      // subsequent ticks from re-triggering this task while it runs
+      const nextRun =
+        schedule.repeatRule === 'none'
+          ? undefined
+          : computeNextRun(schedule, now + 60_000) ?? undefined
+
+      updateAppSchedule(schedule.id, {
+        lastRunAt: now,
+        nextRunAt: nextRun,
+        ...(schedule.repeatRule === 'none' ? { enabled: false } : {})
+      })
+
+      // Mark as in-flight before spawning process
+      runningScheduleIds.add(schedule.id)
+      runningAppIds.add(schedule.appId)
+
+      startScheduledExecution(schedule).catch((err: unknown) => {
         logger.error(`[AppScheduler] Schedule for "${schedule.appName}" failed:`, err)
+        runningScheduleIds.delete(schedule.id)
+        runningAppIds.delete(schedule.appId)
+        const msg = err instanceof Error ? err.message : String(err)
+        updateAppSchedule(schedule.id, {
+          lastRunStatus: 'error',
+          lastRunSummary: msg || 'Execution start failed'
+        })
       })
     }
   }
 }
 
 /**
- * Execute a single scheduled app run.
+ * Execute a single scheduled app run manually (e.g. from run-now IPC).
+ * Rejects if the schedule is already running.
+ */
+export async function executeAppSchedule(schedule: AppSchedule): Promise<void> {
+  if (runningScheduleIds.has(schedule.id) || runningAppIds.has(schedule.appId)) {
+    throw new Error(`Schedule "${schedule.appName}" is already running`)
+  }
+
+  runningScheduleIds.add(schedule.id)
+  runningAppIds.add(schedule.appId)
+
+  updateAppSchedule(schedule.id, {
+    lastRunAt: Date.now()
+  })
+
+  return startScheduledExecution(schedule)
+}
+
+/**
+ * Launch the subapp process and wire up streaming output and lifecycle callbacks.
  *
  * Runs headlessly (no WebContents), but mirrors the interactive run's
  * `subapp:*` events to every window so the scheduled execution shows up in the
  * bottom output panel — marked as a scheduled run via `scheduled: true` and a
  * `⏰ 定时执行` announcement line.
  */
-export async function executeAppSchedule(schedule: AppSchedule): Promise<void> {
+async function startScheduledExecution(schedule: AppSchedule): Promise<void> {
   logger.info(`[AppScheduler] Executing schedule for "${schedule.appName}" (${schedule.appId})`)
 
   const { appId, appName } = schedule
@@ -106,68 +187,75 @@ export async function executeAppSchedule(schedule: AppSchedule): Promise<void> {
     timestamp: Date.now()
   })
 
-  const manifest = getManifest(appId)
-  if (!manifest) {
-    finishScheduled(taskId, schedule, false, 'App manifest not found')
-    return
-  }
-  const appPath = getSubAppPath(appId)
-  if (!appPath) {
-    finishScheduled(taskId, schedule, false, 'App path not found')
-    return
-  }
-
-  const workspace = getActiveWorkspace()
-  if (!workspace) {
-    finishScheduled(taskId, schedule, false, 'No active workspace selected')
-    return
-  }
-
-  let pythonPath: string
   try {
-    pythonPath = (await resolvePythonCommand()).path
-  } catch (err: any) {
-    finishScheduled(taskId, schedule, false, `Python not available: ${err?.message || err}`)
-    return
-  }
-
-  const sdkPath = getPythonSdkPath()
-
-  executeSubAppWithCallbacks(
-    taskId,
-    appId,
-    appName,
-    manifest.version,
-    appPath,
-    manifest.entry,
-    schedule.params || {},
-    workspace as any,
-    pythonPath,
-    sdkPath,
-    {
-      onOutput: (message, level) => {
-        sendToAllWindows('subapp:output', {
-          taskId,
-          type: 'output',
-          message,
-          level,
-          timestamp: Date.now()
-        })
-      },
-      onProgress: (percent, message) => {
-        sendToAllWindows('subapp:progress', {
-          taskId,
-          type: 'progress',
-          percent,
-          message,
-          timestamp: Date.now()
-        })
-      },
-      onComplete: (success, summary) => {
-        finishScheduled(taskId, schedule, success, summary)
-      }
+    const manifest = getManifest(appId)
+    if (!manifest) {
+      finishScheduled(taskId, schedule, false, 'App manifest not found')
+      return
     }
-  )
+    const appPath = getSubAppPath(appId)
+    if (!appPath) {
+      finishScheduled(taskId, schedule, false, 'App path not found')
+      return
+    }
+
+    const workspace = getActiveWorkspace()
+    if (!workspace) {
+      finishScheduled(taskId, schedule, false, 'No active workspace selected')
+      return
+    }
+
+    let pythonPath: string
+    try {
+      pythonPath = (await resolvePythonCommand(appPath)).path
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      finishScheduled(taskId, schedule, false, `Python not available: ${msg}`)
+      return
+    }
+
+    const sdkPath = getPythonSdkPath()
+
+    executeSubAppWithCallbacks(
+      taskId,
+      appId,
+      appName,
+      manifest.version,
+      appPath,
+      manifest.entry,
+      schedule.params || {},
+      workspace as unknown as Parameters<typeof executeSubAppWithCallbacks>[7],
+      pythonPath,
+      sdkPath,
+      {
+        onOutput: (message, level) => {
+          sendToAllWindows('subapp:output', {
+            taskId,
+            type: 'output',
+            message,
+            level,
+            timestamp: Date.now()
+          })
+        },
+        onProgress: (percent, message) => {
+          sendToAllWindows('subapp:progress', {
+            taskId,
+            type: 'progress',
+            percent,
+            message,
+            timestamp: Date.now()
+          })
+        },
+        onComplete: (success, summary, cancelled) => {
+          finishScheduled(taskId, schedule, success, summary, cancelled)
+        }
+      }
+    )
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    logger.error(`[AppScheduler] Execution start failed for "${appName}":`, err)
+    finishScheduled(taskId, schedule, false, msg || 'Execution start failed')
+  }
 }
 
 /**
@@ -178,40 +266,46 @@ function finishScheduled(
   taskId: string,
   schedule: AppSchedule,
   success: boolean,
-  summary: string
+  summary: string,
+  cancelled?: boolean
 ): void {
-  sendToAllWindows('subapp:task-status', {
-    taskId,
-    status: success ? 'completed' : 'failed',
-    success,
-    summary,
-    timestamp: Date.now()
-  })
-
-  const existing = listAppSchedules().find((s) => s.id === schedule.id)
-  if (existing) {
-    const nextRun =
-      schedule.repeatRule === 'none'
-        ? undefined
-        : computeNextRun(existing, Date.now() + 60_000) ?? undefined
-    updateAppSchedule(schedule.id, {
-      lastRunAt: Date.now(),
-      lastRunStatus: success ? 'success' : 'error',
-      lastRunSummary: summary,
-      nextRunAt: nextRun,
-      // Disable one-shot schedules after execution
-      ...(schedule.repeatRule === 'none' ? { enabled: false } : {})
+  try {
+    sendToAllWindows('subapp:task-status', {
+      taskId,
+      status: cancelled ? 'cancelled' : success ? 'completed' : 'failed',
+      success: cancelled ? false : success,
+      cancelled: !!cancelled,
+      summary,
+      summaryI18nKey: cancelled ? 'subapp.executionCancelled' : undefined,
+      timestamp: Date.now()
     })
-  }
 
-  broadcastAppScheduleExecuted({
-    scheduleId: schedule.id,
-    appId: schedule.appId,
-    appName: schedule.appName,
-    status: success ? 'success' : 'error',
-    summary,
-    timestamp: Date.now()
-  })
+    const existing = listAppSchedules().find((s) => s.id === schedule.id)
+    if (existing) {
+      // Fallback: if nextRunAt was somehow not populated and repeat rule is active, recompute
+      let nextRun = existing.nextRunAt
+      if (!nextRun && existing.repeatRule !== 'none') {
+        nextRun = computeNextRun(existing, Date.now() + 60_000) ?? undefined
+      }
+      updateAppSchedule(schedule.id, {
+        lastRunStatus: success ? 'success' : 'error',
+        lastRunSummary: summary,
+        ...(nextRun !== existing.nextRunAt ? { nextRunAt: nextRun } : {})
+      })
+    }
+
+    broadcastAppScheduleExecuted({
+      scheduleId: schedule.id,
+      appId: schedule.appId,
+      appName: schedule.appName,
+      status: success ? 'success' : 'error',
+      summary,
+      timestamp: Date.now()
+    })
+  } finally {
+    runningScheduleIds.delete(schedule.id)
+    runningAppIds.delete(schedule.appId)
+  }
 }
 
 function sendToAllWindows(channel: string, payload: unknown): void {

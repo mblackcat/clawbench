@@ -11,7 +11,10 @@ export const api = {
       ipcRenderer.invoke('workspace:update', id, updates),
     delete: (id: string) => ipcRenderer.invoke('workspace:delete', id),
     setActive: (id: string) => ipcRenderer.invoke('workspace:set-active', id),
-    getActive: () => ipcRenderer.invoke('workspace:get-active')
+    getActive: () => ipcRenderer.invoke('workspace:get-active'),
+    /** Ensure the default user-apps path exists and return it (general-mode setup). */
+    ensureDefaultGeneralPath: () =>
+      ipcRenderer.invoke('workspace:ensure-default-general-path') as Promise<string>
   },
 
   subapp: {
@@ -35,6 +38,11 @@ export const api = {
       opts: { mode: string; tools: string[]; workspacePath?: string },
       token?: string
     ) => ipcRenderer.invoke('subapp:install-skill-from-market', appId, downloadUrl, opts, token),
+    resetBuiltin: (appId: string) => ipcRenderer.invoke('subapp:reset-builtin', appId),
+    getBundledBuiltinVersion: (appId: string) =>
+      ipcRenderer.invoke('subapp:get-bundled-builtin-version', appId),
+    installRequirements: (appId: string, force?: boolean) =>
+      ipcRenderer.invoke('subapp:install-requirements', appId, force),
     onOutput: (callback: (data: unknown) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data)
       ipcRenderer.on('subapp:output', handler)
@@ -85,7 +93,8 @@ export const api = {
     publishApp: (appPath: string) => ipcRenderer.invoke('developer:publish-app', appPath),
     packageApp: (appId: string) => ipcRenderer.invoke('developer:package-app', appId),
     packageDir: (sourceDir: string) => ipcRenderer.invoke('developer:package-dir', sourceDir),
-    listMyApps: () => ipcRenderer.invoke('developer:list-my-apps'),
+    listMyApps: (opts?: { includeBuiltins?: boolean }) =>
+      ipcRenderer.invoke('developer:list-my-apps', opts),
     getAppPath: (appId: string) => ipcRenderer.invoke('developer:get-app-path', appId),
     listAppFiles: (appId: string) => ipcRenderer.invoke('developer:list-app-files', appId),
     readFile: (filePath: string) => ipcRenderer.invoke('developer:read-file', filePath),
@@ -127,6 +136,10 @@ export const api = {
     validatePython: (pythonPath: string) =>
       ipcRenderer.invoke('settings:validate-python', pythonPath),
     detectPython: () => ipcRenderer.invoke('settings:detect-python') as Promise<string | null>,
+    getAvailablePythons: (forceRefresh?: boolean) =>
+      ipcRenderer.invoke('settings:get-available-pythons', forceRefresh),
+    getRegisteredShortcuts: () =>
+      ipcRenderer.invoke('settings:get-registered-shortcuts') as Promise<number[]>,
     getEnvConfig: () => ipcRenderer.invoke('settings:get-env-config'),
     getAiModels: () => ipcRenderer.invoke('settings:get-ai-models'),
     saveAiModel: (config: Record<string, unknown>) =>

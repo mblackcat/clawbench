@@ -19,6 +19,9 @@ import { initScheduler } from './services/scheduled-task.service'
 import { initAppScheduler } from './services/app-schedule.service'
 import { startMemoryUpdater } from './services/memory-updater.service'
 import { flushPendingUsageEvents } from './services/usage-tracking.service'
+import { seedBuiltinApps } from './services/builtin-apps.service'
+import { initWorkbenchVenvInBackground } from './services/python-venv.service'
+import { warmProjectCommonAppsCache } from './services/project.service'
 import {
   createAppTray,
   destroyAppTray,
@@ -213,6 +216,13 @@ app.whenReady().then(() => {
   // 迁移旧设置
   migrateSettings()
 
+  // Seed bundled builtin template apps into user-apps (no-op when none bundled)
+  try {
+    seedBuiltinApps()
+  } catch (err) {
+    logger.warn('Failed to seed builtin apps:', err)
+  }
+
   // Set app user model id for Windows
   electronApp.setAppUserModelId('com.lizhistudio.clawbench')
 
@@ -227,6 +237,10 @@ app.whenReady().then(() => {
   registerAllIpcHandlers()
   setFeishuWatcherMainWindow(() => getMainWindow())
   registerGlobalShortcuts()
+  // Warm project common-apps cache so disabled builtins stay hidden for shortcuts
+  warmProjectCommonAppsCache().catch((err) =>
+    logger.warn('Failed to warm project common-apps cache:', err)
+  )
   initAutoUpdater()
   initScheduler()
   initAppScheduler()
@@ -244,6 +258,9 @@ app.whenReady().then(() => {
   flushPendingUsageEvents().catch((err) => {
     logger.warn('Failed to flush pending usage events:', err)
   })
+
+  // Prepare the dedicated workbench Python venv in the background if needed
+  initWorkbenchVenvInBackground()
 
   logger.info('Application ready')
 

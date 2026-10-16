@@ -131,6 +131,11 @@
       {
         "from": "python-sdk",
         "to": "python-sdk"
+      },
+      {
+        "from": "builtin-apps",
+        "to": "builtin-apps",
+        "filter": ["**/*", "!README.md"]
       }
     ],
     "icon": "resources/icon.png",

@@ -17,6 +17,17 @@ import type { SubAppManifest } from '../../types/subapp'
 import { applicationManager } from '../../services/applicationManager'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useT } from '../../i18n'
+import { isBuiltinAppId, builtinAppKeyFromId } from '../../utils/app-status'
+import { isAdminUser } from '../../utils/is-admin-user'
+
+/** Client-specified application IDs accepted by the backend. */
+const APPLICATION_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,254}$/
+
+/** Legacy scaffolds wrote "general"; anything else (incl. free text) is kept. */
+function normalizePublishCategory(raw: unknown): string {
+  const category = typeof raw === 'string' ? raw.trim() : ''
+  return !category || category === 'general' ? 'other' : category
+}
 
 const { Title, Paragraph } = Typography
 
@@ -65,8 +76,17 @@ const AppPublisher: React.FC = () => {
     const fetchApps = async (): Promise<void> => {
       setLoading(true)
       try {
-        const result = await window.api.developer.listMyApps()
-        setApps(result)
+        const isAdmin = isAdminUser(useAuthStore.getState().user)
+        // Admins additionally see builtin apps so they can overwrite-publish
+        // the same-id builtin on the server.
+        const result = await window.api.developer.listMyApps(
+          isAdmin ? { includeBuiltins: true } : undefined
+        )
+        setApps(
+          isAdmin
+            ? result.filter((a) => !a.id.startsWith('com.clawbench.') || isBuiltinAppId(a.id))
+            : result
+        )
       } catch {
         message.error(t('appPublisher.loadListFailed'))
       } finally {
@@ -98,14 +118,39 @@ const AppPublisher: React.FC = () => {
 
       const manifest = prepareResult.manifest
 
+      // Builtin app (admin overwrite-publish): upload the archive to
+      // /common-apps/:appKey/upload; the server version then wins over the
+      // bundled copy on every client. Never enters the marketplace table.
+      if (isBuiltinAppId(selectedAppId)) {
+        setCurrentStep(2)
+        const packageResult = await window.api.developer.packageApp(selectedAppId)
+        const builtinBlob = new Blob([new Uint8Array(packageResult.buffer)], { type: 'application/zip' })
+        const builtinFile = new File([builtinBlob], packageResult.fileName, { type: 'application/zip' })
+        setCurrentStep(3)
+        await applicationManager.uploadBuiltinApp(
+          builtinAppKeyFromId(selectedAppId),
+          builtinFile,
+          manifest.version,
+          t('appPublisher.changelog', manifest.name, manifest.version)
+        )
+        setPublishResult({
+          status: 'success',
+          message: t('appPublisher.builtinPublishSuccess', manifest.name, manifest.version)
+        })
+        return
+      }
+
       // 步骤2: 创建或更新应用到服务端
       setCurrentStep(2)
       let applicationId: string
 
       try {
-        // 尝试获取已存在的应用
+        // 已存在的应用：优先按 manifest.id 匹配，兼容历史数据按名称匹配
         const userApps = await applicationManager.fetchUserApplications()
-        const existingApp = userApps.find(app => app.name === manifest.name)
+        const existingApp =
+          userApps.find(app => app.applicationId === manifest.id) ||
+          userApps.find(app => app.name === manifest.name)
+        const category = normalizePublishCategory(manifest.category)
 
         // Build marketplace metadata — include cover/icon/url for all resource types
         const cover =
@@ -114,7 +159,7 @@ const AppPublisher: React.FC = () => {
           ''
         const publishMetadata: Record<string, unknown> = {
           entry: manifest.entry,
-          category: manifest.category,
+          category,
           supported_workspace_types: manifest.supported_workspace_types,
           params: manifest.params,
         }
@@ -134,16 +179,21 @@ const AppPublisher: React.FC = () => {
           await applicationManager.updateApplication(existingApp.applicationId, {
             name: manifest.name,
             description: manifest.description,
+            category,
             metadata: publishMetadata,
           })
           applicationId = existingApp.applicationId
         } else {
           // 创建新应用
+          // 以 manifest.id 作为服务端应用唯一标识（格式不合法时由服务端生成）
           const newApp = await applicationManager.createApplication({
+            ...(manifest.id && APPLICATION_ID_PATTERN.test(manifest.id)
+              ? { applicationId: manifest.id }
+              : {}),
             name: manifest.name,
             description: manifest.description,
             version: manifest.version,
-            category: manifest.category || 'general',
+            category,
             type: manifest.type || 'app',
             metadata: publishMetadata,
           })
@@ -351,7 +401,14 @@ const AppPublisher: React.FC = () => {
           {selectedApp && (
             <Card style={{ marginBottom: 16 }}>
               <Descriptions column={1} size="small">
-                <Descriptions.Item label={t('appPublisher.labelName')}>{selectedApp.name}</Descriptions.Item>
+                <Descriptions.Item label={t('appPublisher.labelName')}>
+                  {selectedApp.name}
+                  {isBuiltinAppId(selectedApp.id) && (
+                    <Tag color="blue" style={{ marginLeft: 8 }}>
+                      {t('appPublisher.builtinBadge')}
+                    </Tag>
+                  )}
+                </Descriptions.Item>
                 <Descriptions.Item label={t('appPublisher.labelId')}>{selectedApp.id}</Descriptions.Item>
                 <Descriptions.Item label={t('appPublisher.labelVersion')}>
                   <Tag>{selectedApp.version}</Tag>

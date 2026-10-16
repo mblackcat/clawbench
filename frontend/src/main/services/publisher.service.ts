@@ -46,7 +46,7 @@ if __name__ == "__main__":
 
 \`\`\`json
 {
-  "id": "uuid-slug-or-com.company.app-name",
+  "id": "cb.username.app-slug",
   "name": "Display Name",
   "version": "1.0.0",
   "description": "What this app does",
@@ -288,7 +288,7 @@ export function createAppScaffold(
       type: appType,
       author: appInfo.author,
       entry: appInfo.entry || (appType === 'ai-skill' ? 'SKILL.md' : appType === 'prompt' ? 'prompt.md' : appType === 'link' ? 'link.json' : 'main.py'),
-      category: appInfo.category || 'general',
+      category: appInfo.category || 'other',
       supported_workspace_types: appInfo.supported_workspace_types || [],
       params: appInfo.params || [],
       confirm_before_run: appInfo.confirm_before_run || false,

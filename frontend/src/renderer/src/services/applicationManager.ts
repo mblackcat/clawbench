@@ -6,6 +6,7 @@
 import { apiClient, API_BASE_URL } from './apiClient';
 import type { Application, ApplicationDetail, ApplicationType } from '../types/api';
 import { localStorageManager } from './localStorageManager';
+import { builtinAppKeyFromId, isBuiltinAppId } from '../utils/app-status';
 
 /**
  * 已安装应用的最小结构（用于版本检查）。与各处本地定义的 SubAppInfo 结构兼容。
@@ -73,6 +74,8 @@ class ApplicationManager {
    * 创建应用
    */
   async createApplication(data: {
+    /** Client-chosen application ID (manifest.id); server generates one when omitted. */
+    applicationId?: string;
     name: string;
     description: string;
     version: string;
@@ -93,6 +96,7 @@ class ApplicationManager {
     data: {
       name?: string;
       description?: string;
+      category?: string;
       metadata?: Record<string, any>;
     }
   ): Promise<Application> {
@@ -131,6 +135,34 @@ class ApplicationManager {
   ): Promise<void> {
     await apiClient.uploadApplication(applicationId, file, version, changelog);
     this.clearCache();
+  }
+
+  /**
+   * 覆盖发布 builtin app（admin）：上传归档到 /common-apps/:appKey/upload。
+   * 服务端以此版本覆盖同 id 的自带版本（服务端优先）；common_apps 不走市场缓存。
+   */
+  async uploadBuiltinApp(
+    appKey: string,
+    file: File,
+    version: string,
+    changelog: string
+  ): Promise<void> {
+    await apiClient.uploadCommonApp(appKey, file, version, changelog);
+  }
+
+  /**
+   * 从服务端拉取 builtin app 归档覆盖本地（优先级：服务端 > 自带）。
+   * 复用市场下载/解压/合并管线（保留本地 data/ 等生成文件）。
+   */
+  async updateBuiltinApp(appId: string): Promise<boolean> {
+    const appKey = builtinAppKeyFromId(appId);
+    const downloadUrl = `${API_BASE_URL}/common-apps/${encodeURIComponent(appKey)}/download`;
+    const token = apiClient.getToken() || undefined;
+    const result = await window.api.subapp.updateFromMarket(appId, downloadUrl, token);
+    if (!result.success) {
+      throw new Error('Builtin app update failed');
+    }
+    return true;
   }
 
   /**
@@ -280,6 +312,9 @@ class ApplicationManager {
       const appId = info.manifest.id;
       const localVersion = info.manifest.version || '';
       if (!appId) continue;
+      // Builtin apps live in common_apps, not the marketplace applications
+      // table — GET /applications/<builtin id> always 404s and burns rate limit.
+      if (isBuiltinAppId(appId)) continue;
 
       try {
         const appDetail = await this.fetchApplicationDetail(appId);

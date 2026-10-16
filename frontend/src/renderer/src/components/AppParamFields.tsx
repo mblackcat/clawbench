@@ -7,7 +7,6 @@ import {
   Switch,
   Select,
   Button,
-  Space,
   Tooltip,
   Typography,
   theme
@@ -189,22 +188,29 @@ const AppParamFields = forwardRef<AppParamFieldsHandle, AppParamFieldsProps>(
     )
 
     const renderLabel = (param: ParamDef): React.ReactNode => (
-      <div
+      <span
         style={{
-          display: 'flex',
+          display: 'inline-flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
-          width: '100%'
+          gap: 4,
+          maxWidth: '100%',
+          // Leave room for the optional mark sibling so it stays on one line
+          verticalAlign: 'middle'
         }}
       >
-        <Space size={4}>
-          <Text>{param.label}</Text>
-          {param.description && (
-            <Tooltip title={param.description}>
-              <QuestionCircleOutlined style={{ color: token.colorTextTertiary, cursor: 'help' }} />
-            </Tooltip>
-          )}
-        </Space>
+        <Text
+          ellipsis={{ tooltip: param.label }}
+          style={{ maxWidth: param.type === 'enum' && param.options_slot?.trim() ? 200 : 260 }}
+        >
+          {param.label}
+        </Text>
+        {param.description && (
+          <Tooltip title={param.description}>
+            <QuestionCircleOutlined
+              style={{ color: token.colorTextTertiary, cursor: 'help', flexShrink: 0 }}
+            />
+          </Tooltip>
+        )}
         {param.type === 'enum' && param.options_slot?.trim() && (
           <Tooltip title={t('workbench.refreshOptions')}>
             <Button
@@ -213,12 +219,16 @@ const AppParamFields = forwardRef<AppParamFieldsHandle, AppParamFieldsProps>(
               aria-label={t('workbench.refreshOptions')}
               icon={<ReloadOutlined spin={refreshingParams[param.name]} />}
               disabled={refreshingParams[param.name]}
-              onClick={() => handleRefreshOptions(param)}
-              style={{ padding: '0 4px', height: 24 }}
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                void handleRefreshOptions(param)
+              }}
+              style={{ padding: '0 4px', height: 22, flexShrink: 0 }}
             />
           </Tooltip>
         )}
-      </div>
+      </span>
     )
 
     const renderField = (param: ParamDef): React.ReactNode => {
@@ -278,14 +288,44 @@ const AppParamFields = forwardRef<AppParamFieldsHandle, AppParamFieldsProps>(
     const params = manifest?.params ?? []
 
     return (
-      <Form form={form} layout="vertical" requiredMark="optional" component={false}>
+      <Form
+        form={form}
+        layout="vertical"
+        component={false}
+        // Custom optional mark: keep "（可选）" on one line; never split mid-word.
+        requiredMark={(labelNode, { required }) => (
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              flexWrap: 'nowrap',
+              gap: 6,
+              maxWidth: '100%'
+            }}
+          >
+            <span style={{ minWidth: 0, overflow: 'hidden' }}>{labelNode}</span>
+            {!required && (
+              <span
+                style={{
+                  flexShrink: 0,
+                  whiteSpace: 'nowrap',
+                  color: token.colorTextTertiary,
+                  fontSize: 12,
+                  fontWeight: 400
+                }}
+              >
+                {t('paramField.optional')}
+              </span>
+            )}
+          </span>
+        )}
+      >
         {params.length > 0 ? (
           params.map((param) => (
             <Form.Item
               key={param.name}
               name={param.name}
               label={renderLabel(param)}
-              labelCol={{ style: { width: '100%' } }}
               rules={[{ required: param.required, message: t('paramField.required', param.label) }]}
               valuePropName={param.type === 'boolean' ? 'checked' : 'value'}
             >

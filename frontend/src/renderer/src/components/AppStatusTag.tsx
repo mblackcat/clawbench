@@ -44,15 +44,21 @@ export const AppVersionTag: React.FC<{
   localVersion?: string | null
   remoteVersion?: string | null
   status: AppCardStatus | DiscoverCardStatus
-}> = ({ localVersion, remoteVersion, status }) => {
+  className?: string
+}> = ({ localVersion, remoteVersion, status, className = '' }) => {
   const local = localVersion || remoteVersion
   if (!local && !remoteVersion) return null
+  const tagClass = `card-ver ${className}`.trim()
   if (shouldShowVersionDiff(status) && localVersion && remoteVersion) {
     return (
-      <Tag style={{ margin: 0 }} color="default">
+      <Tag className={tagClass} style={{ margin: 0 }} color="default">
         v{localVersion} → v{remoteVersion}
       </Tag>
     )
   }
-  return <Tag style={{ margin: 0 }}>v{local || remoteVersion}</Tag>
+  return (
+    <Tag className={tagClass} style={{ margin: 0 }}>
+      v{local || remoteVersion}
+    </Tag>
+  )
 }

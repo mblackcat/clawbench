@@ -19,6 +19,8 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import type { ParamType } from '../../types/subapp'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useT } from '../../i18n'
+import { generateAppId } from '../../utils/app-identity'
+import { applicationManager } from '../../services/applicationManager'
 
 const { Title, Paragraph } = Typography
 const { TextArea } = Input
@@ -28,6 +30,9 @@ const WORKSPACE_TYPE_VALUES = [
   { label: 'SVN', value: 'svn' },
   { label: 'Perforce', value: 'perforce' },
 ]
+
+/** Suggested marketplace categories; existing free-text categories are kept as-is. */
+const CATEGORY_KEYS = ['development', 'automation', 'utilities', 'other'] as const
 
 const PARAM_TYPE_VALUES: { label: string; value: ParamType }[] = [
   { label: 'String', value: 'string' },
@@ -84,6 +89,10 @@ const AppEditor: React.FC = () => {
   // Stable generated app id for create mode (prevents duplicate apps from
   // regenerating a new UUID on every preview/submit call).
   const generatedIdRef = useRef<string | null>(null)
+  // Existing app IDs (local drafts + own server apps) so generated ids never collide
+  const existingAppIdsRef = useRef<Set<string>>(new Set())
+  // Free-text category from an older manifest, offered as an extra option
+  const [legacyCategory, setLegacyCategory] = useState<string | null>(null)
   // Re-entrancy lock guarding create/update against double-clicks.
   const submittingRef = useRef(false)
 
@@ -97,11 +106,16 @@ const AppEditor: React.FC = () => {
         setLoading(true)
         try {
           const manifest = await window.api.subapp.getManifest(state.appId)
+          const existingCategory = typeof manifest.category === 'string' ? manifest.category.trim() : ''
+          if (existingCategory && !(CATEGORY_KEYS as readonly string[]).includes(existingCategory)) {
+            setLegacyCategory(existingCategory)
+          }
           // Populate form with all data
           form.setFieldsValue({
             name: manifest.name,
             description: manifest.description,
             version: manifest.version,
+            category: manifest.category || 'other',
             icon: manifest.icon || '',
             supported_workspace_types: manifest.supported_workspace_types || [],
             params: manifest.params || []
@@ -117,6 +131,37 @@ const AppEditor: React.FC = () => {
     loadAppData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.state])
+
+  // Create mode: collect existing ids (local + server) so the generated
+  // manifest id avoids collisions (suffix -2, -3, ...).
+  useEffect(() => {
+    if (editMode) return
+    let cancelled = false
+    const loadExistingIds = async (): Promise<void> => {
+      const ids = new Set<string>()
+      try {
+        const localApps = await window.api.developer.listMyApps({ includeBuiltins: true })
+        for (const localApp of localApps) {
+          if (localApp.id) ids.add(localApp.id)
+        }
+      } catch {
+        // ignore local scan errors
+      }
+      try {
+        const serverApps = await applicationManager.fetchUserApplications()
+        for (const serverApp of serverApps) {
+          if (serverApp.applicationId) ids.add(serverApp.applicationId)
+        }
+      } catch {
+        // offline / local mode
+      }
+      if (!cancelled) existingAppIdsRef.current = ids
+    }
+    void loadExistingIds()
+    return () => {
+      cancelled = true
+    }
+  }, [editMode, user])
 
   const handleNext = async (): Promise<void> => {
     if (currentStep === 0) {
@@ -135,15 +180,6 @@ const AppEditor: React.FC = () => {
     setCurrentStep((prev) => prev - 1)
   }
 
-  const generateAppId = (name: string): string => {
-    const uuid = crypto.randomUUID().slice(0, 8)
-    const slug = name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '')
-    return `${uuid}-${slug || 'app'}`
-  }
-
   const getManifestPreview = (): Record<string, unknown> => {
     const values = form.getFieldsValue()
 
@@ -153,10 +189,9 @@ const AppEditor: React.FC = () => {
     if (editMode && appId) {
       manifestId = appId
     } else {
-      if (!generatedIdRef.current) {
-        generatedIdRef.current = generateAppId(values.name ?? '')
-      }
-      manifestId = generatedIdRef.current
+      // cb.<username>.<slug>, de-duplicated against local + server ids
+      manifestId = generateAppId(values.name ?? '', user, existingAppIdsRef.current)
+      generatedIdRef.current = manifestId
     }
 
     const author = user ? {
@@ -166,13 +201,19 @@ const AppEditor: React.FC = () => {
     } : { name: 'Unknown' }
 
     const iconVal = typeof values.icon === 'string' ? values.icon.trim() : ''
+    const category =
+      typeof values.category === 'string' && values.category.trim()
+        ? values.category.trim()
+        : 'other'
     const manifest = {
       id: manifestId,
       name: values.name ?? '',
       version: values.version ?? '1.0.0',
       description: values.description ?? '',
+      type: 'app' as const,
       author: author,
       entry: 'main.py',
+      category,
       ...(iconVal ? { icon: iconVal } : {}),
       supported_workspace_types: values.supported_workspace_types ?? [],
       params: (values.params ?? []).map((p: Record<string, unknown>) =>
@@ -190,6 +231,18 @@ const AppEditor: React.FC = () => {
     if (submittingRef.current) return
     submittingRef.current = true
     try {
+      // Refresh own server app ids right before creating (multi-client race)
+      if (!editMode) {
+        try {
+          const serverApps = await applicationManager.fetchUserApplications()
+          for (const serverApp of serverApps) {
+            if (serverApp.applicationId) existingAppIdsRef.current.add(serverApp.applicationId)
+          }
+        } catch {
+          // offline: ignore
+        }
+      }
+
       const manifest = getManifestPreview()
 
       if (editMode && appId) {
@@ -243,7 +296,16 @@ const AppEditor: React.FC = () => {
   }
 
   return (
-    <div style={{ maxWidth: 800, margin: '0 auto', position: 'relative', paddingTop: 24 }}>
+    // ~2/3 of the content area, floored at 600px so it stays usable at min window size
+    <div
+      style={{
+        width: 'min(100%, max(600px, 66.666%))',
+        margin: '0 auto',
+        position: 'relative',
+        padding: '24px 24px 32px',
+        boxSizing: 'border-box'
+      }}
+    >
       {loading && (
         <div
           style={{
@@ -306,6 +368,21 @@ const AppEditor: React.FC = () => {
 
           <Form.Item name="description" label={t('appEditor.description')}>
             <TextArea rows={3} placeholder={t('appEditor.descriptionPlaceholder')} />
+          </Form.Item>
+
+          <Form.Item
+            name="category"
+            label={t('appEditor.category')}
+            initialValue="other"
+            tooltip={t('appEditor.categoryHelp')}
+          >
+            <Select
+              placeholder={t('appEditor.categoryPlaceholder')}
+              options={[
+                ...CATEGORY_KEYS.map((key) => ({ label: t(`appEditor.category.${key}`), value: key })),
+                ...(legacyCategory ? [{ label: legacyCategory, value: legacyCategory }] : [])
+              ]}
+            />
           </Form.Item>
 
           <Form.Item

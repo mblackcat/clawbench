@@ -296,7 +296,8 @@ Multi-tenant **Projects** + **common-apps** (builtin app registry with admin kil
 
 **Desktop consumer side** (no admin UI — actions live in the web panel):
 - `main/services/project.service.ts`: `enrichBuiltinAppParams` (kill-switch gate: project && global enable; throws `AppDisabledError`) + config injection (`__project`, `__app_config`). `BUILTIN_APP_ID_PREFIX = 'com.clawbench.builtin.'`.
-- `main/ipc/subapp.ipc.ts`: gates builtin runs before `task-started`; on `AppDisabledError` surfaces via the existing `task-status` channel (status `failed` carries the disabled i18n message — no execute-return-contract change).
+- `main/ipc/subapp.ipc.ts`: gates builtin runs before `task-started`. `subapp:execute` returns `{ taskId, earlyTerminal? }`; on `AppDisabledError` / missing Python it returns `earlyTerminal` (status `disabled` | `failed` + i18n summary) without emitting task events — renderer seeds the task via `utils/subapp-execute.ts` (`seedTaskFromExecuteResult`). Builtin runs also get `__user` (userId/username/email/feishuId).
+- `main/services/builtin-apps.service.ts`: `seedBuiltinApps()` at startup copies `resources/builtin-apps/*` (manifest id `com.clawbench.builtin.*`) into user-apps — installs missing, upgrades newer, never downgrades; `resetBuiltinApp` / `getBundledBuiltinVersion` back `subapp:reset-builtin` / `subapp:get-bundled-builtin-version`.
 - `components/ProjectSwitcher.tsx` (read-only; TopBar; hidden in local mode), `apiClient.{listProjects,joinProject,listProjectCommonApps,listCommonApps}`.
 - `store/settings.store.ts`: `activeProject`, `pinnedApps`, `commonAppConfigCache`.
 

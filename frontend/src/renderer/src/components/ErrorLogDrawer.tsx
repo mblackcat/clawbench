@@ -82,6 +82,8 @@ const ErrorLogDrawer: React.FC<ErrorLogDrawerProps> = ({ open, onClose }) => {
         return <Tag color="error">{t('logs.failed')}</Tag>
       case 'cancelled':
         return <Tag color="default">{t('logs.cancelled')}</Tag>
+      case 'disabled':
+        return <Tag color="warning">{t('logs.disabled')}</Tag>
       default:
         return <Tag>{task.status}</Tag>
     }
@@ -204,7 +206,7 @@ const ErrorLogDrawer: React.FC<ErrorLogDrawerProps> = ({ open, onClose }) => {
                   second: '2-digit'
                 })}
               </Text>
-              {task.result && (
+              {task.result && task.status !== 'cancelled' && formatTaskSummary(task) && (
                 <Text type={task.result.success ? 'success' : 'danger'} style={{ fontSize: 12 }}>
                   {formatTaskSummary(task)}
                 </Text>

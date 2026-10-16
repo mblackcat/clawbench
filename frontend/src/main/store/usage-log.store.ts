@@ -16,6 +16,8 @@ export interface UsageEvent {
   applicationId: string
   version?: string
   success?: boolean
+  /** Only meaningful for type === 'execution'. True when the user cancelled the run. */
+  cancelled?: boolean
   errorMessage?: string
   errorDetails?: string
   timestamp: number

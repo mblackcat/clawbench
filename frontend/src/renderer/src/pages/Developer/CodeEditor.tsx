@@ -41,6 +41,7 @@ import { useSettingsStore } from '../../stores/useSettingsStore'
 import { useT } from '../../i18n'
 import { MONO_FONT_STACK } from '../../utils/mono-font'
 import { isDarkTheme } from '../../theme'
+import { normalizeExecuteResult, describeEarlyTerminal } from '../../utils/subapp-execute'
 
 const { Sider, Content } = Layout
 const { Title, Text } = Typography
@@ -118,6 +119,9 @@ const CodeEditor: React.FC = () => {
   chatWidthRef.current = chatWidth
   const tabsRef = useRef(tabs)
   tabsRef.current = tabs
+  const activeTabRef = useRef(activeTab)
+  activeTabRef.current = activeTab
+  const editorRef = useRef<{ getValue: () => string } | null>(null)
   const filesChangedTimerRef = useRef<number | null>(null)
 
   // ── Context menu state ──────────────────────────────────────────────────────
@@ -163,13 +167,18 @@ const CodeEditor: React.FC = () => {
     const unsubStatus = window.api.subapp.onTaskStatus((data: any) => {
       if (acceptTaskEvent(data.taskId)) {
         setIsRunning(data.status === 'running')
-        if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
+        if (
+          data.status === 'completed' ||
+          data.status === 'failed' ||
+          data.status === 'cancelled' ||
+          data.status === 'disabled'
+        ) {
           runPendingRef.current = false
         }
         const summary = formatTaskStatusSummary(data)
         if (data.status === 'completed') {
           addOutputLine('info', `✓ ${t('codeEditor.execDone', summary)}`)
-        } else if (data.status === 'failed') {
+        } else if (data.status === 'failed' || data.status === 'disabled') {
           addOutputLine('error', `✗ ${t('codeEditor.execError', summary)}`)
         }
       }
@@ -292,25 +301,68 @@ const CodeEditor: React.FC = () => {
     }
   }
 
-  const saveFile = async (tabKey: string) => {
-    const tab = tabs.find((t) => t.key === tabKey)
-    if (!tab) return
+  const saveFile = useCallback(
+    async (tabKey: string) => {
+      const tab = tabsRef.current.find((t) => t.key === tabKey)
+      if (!tab) return
 
-    try {
-      await window.api.developer.writeFile(tab.path, tab.content)
-      setTabs((prev) => prev.map((t) => (t.key === tabKey ? { ...t, modified: false } : t)))
-      message.success(t('codeEditor.saveSuccess'))
-    } catch (err) {
-      message.error(t('codeEditor.saveFailed'))
+      // Prefer the live Monaco buffer for the active tab so Ctrl/Cmd+S never
+      // misses the last keystroke still pending in React state.
+      let content = tab.content
+      if (tabKey === activeTabRef.current && editorRef.current) {
+        content = editorRef.current.getValue()
+      }
+
+      if (!tab.modified && content === tab.content) return
+
+      try {
+        await window.api.developer.writeFile(tab.path, content)
+        setTabs((prev) =>
+          prev.map((t) => (t.key === tabKey ? { ...t, content, modified: false } : t))
+        )
+        message.success(t('codeEditor.saveSuccess'))
+      } catch (err) {
+        message.error(t('codeEditor.saveFailed'))
+      }
+    },
+    [message, t]
+  )
+
+  const saveAllFiles = useCallback(async () => {
+    const modifiedTabs = tabsRef.current.filter((t) => t.modified)
+    // Include the active tab when the editor buffer differs from state.
+    const activeKey = activeTabRef.current
+    if (activeKey && editorRef.current && !modifiedTabs.some((t) => t.key === activeKey)) {
+      const tab = tabsRef.current.find((t) => t.key === activeKey)
+      if (tab && editorRef.current.getValue() !== tab.content) {
+        modifiedTabs.push(tab)
+      }
     }
-  }
-
-  const saveAllFiles = async () => {
-    const modifiedTabs = tabs.filter((t) => t.modified)
     for (const tab of modifiedTabs) {
       await saveFile(tab.key)
     }
-  }
+  }, [saveFile])
+
+  const saveActiveFile = useCallback(async () => {
+    const tabKey = activeTabRef.current
+    if (!tabKey) return
+    await saveFile(tabKey)
+  }, [saveFile])
+
+  // Ctrl/Cmd+S saves the current file (capture phase so Monaco / the browser don't swallow it)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 's') return
+      // Leave modal inputs (rename / create dialogs) alone.
+      const target = e.target as HTMLElement | null
+      if (target?.closest?.('.ant-modal')) return
+      e.preventDefault()
+      e.stopPropagation()
+      void saveActiveFile()
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [saveActiveFile])
 
   const updateTabContent = (tabKey: string, content: string) => {
     setTabs((prev) =>
@@ -359,11 +411,19 @@ const CodeEditor: React.FC = () => {
     addOutputLine('info', '─'.repeat(50))
 
     try {
-      const taskId = await window.api.subapp.execute(appId, {})
-      currentTaskIdRef.current = taskId as string
-      setCurrentTaskId(taskId as string)
+      const { taskId, earlyTerminal } = normalizeExecuteResult(
+        await window.api.subapp.execute(appId, {})
+      )
       runPendingRef.current = false
-      addOutputLine('info', t('codeEditor.taskId', taskId as string))
+      if (earlyTerminal) {
+        // Run ended before the process started (disabled / no Python)
+        addOutputLine('error', describeEarlyTerminal(earlyTerminal, t))
+        setIsRunning(false)
+        return
+      }
+      currentTaskIdRef.current = taskId
+      setCurrentTaskId(taskId)
+      addOutputLine('info', t('codeEditor.taskId', taskId))
     } catch (err) {
       addOutputLine('error', t('codeEditor.execFailed', String(err)))
       setIsRunning(false)
@@ -837,6 +897,9 @@ const CodeEditor: React.FC = () => {
                     value={activeTabData.content}
                     onChange={(value) => updateTabContent(activeTab, value || '')}
                     theme={isDarkTheme(appTheme) ? 'vs-dark' : 'light'}
+                    onMount={(editor) => {
+                      editorRef.current = editor
+                    }}
                     options={{
                       minimap: { enabled: false },
                       fontSize: 13,
