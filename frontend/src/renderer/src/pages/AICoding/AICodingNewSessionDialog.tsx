@@ -5,14 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { AI_TOOL_TAG_COLORS, AI_TOOL_TAG_STYLE, renderAIToolTagLabel } from './aiToolMeta'
 import { useT } from '../../i18n'
 import type { AIToolType, DetectedCLI } from '../../types/ai-coding'
-import {
-  toolsCache,
-  setToolsCache,
-  invalidateCodingToolsCache
-} from '../../utils/coding-tools-cache'
-
-export { invalidateCodingToolsCache }
-
+import { toolsCache, setToolsCache } from '../../utils/coding-tools-cache'
 
 interface AICodingNewSessionDialogProps {
   open: boolean

@@ -7,7 +7,7 @@ import EnvCard from './EnvCard'
 import PackageListDrawer from './PackageListDrawer'
 import { useT } from '../../i18n'
 import { AI_CODING_TOOL_IDS, AI_CODING_TOOL_ID_SET, isCodingToolEnabledInMap } from '../../types/local-env'
-import { invalidateCodingToolsCache } from '../AICoding/AICodingNewSessionDialog'
+import { invalidateCodingToolsCache } from '../../utils/coding-tools-cache'
 
 const { Title, Text } = Typography
 

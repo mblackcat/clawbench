@@ -9,9 +9,7 @@ import { useNavigate } from 'react-router-dom'
 import { useT } from '../i18n'
 import { renderAIToolTagLabel, AI_TOOL_SHORT_NAMES } from '../pages/AICoding/aiToolMeta'
 import type { DetectedCLI, AIToolType } from '../types/ai-coding'
-
-// Module-level cache (same pattern as AICodingNewSessionDialog)
-let _toolsCache: DetectedCLI[] | null = null
+import { toolsCache, setToolsCache } from '../utils/coding-tools-cache'
 
 function normalizePath(p: string): string {
   return p.replace(/\\/g, '/').replace(/\/$/, '')
@@ -27,21 +25,21 @@ const AICodeButton: React.FC<AICodeButtonProps> = ({ appId }) => {
   const { token } = theme.useToken()
   const { message } = App.useApp()
 
-  const [tools, setTools] = useState<DetectedCLI[]>(_toolsCache ?? [])
+  const [tools, setTools] = useState<DetectedCLI[]>(toolsCache ?? [])
   const [loading, setLoading] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const mountedRef = useRef(true)
 
   // Lazy-load tools on first dropdown open
   const ensureTools = useCallback(async () => {
-    if (_toolsCache !== null) {
-      setTools(_toolsCache)
+    if (toolsCache !== null) {
+      setTools(toolsCache)
       return
     }
     try {
       const detected = await window.api.aiCoding.detectTools()
       const coding = detected.filter((c: DetectedCLI) => c.toolType !== 'terminal')
-      _toolsCache = coding
+      setToolsCache(coding)
       if (mountedRef.current) setTools(coding)
     } catch {
       // keep empty
@@ -144,7 +142,7 @@ const AICodeButton: React.FC<AICodeButtonProps> = ({ appId }) => {
   }
 
   // No tools installed → disabled button with tooltip
-  if (installedTools.length === 0 && _toolsCache !== null) {
+  if (installedTools.length === 0 && toolsCache !== null) {
     return (
       <Tooltip title={t('workbench.noAIToolDetected')}>
         <div style={{ ...buttonStyle, opacity: 0.4, cursor: 'not-allowed' }}>
