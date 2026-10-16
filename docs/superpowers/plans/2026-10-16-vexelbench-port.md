@@ -55,3 +55,15 @@ A15 PTY 分块缓冲、A16 本地终端 shell、A17 高度统一、A18 Windows P
 
 ### V5 — 外壳 / UI / 主题 / 动效 / 登录
 A21–A29（登录跳转、飞书登录加固 renderer 部分 + LoginPage 等待态、apiClient 超时、repoUrl null、设置页关闭、拖拽区、更新入口、module-visibility、role/useIsAdmin）、B20 动效层（`cb-motion`）、B21 天气 store（保留自动天气）、C1、C2、C3（useTaskStore 的 errorAlert 部分）、C7 设置页项目卡片 + TopBar IP 显示（IPC 由 V4 提供，接口名 `system.getLocalIp`）、C9（按决策）、侧栏图标与左上角角标（token 化颜色）。
+
+## 归属调整与协作约定（Phase 1 开始前定稿）
+
+- **C5（更新器 + 本地模式默认）、A22 全部（auth.service + auth.ipc + preload + LoginPage）、C7 全部（system.service/ipc + preload `system.getLocalIp` + TopBar + 设置页项目卡片）→ V5**（不再归 V4）。
+- **im/marketplace 中 `resolvePythonCommand(app.path)`、internal-tools 的 Python 解析 → V2。**
+- **pty-manager.service.ts**：V4 负责分块缓冲 / shell 解析 / 进程树 / killAll；V3 只追加提醒用的"输出稳定检测"（`touchPtyActivity` 及其回调），改动保持局部。
+- **ai-coding.service.ts**：V3 负责 order/pinned/closeAll 等；V4 只追加 C4 需要的 `ensureGroupByName` / `ensureWorkspaceForWorkingDirInGroup` / `execTarget`。
+- **CodingTerminalView.tsx 和 preload `onPtyData`：仅 V4。** V3 不改。
+- **useTaskStore.ts**：V2 改 startTask / disabled / cancelled；V5 只追加 errorAlert 段。
+- **SettingsPage.tsx**：V4 只改 Python/IDE/终端路径区（B15）；V5 改其余。
+- 共享文件（`preload/api.ts`、`renderer/src/types/ipc.ts`、`i18n/index.ts`、`main/index.ts`、`main/ipc/index.ts`、`package.json`、`settings.store.ts`）：**只做局部追加**，不重排、不格式化无关代码；i18n 新 key 按功能成块追加到 zh-CN 和 en 各自末尾附近，便于合并。
+- Phase 0 已提供的模块（直接 import，勿重复实现）：`main/utils/{windows-env,process-tree,ipc-validation,paths}`、`main/services/{python-detect,python-venv,terminal-detect,ide-detect}.service`、renderer `utils/{unified-diff,terminal-theme,app-identity,coding-tools-cache}`。`ipc-validation` 的 `validateToolType` 用 `satisfies Record<AIToolType,true>`，扩展 `AIToolType`（V3 加 agy/omp）时须同步。
