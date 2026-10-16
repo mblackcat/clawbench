@@ -717,6 +717,19 @@ export function closeSDKSession(sessionId: string): void {
   if (onClose) onClose(sessionId)
 }
 
+/** Close every live SDK session (app shutdown). */
+export function closeAllSDKSessions(): void {
+  const ids = Array.from(sdkSessions.keys())
+  for (const id of ids) {
+    try {
+      closeSDKSession(id)
+    } catch {
+      /* keep going — shutdown must not be blocked by one bad session */
+    }
+  }
+  if (ids.length > 0) logger.info(`[sdk] Closed ${ids.length} session(s) on shutdown`)
+}
+
 /** Get the ring buffer content (for IM cards). */
 export function getSDKSessionOutput(sessionId: string): string {
   return outputBuffers.get(sessionId) ?? ''

@@ -4,6 +4,7 @@ import * as readline from 'readline'
 import * as path from 'path'
 import * as fs from 'fs'
 import * as logger from '../utils/logger'
+import { killProcessTree } from '../utils/process-tree'
 import { scanAndMergeInstructions } from './coding-adapters/instructions'
 
 // Canonical Codex permission modes (new native vocabulary). The renderer sends
@@ -679,6 +680,22 @@ export function closeCodexSession(sessionId: string): void {
   try { state.rl.close() } catch { /* ignore */ }
   try { state.process.stdin.end() } catch { /* ignore */ }
   try { state.process.kill('SIGTERM') } catch { /* ignore */ }
+  // app-server spawns its own children (MCP servers etc.); SIGTERM to the
+  // parent does not reach them, and on Windows not even the parent reliably.
+  killProcessTree(state.process.pid)
+}
+
+/** Close every live Codex session (app shutdown). */
+export function closeAllCodexSessions(): void {
+  const ids = Array.from(codexSessions.keys())
+  for (const id of ids) {
+    try {
+      closeCodexSession(id)
+    } catch {
+      /* keep going — shutdown must not be blocked by one bad session */
+    }
+  }
+  if (ids.length > 0) logger.info(`[codex] Closed ${ids.length} session(s) on shutdown`)
 }
 
 export function hasCodexSession(sessionId: string): boolean {
