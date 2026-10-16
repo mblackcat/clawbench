@@ -105,6 +105,7 @@ function start() {
     if [ $? -eq 0 ]; then
         log "Service started successfully."
         $PM2_CMD save
+        run_flush_builtin
     else
         log "Failed to start service."
         exit 1
@@ -151,6 +152,7 @@ function restart() {
         if [ $? -eq 0 ]; then
             $PM2_CMD save
             log "Service force-restarted."
+            run_flush_builtin
         else
             log "Failed to force-restart service."
             exit 1
@@ -167,6 +169,7 @@ function restart() {
         $PM2_CMD start ecosystem.config.js --env production
     fi
     log "Service restarted."
+    run_flush_builtin
 }
 
 function rebuild_admin() {
@@ -200,6 +203,56 @@ function rebuild_admin() {
     log "Admin panel build complete. (dist → admin-panel/dist/)"
 }
 
+function run_flush_builtin() {
+    # Non-fatal: push newer frontend/builtin-apps versions into common_apps archives.
+    # No-op when frontend/builtin-apps is missing/empty or no builtin is registered.
+    if [ ! -f "dist/scripts/flush-builtin-apps.js" ]; then
+        log "flush-builtin script not built, skipping."
+        return
+    fi
+    log "Flushing builtin apps from repo into common_apps..."
+    node dist/scripts/flush-builtin-apps.js
+    if [ $? -ne 0 ]; then
+        log "Warning: flush-builtin finished with errors, check logs above."
+    fi
+}
+
+function flush_builtin() {
+    # Compare frontend/builtin-apps against common_apps and publish newer versions
+    # (pack + upload archive + bump version) so installed clients can update.
+    log "Building project (ensuring dist/ is up to date)..."
+    npm run build
+    if [ $? -ne 0 ]; then
+        log "Build failed. Aborting flush-builtin."
+        exit 1
+    fi
+
+    log "Flushing builtin apps from repo into common_apps..."
+    node dist/scripts/flush-builtin-apps.js
+    if [ $? -ne 0 ]; then
+        log "flush-builtin finished with errors, check logs above."
+        exit 1
+    fi
+    log "flush-builtin completed."
+}
+
+function migrate_app_ids() {
+    log "Building project (ensuring dist/ is up to date)..."
+    npm run build
+    if [ $? -ne 0 ]; then
+        log "Build failed. Aborting migration."
+        exit 1
+    fi
+
+    if [ "$1" == "--apply" ] || [ "$1" == "-apply" ]; then
+        log "Executing application ID migration (--apply)..."
+        node dist/scripts/migrate-application-ids.js --apply
+    else
+        log "Running application ID migration preview (dry-run)..."
+        node dist/scripts/migrate-application-ids.js
+    fi
+}
+
 function status() {
     $PM2_CMD status
     # Also show logs tail
@@ -229,8 +282,14 @@ case "$1" in
     -rebuild)
         rebuild_admin
         ;;
+    -flush-builtin)
+        flush_builtin
+        ;;
+    -migrate-app-ids)
+        migrate_app_ids "$2"
+        ;;
     *)
-        echo "Usage: $0 {-init|-dev|-start|-restart [-f]|-stop|-status|-rebuild}"
+        echo "Usage: $0 {-init|-dev|-start|-restart [-f]|-stop|-status|-rebuild|-flush-builtin|-migrate-app-ids [--apply]}"
         echo "  -init       : Install dependencies and setup .env"
         echo "  -dev        : Start local debug server (npm run dev)"
         echo "  -start      : Build and start production server (PM2 Cluster Mode)"
@@ -239,6 +298,9 @@ case "$1" in
         echo "  -stop       : Stop production server"
         echo "  -status     : Check PM2 status"
         echo "  -rebuild    : Rebuild admin web panel (admin-panel/dist/)"
+        echo "  -flush-builtin : Publish newer frontend/builtin-apps versions as common-app archives"
+        echo "                   (also runs non-fatally after -start / -restart)"
+        echo "  -migrate-app-ids [--apply] : Migrate applications.application_id to manifest.id (default: dry-run)"
         exit 1
         ;;
 esac
