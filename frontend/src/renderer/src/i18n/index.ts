@@ -2314,6 +2314,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'appPublisher.builtinPublishSuccess': '内置应用「{0}」v{1} 已覆盖发布到服务端',
     'appPublisher.builtinBadge': '内置',
     'workbench.noDesc': '暂无描述',
+    'nav.folderTooltip': '{0} 个链接',
+    'project.switched': '已切换项目',
+    'project.switchFailed': '切换项目失败',
   },
   'en': {
     // Sidebar menu
@@ -4711,6 +4714,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'appPublisher.builtinPublishSuccess': 'Builtin app "{0}" v{1} was published to the server',
     'appPublisher.builtinBadge': 'Builtin',
     'workbench.noDesc': 'No description',
+    'nav.folderTooltip': '{0} links',
+    'project.switched': 'Project switched',
+    'project.switchFailed': 'Failed to switch project',
   }
 }
 

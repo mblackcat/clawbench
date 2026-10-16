@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { Button, Dropdown, Space, Tag } from 'antd'
+import { Button, Dropdown, Space, Tag, App } from 'antd'
 import { ProjectOutlined, CheckOutlined } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useAuthStore } from '../stores/useAuthStore'
+import { useProjectNavStore } from '../stores/useProjectNavStore'
 import { apiClient } from '../services/apiClient'
 import type { Project } from '../types/api'
 import { useT } from '../i18n'
@@ -11,12 +12,15 @@ import { useT } from '../i18n'
 /** Server-side project switcher — mirrors WorkspaceSwitcher's trigger/dropdown shape. */
 const ProjectSwitcher: React.FC = () => {
   const t = useT()
+  const { message } = App.useApp()
   const isLocalMode = useAuthStore((state) => state.isLocalMode)
   const activeProject = useSettingsStore((state) => state.activeProject)
   const setActiveProject = useSettingsStore((state) => state.setActiveProject)
+  const fetchNav = useProjectNavStore((state) => state.fetchNav)
 
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(false)
+  const [switching, setSwitching] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
 
   const fetchProjects = useCallback(async () => {
@@ -37,20 +41,48 @@ const ProjectSwitcher: React.FC = () => {
   }, [fetchProjects])
 
   const handleSwitch = useCallback(
-    (project: Project) => {
+    async (project: Project) => {
       setDropdownOpen(false)
-      if (project.projectId === activeProject?.projectId) return
-      void setActiveProject({
-        projectId: project.projectId,
-        name: project.name,
-        vcsType: project.vcsType,
-        repoUrl: project.repoUrl ?? undefined
-      })
-      apiClient.joinProject(project.projectId).catch(() => {
-        // Non-fatal: membership can be granted later by an admin
-      })
+      if (project.projectId === activeProject?.projectId || switching) return
+      setSwitching(true)
+      try {
+        await setActiveProject({
+          projectId: project.projectId,
+          name: project.name,
+          vcsType: project.vcsType,
+          // API may return null; store normalizes before electron-store write
+          repoUrl: project.repoUrl ?? undefined
+        })
+        apiClient.joinProject(project.projectId).catch(() => {
+          // Non-fatal: membership can be granted later by an admin
+        })
+        // Refresh project-scoped UI (nav bookmarks, etc.)
+        void fetchNav()
+        message.success(t('project.switched'))
+      } catch {
+        message.error(t('project.switchFailed'))
+      } finally {
+        setSwitching(false)
+      }
     },
-    [activeProject, setActiveProject]
+    [activeProject, setActiveProject, fetchNav, message, t, switching]
+  )
+
+  const handleMenuClick = useCallback<NonNullable<MenuProps['onClick']>>(
+    ({ key }) => {
+      if (key === '__empty__') return
+      const project = projects.find((p) => p.projectId === key)
+      if (project) void handleSwitch(project)
+    },
+    [projects, handleSwitch]
+  )
+
+  const handleOpenChange = useCallback(
+    (open: boolean) => {
+      setDropdownOpen(open)
+      if (open) void fetchProjects()
+    },
+    [fetchProjects]
   )
 
   if (isLocalMode) return null
@@ -81,21 +113,20 @@ const ProjectSwitcher: React.FC = () => {
                 <CheckOutlined style={{ fontSize: 12 }} />
               )}
             </div>
-          ),
-          onClick: () => handleSwitch(project)
+          )
         }))
       : [{ key: '__empty__', label: t('project.empty'), disabled: true }]
 
   return (
     <Dropdown
-      menu={{ items: menuItems }}
+      menu={{ items: menuItems, onClick: handleMenuClick }}
       trigger={['click']}
       open={dropdownOpen}
-      onOpenChange={setDropdownOpen}
+      onOpenChange={handleOpenChange}
     >
       <Button
         type="text"
-        loading={loading && projects.length === 0}
+        loading={(loading && projects.length === 0) || switching}
         title={activeProject?.name || t('project.select')}
         style={{
           height: 26,
