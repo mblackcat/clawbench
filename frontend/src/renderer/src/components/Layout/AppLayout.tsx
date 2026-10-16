@@ -9,6 +9,7 @@ import ErrorLogDrawer from '../ErrorLogDrawer'
 import OutputPanel from '../OutputPanel'
 import SubAppDialog from '../SubAppDialog'
 import WeatherEffect, { useWeatherEffect } from '../WeatherEffect'
+import { useAutoWeather } from '../../stores/useWeatherStore'
 import AttentionManager from '../AttentionManager'
 import { useTaskStore } from '../../stores/useTaskStore'
 import { useSubAppExecution } from '../../hooks/useSubAppExecution'
@@ -36,6 +37,8 @@ const AppLayout: React.FC = () => {
   const showSider = shouldShowLeftSider(appMode)
   const { token } = antTheme.useToken()
   const { weatherType, weatherVisible, toggleWeather, cycleWeather } = useWeatherEffect()
+  // Hourly auto weather (50% chance, 5–15 min) — scheduled once for the shell
+  useAutoWeather()
   const t = useT()
 
   // 初始化 subapp 执行监听

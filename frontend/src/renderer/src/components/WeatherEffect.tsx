@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useCallback, useState } from 'react'
+import React, { useEffect, useRef, useCallback } from 'react'
 import { useLocation } from 'react-router-dom'
+import { useWeatherStore } from '../stores/useWeatherStore'
 
 export type WeatherType = 'snow' | 'rain' | 'leaves' | 'fireworks' | 'sakura' | 'meteor' | 'lantern'
 
@@ -32,12 +33,6 @@ const WEATHER_CONFIG = {
   sakura: { count: 45, color: '#ffb7c5' },
   meteor: { count: 8, color: '#e0e8ff' },
   lantern: { count: 15, color: '#ffaa33' }
-}
-
-const WEATHER_TYPES: WeatherType[] = ['snow', 'rain', 'leaves', 'fireworks', 'sakura', 'meteor', 'lantern']
-
-function pickRandom(): WeatherType {
-  return WEATHER_TYPES[Math.floor(Math.random() * WEATHER_TYPES.length)]
 }
 
 function createParticle(w: number, h: number, type: WeatherType, scatter = false): Particle {
@@ -453,11 +448,17 @@ function updateParticle(p: Particle, type: WeatherType, time: number, particles?
 }
 
 interface WeatherEffectProps {
-  type: WeatherType
-  visible: boolean
+  /** Defaults to useWeatherStore.weatherType */
+  type?: WeatherType
+  /** Defaults to useWeatherStore.weatherVisible */
+  visible?: boolean
 }
 
-const WeatherEffect: React.FC<WeatherEffectProps> = ({ type, visible }) => {
+const WeatherEffect: React.FC<WeatherEffectProps> = ({ type: propType, visible: propVisible }) => {
+  const storeType = useWeatherStore((s) => s.weatherType)
+  const storeVisible = useWeatherStore((s) => s.weatherVisible)
+  const type = propType ?? storeType
+  const visible = propVisible ?? storeVisible
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const particlesRef = useRef<Particle[]>([])
   const animRef = useRef<number>(0)
@@ -606,101 +607,18 @@ const WeatherEffect: React.FC<WeatherEffectProps> = ({ type, visible }) => {
   )
 }
 
-// Hook for managing weather state
+// Hook for managing weather state (backed by useWeatherStore; auto weather
+// is scheduled once by useAutoWeather() in AppLayout)
 export function useWeatherEffect(): {
   weatherType: WeatherType
   weatherVisible: boolean
   toggleWeather: () => void
   cycleWeather: () => void
 } {
-  const [weatherVisible, setWeatherVisible] = useState(() => {
-    try {
-      return localStorage.getItem('cb-weather-visible') === 'true'
-    } catch {
-      return false
-    }
-  })
-  const [weatherType, setWeatherType] = useState<WeatherType>(() => {
-    try {
-      const saved = localStorage.getItem('cb-weather-type') as WeatherType
-      return WEATHER_TYPES.includes(saved) ? saved : pickRandom()
-    } catch {
-      return pickRandom()
-    }
-  })
-
-  // Hourly random weather: 50% chance to show, random type
-  useEffect(() => {
-    const tryRandomWeather = (): void => {
-      // Only trigger if user hasn't manually turned it on
-      const manuallyOn = localStorage.getItem('cb-weather-manual') === 'true'
-      if (manuallyOn) return
-
-      if (Math.random() < 0.5) {
-        const t = pickRandom()
-        setWeatherType(t)
-        setWeatherVisible(true)
-        localStorage.setItem('cb-weather-type', t)
-        localStorage.setItem('cb-weather-visible', 'true')
-        localStorage.setItem('cb-weather-auto', 'true')
-
-        // Auto-dismiss after 5–15 minutes
-        const duration = (5 + Math.random() * 10) * 60 * 1000
-        setTimeout(() => {
-          // Only auto-dismiss if it's still the auto-triggered one
-          if (localStorage.getItem('cb-weather-auto') === 'true') {
-            setWeatherVisible(false)
-            localStorage.setItem('cb-weather-visible', 'false')
-            localStorage.removeItem('cb-weather-auto')
-          }
-        }, duration)
-      } else {
-        // 50% chance → no weather
-        if (localStorage.getItem('cb-weather-auto') === 'true') {
-          setWeatherVisible(false)
-          localStorage.setItem('cb-weather-visible', 'false')
-          localStorage.removeItem('cb-weather-auto')
-        }
-      }
-    }
-
-    // Run once on mount after a short delay, then every hour
-    const initialTimer = setTimeout(tryRandomWeather, 3000)
-    const interval = setInterval(tryRandomWeather, 60 * 60 * 1000)
-
-    return () => {
-      clearTimeout(initialTimer)
-      clearInterval(interval)
-    }
-  }, [])
-
-  const toggleWeather = useCallback(() => {
-    setWeatherVisible((prev) => {
-      const next = !prev
-      if (next) {
-        const t = pickRandom()
-        setWeatherType(t)
-        localStorage.setItem('cb-weather-type', t)
-        localStorage.setItem('cb-weather-manual', 'true')
-        localStorage.removeItem('cb-weather-auto')
-      } else {
-        localStorage.removeItem('cb-weather-manual')
-        localStorage.removeItem('cb-weather-auto')
-      }
-      localStorage.setItem('cb-weather-visible', String(next))
-      return next
-    })
-  }, [])
-
-  const cycleWeather = useCallback(() => {
-    setWeatherType((prev) => {
-      const idx = WEATHER_TYPES.indexOf(prev)
-      const next = WEATHER_TYPES[(idx + 1) % WEATHER_TYPES.length]
-      localStorage.setItem('cb-weather-type', next)
-      return next
-    })
-  }, [])
-
+  const weatherType = useWeatherStore((s) => s.weatherType)
+  const weatherVisible = useWeatherStore((s) => s.weatherVisible)
+  const toggleWeather = useWeatherStore((s) => s.toggleWeather)
+  const cycleWeather = useWeatherStore((s) => s.cycleWeather)
   return { weatherType, weatherVisible, toggleWeather, cycleWeather }
 }
 
