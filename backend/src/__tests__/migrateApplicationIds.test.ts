@@ -9,7 +9,7 @@ import { createUser } from '../repositories/userRepository';
 import { createApplication } from '../repositories/applicationRepository';
 import { createApplicationVersion } from '../repositories/applicationVersionRepository';
 import { createExecutionError } from '../repositories/applicationExecutionErrorRepository';
-import { runMigration } from '../scripts/migrate-application-ids';
+import { runMigration, buildApplicationCopyInsert } from '../scripts/migrate-application-ids';
 import { config } from '../config';
 
 describe('Application ID Migration Script', () => {
@@ -141,11 +141,23 @@ describe('Application ID Migration Script', () => {
       message: 'Test error',
     });
 
+    const beforeRow = await database.get<Record<string, unknown>>(
+      'SELECT * FROM applications WHERE application_id = ?',
+      [app.applicationId]
+    );
+
     // Run real migration
     const result = await runMigration({ apply: true });
 
     expect(result.migrated).toBe(1);
     expect(result.plans[0].newId).toBe('cb.bob.log-parser');
+
+    // Every column (not just a hardcoded list) is carried over unchanged
+    const afterRow = await database.get<Record<string, unknown>>(
+      'SELECT * FROM applications WHERE application_id = ?',
+      ['cb.bob.log-parser']
+    );
+    expect({ ...afterRow, application_id: undefined }).toEqual({ ...beforeRow, application_id: undefined });
 
     // 1. applications table should have new ID, old ID should be gone
     const oldAppRow = await database.get(
@@ -179,6 +191,16 @@ describe('Application ID Migration Script', () => {
     // 4. File directory should be renamed
     const newDir = path.join(testStorageDir, 'cb.bob.log-parser');
     expect(fs.existsSync(newDir)).toBe(true);
+  });
+
+  it('buildApplicationCopyInsert copies every column and rejects unsafe names', () => {
+    const { sql, params } = buildApplicationCopyInsert(
+      { application_id: 'old', name: 'n', some_new_column: 7 },
+      'new-id'
+    );
+    expect(sql).toBe('INSERT INTO applications (application_id, name, some_new_column) VALUES (?, ?, ?)');
+    expect(params).toEqual(['new-id', 'n', 7]);
+    expect(() => buildApplicationCopyInsert({ application_id: 'x', 'bad;col': 1 }, 'y')).toThrow();
   });
 
   it('should handle collision by appending suffix numbers', async () => {
