@@ -144,7 +144,7 @@ function createWindow(): BrowserWindow {
     show: false,
     autoHideMenuBar: true,
     // 根据用户主题设置窗口底色，避免路由切换白屏闪烁
-    backgroundColor: savedTheme === 'light' ? '#F5F6F8' : '#17171A',
+    backgroundColor: savedTheme === 'dark' || savedTheme.startsWith('dark-') ? '#17171A' : '#F5F6F8',
     // macOS: 隐藏标题栏但保留红绿灯按钮（内嵌到内容区）
     ...(isMac ? { titleBarStyle: 'hiddenInset' } : {}),
     // Windows: 完全无框，自定义窗口控制按钮

@@ -73,6 +73,18 @@ export function isGeneralModePath(pathname: string): boolean {
   )
 }
 
+/**
+ * Switching into 研发 (pro) mode turns on the core dev modules (AI Coding +
+ * Local Env) so the sider isn't missing them. Returns the same object when
+ * nothing changes (callers can skip persisting). Other modules are untouched.
+ */
+export function withProModulesEnabled<T extends { aiCoding: boolean; localEnv: boolean }>(
+  visibility: T
+): T {
+  if (visibility.aiCoding && visibility.localEnv) return visibility
+  return { ...visibility, aiCoding: true, localEnv: true }
+}
+
 export function generalModeFallbackPath(): string {
   return '/workbench/installed'
 }

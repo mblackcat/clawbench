@@ -6,6 +6,8 @@ export interface User {
   email?: string
   feishuId?: string
   feishu_id?: string
+  /** Global role (`users.role`): 'admin' | 'user' */
+  role?: 'admin' | 'user'
 }
 
 export interface AuthStatus {

@@ -8,6 +8,7 @@ import { useSettingsStore } from '../../stores/useSettingsStore'
 import { useChatStore } from '../../stores/useChatStore'
 import { useScheduledTaskStore } from '../../stores/useScheduledTaskStore'
 import './chat-styles.css'
+import { getBaseTheme } from '../../theme'
 
 const AIChatPage: React.FC = () => {
   const { fetchBuiltinModels, fetchLocalModels, initializeSelectedModel } = useAIModelStore()
@@ -60,7 +61,7 @@ const AIChatPage: React.FC = () => {
   const showWelcome = conversationsLoaded && !activeConversationId && messages.length === 0 && !hasHistory
 
   return (
-    <div data-theme={theme} style={{ display: 'flex', flex: 1, minHeight: 0, minWidth: 0, width: '100%', height: '100%', overflow: 'hidden' }}>
+    <div data-theme={getBaseTheme(theme)} style={{ display: 'flex', flex: 1, minHeight: 0, minWidth: 0, width: '100%', height: '100%', overflow: 'hidden' }}>
       {showWelcome && mainView !== 'task' ? (
         <WelcomeChatView />
       ) : (

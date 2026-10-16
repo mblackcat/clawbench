@@ -1,6 +1,10 @@
 import { create } from 'zustand'
 import type { TaskInfo, TaskStatus, SubAppOutput } from '../types/subapp'
 
+/** How long the transient error alert (avatar ring pulse) stays visible. */
+export const ERROR_ALERT_DURATION_MS = 6000
+let errorAlertTimer: ReturnType<typeof setTimeout> | null = null
+
 export interface SystemLogEntry {
   level: string
   message: string
@@ -27,6 +31,17 @@ interface TaskState {
   addSystemLog: (entry: SystemLogEntry) => void
   clearSystemLogs: () => void
   markErrorsSeen: () => void
+
+  // ---- Transient error alert (avatar ring) + unread system logs ----
+  /** True for ERROR_ALERT_DURATION_MS after the latest task error */
+  hasErrorAlert: boolean
+  /** Summary of the latest error (tooltip text); null when none */
+  errorAlertSummary: string | null
+  /** True when system logs arrived since the log panel was last viewed */
+  hasUnreadLogs: boolean
+  triggerErrorAlert: (summary?: string) => void
+  dismissErrorAlert: () => void
+  markLogsRead: () => void
 }
 
 export const useTaskStore = create<TaskState>((set, get) => ({
@@ -34,6 +49,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   activeTaskId: null,
   systemLogs: [],
   hasUnseenErrors: false,
+  hasErrorAlert: false,
+  errorAlertSummary: null,
+  hasUnreadLogs: false,
 
   startTask: (taskId: string, appId: string, appName: string, opts?: { scheduled?: boolean }) => {
     const task: TaskInfo = {
@@ -66,6 +84,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         hasUnseenErrors: output.type === 'error' ? true : state.hasUnseenErrors
       }
     })
+    if (output.type === 'error' && get().tasks[taskId]) {
+      get().triggerErrorAlert(output.message)
+    }
   },
 
   updateProgress: (taskId: string, percent: number) => {
@@ -105,6 +126,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         hasUnseenErrors: status === 'failed' ? true : state.hasUnseenErrors
       }
     })
+    if (status === 'failed' && get().tasks[taskId]) {
+      get().triggerErrorAlert(result?.summary)
+    }
   },
 
   setActiveTask: (taskId: string | null) => {
@@ -116,6 +140,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   clearCompleted: () => {
+    get().dismissErrorAlert()
     set((state) => {
       const tasks: Record<string, TaskInfo> = {}
       for (const [id, task] of Object.entries(state.tasks)) {
@@ -131,15 +156,44 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   addSystemLog: (entry: SystemLogEntry) => {
     set((state) => ({
-      systemLogs: [...state.systemLogs.slice(-499), entry]
+      systemLogs: [...state.systemLogs.slice(-499), entry],
+      hasUnreadLogs: true
     }))
   },
 
   clearSystemLogs: () => {
-    set({ systemLogs: [] })
+    set({ systemLogs: [], hasUnreadLogs: false })
   },
 
   markErrorsSeen: () => {
     set({ hasUnseenErrors: false })
+  },
+
+  // ---- Transient error alert (avatar ring) + unread system logs ----
+  triggerErrorAlert: (summary?: string) => {
+    if (errorAlertTimer) {
+      clearTimeout(errorAlertTimer)
+      errorAlertTimer = null
+    }
+    set({
+      hasErrorAlert: true,
+      errorAlertSummary: summary || get().errorAlertSummary || null
+    })
+    errorAlertTimer = setTimeout(() => {
+      errorAlertTimer = null
+      set({ hasErrorAlert: false, errorAlertSummary: null })
+    }, ERROR_ALERT_DURATION_MS)
+  },
+
+  dismissErrorAlert: () => {
+    if (errorAlertTimer) {
+      clearTimeout(errorAlertTimer)
+      errorAlertTimer = null
+    }
+    set({ hasErrorAlert: false, errorAlertSummary: null })
+  },
+
+  markLogsRead: () => {
+    set({ hasUnreadLogs: false })
   }
 }))

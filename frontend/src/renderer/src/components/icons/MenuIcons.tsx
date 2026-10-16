@@ -84,6 +84,51 @@ const CopiperSvg = () => (
   </svg>
 )
 
+// ── AI Terminal: CLI window with shell prompt & cursor ──
+const AITerminalSvg = () => (
+  <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="2.5" y="3.25" width="19" height="17.5" rx="2.75" stroke="currentColor" strokeWidth="1.75" />
+    <path d="M2.5 8.25h19" stroke="currentColor" strokeWidth="1.5" />
+    <circle cx="5.5" cy="5.75" r="0.85" fill="currentColor" />
+    <circle cx="8.25" cy="5.75" r="0.85" fill="currentColor" />
+    <path
+      d="M6.5 12.25l3 2.5-3 2.5"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path d="M12 17.25h4.5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+  </svg>
+)
+
+// ── Local Env: developer workstation monitor with stand and prompt ──
+const LocalEnvSvg = () => (
+  <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="2.5" y="3.25" width="19" height="13.5" rx="2.5" stroke="currentColor" strokeWidth="1.75" />
+    <path d="M12 16.75v3.75" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+    <path d="M7.5 20.5h9" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+    <path
+      d="M6.5 8l2.25 2-2.25 2"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path d="M11.5 12h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+)
+
+// ── Logs: structured document with lines ──
+const LogsSvg = () => (
+  <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="4" y="3" width="16" height="18" rx="2.5" stroke="currentColor" strokeWidth="1.75" />
+    <path d="M8 8h8" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+    <path d="M8 12h8" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+    <path d="M8 16h5.5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+  </svg>
+)
+
 type MenuIconProps = Partial<CustomIconComponentProps>
 
 export const WorkbenchIcon = (props: MenuIconProps) => (
@@ -100,4 +145,16 @@ export const AICodingIcon = (props: MenuIconProps) => (
 
 export const CopiperIcon = (props: MenuIconProps) => (
   <Icon component={CopiperSvg} {...props} />
+)
+
+export const AITerminalIcon = (props: MenuIconProps) => (
+  <Icon component={AITerminalSvg} {...props} />
+)
+
+export const LocalEnvIcon = (props: MenuIconProps) => (
+  <Icon component={LocalEnvSvg} {...props} />
+)
+
+export const LogsIcon = (props: MenuIconProps) => (
+  <Icon component={LogsSvg} {...props} />
 )

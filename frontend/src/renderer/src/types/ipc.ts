@@ -129,6 +129,12 @@ export interface ClawBenchAPI {
   auth: {
     getStatus: () => Promise<import('./auth').AuthStatus & { token?: string }>
     startLogin: () => Promise<import('./auth').AuthStatus & { token?: string }>
+    /** Cancel an in-flight Feishu OAuth wait (no-op when none pending) */
+    cancelLogin: () => Promise<void>
+    /** Backend Feishu OAuth entry URL (for "copy link" fallback) */
+    getAuthUrl: () => Promise<string>
+    /** Open the OAuth page in an embedded modal window that intercepts the callback */
+    openModalLogin: () => Promise<void>
     logout: () => Promise<void>
     onStatusChanged: (
       callback: (status: import('./auth').AuthStatus) => void
@@ -920,6 +926,8 @@ export interface ClawBenchAPI {
     isMaximized: () => Promise<boolean>
   }
   system: {
+    /** Best-guess LAN IPv4 of this machine (physical NIC preferred; 127.0.0.1 fallback) */
+    getLocalIp: () => Promise<string>
     onLog: (callback: (data: { level: string; message: string; timestamp: number }) => void) => () => void
   }
   platform: string

@@ -39,8 +39,10 @@ export function initAutoUpdater(): void {
 
   try {
     autoUpdater.setFeedURL({ provider: 'generic', url: UPDATE_URL })
+    // Auto-download when an update is found; install only when the user clicks
+    // "Install" (avatar menu / Settings / TopBar), not silently on quit.
     autoUpdater.autoDownload = true
-    autoUpdater.autoInstallOnAppQuit = true
+    autoUpdater.autoInstallOnAppQuit = false
     autoUpdater.allowDowngrade = false
     // Wire electron-updater's internal logger to ours for diagnostics
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

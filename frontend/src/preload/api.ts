@@ -65,6 +65,9 @@ export const api = {
   auth: {
     getStatus: () => ipcRenderer.invoke('auth:get-status'),
     startLogin: () => ipcRenderer.invoke('auth:start-login'),
+    cancelLogin: () => ipcRenderer.invoke('auth:cancel-login'),
+    getAuthUrl: () => ipcRenderer.invoke('auth:get-auth-url'),
+    openModalLogin: () => ipcRenderer.invoke('auth:open-modal-login'),
     logout: () => ipcRenderer.invoke('auth:logout'),
     onStatusChanged: (callback: (status: unknown) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, status: unknown) => callback(status)
@@ -907,6 +910,7 @@ export const api = {
   },
 
   system: {
+    getLocalIp: () => ipcRenderer.invoke('system:get-local-ip') as Promise<string>,
     onLog: (callback: (data: { level: string; message: string; timestamp: number }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
       ipcRenderer.on('system:log', handler)

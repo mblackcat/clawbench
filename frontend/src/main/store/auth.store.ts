@@ -8,6 +8,8 @@ export interface User {
   avatarUrl: string
   email: string
   feishuId: string
+  /** Global role from backend (`users.role`); absent for legacy cached users. */
+  role?: 'admin' | 'user'
 }
 
 interface AuthSchema {

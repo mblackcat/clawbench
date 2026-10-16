@@ -1,10 +1,18 @@
-import React, { useState, useEffect } from 'react'
-import { App, Button, Input, Typography, Divider, theme } from 'antd'
-import { UserOutlined, LockOutlined } from '@ant-design/icons'
+import React, { useState, useEffect, useCallback } from 'react'
+import { App, Button, Input, Typography, Divider, theme, Space } from 'antd'
+import {
+  UserOutlined,
+  LockOutlined,
+  MinusOutlined,
+  CloseOutlined,
+  BorderOutlined,
+  BlockOutlined
+} from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { localStorageManager } from '../../services/localStorageManager'
 import { useT } from '../../i18n'
+import appIcon from '../../../../../resources/icon.svg'
 
 const { Title, Text } = Typography
 
@@ -14,8 +22,10 @@ const LoginPage: React.FC = () => {
   const t = useT()
   const loggedIn = useAuthStore((state) => state.loggedIn)
   const loading = useAuthStore((state) => state.loading)
+  const feishuWaiting = useAuthStore((state) => state.feishuWaiting)
   const error = useAuthStore((state) => state.error)
   const loginWithFeishu = useAuthStore((state) => state.loginWithFeishu)
+  const cancelFeishuLogin = useAuthStore((state) => state.cancelFeishuLogin)
   const loginWithPassword = useAuthStore((state) => state.loginWithPassword)
   const registerAndLogin = useAuthStore((state) => state.registerAndLogin)
   const loginWithLocalMode = useAuthStore((state) => state.loginWithLocalMode)
@@ -26,8 +36,13 @@ const LoginPage: React.FC = () => {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [enableAccountLogin, setEnableAccountLogin] = useState(true)
-  const [enableLocalMode, setEnableLocalMode] = useState(false)
+  // Default ON — env can still force off with VITE_ENABLE_LOCAL_MODE=false
+  const [enableLocalMode, setEnableLocalMode] = useState(true)
+  const [isMaximized, setIsMaximized] = useState(false)
   const { token: themeToken } = theme.useToken()
+
+  const isMac = window.api.platform === 'darwin'
+  const isWin = window.api.platform === 'win32'
 
   // 初始化：读取环境配置 + 恢复本地登录偏好
   useEffect(() => {
@@ -51,8 +66,9 @@ const LoginPage: React.FC = () => {
 
   useEffect(() => {
     if (loggedIn) {
-      const lastRoute = localStorage.getItem('lastRoute') || '/workbench/installed'
-      navigate(lastRoute)
+      // Route through RootRedirect ("/") so it can gate first-time users on
+      // hasCompletedSetup (setup wizard) and resolve lastRoute / app mode.
+      navigate('/', { replace: true })
     }
   }, [loggedIn, navigate])
 
@@ -63,8 +79,46 @@ const LoginPage: React.FC = () => {
     }
   }, [error, clearError])
 
+  // Windows frameless window: the login page has no TopBar, so render controls here
+  useEffect(() => {
+    if (!isWin) return
+    const syncMaximized = async (): Promise<void> => {
+      setIsMaximized(await window.api.windowControl.isMaximized())
+    }
+    syncMaximized()
+    window.addEventListener('resize', syncMaximized)
+    return () => window.removeEventListener('resize', syncMaximized)
+  }, [isWin])
+
+  const handleWindowMinimize = useCallback(() => window.api.windowControl.minimize(), [])
+  const handleWindowMaximize = useCallback(async () => {
+    await window.api.windowControl.maximize()
+    setIsMaximized(await window.api.windowControl.isMaximized())
+  }, [])
+  const handleWindowClose = useCallback(() => window.api.windowControl.close(), [])
+
   const handleFeishuLogin = async (): Promise<void> => {
     await loginWithFeishu()
+  }
+
+  const handleCancelFeishuLogin = async (): Promise<void> => {
+    await cancelFeishuLogin()
+  }
+
+  const handleOpenModalLogin = (): void => {
+    window.api.auth.openModalLogin().catch(() => {
+      message.error(t('login.openInModalFailed'))
+    })
+  }
+
+  const handleCopyAuthUrl = async (): Promise<void> => {
+    try {
+      const url = await window.api.auth.getAuthUrl()
+      await navigator.clipboard.writeText(url)
+      message.success(t('login.copyFeishuUrlSuccess'))
+    } catch {
+      message.error(t('login.copyFeishuUrlFailed'))
+    }
   }
 
   const handlePasswordSubmit = async (): Promise<void> => {
@@ -83,8 +137,70 @@ const LoginPage: React.FC = () => {
     }
   }
 
+  const feishuWaitingPanel = (
+    <div style={{ marginTop: 12, textAlign: 'center' }}>
+      <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+        {t('login.feishuWaitingHint')}
+      </Text>
+      <Space direction="vertical" style={{ width: '100%' }}>
+        <Button block onClick={handleOpenModalLogin}>
+          {t('login.openInModal')}
+        </Button>
+        <Button block onClick={handleCopyAuthUrl}>
+          {t('login.copyFeishuUrl')}
+        </Button>
+        <Button block onClick={handleCancelFeishuLogin}>
+          {t('login.cancelFeishu')}
+        </Button>
+      </Space>
+    </div>
+  )
+
   return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', position: 'relative' }}>
+      {/* Drag strip for the frameless window (login has no TopBar) */}
+      <div
+        className="cb-topbar-drag"
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: isMac ? 72 : 0,
+          right: isWin ? 140 : 0,
+          height: 38,
+          zIndex: 90,
+          WebkitAppRegion: 'drag'
+        } as React.CSSProperties}
+      />
+      {isWin && (
+        <div
+          className="cb-topbar-nodrag"
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            zIndex: 100,
+            display: 'flex',
+            alignItems: 'center',
+            height: 38,
+            WebkitAppRegion: 'no-drag'
+          } as React.CSSProperties}
+        >
+          <button className="cb-win-btn" onClick={handleWindowMinimize} title={t('topbar.minimize')}>
+            <MinusOutlined style={{ fontSize: 12 }} />
+          </button>
+          <button
+            className="cb-win-btn"
+            onClick={handleWindowMaximize}
+            title={isMaximized ? t('topbar.restore') : t('topbar.maximize')}
+          >
+            {isMaximized ? <BlockOutlined style={{ fontSize: 12 }} /> : <BorderOutlined style={{ fontSize: 12 }} />}
+          </button>
+          <button className="cb-win-btn cb-win-btn-close" onClick={handleWindowClose} title={t('topbar.close')}>
+            <CloseOutlined style={{ fontSize: 12 }} />
+          </button>
+        </div>
+      )}
+
       {/* Left half - branding */}
       <div
         style={{
@@ -95,10 +211,23 @@ const LoginPage: React.FC = () => {
           justifyContent: 'center',
           alignItems: 'center',
           padding: 48,
+          // macOS: leave room for traffic lights
+          paddingTop: isMac ? 60 : 48,
         }}
       >
-        <Title level={1} style={{ color: '#fff', marginBottom: 8 }}>
-          ClawBench
+        <img
+          src={appIcon}
+          alt={t('login.brandName')}
+          style={{
+            width: 88,
+            height: 88,
+            marginBottom: 24,
+            borderRadius: 18,
+            boxShadow: themeToken.boxShadowSecondary,
+          }}
+        />
+        <Title level={1} style={{ color: '#fff', marginBottom: 8, marginTop: 0 }}>
+          {t('login.brandName')}
         </Title>
         <Text style={{ color: 'rgba(255, 255, 255, 0.85)', fontSize: 16 }}>
           {t('login.appName')}
@@ -114,9 +243,10 @@ const LoginPage: React.FC = () => {
           justifyContent: 'center',
           alignItems: 'center',
           padding: 48,
+          paddingTop: 60,
         }}
       >
-        <div style={{ width: 320 }}>
+        <div style={{ width: 320, WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           {!showPasswordLogin ? (
             /* Default view: Feishu login */
             <div style={{ textAlign: 'center' }}>
@@ -129,11 +259,16 @@ const LoginPage: React.FC = () => {
               >
                 {t('login.feishuLogin')}
               </Button>
+              {feishuWaiting && feishuWaitingPanel}
               {enableAccountLogin && (
                 <div style={{ marginTop: 16 }}>
                   <a
-                    onClick={() => setShowPasswordLogin(true)}
-                    style={{ fontSize: 14 }}
+                    onClick={() => !feishuWaiting && setShowPasswordLogin(true)}
+                    style={{
+                      fontSize: 14,
+                      pointerEvents: feishuWaiting ? 'none' : undefined,
+                      opacity: feishuWaiting ? 0.45 : 1,
+                    }}
                   >
                     {t('login.switchMethod')}
                   </a>
@@ -145,6 +280,7 @@ const LoginPage: React.FC = () => {
                   <Button
                     block
                     size="large"
+                    disabled={feishuWaiting}
                     onClick={loginWithLocalMode}
                   >
                     {t('login.localMode')}
@@ -166,6 +302,7 @@ const LoginPage: React.FC = () => {
                 onChange={(e) => setUsername(e.target.value)}
                 onPressEnter={handlePasswordSubmit}
                 style={{ marginBottom: 16 }}
+                disabled={feishuWaiting}
               />
               <Input.Password
                 size="large"
@@ -175,12 +312,14 @@ const LoginPage: React.FC = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 onPressEnter={handlePasswordSubmit}
                 style={{ marginBottom: 16 }}
+                disabled={feishuWaiting}
               />
               <Button
                 type="primary"
                 size="large"
                 block
-                loading={loading}
+                loading={loading && !feishuWaiting}
+                disabled={feishuWaiting}
                 onClick={handlePasswordSubmit}
               >
                 {isRegister ? t('login.register') : t('login.login')}
@@ -196,11 +335,24 @@ const LoginPage: React.FC = () => {
               <Button
                 block
                 type="default"
-                loading={loading}
+                loading={loading && feishuWaiting}
+                disabled={loading && !feishuWaiting}
                 onClick={handleFeishuLogin}
               >
                 {t('login.feishuLogin')}
               </Button>
+              {feishuWaiting && feishuWaitingPanel}
+              {enableLocalMode && (
+                <Button
+                  block
+                  size="large"
+                  style={{ marginTop: 12 }}
+                  disabled={feishuWaiting}
+                  onClick={loginWithLocalMode}
+                >
+                  {t('login.localMode')}
+                </Button>
+              )}
             </div>
           )}
         </div>

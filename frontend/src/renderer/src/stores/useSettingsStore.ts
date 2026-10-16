@@ -9,6 +9,7 @@ import {
   APP_MODE_STORAGE_KEY,
   DEFAULT_APP_MODE,
   parseStoredAppMode,
+  withProModulesEnabled,
   type AppMode
 } from '../constants/app-mode'
 
@@ -34,7 +35,8 @@ function normalizeActiveProject(value: unknown): SelectedProject | null {
     projectId: v.projectId,
     name: typeof v.name === 'string' ? v.name : '',
     vcsType: typeof v.vcsType === 'string' ? v.vcsType : 'none',
-    repoUrl: typeof v.repoUrl === 'string' ? v.repoUrl : undefined
+    // Omit empty/null repoUrl (backend returns null for projects without a remote)
+    ...(typeof v.repoUrl === 'string' && v.repoUrl.length > 0 ? { repoUrl: v.repoUrl } : {})
   }
 }
 
@@ -145,12 +147,23 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     } catch {
       // ignore persistence errors (private mode / quota)
     }
+    if (mode === 'pro') {
+      // Only on an explicit switch — never force modules back on at startup
+      const current = useSettingsStore.getState().moduleVisibility
+      const next = withProModulesEnabled(current)
+      if (next !== current) {
+        set({ appMode: mode, moduleVisibility: next })
+        window.api.settings.set('moduleVisibility', next).catch(() => {})
+        return
+      }
+    }
     set({ appMode: mode })
   },
 
   setActiveProject: (project) => {
-    void window.api.settings.set('activeProject', project ?? {})
-    set({ activeProject: project })
+    const normalized = project ? normalizeActiveProject(project) : null
+    void window.api.settings.set('activeProject', normalized ?? {})
+    set({ activeProject: normalized })
   },
 
   togglePinnedApp: (appId) => {

@@ -2,18 +2,23 @@ import { create } from 'zustand'
 import type { User } from '../types/auth'
 import apiClient, { ApiClientError } from '../services/apiClient'
 import { localStorageManager } from '../services/localStorageManager'
+import { getT } from '../i18n'
 
 interface AuthState {
   loggedIn: boolean
   isLocalMode: boolean
   user: User | null
   loading: boolean
+  /** True while waiting for browser Feishu OAuth callback */
+  feishuWaiting: boolean
   initialized: boolean
   error: string | null
   authMethod: 'feishu' | 'password' | 'local' | null
 
   checkAuth: () => Promise<void>
   loginWithFeishu: () => Promise<void>
+  /** Abort in-flight Feishu OAuth wait and clear loading state */
+  cancelFeishuLogin: () => Promise<void>
   loginWithPassword: (username: string, password: string) => Promise<void>
   registerAndLogin: (username: string, password: string) => Promise<void>
   loginWithLocalMode: () => void
@@ -28,6 +33,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   isLocalMode: false,
   user: null,
   loading: false,
+  feishuWaiting: false,
   initialized: false,
   error: null,
   authMethod: null,
@@ -76,8 +82,9 @@ export const useAuthStore = create<AuthState>((set) => ({
               id: apiUser.userId,
               name: apiUser.username,
               username: apiUser.username,
-              avatarUrl: (apiUser as any).avatarUrl || '',
+              avatarUrl: apiUser.avatarUrl || '',
               email: apiUser.email,
+              role: apiUser.role,
             },
             authMethod: candidateMethod,
           })
@@ -106,7 +113,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   loginWithFeishu: async () => {
-    set({ loading: true, error: null })
+    set({ loading: true, feishuWaiting: true, error: null })
     try {
       // startLogin 会打开浏览器，等待 custom protocol 回调后 resolve
       const status = await window.api.auth.startLogin()
@@ -114,6 +121,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       if (status.loggedIn && status.token) {
         // 将 JWT 设置到 renderer 的 apiClient
         apiClient.setToken(status.token)
+      } else if (!status.loggedIn) {
+        set({ error: getT()('login.feishuIncomplete') })
       }
 
       set({
@@ -125,11 +134,27 @@ export const useAuthStore = create<AuthState>((set) => ({
       if (status.loggedIn) {
         localStorageManager.saveLoginMethod('feishu')
       }
-    } catch (e: any) {
-      set({ error: e.message || '飞书登录失败' })
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : typeof e === 'string' ? e : ''
+      if (/cancell?ed/i.test(msg)) {
+        // 用户主动取消 / 新登录覆盖：静默
+        set({ error: null })
+      } else {
+        set({ error: msg || getT()('login.feishuFailed') })
+      }
     } finally {
-      set({ loading: false })
+      set({ loading: false, feishuWaiting: false })
     }
+  },
+
+  cancelFeishuLogin: async () => {
+    try {
+      await window.api.auth.cancelLogin()
+    } catch {
+      // ignore — loginWithFeishu's finally block still clears flags
+    }
+    // If startLogin already settled, still clear waiting UI
+    set({ loading: false, feishuWaiting: false, error: null })
   },
 
   loginWithPassword: async (username: string, password: string) => {
@@ -143,8 +168,9 @@ export const useAuthStore = create<AuthState>((set) => ({
           id: apiUser.userId,
           name: apiUser.username,
           username: apiUser.username,
-          avatarUrl: (apiUser as any).avatarUrl || '',
+          avatarUrl: apiUser.avatarUrl || '',
           email: apiUser.email,
+          role: apiUser.role,
         },
         authMethod: 'password',
       })
@@ -170,8 +196,9 @@ export const useAuthStore = create<AuthState>((set) => ({
           id: apiUser.userId,
           name: apiUser.username,
           username: apiUser.username,
-          avatarUrl: (apiUser as any).avatarUrl || '',
+          avatarUrl: apiUser.avatarUrl || '',
           email: apiUser.email,
+          role: apiUser.role,
         },
         authMethod: 'password',
       })
@@ -234,3 +261,6 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ loggedIn: false, isLocalMode: false, user: null, authMethod: null })
   },
 }))
+
+/** 当前登录用户是否为全局 admin（本地模式/未登录恒为 false）。 */
+export const useIsAdmin = (): boolean => useAuthStore((s) => s.user?.role === 'admin')

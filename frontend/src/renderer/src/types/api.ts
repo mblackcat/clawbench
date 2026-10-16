@@ -25,6 +25,10 @@ export interface User {
   userId: string;
   username: string;
   email: string;
+  avatarUrl?: string;
+  feishuOpenId?: string;
+  /** 全局角色（users.role）：'admin' | 'user' */
+  role?: 'admin' | 'user';
   createdAt: number;
   updatedAt: number;
 }

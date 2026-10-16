@@ -148,6 +148,7 @@ textarea,
   --cb-card-shadow-hover: 0 2px 8px rgba(0, 0, 0, 0.06);
   --cb-menu-selected-bg: rgba(79, 140, 255, 0.08);
   --cb-menu-hover-bg: rgba(0, 0, 0, 0.025);
+  --cb-topbar-shadow: 0 2px 6px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
 }
 
 [data-theme="dark"] {
@@ -161,75 +162,424 @@ textarea,
   --cb-card-shadow-hover: 0 4px 20px rgba(0, 0, 0, 0.30);
   --cb-menu-selected-bg: rgba(107, 161, 255, 0.12);
   --cb-menu-hover-bg: rgba(255, 255, 255, 0.04);
+  --cb-topbar-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
 }
 
-/* --- Layout Root --- */
+/* --- Layout Root & Outer Dark Frame --- */
 
-[data-theme="light"] .cb-layout-root {
-  background: #F5F6F8 !important;
+.cb-layout-root {
+  background: #18191D !important;
+}
+
+/* Light 1: Layout Root & Outer Frame (light palette, slightly dimmed down) */
+[data-palette="light-lagoon"] .cb-layout-root,
+[data-palette="light"] .cb-layout-root,
+[data-theme="light"]:not([data-palette="light-meadow"]) .cb-layout-root {
+  background: #DFE3E9 !important;
+}
+
+/* Light 2: Soft Meadow (keeps current dark frame unchanged) */
+[data-palette="light-meadow"] .cb-layout-root {
+  background: #18191D !important;
 }
 
 [data-theme="dark"] .cb-layout-root {
-  background: #17171A !important;
+  background: #131417 !important;
+}
+
+/* --- Floating Content Island (Canvas) --- */
+
+.cb-content-island {
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  border-radius: 14px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+/* Light 1: Content Island (slightly dimmed down, avoids high-contrast pure white glare) */
+[data-palette="light-lagoon"] .cb-content-island,
+[data-palette="light"] .cb-content-island,
+[data-theme="light"]:not([data-palette="light-meadow"]) .cb-content-island {
+  background: #F4F6F9 !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06), 0 2px 6px rgba(0, 0, 0, 0.03) !important;
+}
+
+/* Light 2: Soft Meadow (keeps current pure white content island) */
+[data-palette="light-meadow"] .cb-content-island {
+  background: #FFFFFF !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.04) !important;
+}
+
+[data-theme="dark"] .cb-content-island {
+  background: #202127 !important;
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.45) !important;
 }
 
 /* --- Sidebar --- */
 
-[data-theme="light"] .cb-sidebar {
-  background: var(--cb-bg-sidebar) !important;
-  border-right: 1px solid var(--cb-border) !important;
+.cb-sidebar {
+  background: transparent !important;
+  border-right: none !important;
+  position: relative !important;
+  z-index: 5 !important;
+
+  /* Default Dark Frame (dark themes + Light 2 Soft Meadow on dark frame #18191D) */
+  --cb-sidebar-text: rgba(255, 255, 255, 0.70);
+  --cb-sidebar-hover-text: #FFFFFF;
+  --cb-sidebar-hover-bg: rgba(255, 255, 255, 0.08);
+  --cb-sidebar-selected-text: #FFFFFF;
+  --cb-sidebar-selected-bg: rgba(255, 255, 255, 0.12);
+  --cb-sidebar-selected-border: rgba(255, 255, 255, 0.12);
+  --cb-sidebar-selected-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  --cb-sidebar-divider: rgba(255, 255, 255, 0.08);
 }
 
-[data-theme="dark"] .cb-sidebar {
-  background: var(--cb-bg-sidebar) !important;
-  backdrop-filter: blur(24px) saturate(150%);
-  -webkit-backdrop-filter: blur(24px) saturate(150%);
-  border-right: 1px solid var(--cb-border) !important;
+/* Light 1 (Mint Lagoon): Light Dimmed Frame (#DFE3E9) */
+[data-palette="light-lagoon"] .cb-sidebar,
+[data-palette="light"] .cb-sidebar,
+[data-theme="light"]:not([data-palette="light-meadow"]) .cb-sidebar {
+  --cb-sidebar-text: #4B5262;
+  --cb-sidebar-hover-text: #191B21;
+  --cb-sidebar-hover-bg: rgba(0, 0, 0, 0.06);
+  --cb-sidebar-selected-text: #191B21;
+  --cb-sidebar-selected-bg: #FFFFFF;
+  --cb-sidebar-selected-border: rgba(0, 0, 0, 0.08);
+  --cb-sidebar-selected-shadow: 0 2px 8px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+  --cb-sidebar-divider: rgba(0, 0, 0, 0.08);
 }
 
-/* Menu transparent background */
+/* Menu transparent background on dark/dimmed frame */
 .cb-sidebar .ant-menu {
   background: transparent !important;
+  padding: 28px 0 0 0 !important;
+  margin: 0 !important;
+  border-right: none !important;
+  overflow: visible !important;
 }
 
 .cb-sidebar .ant-menu-item {
+  color: var(--cb-sidebar-text) !important;
+  height: 42px !important;
+  line-height: 42px !important;
+  margin-block: 4px !important;
+  margin-inline: 8px !important;
+  margin-left: 8px !important;
+  margin-right: 8px !important;
+  width: calc(100% - 16px) !important;
+  border-radius: 14px !important;
+  border: 1px solid transparent !important;
   transition: all 0.15s ease;
-  font-weight: var(--cb-font-weight, 400);
+  font-weight: 500;
+  position: relative;
+  box-sizing: border-box !important;
 }
 
-.cb-sidebar .ant-menu-item-selected {
-  background: var(--cb-menu-selected-bg) !important;
-  font-weight: var(--cb-font-weight-strong, 500);
+/* All text and icon spans inside menu items strictly inherit sidebar colors */
+.cb-sidebar .ant-menu-item .ant-menu-title-content,
+.cb-sidebar .ant-menu-item .ant-menu-item-icon,
+.cb-sidebar .ant-menu-item .anticon,
+.cb-sidebar .ant-menu-item svg {
+  color: inherit !important;
 }
 
 .cb-sidebar .ant-menu-item:not(.ant-menu-item-selected):hover {
-  background: var(--cb-menu-hover-bg) !important;
+  color: var(--cb-sidebar-hover-text) !important;
+  background: var(--cb-sidebar-hover-bg) !important;
 }
 
+/* Selected menu item: standalone rounded rectangle matching main area card radius (14px) */
+.cb-sidebar .ant-menu-item.ant-menu-item-selected {
+  margin-inline: 8px !important;
+  margin-left: 8px !important;
+  margin-right: 8px !important;
+  width: calc(100% - 16px) !important;
+  border-radius: 14px !important;
+  font-weight: 600 !important;
+  position: relative;
+  z-index: 6;
+  background: var(--cb-sidebar-selected-bg) !important;
+  color: var(--cb-sidebar-selected-text) !important;
+  border: 1px solid var(--cb-sidebar-selected-border) !important;
+  box-shadow: var(--cb-sidebar-selected-shadow) !important;
+}
+
+.cb-sidebar .ant-menu-item.ant-menu-item-selected .ant-menu-title-content,
+.cb-sidebar .ant-menu-item.ant-menu-item-selected .ant-menu-item-icon,
+.cb-sidebar .ant-menu-item.ant-menu-item-selected .anticon {
+  color: var(--cb-sidebar-selected-text) !important;
+}
+
+/* Remove old pseudo-elements that created unbordered artifacts */
+.cb-sidebar .ant-menu-item.ant-menu-item-selected::after,
+.cb-sidebar .ant-menu-item.ant-menu-item-selected::before {
+  display: none !important;
+}
+/* Sidebar menu item overflow & badge layering (expanded mode) */
+.cb-sidebar .ant-menu:not(.ant-menu-inline-collapsed) .ant-menu-item,
+.cb-sidebar .ant-menu:not(.ant-menu-inline-collapsed) .ant-menu-title-content,
+.cb-sidebar .ant-menu:not(.ant-menu-inline-collapsed) .ant-menu-item .ant-menu-item-icon {
+  overflow: visible !important;
+}
+
+/* Collapsed mode: keep the menu a vertical list; center each icon in its row. */
+.cb-sidebar .ant-menu-inline-collapsed > .ant-menu-item {
+  margin-inline: 6px !important;
+  margin-left: 6px !important;
+  margin-right: 6px !important;
+  width: calc(100% - 12px) !important;
+  border-radius: 14px !important;
+  border: 1px solid transparent !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding-inline: 0 !important;
+  overflow: visible !important;
+  box-sizing: border-box !important;
+}
+
+.cb-sidebar .ant-menu-inline-collapsed > .ant-menu-item.ant-menu-item-selected {
+  margin-inline: 6px !important;
+  margin-left: 6px !important;
+  margin-right: 6px !important;
+  width: calc(100% - 12px) !important;
+  border-radius: 14px !important;
+}
+.cb-sidebar .ant-menu-inline-collapsed > .ant-menu-item .ant-menu-item-icon {
+  margin: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 1 !important;
+}
+
+.cb-sidebar .ant-menu-inline-collapsed .ant-menu-title-content {
+  display: none !important;
+}
+
+.cb-sidebar .ant-badge {
+  z-index: 10;
+}
+
+/* Keep antd's own badge sizing/transform (translate(50%, -50%) positions a
+   wrapped count on its icon) — only lift it above neighbouring items. */
+.cb-sidebar .ant-badge .ant-badge-count,
+.cb-sidebar-badge .ant-badge-count {
+  z-index: 10 !important;
+}
+
+/* Sidebar bottom action buttons (collapse sidebar, logs) */
+.cb-sidebar-bottom-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--cb-sidebar-text) !important;
+  user-select: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* Strictly inherit sidebar text/hover color across any wrapper (Badge, anticon, span, svg) */
+.cb-sidebar-bottom-btn .ant-badge,
+.cb-sidebar-bottom-btn .anticon,
+.cb-sidebar-bottom-btn span,
+.cb-sidebar-bottom-btn svg {
+  color: inherit !important;
+}
+
+.cb-sidebar-bottom-btn:hover {
+  color: var(--cb-sidebar-hover-text) !important;
+  background: var(--cb-sidebar-hover-bg) !important;
+}
+
+/* --cb-alert-color / --cb-alert-hover-bg are set inline from antd tokens (colorError) */
+.cb-sidebar-bottom-btn.has-alert {
+  color: var(--cb-alert-color, currentColor) !important;
+}
+
+.cb-sidebar-bottom-btn.has-alert .ant-badge,
+.cb-sidebar-bottom-btn.has-alert .anticon,
+.cb-sidebar-bottom-btn.has-alert svg {
+  color: var(--cb-alert-color, currentColor) !important;
+}
+
+.cb-sidebar-bottom-btn.has-alert:hover {
+  color: var(--cb-alert-color, currentColor) !important;
+  background: var(--cb-alert-hover-bg, transparent) !important;
+}
+
+.cb-sidebar-bottom-divider {
+  margin: 4px 8px;
+  border: none;
+  height: 1px;
+  background: var(--cb-sidebar-divider) !important;
+}
 /* --- TopBar --- */
 
-[data-theme="light"] .cb-topbar {
-  background: var(--cb-bg-topbar) !important;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid var(--cb-border) !important;
+/*
+ * Frameless window drag:
+ * - Keep -webkit-app-region: drag on the bar + an explicit center spacer.
+ * - Never put backdrop-filter on the same painted layer as app-region:drag
+ *   (Chromium/Electron intermittently drops the drag hit-test when they share
+ *   a compositor layer). Blur lives on ::before with pointer-events: none.
+ */
+.cb-topbar {
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+  -webkit-app-region: drag;
+  border-bottom: none !important;
+  background: transparent !important;
 }
 
+.cb-topbar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  /* Decorative blur layer only; skip hit-testing entirely */
+  pointer-events: none;
+}
+
+.cb-topbar > * {
+  position: relative;
+  z-index: 1;
+}
+
+.cb-topbar-nodrag {
+  -webkit-app-region: no-drag;
+  flex-shrink: 0;
+}
+
+/* Explicit flex drag zone between left/right chrome (empty gaps are flaky). */
+.cb-topbar-drag {
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-width: 48px;
+  height: 100%;
+  -webkit-app-region: drag;
+}
+.cb-login-drag-bar {
+  -webkit-app-region: drag;
+}
+
+
+[data-theme="light"] .cb-topbar,
 [data-theme="dark"] .cb-topbar {
-  background: var(--cb-bg-topbar) !important;
-  backdrop-filter: blur(24px) saturate(150%);
-  -webkit-backdrop-filter: blur(24px) saturate(150%);
-  border-bottom: 1px solid var(--cb-border) !important;
+  background: transparent !important;
+}
+
+.cb-topbar::before {
+  display: none !important;
+}
+/* TopBar vertical separators (dark frame default; light-lagoon override below) */
+.cb-topbar-divider {
+  width: 1px;
+  height: 16px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* --- TopBar Controls on Dark Frame --- */
+.cb-topbar .ant-btn-text {
+  color: #ECEEF2 !important;
+  font-weight: 500;
+  border-radius: 6px !important;
+  background: transparent !important;
+  transition: all 0.15s ease;
+}
+
+.cb-topbar .ant-btn-text:hover {
+  color: #FFFFFF !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.cb-topbar .ant-btn-text:active {
+  background: rgba(255, 255, 255, 0.14) !important;
+}
+
+.cb-topbar .ant-typography,
+.cb-topbar span {
+  color: #ECEEF2;
+}
+
+.cb-topbar .ant-tag {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #ECEEF2 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 4px !important;
+}
+
+
+/* Light 1 TopBar Controls (Light dimmed frame) */
+[data-palette="light-lagoon"] .cb-topbar .ant-btn-text,
+[data-palette="light"] .cb-topbar .ant-btn-text,
+[data-theme="light"]:not([data-palette="light-meadow"]) .cb-topbar .ant-btn-text {
+  color: #2D313A !important;
+}
+
+[data-palette="light-lagoon"] .cb-topbar .ant-btn-text:hover,
+[data-palette="light"] .cb-topbar .ant-btn-text:hover,
+[data-theme="light"]:not([data-palette="light-meadow"]) .cb-topbar .ant-btn-text:hover {
+  color: #111318 !important;
+  background: rgba(0, 0, 0, 0.06) !important;
+}
+
+[data-palette="light-lagoon"] .cb-topbar .ant-btn-text:active,
+[data-palette="light"] .cb-topbar .ant-btn-text:active,
+[data-theme="light"]:not([data-palette="light-meadow"]) .cb-topbar .ant-btn-text:active {
+  background: rgba(0, 0, 0, 0.1) !important;
+}
+
+[data-palette="light-lagoon"] .cb-topbar .ant-typography,
+[data-palette="light-lagoon"] .cb-topbar span,
+[data-palette="light"] .cb-topbar .ant-typography,
+[data-palette="light"] .cb-topbar span,
+[data-theme="light"]:not([data-palette="light-meadow"]) .cb-topbar .ant-typography,
+[data-theme="light"]:not([data-palette="light-meadow"]) .cb-topbar span {
+  color: #2D313A;
+}
+
+[data-palette="light-lagoon"] .cb-topbar .cb-topbar-title,
+[data-palette="light"] .cb-topbar .cb-topbar-title,
+[data-theme="light"]:not([data-palette="light-meadow"]) .cb-topbar .cb-topbar-title {
+  color: #191B21 !important;
+}
+
+[data-palette="light-lagoon"] .cb-topbar .cb-topbar-divider,
+[data-palette="light"] .cb-topbar .cb-topbar-divider,
+[data-theme="light"]:not([data-palette="light-meadow"]) .cb-topbar .cb-topbar-divider {
+  background: rgba(0, 0, 0, 0.1) !important;
+}
+
+[data-palette="light-lagoon"] .cb-topbar .ant-tag,
+[data-palette="light"] .cb-topbar .ant-tag,
+[data-theme="light"]:not([data-palette="light-meadow"]) .cb-topbar .ant-tag {
+  background: rgba(0, 0, 0, 0.05) !important;
+  color: #2D313A !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
 }
 
 /* --- Windows Window Controls --- */
 
 .cb-win-btn {
   width: 46px;
-  height: 32px;
+  height: 100%;
   border: none;
   background: transparent;
-  color: var(--cb-text);
+  color: #8C909D;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -247,19 +597,28 @@ textarea,
   color: #fff;
 }
 
-/* --- StatusBar --- */
-
-[data-theme="light"] .cb-statusbar {
-  background: var(--cb-bg-statusbar) !important;
-  border-top: 1px solid var(--cb-border) !important;
+/* Light 1 Windows Controls */
+[data-palette="light-lagoon"] .cb-win-btn,
+[data-palette="light"] .cb-win-btn,
+[data-theme="light"]:not([data-palette="light-meadow"]) .cb-win-btn {
+  color: #4B5262;
 }
 
-[data-theme="dark"] .cb-statusbar {
-  background: var(--cb-bg-statusbar) !important;
-  backdrop-filter: blur(20px) saturate(150%);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
-  border-top: 1px solid var(--cb-border) !important;
+[data-palette="light-lagoon"] .cb-win-btn:hover,
+[data-palette="light"] .cb-win-btn:hover,
+[data-theme="light"]:not([data-palette="light-meadow"]) .cb-win-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: #191B21;
 }
+
+[data-palette="light-lagoon"] .cb-win-btn-close:hover,
+[data-palette="light"] .cb-win-btn-close:hover,
+[data-theme="light"]:not([data-palette="light-meadow"]) .cb-win-btn-close:hover {
+  background: #E81123 !important;
+  color: #FFFFFF !important;
+}
+
+
 
 /* --- Content Area --- */
 
@@ -386,6 +745,30 @@ textarea,
 [data-theme="dark"] .ant-drawer .ant-drawer-content {
   backdrop-filter: blur(24px) saturate(150%);
   -webkit-backdrop-filter: blur(24px) saturate(150%);
+}
+
+/*
+ * Frameless window: TopBar uses -webkit-app-region: drag across the full width.
+ * Drawers portal to body at y=0 and sit under that drag hit-test, so only the
+ * bottom sliver of header controls (close, etc.) remains clickable. Force the
+ * drawer panel to no-drag so header buttons work.
+ *
+ * IMPORTANT: never put no-drag on the `.ant-drawer` root. It is a full-viewport
+ * `position: fixed; inset: 0` box that stays mounted after close (unless
+ * destroyOnClose), and Chromium computes app-region purely from layout boxes —
+ * it ignores pointer-events / visibility. A no-drag root therefore carves the
+ * whole window (including the TopBar) out of the drag region for good once any
+ * drawer has been opened. Scope it to the panel, which is the only part that
+ * actually overlaps the titlebar.
+ */
+.ant-drawer-mask,
+.ant-drawer-content-wrapper,
+.ant-drawer-content,
+.ant-drawer-header,
+.ant-drawer-header *,
+.ant-drawer-body,
+.ant-drawer-footer {
+  -webkit-app-region: no-drag !important;
 }
 
 /* --- BottomBar --- */
@@ -579,13 +962,89 @@ textarea,
   background: #4F8CFF;
 }
 
-/* --- Tag: clean rounded --- */
-[data-theme="light"] .ant-tag {
-  border-radius: 4px;
-  border: 1px solid rgba(0, 0, 0, 0.05);
-  font-weight: 400;
+/* --- Tag: clean rounded pills in light mode --- */
+[data-theme="light"] .ant-tag,
+[data-theme="light"] .cb-content-island .ant-tag {
+  border-radius: 100px;
+  border: none;
+  font-weight: 500;
+  padding: 1px 9px;
 }
 
+[data-theme="light"] .cb-content-island .ant-tag-success,
+[data-theme="light"] .cb-content-island .ant-tag-green {
+  background: #EAF2EC !important;
+  color: #447551 !important;
+}
+
+[data-theme="light"] .cb-content-island .ant-tag-processing,
+[data-theme="light"] .cb-content-island .ant-tag-blue {
+  background: #EDF1FD !important;
+  color: #4B5ED6 !important;
+}
+
+[data-theme="light"] .cb-content-island .ant-tag-warning,
+[data-theme="light"] .cb-content-island .ant-tag-gold,
+[data-theme="light"] .cb-content-island .ant-tag-orange {
+  background: #FDF6E9 !important;
+  color: #9E6D19 !important;
+}
+
+[data-theme="light"] .cb-content-island .ant-tag-error,
+[data-theme="light"] .cb-content-island .ant-tag-red,
+[data-theme="light"] .cb-content-island .ant-tag-volcano {
+  background: #FCEFEB !important;
+  color: #BF553F !important;
+}
+
+/* --- Dark-mode tags: dark translucent, restrained, matching dark cards --- */
+[data-theme="dark"] .ant-tag,
+[data-theme="dark"] .cb-content-island .ant-tag {
+  border-radius: 100px !important;
+  font-weight: 500;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
+  color: #C9CCD4;
+  padding: 1px 9px;
+}
+
+[data-theme="dark"] .ant-tag-blue,
+[data-theme="dark"] .ant-tag-processing,
+[data-theme="dark"] .cb-content-island .ant-tag-blue,
+[data-theme="dark"] .cb-content-island .ant-tag-processing {
+  color: #8E9BFA !important;
+  background: rgba(84, 109, 245, 0.14) !important;
+  border: 1px solid rgba(84, 109, 245, 0.25) !important;
+}
+
+[data-theme="dark"] .ant-tag-green,
+[data-theme="dark"] .ant-tag-success,
+[data-theme="dark"] .cb-content-island .ant-tag-green,
+[data-theme="dark"] .cb-content-island .ant-tag-success {
+  color: #73D13D !important;
+  background: rgba(73, 170, 100, 0.14) !important;
+  border: 1px solid rgba(73, 170, 100, 0.22) !important;
+}
+
+[data-theme="dark"] .ant-tag-gold,
+[data-theme="dark"] .ant-tag-orange,
+[data-theme="dark"] .ant-tag-warning,
+[data-theme="dark"] .cb-content-island .ant-tag-gold,
+[data-theme="dark"] .cb-content-island .ant-tag-orange,
+[data-theme="dark"] .cb-content-island .ant-tag-warning {
+  color: #FFC53D !important;
+  background: rgba(224, 169, 83, 0.14) !important;
+  border: 1px solid rgba(224, 169, 83, 0.22) !important;
+}
+
+[data-theme="dark"] .ant-tag-red,
+[data-theme="dark"] .ant-tag-error,
+[data-theme="dark"] .cb-content-island .ant-tag-red,
+[data-theme="dark"] .cb-content-island .ant-tag-error {
+  color: #FF7875 !important;
+  background: rgba(226, 120, 99, 0.14) !important;
+  border: 1px solid rgba(226, 120, 99, 0.22) !important;
+}
 /*
  * Dark-mode tags: Ant Design preset colors use near-black purple/blue chips
  * (e.g. #120338 / #111a2c) that disappear into the dark chrome. Soften every
@@ -843,6 +1302,46 @@ b, strong {
 }
 .cb-attention-flash {
   animation: cb-attention-flash 0.8s ease-in-out infinite;
+}
+
+/* --- User Avatar status animations (running, error, complete) ---
+   Pulse color comes from --cb-ring-color (set inline from antd tokens:
+   colorWarning for errors, colorSuccess for completion). */
+@keyframes cb-avatar-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes cb-avatar-error-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 6px 1px color-mix(in srgb, var(--cb-ring-color, #FAAD14) 75%, transparent),
+      0 0 14px color-mix(in srgb, var(--cb-ring-color, #FAAD14) 35%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 12px 3px color-mix(in srgb, var(--cb-ring-color, #FAAD14) 95%, transparent),
+      0 0 20px color-mix(in srgb, var(--cb-ring-color, #FAAD14) 55%, transparent);
+  }
+}
+
+@keyframes cb-avatar-complete-pulse {
+  0% {
+    box-shadow: 0 0 4px 1px color-mix(in srgb, var(--cb-ring-color, #52C41A) 60%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 12px 3px color-mix(in srgb, var(--cb-ring-color, #52C41A) 95%, transparent),
+      0 0 18px color-mix(in srgb, var(--cb-ring-color, #52C41A) 55%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 4px 1px color-mix(in srgb, var(--cb-ring-color, #52C41A) 40%, transparent);
+  }
+}
+
+/* Agile motion: keep the ring static (no spin / pulse) */
+:root[data-motion='agile'] .cb-avatar-running-ring {
+  animation-duration: 0s !important;
 }
 
 /* --- Dark mode secondary UI text that often goes too dim --- */

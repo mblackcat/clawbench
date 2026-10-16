@@ -234,7 +234,8 @@ export const settingsStore = new Store<SettingsSchema>({
         projectId: { type: 'string' },
         name: { type: 'string' },
         vcsType: { type: 'string' },
-        repoUrl: { type: 'string' }
+        // API may return null when the project has no VCS remote
+        repoUrl: { type: ['string', 'null'] }
       }
     },
     commonAppConfigCache: {
@@ -414,17 +415,28 @@ export function getActiveProject(): ActiveProjectInfo | null {
   if (!value || typeof value.projectId !== 'string' || !value.projectId) {
     return null
   }
+  const repoUrl =
+    typeof value.repoUrl === 'string' && value.repoUrl.length > 0 ? value.repoUrl : undefined
   return {
     projectId: value.projectId,
     name: value.name || '',
     vcsType: value.vcsType || 'none',
-    repoUrl: value.repoUrl
+    ...(repoUrl !== undefined ? { repoUrl } : {})
   }
 }
 
 /** Persist the selected server project. */
 export function setActiveProject(project: ActiveProjectInfo | null): void {
-  settingsStore.set('activeProject', project ?? {})
+  if (!project) {
+    settingsStore.set('activeProject', {})
+    return
+  }
+  // Omit empty/null repoUrl so the stored object always validates against the schema
+  const { repoUrl, ...rest } = project
+  settingsStore.set(
+    'activeProject',
+    typeof repoUrl === 'string' && repoUrl.length > 0 ? { ...rest, repoUrl } : rest
+  )
 }
 
 export function getCommonAppConfigCache(projectId: string): unknown {

@@ -209,15 +209,41 @@ class HttpClient {
     return response as any;
   }
 
+  private readonly DEFAULT_TIMEOUT_MS = 15_000;
+  private readonly TRANSFER_TIMEOUT_MS = 120_000;
+
+  /**
+   * 带超时的 fetch 包装，避免网络请求无限卡住导致页面阻塞。
+   * 超时抛出 ApiClientError('Request timeout', 'TIMEOUT_ERROR', 408)。
+   */
+  private async fetchWithTimeout(
+    input: string,
+    init: RequestInit,
+    timeoutMs: number = this.DEFAULT_TIMEOUT_MS
+  ): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(input, { ...init, signal: controller.signal });
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new ApiClientError('Request timeout', 'TIMEOUT_ERROR', 408);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   /**
    * GET 请求
    */
-  async get<T>(url: string, requireAuth: boolean = false): Promise<T> {
+  async get<T>(url: string, requireAuth: boolean = false, timeoutMs?: number): Promise<T> {
     try {
-      const response = await fetch(`${API_BASE_URL}${url}`, {
+      const response = await this.fetchWithTimeout(`${API_BASE_URL}${url}`, {
         method: 'GET',
         headers: this.buildHeaders(requireAuth),
-      });
+      }, timeoutMs);
       return this.handleResponse<T>(response, requireAuth);
     } catch (error) {
       if (error instanceof ApiClientError) {
@@ -238,14 +264,15 @@ class HttpClient {
   async post<T>(
     url: string,
     body: any,
-    requireAuth: boolean = false
+    requireAuth: boolean = false,
+    timeoutMs?: number
   ): Promise<T> {
     try {
-      const response = await fetch(`${API_BASE_URL}${url}`, {
+      const response = await this.fetchWithTimeout(`${API_BASE_URL}${url}`, {
         method: 'POST',
         headers: this.buildHeaders(requireAuth),
         body: JSON.stringify(body),
-      });
+      }, timeoutMs);
       return this.handleResponse<T>(response, requireAuth);
     } catch (error) {
       if (error instanceof ApiClientError) {
@@ -266,14 +293,15 @@ class HttpClient {
   async put<T>(
     url: string,
     body: any,
-    requireAuth: boolean = false
+    requireAuth: boolean = false,
+    timeoutMs?: number
   ): Promise<T> {
     try {
-      const response = await fetch(`${API_BASE_URL}${url}`, {
+      const response = await this.fetchWithTimeout(`${API_BASE_URL}${url}`, {
         method: 'PUT',
         headers: this.buildHeaders(requireAuth),
         body: JSON.stringify(body),
-      });
+      }, timeoutMs);
       return this.handleResponse<T>(response, requireAuth);
     } catch (error) {
       if (error instanceof ApiClientError) {
@@ -294,14 +322,15 @@ class HttpClient {
   async patch<T>(
     url: string,
     body?: any,
-    requireAuth: boolean = false
+    requireAuth: boolean = false,
+    timeoutMs?: number
   ): Promise<T> {
     try {
-      const response = await fetch(`${API_BASE_URL}${url}`, {
+      const response = await this.fetchWithTimeout(`${API_BASE_URL}${url}`, {
         method: 'PATCH',
         headers: this.buildHeaders(requireAuth),
         body: body !== undefined ? JSON.stringify(body) : undefined,
-      });
+      }, timeoutMs);
       return this.handleResponse<T>(response, requireAuth);
     } catch (error) {
       if (error instanceof ApiClientError) {
@@ -319,12 +348,12 @@ class HttpClient {
   /**
    * DELETE 请求
    */
-  async delete<T>(url: string, requireAuth: boolean = false): Promise<T> {
+  async delete<T>(url: string, requireAuth: boolean = false, timeoutMs?: number): Promise<T> {
     try {
-      const response = await fetch(`${API_BASE_URL}${url}`, {
+      const response = await this.fetchWithTimeout(`${API_BASE_URL}${url}`, {
         method: 'DELETE',
         headers: this.buildHeaders(requireAuth),
-      });
+      }, timeoutMs);
       return this.handleResponse<T>(response, requireAuth);
     } catch (error) {
       if (error instanceof ApiClientError) {
@@ -356,11 +385,11 @@ class HttpClient {
         }
       }
 
-      const response = await fetch(`${API_BASE_URL}${url}`, {
+      const response = await this.fetchWithTimeout(`${API_BASE_URL}${url}`, {
         method: 'POST',
         headers,
         body: formData,
-      });
+      }, this.TRANSFER_TIMEOUT_MS);
       return this.handleResponse<T>(response, requireAuth);
     } catch (error) {
       if (error instanceof ApiClientError) {
@@ -380,10 +409,10 @@ class HttpClient {
    */
   async download(url: string, requireAuth: boolean = false): Promise<Blob> {
     try {
-      const response = await fetch(`${API_BASE_URL}${url}`, {
+      const response = await this.fetchWithTimeout(`${API_BASE_URL}${url}`, {
         method: 'GET',
         headers: this.buildHeaders(requireAuth),
-      });
+      }, this.TRANSFER_TIMEOUT_MS);
 
       if (!response.ok) {
         // 认证态下载收到 401：同样触发全局登录态失效处理
