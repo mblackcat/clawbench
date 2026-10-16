@@ -7,7 +7,7 @@ import {
 } from '@ant-design/icons'
 import { useAITerminalStore } from '../../stores/useAITerminalStore'
 import { useT } from '../../i18n'
-import type { TerminalConnection, DBConnection } from '../../types/ai-terminal'
+import type { TerminalConnection, DBConnection, SidePanelMode } from '../../types/ai-terminal'
 import DBConnectionList from './DBConnectionList'
 
 const { Text } = Typography
@@ -81,60 +81,82 @@ const AITerminalSidebar: React.FC<Props> = ({ onNewConnection, onEditConnection,
       overflow: 'hidden'
     }}>
       {collapsed ? (
-        /* Collapsed: show collapse toggle + icon buttons for Terminal/DB mode switch */
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '8px 0' }}>
-          <Tooltip title={t('common.expandSidebar')} placement="right">
-            <Button
-              type="text"
-              size="small"
-              icon={<MenuUnfoldOutlined />}
-              onClick={onToggleCollapse}
-            />
-          </Tooltip>
-          <Tooltip title={t('terminal.tabTerminal')} placement="right">
-            <Button
-              type={sideMode === 'terminal' ? 'primary' : 'text'}
-              size="small"
-              icon={<DesktopOutlined />}
-              onClick={() => setSideMode('terminal' as any)}
-              style={{ width: 28, height: 28 }}
-            />
-          </Tooltip>
-          <Tooltip title={t('terminal.tabDB')} placement="right">
-            <Button
-              type={sideMode === 'db' ? 'primary' : 'text'}
-              size="small"
-              icon={<CloudServerOutlined />}
-              onClick={() => setSideMode('db' as any)}
-              style={{ width: 28, height: 28 }}
-            />
-          </Tooltip>
+        /* Collapsed: top header bar (38px) + mode switch rail */
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <div style={{
+            height: 38,
+            boxSizing: 'border-box',
+            borderBottom: `1px solid ${token.colorBorderSecondary}`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0
+          }}>
+            <Tooltip title={t('common.expandSidebar')} placement="right">
+              <Button
+                type="text"
+                size="small"
+                icon={<MenuUnfoldOutlined />}
+                onClick={onToggleCollapse}
+              />
+            </Tooltip>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '8px 0', flex: 1 }}>
+            <Tooltip title={t('terminal.tabTerminal')} placement="right">
+              <Button
+                type={sideMode === 'terminal' ? 'primary' : 'text'}
+                size="small"
+                icon={<DesktopOutlined />}
+                onClick={() => setSideMode('terminal')}
+                style={{ width: 28, height: 28 }}
+              />
+            </Tooltip>
+            <Tooltip title={t('terminal.tabDB')} placement="right">
+              <Button
+                type={sideMode === 'db' ? 'primary' : 'text'}
+                size="small"
+                icon={<CloudServerOutlined />}
+                onClick={() => setSideMode('db')}
+                style={{ width: 28, height: 28 }}
+              />
+            </Tooltip>
+          </div>
         </div>
       ) : (
         <>
-      {/* Tabs at top with collapse toggle */}
-      <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-        <Tabs
-          activeKey={sideMode}
-          onChange={(key) => setSideMode(key as any)}
-          size="small"
-          centered
-          style={{ marginBottom: 0, flex: 1 }}
-          items={[
-            { key: 'terminal', label: t('terminal.tabTerminal') },
-            { key: 'db', label: t('terminal.tabDB') }
-          ]}
-        />
-        <Tooltip title={t('common.collapseSidebar')} placement="right">
-          <Button
-            type="text"
-            size="small"
-            icon={<MenuFoldOutlined />}
-            onClick={onToggleCollapse}
-            style={{ flexShrink: 0, marginRight: 4, marginBottom: 10 }}
-          />
-        </Tooltip>
-      </div>
+          {/* Tabs at top with collapse toggle */}
+          <div style={{
+            height: 38,
+            boxSizing: 'border-box',
+            borderBottom: `1px solid ${token.colorBorderSecondary}`,
+            display: 'flex',
+            alignItems: 'center',
+            padding: '0 4px 0 8px',
+            flexShrink: 0,
+            overflow: 'hidden'
+          }}>
+            <Tabs
+              activeKey={sideMode}
+              onChange={(key) => setSideMode(key as SidePanelMode)}
+              size="small"
+              centered
+              style={{ marginBottom: 0, flex: 1 }}
+              tabBarStyle={{ margin: 0, borderBottom: 'none', height: 37 }}
+              items={[
+                { key: 'terminal', label: t('terminal.tabTerminal') },
+                { key: 'db', label: t('terminal.tabDB') }
+              ]}
+            />
+            <Tooltip title={t('common.collapseSidebar')} placement="right">
+              <Button
+                type="text"
+                size="small"
+                icon={<MenuFoldOutlined />}
+                onClick={onToggleCollapse}
+                style={{ flexShrink: 0, marginRight: 2 }}
+              />
+            </Tooltip>
+          </div>
 
       {/* Tab content */}
       {sideMode === 'terminal' ? (
