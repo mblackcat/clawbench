@@ -10,6 +10,8 @@ import type {
   ProjectMember,
   ListProjectsResponse,
   ListCommonAppsResponse,
+  ProjectNavResponse,
+  UploadCommonAppResponse,
   RegisterRequest,
   RegisterResponse,
   LoginRequest,
@@ -586,6 +588,23 @@ class ApiClient {
     );
   }
 
+  /** 获取项目导航栏（分组 + 链接，均按 sortOrder 升序） */
+  async getProjectNav(projectId: string): Promise<ProjectNavResponse> {
+    return this.httpClient.get<ProjectNavResponse>(
+      `/projects/${encodeURIComponent(projectId)}/nav`,
+      true
+    );
+  }
+
+  /** 上报导航链接点击（后端累加点击次数） */
+  async recordNavLinkClick(projectId: string, linkId: string): Promise<{ clickCount: number }> {
+    return this.httpClient.post<{ clickCount: number }>(
+      `/projects/${encodeURIComponent(projectId)}/nav/links/${encodeURIComponent(linkId)}/click`,
+      {},
+      true
+    );
+  }
+
   /** 获取全局通用 app 列表（含 disabled 与置顶标记） */
   async listCommonApps(): Promise<ListCommonAppsResponse> {
     return this.httpClient.get<ListCommonAppsResponse>('/common-apps', true);
@@ -702,6 +721,28 @@ class ApiClient {
 
     return this.httpClient.upload<UploadApplicationResponse>(
       `/applications/${applicationId}/upload`,
+      formData,
+      true
+    );
+  }
+
+  /**
+   * 覆盖发布 builtin app（admin）：上传归档到 /common-apps/:appKey/upload，
+   * 服务端以此版本覆盖同 id 的自带版本（服务端优先）。
+   */
+  async uploadCommonApp(
+    appKey: string,
+    file: File,
+    version: string,
+    changelog: string
+  ): Promise<UploadCommonAppResponse> {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('version', version);
+    formData.append('changelog', changelog);
+
+    return this.httpClient.upload<UploadCommonAppResponse>(
+      `/common-apps/${encodeURIComponent(appKey)}/upload`,
       formData,
       true
     );

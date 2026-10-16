@@ -2304,6 +2304,15 @@ const translations: Record<Lang, Record<string, string>> = {
     // ── V2 workbench port (zh) ──
     'logs.disabled': '已禁用',
     'subapp.executionCancelled': '已取消',
+    'appEditor.category': '分类',
+    'appEditor.categoryHelp': '在发现页中用于分组展示',
+    'appEditor.categoryPlaceholder': '选择分类',
+    'appEditor.category.development': '开发',
+    'appEditor.category.automation': '自动化',
+    'appEditor.category.utilities': '实用工具',
+    'appEditor.category.other': '其他',
+    'appPublisher.builtinPublishSuccess': '内置应用「{0}」v{1} 已覆盖发布到服务端',
+    'appPublisher.builtinBadge': '内置',
   },
   'en': {
     // Sidebar menu
@@ -4691,6 +4700,15 @@ const translations: Record<Lang, Record<string, string>> = {
     // ── V2 workbench port (en) ──
     'logs.disabled': 'Disabled',
     'subapp.executionCancelled': 'Cancelled',
+    'appEditor.category': 'Category',
+    'appEditor.categoryHelp': 'Used to group the app on the Discover page',
+    'appEditor.categoryPlaceholder': 'Select a category',
+    'appEditor.category.development': 'Development',
+    'appEditor.category.automation': 'Automation',
+    'appEditor.category.utilities': 'Utilities',
+    'appEditor.category.other': 'Other',
+    'appPublisher.builtinPublishSuccess': 'Builtin app "{0}" v{1} was published to the server',
+    'appPublisher.builtinBadge': 'Builtin',
   }
 }
 

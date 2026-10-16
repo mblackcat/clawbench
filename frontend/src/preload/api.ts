@@ -90,7 +90,8 @@ export const api = {
     publishApp: (appPath: string) => ipcRenderer.invoke('developer:publish-app', appPath),
     packageApp: (appId: string) => ipcRenderer.invoke('developer:package-app', appId),
     packageDir: (sourceDir: string) => ipcRenderer.invoke('developer:package-dir', sourceDir),
-    listMyApps: () => ipcRenderer.invoke('developer:list-my-apps'),
+    listMyApps: (opts?: { includeBuiltins?: boolean }) =>
+      ipcRenderer.invoke('developer:list-my-apps', opts),
     getAppPath: (appId: string) => ipcRenderer.invoke('developer:get-app-path', appId),
     listAppFiles: (appId: string) => ipcRenderer.invoke('developer:list-app-files', appId),
     readFile: (filePath: string) => ipcRenderer.invoke('developer:read-file', filePath),

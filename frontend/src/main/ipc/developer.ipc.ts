@@ -591,10 +591,11 @@ export function registerDeveloperIpc(): void {
     }
   })
 
-  ipcMain.handle('developer:list-my-apps', async () => {
+  ipcMain.handle('developer:list-my-apps', async (_event, opts?: { includeBuiltins?: boolean }) => {
     const allApps = listSubApps()
     return allApps
-      .filter((app) => !app.manifest.id.startsWith('com.clawbench.'))
+      // Admins may ask for builtins too (to overwrite-publish them).
+      .filter((app) => opts?.includeBuiltins || !app.manifest.id.startsWith('com.clawbench.'))
       .map((app) => app.manifest)
   })
 

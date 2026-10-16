@@ -165,7 +165,7 @@ export interface ClawBenchAPI {
       fileSize: number
       manifest: Record<string, any>
     }>
-    listMyApps: () => Promise<import('./subapp').SubAppManifest[]>
+    listMyApps: (opts?: { includeBuiltins?: boolean }) => Promise<import('./subapp').SubAppManifest[]>
     getAppPath: (appId: string) => Promise<string>
     listAppFiles: (appId: string) => Promise<Array<{ name: string; path: string; isDirectory: boolean }>>
     readFile: (filePath: string) => Promise<string>

@@ -98,6 +98,8 @@ export interface ApplicationVersion {
 }
 
 export interface CreateApplicationRequest {
+  /** 应用唯一标识（对应 manifest.id）；省略时由服务端生成 */
+  applicationId?: string;
   name: string;
   description: string;
   version: string;
@@ -119,6 +121,7 @@ export interface CreateApplicationResponse {
 export interface UpdateApplicationRequest {
   name?: string;
   description?: string;
+  category?: string;
   metadata?: Record<string, any>;
 }
 
@@ -163,6 +166,13 @@ export interface UploadApplicationResponse {
   fileSize: number;
   uploadedAt: number;
   downloadUrl: string;
+}
+
+/** POST /common-apps/:appKey/upload — admin publishes a builtin app archive */
+export interface UploadCommonAppResponse {
+  version: string;
+  fileSize: number;
+  changelog: string | null;
 }
 
 export interface VersionInfo {
@@ -236,6 +246,8 @@ export interface CommonAppInfo {
   name: string;
   description: string | null;
   version: string | null;
+  /** 服务端是否已发布归档（admin 覆盖发布后为 true，客户端据此优先取服务端版本） */
+  hasArchive?: boolean;
   enabled: boolean;
   globalEnabled?: boolean;
   projectEnabled?: boolean;
@@ -252,4 +264,38 @@ export interface ListCommonAppsResponse {
 
 export interface ListProjectsResponse {
   projects: Project[];
+}
+
+// ============ 项目导航（书签栏） ============
+
+/** 项目导航分组（工作台渲染为文件夹） */
+export interface NavGroup {
+  groupId: string;
+  projectId: string;
+  title: string;
+  /** 分组图标 URL；为空时渲染文件夹图标 */
+  icon: string | null;
+  sortOrder: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** 项目导航链接；groupId 为 null 表示顶层（未分组） */
+export interface NavLink {
+  linkId: string;
+  projectId: string;
+  groupId: string | null;
+  url: string;
+  title: string;
+  /** 图标 URL；未配置时由服务端抓取 URL 得到 */
+  icon: string | null;
+  sortOrder: number;
+  clickCount: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ProjectNavResponse {
+  groups: NavGroup[];
+  links: NavLink[];
 }
