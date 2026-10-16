@@ -12,7 +12,7 @@
     "jsx": "react-jsx",
     "outDir": "./out/renderer",
     "rootDir": "./src/renderer/src",
-    "types": ["node"],
+    "types": ["node", "vitest/globals"],
     "paths": {
       "@/*": ["./src/renderer/src/*"]
     }
