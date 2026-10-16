@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { authenticate } from '../middleware/auth';
 import { requireAdmin } from '../middleware/adminAuth';
 import {
@@ -10,7 +11,17 @@ import {
   reportCommonAppDownloadHandler,
   getCommonAppStatsHandler,
   listCommonAppEventsHandler,
+  uploadCommonAppPackageHandler,
+  downloadCommonAppPackageHandler,
 } from '../controllers/commonAppController';
+import { appPackageFileFilter } from '../utils/uploadFilters';
+
+// 与 applicationRoutes 一致的内存存储 multer：接收 .clawbench-app 归档
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB
+  fileFilter: appPackageFileFilter,
+});
 
 /**
  * 通用应用相关路由 — 全部需要认证。
@@ -43,6 +54,18 @@ commonAppRouter.put('/:appKey', requireAdmin, updateCommonAppHandler);
  * 删除通用应用（仅全局 admin）
  */
 commonAppRouter.delete('/:appKey', requireAdmin, deleteCommonAppHandler);
+
+/**
+ * GET /api/v1/common-apps/:appKey/download
+ * 下载通用应用归档（登录用户；仅 admin 上传过归档时可用，否则 404）
+ */
+commonAppRouter.get('/:appKey/download', downloadCommonAppPackageHandler);
+
+/**
+ * POST /api/v1/common-apps/:appKey/upload
+ * 上传/覆盖通用应用归档（仅全局 admin）— multipart: file + version [+ changelog]
+ */
+commonAppRouter.post('/:appKey/upload', requireAdmin, upload.single('file'), uploadCommonAppPackageHandler);
 
 /**
  * POST /api/v1/common-apps/:appKey/executions

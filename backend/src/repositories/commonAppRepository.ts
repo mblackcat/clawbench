@@ -50,8 +50,13 @@ export interface UpdateCommonAppInput {
   sortOrder?: number;
   pinned?: boolean;
   config?: Record<string, any>;
+  /** admin 上传的服务端归档相对路径（设为 null 即清除归档） */
+  filePath?: string | null;
+  fileSize?: number | null;
   /** admin user id recorded in version history when version changes */
   changedBy?: string | null;
+  /** version_history.source（默认 'admin'；自动化脚本可传 'flush-script' 等） */
+  source?: string;
 }
 
 /**
@@ -145,6 +150,8 @@ export async function createCommonApp(input: CreateCommonAppInput): Promise<Comm
     pinned: !!input.pinned,
     downloadCount: 0,
     executionCount: 0,
+    filePath: null,
+    fileSize: null,
     config,
     createdAt: now,
     updatedAt: now,
@@ -193,12 +200,14 @@ export async function updateCommonApp(
   const sortOrder = input.sortOrder !== undefined ? input.sortOrder : app.sortOrder;
   const pinned = input.pinned !== undefined ? input.pinned : app.pinned;
   const config = input.config !== undefined ? input.config : app.config;
+  const filePath = input.filePath !== undefined ? input.filePath : app.filePath;
+  const fileSize = input.fileSize !== undefined ? input.fileSize : app.fileSize;
 
   await database.run(
     `UPDATE common_apps
-     SET name = ?, description = ?, version = ?, builtin = ?, enabled = ?, sort_order = ?, pinned = ?, config = ?, updated_at = ?
+     SET name = ?, description = ?, version = ?, builtin = ?, enabled = ?, sort_order = ?, pinned = ?, config = ?, file_path = ?, file_size = ?, updated_at = ?
      WHERE app_key = ?`,
-    [name, description, version, builtin ? 1 : 0, enabled ? 1 : 0, sortOrder, pinned ? 1 : 0, JSON.stringify(config), now, appKey]
+    [name, description, version, builtin ? 1 : 0, enabled ? 1 : 0, sortOrder, pinned ? 1 : 0, JSON.stringify(config), filePath, fileSize, now, appKey]
   );
 
   // Record a version-history entry when the version actually changes.
@@ -206,7 +215,7 @@ export async function updateCommonApp(
     await database.run(
       `INSERT INTO common_app_version_history (version_hist_id, app_key, version, changed_by, source, created_at)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [uuidv4(), appKey, version, input.changedBy ?? null, 'admin', now]
+      [uuidv4(), appKey, version, input.changedBy ?? null, input.source ?? 'admin', now]
     );
   }
 
