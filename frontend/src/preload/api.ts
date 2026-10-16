@@ -2,6 +2,52 @@ import { ipcRenderer } from 'electron'
 
 // Typed API surface exposed to renderer via contextBridge
 
+// ── Shared PTY data dispatcher ──────────────────────────────────────────────
+//
+// `pty:data` is one channel for every session, consumed by both aiCoding and
+// aiTerminal. One ipcRenderer listener plus a sessionId index makes delivery
+// O(1); callers that pass a sessionId are never invoked for other sessions.
+
+type PtyDataCallback = (data: { sessionId: string; data: string }) => void
+
+const ptyDataBySession = new Map<string, Set<PtyDataCallback>>()
+const ptyDataUnscoped = new Set<PtyDataCallback>()
+let ptyDataListenerBound = false
+
+function bindPtyDataListener(): void {
+  if (ptyDataListenerBound) return
+  ptyDataListenerBound = true
+  ipcRenderer.on('pty:data', (_event, payload: { sessionId: string; data: string }) => {
+    const scoped = ptyDataBySession.get(payload.sessionId)
+    if (scoped) for (const cb of scoped) cb(payload)
+    for (const cb of ptyDataUnscoped) cb(payload)
+  })
+}
+
+/**
+ * Subscribe to PTY output. Pass `sessionId` to only receive that session's
+ * chunks; omit it to observe every session (backward compatible).
+ */
+function subscribePtyData(callback: PtyDataCallback, sessionId?: string): () => void {
+  bindPtyDataListener()
+  if (sessionId === undefined) {
+    ptyDataUnscoped.add(callback)
+    return () => { ptyDataUnscoped.delete(callback) }
+  }
+  let set = ptyDataBySession.get(sessionId)
+  if (!set) {
+    set = new Set()
+    ptyDataBySession.set(sessionId, set)
+  }
+  set.add(callback)
+  return () => {
+    const current = ptyDataBySession.get(sessionId)
+    if (!current) return
+    current.delete(callback)
+    if (current.size === 0) ptyDataBySession.delete(sessionId)
+  }
+}
+
 export const api = {
   workspace: {
     list: () => ipcRenderer.invoke('workspace:list'),
@@ -636,11 +682,8 @@ export const api = {
     resizePty: (sessionId: string, cols: number, rows: number) =>
       ipcRenderer.invoke('pty:resize', sessionId, cols, rows),
     killPty: (sessionId: string) => ipcRenderer.invoke('pty:kill', sessionId),
-    onPtyData: (callback: (data: { sessionId: string; data: string }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
-      ipcRenderer.on('pty:data', handler)
-      return () => ipcRenderer.removeListener('pty:data', handler)
-    },
+    onPtyData: (callback: PtyDataCallback, sessionId?: string) =>
+      subscribePtyData(callback, sessionId),
     onPtyExit: (callback: (data: { sessionId: string; exitCode: number }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
       ipcRenderer.on('pty:exit', handler)
@@ -751,11 +794,8 @@ export const api = {
       ipcRenderer.invoke('ai-terminal:get-raw-terminal-output', sessionId),
 
     // PTY events (shared channel with ai-coding)
-    onPtyData: (callback: (data: { sessionId: string; data: string }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
-      ipcRenderer.on('pty:data', handler)
-      return () => ipcRenderer.removeListener('pty:data', handler)
-    },
+    onPtyData: (callback: PtyDataCallback, sessionId?: string) =>
+      subscribePtyData(callback, sessionId),
     onPtyExit: (callback: (data: { sessionId: string; exitCode: number }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
       ipcRenderer.on('pty:exit', handler)

@@ -2301,6 +2301,10 @@ const translations: Record<Lang, Record<string, string>> = {
     'confirmRun.title': '确认执行',
     'confirmRun.contentPrefix': '确定要执行 「',
     'confirmRun.contentSuffix': '」 吗？',
+    // ── terminal search (V4) ──
+    'terminal.searchNext': '下一个 (Enter)',
+    'terminal.searchPrevious': '上一个 (Shift+Enter)',
+    'terminal.searchNoResults': '无结果',
   },
   'en': {
     // Sidebar menu
@@ -4685,6 +4689,10 @@ const translations: Record<Lang, Record<string, string>> = {
     'confirmRun.title': 'Confirm Run',
     'confirmRun.contentPrefix': 'Are you sure you want to run "',
     'confirmRun.contentSuffix': '"?',
+    // ── terminal search (V4) ──
+    'terminal.searchNext': 'Next (Enter)',
+    'terminal.searchPrevious': 'Previous (Shift+Enter)',
+    'terminal.searchNoResults': 'No results',
   }
 }
 

@@ -1,0 +1,43 @@
+/* --- Bundled Nerd Font symbols (terminal TUI icons) ---
+   Stock symbols-only face from the Nerd Fonts project, v3.4.0, unmodified
+   (MIT — see assets/fonts/SymbolsNerdFont-LICENSE.txt), converted from the
+   release TTF to WOFF2 with no metric or outline changes. Ships so TUI agents
+   that paint their chrome with private-use glyphs (omp's status line:
+   powerline separators, model / reasoning / folder / context icons) render on
+   machines without a patched font installed, instead of falling back to tofu.
+   Referenced by TERMINAL_FONT_STACK in utils/mono-font.ts.
+
+   History, because the obvious "fix" here is a trap: we used to ship a
+   derivative with every outline and advance rescaled to 0.54em. Upstream
+   advances a full em, while xterm sizes its cell from the Latin fallback
+   (Consolas 1126/2048 = 0.55em, Monaco/Menlo ≈ 0.60em), so under the DOM
+   renderer an icon covered ~1.8 cells and was then half-erased: the DOM
+   renderer sets letterSpacing = cellWidth − measuredWidth on the run, so the
+   next cell repainted over the icon's right side and any TUI that fills cell
+   backgrounds left the icon reading as "left half only". Since xterm 6 we
+   render through the WebGL addon, which rasterises each glyph into its
+   texture-atlas slot rather than laying out a run of DOM text, so that
+   overpaint path no longer exists and the stock file is the right thing to
+   ship. Note `rescaleOverlappingGlyphs` does NOT participate — it exempts
+   Nerd Font glyphs by design.
+
+   If this ever needs revisiting, fix it in the font file, not in CSS.
+   `size-adjust` scales vertical metrics by the same factor, and xterm derives
+   cell *height* from the primary font's box — this face leads the stack, so at
+   54% the measured char height fell 15px → 7px, rows became 8px tall under
+   overflow: hidden, and every terminal sheared the tops off ordinary text.
+   ascent-override/descent-override take a different metrics path and land on
+   13px, not 15px, so they can't restore it either.
+
+   That same "leads the stack" property is why cell height tracks Nerd Font's
+   vertical box (1638/-410 per em) instead of Consolas'. That box is tighter,
+   which is what made terminal text read as cramped when this font first
+   shipped; TERMINAL_LINE_HEIGHT in utils/terminal-theme.ts is the single knob
+   that compensates, for both terminals. */
+@font-face {
+  font-family: 'Symbols Nerd Font Mono';
+  src: url('../assets/fonts/SymbolsNerdFontMono-Regular.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
