@@ -1,7 +1,7 @@
 """ClawBench SDK - Python SDK for the ClawBench Desktop App."""
 
 from clawbench_sdk.base_app import ClawBenchApp
-from clawbench_sdk.output import emit_output, emit_progress, emit_result
+from clawbench_sdk.output import emit_cancelled, emit_output, emit_progress, emit_result
 from clawbench_sdk.ui import (
     Dialog,
     Button,
@@ -21,6 +21,7 @@ from clawbench_sdk.ui import (
 
 __all__ = [
     "ClawBenchApp",
+    "emit_cancelled",
     "emit_output",
     "emit_progress",
     "emit_result",
@@ -40,4 +41,4 @@ __all__ = [
     "load_ui_from_json",
 ]
 
-version = "1.1.0"
+version = "1.2.0"

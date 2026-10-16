@@ -69,6 +69,29 @@ def emit_result(success: bool, summary: str, data: Optional[Dict[str, Any]] = No
     _emit(payload)
 
 
+def emit_cancelled(summary: str = "Cancelled", data: Optional[Dict[str, Any]] = None) -> None:
+    """Emit a final result marking the run as cancelled by the user.
+
+    A cancellation is a deliberate user action, not a failure. It is reported
+    with ``success=False`` (the run did not complete its work) but carries a
+    ``cancelled=True`` flag so the host records it as a run status rather than
+    an execution error.
+
+    Args:
+        summary: Short human-readable summary of the cancellation.
+        data: Optional dictionary of structured result data.
+    """
+    payload: Dict[str, Any] = {
+        "type": OutputType.RESULT.value,
+        "success": False,
+        "cancelled": True,
+        "summary": summary,
+    }
+    if data is not None:
+        payload["data"] = data
+    _emit(payload)
+
+
 def emit_error(message: str, details: str = "") -> None:
     """Emit an error message.
 

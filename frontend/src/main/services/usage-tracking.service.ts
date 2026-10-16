@@ -20,6 +20,13 @@ import * as logger from '../utils/logger'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api/v1'
 
+/**
+ * Builtin apps live in the common_apps table (keyed by app_key), not the
+ * marketplace applications table, so their run/error reports go to a different
+ * endpoint. Their manifest id is always `${BUILTIN_APP_ID_PREFIX}${appKey}`.
+ */
+const BUILTIN_APP_ID_PREFIX = 'com.clawbench.builtin.'
+
 const MAX_MESSAGE_LENGTH = 4000
 const MAX_DETAILS_LENGTH = 20000
 
@@ -48,14 +55,22 @@ async function uploadExecutionEvent(event: {
   applicationId: string
   version?: string
   success: boolean
+  cancelled?: boolean
   errorMessage?: string
   errorDetails?: string
 }): Promise<boolean> {
   const token = getApiToken()
   if (!token) return false // not logged in (or local mode) — nothing to upload
 
+  const isBuiltin = event.applicationId.startsWith(BUILTIN_APP_ID_PREFIX)
+  const url = isBuiltin
+    ? `${API_BASE_URL}/common-apps/${encodeURIComponent(
+        event.applicationId.slice(BUILTIN_APP_ID_PREFIX.length)
+      )}/executions`
+    : `${API_BASE_URL}/applications/${encodeURIComponent(event.applicationId)}/executions`
+
   try {
-    const res = await fetch(`${API_BASE_URL}/applications/${encodeURIComponent(event.applicationId)}/executions`, {
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -63,9 +78,16 @@ async function uploadExecutionEvent(event: {
       },
       body: JSON.stringify({
         version: event.version,
-        success: event.success,
-        errorMessage: truncate(event.errorMessage, MAX_MESSAGE_LENGTH),
-        errorDetails: truncate(event.errorDetails, MAX_DETAILS_LENGTH)
+        // Cancelled runs are never successes; force flags so backend never
+        // writes an error row even if a stale pending event is incomplete.
+        success: event.cancelled ? false : event.success,
+        cancelled: event.cancelled === true,
+        errorMessage: event.cancelled
+          ? undefined
+          : truncate(event.errorMessage, MAX_MESSAGE_LENGTH),
+        errorDetails: event.cancelled
+          ? undefined
+          : truncate(event.errorDetails, MAX_DETAILS_LENGTH)
       })
     })
     return res.ok
@@ -87,6 +109,7 @@ export async function recordExecutionResult(
   version: string | undefined,
   success: boolean,
   errorMessage?: string,
+  cancelled?: boolean,
   errorDetails?: string
 ): Promise<void> {
   const id = randomUUID()
@@ -98,6 +121,7 @@ export async function recordExecutionResult(
       applicationId,
       version,
       success,
+      cancelled,
       errorMessage: truncate(errorMessage, MAX_MESSAGE_LENGTH),
       errorDetails: truncate(errorDetails, MAX_DETAILS_LENGTH),
       timestamp: Date.now(),
@@ -112,6 +136,7 @@ export async function recordExecutionResult(
     applicationId,
     version,
     success,
+    cancelled,
     errorMessage,
     errorDetails
   })
@@ -122,6 +147,47 @@ export async function recordExecutionResult(
     } catch (err) {
       logger.warn('Failed to mark execution event as uploaded:', err)
     }
+  }
+}
+
+/**
+ * Reports a builtin app install/upgrade to the backend so its download_count
+ * reflects real client rollout. Builtin apps are seeded locally (never go
+ * through the marketplace download endpoint), so without this their
+ * download_count would stay at 0. Best-effort: silently skipped when the user
+ * is not logged in, and failures are swallowed (a local audit entry is still
+ * written).
+ *
+ * @param appKey builtin app key (e.g. "env-check")
+ * @param version bundled manifest version
+ */
+export async function reportBuiltinAppInstall(appKey: string, version?: string): Promise<void> {
+  try {
+    appendEvent({
+      id: randomUUID(),
+      type: 'download',
+      applicationId: `${BUILTIN_APP_ID_PREFIX}${appKey}`,
+      version,
+      timestamp: Date.now()
+    })
+  } catch (err) {
+    logger.warn('Failed to record local builtin install event:', err)
+  }
+
+  const token = getApiToken()
+  if (!token) return
+
+  try {
+    await fetch(`${API_BASE_URL}/common-apps/${encodeURIComponent(appKey)}/downloads`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ version })
+    })
+  } catch (err) {
+    logger.warn(`Failed to report builtin install for ${appKey}:`, err)
   }
 }
 
@@ -151,6 +217,7 @@ export async function flushPendingUsageEvents(): Promise<void> {
       applicationId: event.applicationId,
       version: event.version,
       success: !!event.success,
+      cancelled: event.cancelled,
       errorMessage: event.errorMessage,
       errorDetails: event.errorDetails
     })

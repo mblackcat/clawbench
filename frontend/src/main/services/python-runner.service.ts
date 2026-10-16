@@ -3,10 +3,13 @@ import fs from 'fs'
 import { join } from 'path'
 import { WebContents, Notification, BrowserWindow } from 'electron'
 import { randomUUID } from 'crypto'
-import { getTempDir } from '../utils/paths'
+import { getTempDir, getWorkbenchVenvPythonPath } from '../utils/paths'
 import { settingsStore } from '../store/settings.store'
 import { mainT } from '../utils/i18n'
 import { recordExecutionResult } from './usage-tracking.service'
+import { getAppVenvPython, ensureWorkbenchVenv } from './python-venv.service'
+import { scanAvailablePythons } from './python-detect.service'
+import { isWindowsAppsPath, reorderWindowsPathString } from '../utils/windows-env'
 import * as logger from '../utils/logger'
 
 /** Map of taskId to running child process */
@@ -14,6 +17,36 @@ const runningTasks = new Map<string, ChildProcess>()
 
 /** Track which tasks have already sent a final status */
 const completedTasks = new Set<string>()
+
+// Tasks the user explicitly cancelled (via cancelTask). A killed process exits
+// with a non-zero code, which must be recorded as a cancellation, not a failure.
+const cancelledTasks = new Set<string>()
+
+/** Tasks that already uploaded an execution result (prevents double-report). */
+const recordedUsageTasks = new Set<string>()
+
+function recordTaskUsageOnce(
+  taskId: string,
+  applicationId: string,
+  version: string | undefined,
+  success: boolean,
+  errorMessage: string | undefined,
+  cancelled: boolean,
+  errorDetails?: string
+): void {
+  if (recordedUsageTasks.has(taskId)) return
+  recordedUsageTasks.add(taskId)
+  // Cancel always wins over a late failed result / stderr.
+  const wasCancelled = cancelled || cancelledTasks.has(taskId)
+  recordExecutionResult(
+    applicationId,
+    version,
+    wasCancelled ? false : success,
+    wasCancelled ? undefined : errorMessage,
+    wasCancelled,
+    wasCancelled ? undefined : errorDetails
+  ).catch((err) => logger.warn(`Failed to record execution result for task ${taskId}:`, err))
+}
 
 /** Map of taskId to app display name */
 const taskAppNames = new Map<string, string>()
@@ -40,13 +73,13 @@ interface WorkspaceInfo {
 export interface IMExecCallbacks {
   onOutput?: (message: string, level: string) => void
   onProgress?: (percent: number, message: string) => void
-  onComplete?: (success: boolean, summary: string) => void
+  onComplete?: (success: boolean, summary: string, cancelled?: boolean) => void
 }
 
 export interface PythonResolution {
   path: string
   version: string
-  source: 'settings' | 'system'
+  source: 'settings' | 'system' | 'venv'
 }
 
 export interface I18nMessagePayload {
@@ -76,47 +109,71 @@ export function getI18nPayload(err: unknown): I18nMessagePayload {
   return {}
 }
 
-function probePythonCommand(command: string): Promise<string | null> {
-  return new Promise((resolve) => {
-    let resolved = false
-    let stdout = ''
-    let stderr = ''
-    let timer: NodeJS.Timeout
-
-    const finish = (version: string | null): void => {
-      if (resolved) return
-      resolved = true
-      clearTimeout(timer)
-      resolve(version)
-    }
-
-    const proc = spawn(command, ['--version'], { windowsHide: true })
-    timer = setTimeout(() => {
-      proc.kill()
-      finish(null)
-    }, 5000)
-
-    proc.stdout?.on('data', (data: Buffer) => {
-      stdout += data.toString()
-    })
-
-    proc.stderr?.on('data', (data: Buffer) => {
-      stderr += data.toString()
-    })
-
-    proc.on('close', (code) => {
-      const output = (stdout || stderr).trim()
-      const versionMatch = output.match(/Python\s+([\d.]+)/)
-      finish(code === 0 && versionMatch ? versionMatch[0] : null)
-    })
-
-    proc.on('error', () => finish(null))
+function withResolvers<T>(): {
+  promise: Promise<T>
+  resolve: (value: T | PromiseLike<T>) => void
+  reject: (reason?: unknown) => void
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
   })
+  return { promise, resolve, reject }
 }
 
-export async function resolvePythonCommand(): Promise<PythonResolution> {
-  const configuredPythonPath = ((settingsStore.get('pythonPath') as string) || '').trim()
+function probePythonCommand(command: string): Promise<string | null> {
+  const { promise, resolve } = withResolvers<string | null>()
+  let resolved = false
+  let stdout = ''
+  let stderr = ''
 
+  const finish = (version: string | null): void => {
+    if (resolved) return
+    resolved = true
+    clearTimeout(timer)
+    resolve(version)
+  }
+
+  const proc = spawn(command, ['--version'], { windowsHide: true })
+  const timer = setTimeout(() => {
+    proc.kill()
+    finish(null)
+  }, 5000)
+
+  proc.stdout?.on('data', (data: Buffer) => {
+    stdout += data.toString()
+  })
+
+  proc.stderr?.on('data', (data: Buffer) => {
+    stderr += data.toString()
+  })
+
+  proc.on('close', (code) => {
+    const output = (stdout || stderr).trim()
+    const versionMatch = output.match(/Python\s+([\d.]+)/)
+    finish(code === 0 && versionMatch ? versionMatch[0] : null)
+  })
+
+  proc.on('error', () => finish(null))
+  return promise
+}
+
+export async function resolvePythonCommand(appPath?: string): Promise<PythonResolution> {
+  // 1. App-specific venv if present
+  if (appPath) {
+    const appVenvPython = getAppVenvPython(appPath)
+    if (appVenvPython) {
+      const version = await probePythonCommand(appVenvPython)
+      if (version) {
+        return { path: appVenvPython, version, source: 'venv' }
+      }
+    }
+  }
+
+  // 2. Explicit configured Python path in settings
+  const configuredPythonPath = ((settingsStore.get('pythonPath') as string) || '').trim()
   if (configuredPythonPath) {
     const version = await probePythonCommand(configuredPythonPath)
     if (!version) {
@@ -127,13 +184,51 @@ export async function resolvePythonCommand(): Promise<PythonResolution> {
     return { path: configuredPythonPath, version, source: 'settings' }
   }
 
-  for (const command of ['python3', 'python']) {
-    const version = await probePythonCommand(command)
+  // 3. Dedicated workbench venv (existing or lazily created)
+  const venvPython = getWorkbenchVenvPythonPath()
+  if (fs.existsSync(venvPython)) {
+    const version = await probePythonCommand(venvPython)
     if (version) {
-      return { path: command, version, source: 'system' }
+      return { path: venvPython, version, source: 'venv' }
+    }
+  } else {
+    try {
+      const venvRes = await ensureWorkbenchVenv()
+      if (venvRes.success && venvRes.pythonPath) {
+        const version = await probePythonCommand(venvRes.pythonPath)
+        if (version) {
+          return { path: venvRes.pythonPath, version, source: 'venv' }
+        }
+      }
+    } catch (err) {
+      logger.warn('[python-runner] Could not lazy-init workbench venv:', err)
     }
   }
 
+  // 4. Host system fallback: scan verified installations (excluding WindowsApps aliases)
+  try {
+    const scanned = await scanAvailablePythons({}, false)
+    for (const opt of scanned) {
+      if (opt.path && !isWindowsAppsPath(opt.path)) {
+        const version = await probePythonCommand(opt.path)
+        if (version) {
+          return { path: opt.path, version, source: 'system' }
+        }
+      }
+    }
+  } catch (err: unknown) {
+    logger.warn('[python-runner] Error scanning host pythons:', err)
+  }
+
+  // Fallback probing standard commands — POSIX only to prevent triggering Microsoft Store on Windows
+  if (process.platform !== 'win32') {
+    for (const command of ['python3', 'python']) {
+      const version = await probePythonCommand(command)
+      if (version) {
+        return { path: command, version, source: 'system' }
+      }
+    }
+  }
   throw new PythonResolutionError('subapp.pythonNotFound')
 }
 
@@ -267,8 +362,9 @@ export function executeSubApp(
         pathEnv = `${pathEnv}:${p}`
       }
     }
+  } else if (process.platform === 'win32') {
+    pathEnv = reorderWindowsPathString(pathEnv).newPath
   }
-
   // Spawn the Python process
   const proc = spawn(pythonPath, [entryFile, '--params', paramsFile, '--workspace', workspaceFile], {
     cwd: appPath,
@@ -326,39 +422,64 @@ export function executeSubApp(
 
     // Report final status + usage tracking if not already sent (e.g. via the
     // 'result' JSON protocol message handled in processOutputLine).
-    if (!completedTasks.has(taskId)) {
-      const success = code === 0
+    // If the user cancelled after a non-cancelled result was already emitted,
+    // still force the UI/status to cancelled (result handler now checks
+    // cancelledTasks, but close is the last authority for kill-without-result).
+    const cancelled = cancelledTasks.has(taskId)
+    if (!completedTasks.has(taskId) || cancelled) {
+      const success = !cancelled && code === 0
       const errorSummary = stderrBuffer.trim()
       const fallbackExitCode = String(code ?? 'unknown')
+      const alreadyFinalized = completedTasks.has(taskId)
 
+      // Only record usage once (result path may have already written a row).
       const meta = taskAppMeta.get(taskId)
       if (meta) {
-        recordExecutionResult(
+        recordTaskUsageOnce(
+          taskId,
           meta.appId,
           meta.version,
           success,
-          success ? undefined : errorSummary || `Process exited with code ${fallbackExitCode}`
-        ).catch((err) => logger.warn(`Failed to record execution result for task ${taskId}:`, err))
+          success || cancelled
+            ? undefined
+            : errorSummary || `Process exited with code ${fallbackExitCode}`,
+          cancelled
+        )
       }
 
       if (!webContents.isDestroyed()) {
         webContents.send('subapp:task-status', {
           taskId,
-          status: success ? 'completed' : 'failed',
+          status: cancelled ? 'cancelled' : success ? 'completed' : 'failed',
+          success: cancelled ? false : success,
+          cancelled,
           exitCode: code,
-          summary: success
-            ? undefined
-            : errorSummary || mainT('subapp.processExitedWithCode', fallbackExitCode),
-          summaryI18nKey: success || errorSummary ? undefined : 'subapp.processExitedWithCode',
-          summaryI18nArgs: success || errorSummary ? undefined : [fallbackExitCode]
+          summary: cancelled
+            ? mainT('subapp.executionCancelled')
+            : success
+              ? undefined
+              : errorSummary || mainT('subapp.processExitedWithCode', fallbackExitCode),
+          summaryI18nKey: cancelled
+            ? 'subapp.executionCancelled'
+            : success || errorSummary
+              ? undefined
+              : 'subapp.processExitedWithCode',
+          summaryI18nArgs:
+            cancelled || success || errorSummary ? undefined : [fallbackExitCode]
         })
-        sendTaskNotification(taskId, success, webContents)
+        // Cancellations are not failures — suppress the failure notification.
+        if (!cancelled && !alreadyFinalized) {
+          sendTaskNotification(taskId, success, webContents)
+        }
       }
+      completedTasks.add(taskId)
     }
 
     // Cleanup
     runningTasks.delete(taskId)
     completedTasks.delete(taskId)
+    cancelledTasks.delete(taskId)
+    recordedUsageTasks.delete(taskId)
     taskAppNames.delete(taskId)
     taskAppMeta.delete(taskId)
     cleanupTempFiles(paramsFile, workspaceFile)
@@ -369,9 +490,7 @@ export function executeSubApp(
 
     const meta = taskAppMeta.get(taskId)
     if (meta) {
-      recordExecutionResult(meta.appId, meta.version, false, err.message).catch((e) =>
-        logger.warn(`Failed to record execution result for task ${taskId}:`, e)
-      )
+      recordTaskUsageOnce(taskId, meta.appId, meta.version, false, err.message, false)
     }
 
     if (!webContents.isDestroyed()) {
@@ -399,6 +518,7 @@ export function executeSubApp(
 
     completedTasks.add(taskId)
     runningTasks.delete(taskId)
+    recordedUsageTasks.delete(taskId)
     taskAppNames.delete(taskId)
     taskAppMeta.delete(taskId)
     cleanupTempFiles(paramsFile, workspaceFile)
@@ -440,21 +560,41 @@ function processOutputLine(taskId: string, line: string, webContents: WebContent
         webContents.send('subapp:progress', { taskId, ...data })
         break
       case 'result': {
+        // Cancellation is deliberate, not a failure. Prefer the explicit
+        // cancelledTasks mark (user clicked Cancel) over the JSON payload —
+        // a killed process may still emit success=false without cancelled=true.
+        const cancelled = !!data.cancelled || cancelledTasks.has(taskId)
+        const status = cancelled ? 'cancelled' : data.success ? 'completed' : 'failed'
+        const summary = cancelled
+          ? mainT('subapp.executionCancelled')
+          : data.summary
         webContents.send('subapp:task-status', {
           taskId,
-          status: data.success ? 'completed' : 'failed',
-          ...data
+          ...data,
+          status,
+          success: cancelled ? false : data.success,
+          cancelled,
+          summary,
+          summaryI18nKey: cancelled ? 'subapp.executionCancelled' : data.summaryI18nKey
         })
         completedTasks.add(taskId)
-        sendTaskNotification(taskId, !!data.success, webContents)
+        // Cancellations are not failures — don't fire a failure notification.
+        if (!cancelled) {
+          sendTaskNotification(taskId, !!data.success, webContents)
+        }
 
         const meta = taskAppMeta.get(taskId)
         if (meta) {
-          const errorMessage = data.success
+          const errorMessage = data.success || cancelled
             ? undefined
             : String(data.message ?? data.summary ?? 'Sub-app reported failure')
-          recordExecutionResult(meta.appId, meta.version, !!data.success, errorMessage).catch((err) =>
-            logger.warn(`Failed to record execution result for task ${taskId}:`, err)
+          recordTaskUsageOnce(
+            taskId,
+            meta.appId,
+            meta.version,
+            cancelled ? false : !!data.success,
+            errorMessage,
+            cancelled
           )
         }
         break
@@ -531,8 +671,9 @@ export function executeSubAppWithCallbacks(
     for (const p of extraPaths) {
       if (!pathEnv.split(':').includes(p)) pathEnv = `${pathEnv}:${p}`
     }
+  } else if (process.platform === 'win32') {
+    pathEnv = reorderWindowsPathString(pathEnv).newPath
   }
-
   const proc = spawn(pythonPath, [entryFile, '--params', paramsFile, '--workspace', workspaceFile], {
     cwd: appPath,
     env: { ...process.env, PATH: pathEnv, PYTHONPATH: pythonPathEnv, PYTHONUNBUFFERED: '1' }
@@ -566,17 +707,26 @@ export function executeSubAppWithCallbacks(
           case 'progress':
             callbacks.onProgress?.(json.percent ?? 0, json.message || '')
             break
-          case 'result':
-            lastSummary = json.summary || mainT(json.success ? 'subapp.executionSucceeded' : 'subapp.executionFailed')
-            callbacks.onComplete?.(!!json.success, lastSummary)
+          case 'result': {
+            const cancelled = !!json.cancelled || cancelledTasks.has(taskId)
+            lastSummary = cancelled
+              ? mainT('subapp.executionCancelled')
+              : json.summary ||
+                mainT(json.success ? 'subapp.executionSucceeded' : 'subapp.executionFailed')
+            callbacks.onComplete?.(cancelled ? false : !!json.success, lastSummary, cancelled)
             completedTasks.add(taskId)
-            recordExecutionResult(
+            recordTaskUsageOnce(
+              taskId,
               appId,
               version,
-              !!json.success,
-              json.success ? undefined : String(json.message ?? lastSummary ?? 'Sub-app reported failure')
-            ).catch((err) => logger.warn(`Failed to record execution result for task ${taskId}:`, err))
+              cancelled ? false : !!json.success,
+              json.success || cancelled
+                ? undefined
+                : String(json.message ?? lastSummary ?? 'Sub-app reported failure'),
+              cancelled
+            )
             break
+          }
           default:
             callbacks.onOutput?.(json.message || line, 'info')
         }
@@ -594,32 +744,41 @@ export function executeSubAppWithCallbacks(
     if (stdoutBuffer.trim()) {
       callbacks.onOutput?.(stdoutBuffer, 'info')
     }
+    // Result handler already accounts for cancelledTasks; only finalize here
+    // when no terminal result was emitted.
     if (!completedTasks.has(taskId)) {
-      const success = code === 0
-      callbacks.onComplete?.(
-        success,
-        lastSummary || mainT(success ? 'subapp.executionCompleted' : 'subapp.executionFailed')
-      )
-      recordExecutionResult(
+      const wasCancelled = cancelledTasks.has(taskId)
+      const success = !wasCancelled && code === 0
+      const summary = wasCancelled
+        ? mainT('subapp.executionCancelled')
+        : lastSummary || mainT(success ? 'subapp.executionCompleted' : 'subapp.executionFailed')
+      recordTaskUsageOnce(
+        taskId,
         appId,
         version,
         success,
-        success ? undefined : `Process exited with code ${String(code ?? 'unknown')}`
-      ).catch((err) => logger.warn(`Failed to record execution result for task ${taskId}:`, err))
+        success || wasCancelled
+          ? undefined
+          : `Process exited with code ${String(code ?? 'unknown')}`,
+        wasCancelled
+      )
+      callbacks.onComplete?.(success, summary, wasCancelled)
+      completedTasks.add(taskId)
     }
     runningTasks.delete(taskId)
     completedTasks.delete(taskId)
+    cancelledTasks.delete(taskId)
+    recordedUsageTasks.delete(taskId)
     taskAppNames.delete(taskId)
     cleanupTempFiles(paramsFile, workspaceFile)
   })
 
   proc.on('error', (err) => {
     callbacks.onComplete?.(false, mainT('subapp.processStartFailed', err.message))
-    recordExecutionResult(appId, version, false, err.message).catch((e) =>
-      logger.warn(`Failed to record execution result for task ${taskId}:`, e)
-    )
+    recordTaskUsageOnce(taskId, appId, version, false, err.message, false)
     completedTasks.add(taskId)
     runningTasks.delete(taskId)
+    recordedUsageTasks.delete(taskId)
     taskAppNames.delete(taskId)
     cleanupTempFiles(paramsFile, workspaceFile)
   })
@@ -636,6 +795,7 @@ export function cancelTask(taskId: string): boolean {
   }
 
   logger.info(`Cancelling task ${taskId}`)
+  cancelledTasks.add(taskId)
   if (process.platform === 'win32') {
     // Windows: SIGTERM is not supported; use default kill (TerminateProcess)
     proc.kill()
