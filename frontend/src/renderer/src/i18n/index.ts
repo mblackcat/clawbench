@@ -2366,6 +2366,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'terminal.newSession': '新建会话',
     'terminal.enableToolHint': '请先在「本地环境」中安装并启用 Claude Code 或 Codex 等 AI 编程工具，助手将复用其能力。',
     'terminal.pickToolHint': '在左上角选择一个 AI 编程工具以开始会话。',
+    // ── DB GUI dangerous statement confirm (V4) ──
+    'db.dangerousConfirmTitle': '确认执行高危语句',
+    'db.dangerousConfirmContent': '该语句包含 {0}，可能删除或修改表结构 / 数据且无法撤销。确定要执行吗？',
   },
   'en': {
     // Sidebar menu
@@ -4815,6 +4818,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'terminal.newSession': 'New session',
     'terminal.enableToolHint': 'Install and enable an AI coding tool such as Claude Code or Codex in Local Env first; the assistant reuses it.',
     'terminal.pickToolHint': 'Pick an AI coding tool at the top-left to start a session.',
+    // ── DB GUI dangerous statement confirm (V4) ──
+    'db.dangerousConfirmTitle': 'Run a dangerous statement?',
+    'db.dangerousConfirmContent': 'This statement contains {0}, which can drop or change table structure / data irreversibly. Run it anyway?',
   }
 }
 
