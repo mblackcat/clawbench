@@ -58,16 +58,30 @@ const AppDetailPage: React.FC = () => {
       const detail = await applicationManager.fetchApplicationDetail(appId);
       setApp(detail);
 
-      // 检查是否已安装
-      const installed = localStorageManager.isAppInstalled(appId);
+      // 检查是否已安装（磁盘扫描为准，兼容 localStorage 记录）
+      let diskVersion: string | undefined;
+      let onDisk = false;
+      try {
+        const diskApps = await window.api.subapp.list();
+        const diskApp =
+          diskApps.find((i) => i.manifest.id === appId) ||
+          diskApps.find((i) => i.manifest.name === detail.name);
+        if (diskApp) {
+          onDisk = true;
+          diskVersion = diskApp.manifest.version;
+        }
+      } catch {
+        // disk scan unavailable — fall back to localStorage only
+      }
+      const installedApp = localStorageManager.getInstalledApp(appId);
+      const installed = onDisk || localStorageManager.isAppInstalled(appId);
       setIsInstalled(installed);
 
       // 检查是否有更新
       if (installed) {
-        const installedApp = localStorageManager.getInstalledApp(appId);
-        if (installedApp) {
-          const hasNewVersion =
-            applicationManager['compareVersions'](installedApp.localVersion || '', detail.version) < 0;
+        const localVer = diskVersion || installedApp?.localVersion || '';
+        if (localVer && detail.version) {
+          const hasNewVersion = applicationManager['compareVersions'](localVer, detail.version) < 0;
           setHasUpdate(hasNewVersion);
         }
       }

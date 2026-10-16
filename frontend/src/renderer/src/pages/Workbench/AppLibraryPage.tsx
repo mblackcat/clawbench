@@ -1,7 +1,9 @@
 /**
  * 发现页面（原应用中心）
  * 混合市场：应用 / AI 技能 / 提示词 三类 Tab
- * 卡片按状态显示 Owner/Installed/Update/Install 按钮，点击打开 Drawer
+ * 卡片按状态显示 Owner/Installed/Update/Reset/Install 操作，点击打开 Drawer。
+ * 安装状态以磁盘扫描为准（manifest.id 优先，其次名称），版本比对得出
+ * 待更新（本地 < 线上）/ 重置为线上（本地 > 线上）。
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
@@ -14,26 +16,45 @@ import {
   CheckCircleOutlined,
   DownloadOutlined,
   SyncOutlined,
-  CrownOutlined
+  CrownOutlined,
+  CloudDownloadOutlined,
+  MoreOutlined
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { applicationManager } from '../../services/applicationManager';
-import type { InstalledApp, UpdateInfo } from '../../services/applicationManager';
 import { localStorageManager } from '../../services/localStorageManager';
 import type { Application, ApplicationType, ApplicationDetail } from '../../types/api';
 import { useSubAppStore } from '../../stores/useSubAppStore';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore';
+import { useSettingsStore } from '../../stores/useSettingsStore';
 import CreateTypeModal from '../../components/CreateTypeModal';
 import SkillInstallModal from '../../components/SkillInstallModal';
 import { AppVersionTag } from '../../components/AppStatusTag';
+import { AppIcon } from '../../components/AppIcon';
+import { FolderCard } from '../../components/FolderCard';
+import {
+  resolveDiscoverStatus,
+  discoverStatusLabelKey,
+  isBuiltinAppId,
+  type DiscoverCardStatus
+} from '../../utils/app-status';
 import type { SkillInstallMode, SkillTool } from '../../types/skill';
 import { useT } from '../../i18n';
 
 const { Title, Text } = Typography;
 const { Search } = Input;
 
-type AppStatus = 'owner' | 'installed' | 'update' | 'not_installed';
+/** Owner (not installed locally) keeps OSS's crown entry; otherwise local-vs-online status. */
+type AppStatus = 'owner' | DiscoverCardStatus;
+
+const SMALL_TAG_STYLE: React.CSSProperties = {
+  margin: 0,
+  fontSize: 10,
+  lineHeight: '16px',
+  height: 18,
+  padding: '0 5px'
+};
 
 const AppLibraryPage: React.FC = () => {
   const navigate = useNavigate();
@@ -51,7 +72,12 @@ const AppLibraryPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<ApplicationType>('app');
   const [installing, setInstalling] = useState<Set<string>>(new Set());
   const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [updateInfoMap, setUpdateInfoMap] = useState<Map<string, UpdateInfo>>(new Map());
+  /** Local on-disk version keyed by manifest id and by name (market match: id first, then name). */
+  const [localVersionByKey, setLocalVersionByKey] = useState<{
+    byId: Map<string, string>;
+    byName: Map<string, string>;
+  }>({ byId: new Map(), byName: new Map() });
+  const pinnedApps = useSettingsStore((state) => state.pinnedApps);
 
   // Drawer state
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -82,6 +108,17 @@ const AppLibraryPage: React.FC = () => {
     setLoading(true);
     try {
       await fetchApps();
+      // Installed-by-disk detection: read fresh manifests after fetchApps
+      // (market installs never populate localStorage).
+      const byId = new Map<string, string>();
+      const byName = new Map<string, string>();
+      for (const info of useSubAppStore.getState().appInfos) {
+        if (info.source !== 'user') continue;
+        const v = info.manifest.version || '';
+        if (info.manifest.id) byId.set(info.manifest.id, v);
+        if (info.manifest.name && !byName.has(info.manifest.name)) byName.set(info.manifest.name, v);
+      }
+      setLocalVersionByKey({ byId, byName });
 
       if (!isLocalMode) {
         // forceRefresh=true bypasses the 5-min cache, so switching to the
@@ -89,17 +126,6 @@ const AppLibraryPage: React.FC = () => {
         const publishedApps = await applicationManager.fetchApplications(true, activeTab);
         setAllApps(publishedApps);
         setFilteredApps(publishedApps);
-
-        // Check for updates — use the real on-disk manifests (read fresh from
-        // the store after fetchApps), NOT localStorage which market installs
-        // never populate.
-        try {
-          const diskAppInfos = useSubAppStore.getState().appInfos;
-          const updates = await applicationManager.checkInstalledAppUpdates(diskAppInfos);
-          setUpdateInfoMap(updates);
-        } catch {
-          // non-critical
-        }
       }
     } catch (error) {
       console.error('Failed to load apps:', error);
@@ -125,91 +151,77 @@ const AppLibraryPage: React.FC = () => {
     setFilteredApps(filtered);
   };
 
-  const getAppStatus = useCallback((app: Application): AppStatus => {
-    // Check if owner
-    const currentUserId = user?.id;
-    if (currentUserId && app.ownerId === currentUserId) {
-      return 'owner';
-    }
+  const isOwner = useCallback(
+    (app: Application): boolean => {
+      const currentUserId = user?.id;
+      return !!(currentUserId && app.ownerId === currentUserId);
+    },
+    [user]
+  );
 
-    // Check if installed
-    const installed = localStorageManager.isAppInstalled(app.applicationId) ||
-      !!appInfos.find(info => info.source === 'user' && info.manifest.name === app.name);
-
-    if (installed) {
-      // Check if has update
-      const updateInfo = updateInfoMap.get(app.applicationId);
-      if (updateInfo?.hasUpdate) {
-        return 'update';
+  /** Local version on disk: match by manifest id (= applicationId) first, then by name. */
+  const getLocalVersion = useCallback(
+    (app: Application): string | undefined => {
+      if (localVersionByKey.byId.has(app.applicationId)) {
+        return localVersionByKey.byId.get(app.applicationId) || undefined;
       }
-      return 'installed';
-    }
+      if (localVersionByKey.byName.has(app.name)) {
+        return localVersionByKey.byName.get(app.name) || undefined;
+      }
+      return localStorageManager.getInstalledApp(app.applicationId)?.localVersion || undefined;
+    },
+    [localVersionByKey]
+  );
 
-    return 'not_installed';
-  }, [user, appInfos, updateInfoMap]);
+  const isAppInstalled = useCallback(
+    (app: Application): boolean =>
+      localVersionByKey.byId.has(app.applicationId) ||
+      localVersionByKey.byName.has(app.name) ||
+      localStorageManager.isAppInstalled(app.applicationId) ||
+      !!appInfos.find((info) => info.source === 'user' && info.manifest.name === app.name),
+    [localVersionByKey, appInfos]
+  );
 
-  const getStatusButton = (app: Application, status: AppStatus) => {
-    const isProcessing = installing.has(app.applicationId);
+  /** Local-vs-online status, ignoring ownership. */
+  const getDiscoverStatus = useCallback(
+    (app: Application): DiscoverCardStatus => {
+      const status = resolveDiscoverStatus(getLocalVersion(app), app.version, isAppInstalled(app));
+      // Skills may be installed outside user-apps (tool dirs); a market
+      // "reset" would reinstall into user-apps, so only offer it for apps.
+      if (status === 'reset_online' && app.type && app.type !== 'app') return 'installed';
+      return status;
+    },
+    [getLocalVersion, isAppInstalled]
+  );
 
-    switch (status) {
-      case 'owner':
-        return (
-          <Button
-            type="text"
-            size="small"
-            icon={<CrownOutlined />}
-            style={{ color: token.colorWarning }}
-            onClick={(e) => { e.stopPropagation(); openDrawer(app); }}
-          >
-            {t('discover.owner')}
-          </Button>
-        );
-      case 'installed':
-        return (
-          <Button
-            type="text"
-            size="small"
-            icon={<CheckCircleOutlined />}
-            style={{ color: token.colorSuccess }}
-            onClick={(e) => { e.stopPropagation(); openDrawer(app); }}
-          >
-            {t('discover.installed')}
-          </Button>
-        );
-      case 'update':
-        return (
-          <Button
-            type="text"
-            size="small"
-            icon={<SyncOutlined />}
-            style={{ color: token.colorPrimary }}
-            onClick={(e) => {
-              e.stopPropagation();
-              modal.confirm({
-                title: t('workbench.updateConfirmTitle'),
-                content: t('workbench.updateConfirmContent', app.name),
-                okText: t('workbench.update'),
-                cancelText: t('workbench.cancel'),
-                onOk: () => handleUpdate(app.applicationId)
-              });
-            }}
-          >
-            {t('discover.update')}
-          </Button>
-        );
-      case 'not_installed':
-        return (
-          <Button
-            type="link"
-            size="small"
-            icon={<DownloadOutlined />}
-            loading={isProcessing}
-            onClick={(e) => { e.stopPropagation(); openDrawer(app); }}
-          >
-            {isProcessing ? t('discover.installing') : t('discover.install')}
-          </Button>
-        );
-    }
+  const getAppStatus = useCallback(
+    (app: Application): AppStatus => {
+      const status = getDiscoverStatus(app);
+      if (status === 'not_installed' && isOwner(app)) return 'owner';
+      return status;
+    },
+    [getDiscoverStatus, isOwner]
+  );
+
+  const confirmUpdate = (app: Application) => {
+    modal.confirm({
+      title: t('workbench.updateConfirmTitle'),
+      content: t('workbench.updateConfirmContent', app.name),
+      okText: t('appStatus.updateAction'),
+      cancelText: t('workbench.cancel'),
+      onOk: () => handleUpdate(app.applicationId)
+    });
+  };
+
+  const confirmReset = (app: Application) => {
+    modal.confirm({
+      title: t('appStatus.resetConfirmTitle'),
+      content: t('appStatus.resetOnlineConfirm', app.name),
+      okText: t('appStatus.reset'),
+      okType: 'danger',
+      cancelText: t('workbench.cancel'),
+      onOk: () => handleReset(app.applicationId)
+    });
   };
 
   const openDrawer = async (app: Application) => {
@@ -295,6 +307,24 @@ const AppLibraryPage: React.FC = () => {
     }
   };
 
+  const handleReset = async (appId: string) => {
+    setInstalling(prev => new Set(prev).add(appId));
+    try {
+      await applicationManager.resetInstalledApp(appId);
+      message.success(t('appStatus.resetSuccess', appId));
+      await loadApps();
+    } catch (error) {
+      console.error('Failed to reset app:', error);
+      message.error(t('appStatus.resetFailed'));
+    } finally {
+      setInstalling(prev => {
+        const next = new Set(prev);
+        next.delete(appId);
+        return next;
+      });
+    }
+  };
+
   const getTypeLabel = (type: ApplicationType) => {
     switch (type) {
       case 'app': return t('discover.tabApp');
@@ -310,7 +340,7 @@ const AppLibraryPage: React.FC = () => {
     if (drawerLoading) return <div style={{ textAlign: 'center', padding: 48 }}><Spin /></div>;
 
     const status = getAppStatus(drawerApp);
-    const updateInfo = updateInfoMap.get(drawerApp.applicationId);
+    const localVer = getLocalVersion(drawerApp);
     const detail = drawerDetail;
     const latestVersion = detail?.versions?.[0];
 
@@ -326,19 +356,21 @@ const AppLibraryPage: React.FC = () => {
           <Descriptions.Item label={t('discover.category')}>
             {drawerApp.category || '-'}
           </Descriptions.Item>
-          {status === 'owner' && (
+          {isOwner(drawerApp) && (
             <Descriptions.Item label={t('discover.supportedEnv')}>
               {drawerApp.type === 'ai-skill' ? 'Claude Code / Codex / Gemini CLI' : '-'}
             </Descriptions.Item>
           )}
-          {(status === 'installed' || status === 'update') && (
+          {status !== 'not_installed' && status !== 'owner' && (
             <Descriptions.Item label={t('discover.version')}>
-              {updateInfo?.currentVersion || latestVersion?.version || '-'}
+              {localVer && drawerApp.version && localVer !== drawerApp.version
+                ? `v${localVer} → v${drawerApp.version}`
+                : `v${localVer || drawerApp.version || latestVersion?.version || '-'}`}
             </Descriptions.Item>
           )}
         </Descriptions>
 
-        {status === 'update' && updateInfo && (
+        {(status === 'pending_update' || status === 'reset_online') && (
           <div style={{ marginBottom: 24 }}>
             <div style={{
               padding: 12,
@@ -347,11 +379,11 @@ const AppLibraryPage: React.FC = () => {
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                 <Text type="secondary">{t('discover.currentVersion')}</Text>
-                <Tag>{updateInfo.currentVersion}</Tag>
+                <Tag>{localVer || '-'}</Tag>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <Text type="secondary">{t('discover.latestVersion')}</Text>
-                <Tag color="blue">{updateInfo.latestVersion}</Tag>
+                <Tag color="blue">{drawerApp.version || '-'}</Tag>
               </div>
               {latestVersion?.changelog && (
                 <div style={{ marginTop: 12 }}>
@@ -363,7 +395,7 @@ const AppLibraryPage: React.FC = () => {
           </div>
         )}
 
-        {status === 'update' && (
+        {status === 'pending_update' && (
           <Button
             type="primary"
             block
@@ -371,11 +403,24 @@ const AppLibraryPage: React.FC = () => {
             loading={installing.has(drawerApp.applicationId)}
             onClick={() => handleUpdate(drawerApp.applicationId)}
           >
-            {installing.has(drawerApp.applicationId) ? t('discover.updating') : t('discover.update')}
+            {installing.has(drawerApp.applicationId) ? t('discover.updating') : t('appStatus.updateAction')}
           </Button>
         )}
 
-        {status === 'not_installed' && (
+        {status === 'reset_online' && (
+          <Button
+            type="primary"
+            danger
+            block
+            icon={<SyncOutlined />}
+            loading={installing.has(drawerApp.applicationId)}
+            onClick={() => confirmReset(drawerApp)}
+          >
+            {t('appStatus.resetOnline')}
+          </Button>
+        )}
+
+        {(status === 'not_installed' || status === 'owner') && (
           <Button
             type="primary"
             block
@@ -390,73 +435,175 @@ const AppLibraryPage: React.FC = () => {
     );
   };
 
+  /** Round action on the card's bottom-right, by status. */
+  const renderCardAction = (app: Application, status: AppStatus) => {
+    const stop = (fn: () => void) => (e: React.MouseEvent) => {
+      e.stopPropagation();
+      fn();
+    };
+    const isProcessing = installing.has(app.applicationId);
+    switch (status) {
+      case 'owner':
+        return (
+          <Tooltip title={t('discover.owner')}>
+            <button type="button" className="cb-round-action-btn cb-round-action-neutral" onClick={stop(() => openDrawer(app))}>
+              <CrownOutlined style={{ fontSize: 14, color: token.colorWarning }} />
+            </button>
+          </Tooltip>
+        );
+      case 'installed':
+        return (
+          <Tooltip title={t(discoverStatusLabelKey(status))}>
+            <button type="button" className="cb-round-action-btn cb-round-action-neutral" onClick={stop(() => openDrawer(app))}>
+              <CheckCircleOutlined style={{ fontSize: 14, color: token.colorSuccess }} />
+            </button>
+          </Tooltip>
+        );
+      case 'pending_update':
+        return (
+          <Tooltip title={t('appStatus.updateAction')}>
+            <button
+              type="button"
+              className={`cb-round-action-btn cb-round-action-primary${isProcessing ? ' is-loading' : ''}`}
+              disabled={isProcessing}
+              onClick={stop(() => confirmUpdate(app))}
+            >
+              {isProcessing ? <SyncOutlined spin style={{ fontSize: 14 }} /> : <CloudDownloadOutlined style={{ fontSize: 14 }} />}
+            </button>
+          </Tooltip>
+        );
+      case 'reset_online':
+        return (
+          <Tooltip title={t('appStatus.resetOnline')}>
+            <button
+              type="button"
+              className={`cb-round-action-btn cb-round-action-neutral${isProcessing ? ' is-loading' : ''}`}
+              disabled={isProcessing}
+              onClick={stop(() => confirmReset(app))}
+            >
+              <SyncOutlined spin={isProcessing} style={{ fontSize: 13, color: token.colorWarning }} />
+            </button>
+          </Tooltip>
+        );
+      case 'not_installed':
+        return (
+          <Tooltip title={isProcessing ? t('discover.installing') : t('discover.install')}>
+            <button
+              type="button"
+              className={`cb-round-action-btn cb-round-action-primary${isProcessing ? ' is-loading' : ''}`}
+              disabled={isProcessing}
+              onClick={stop(() => openDrawer(app))}
+            >
+              {isProcessing ? <SyncOutlined spin style={{ fontSize: 14 }} /> : <DownloadOutlined style={{ fontSize: 14 }} />}
+            </button>
+          </Tooltip>
+        );
+    }
+  };
+
   const renderAppCard = (app: Application) => {
     const status = getAppStatus(app);
+    const discoverStatus = getDiscoverStatus(app);
+    const localVer = getLocalVersion(app);
+    const owned = isOwner(app);
+    const isDraft = owned && !app.published;
+    const isBuiltin = isBuiltinAppId(app.applicationId);
+    const isPinned = pinnedApps.includes(app.applicationId);
+    const variant = isBuiltin ? 'builtin' : isDraft ? 'draft' : owned ? 'own-published' : 'regular';
+    const iconUrl =
+      (typeof app.metadata?.icon === 'string' && app.metadata.icon) ||
+      (typeof app.metadata?.coverUrl === 'string' && app.metadata.coverUrl) ||
+      undefined;
 
     return (
-      <div
+      <FolderCard
         key={app.applicationId}
-        className="cb-glass-card"
+        variant={variant}
+        pinned={isPinned}
         style={{ cursor: 'pointer' }}
         onClick={() => openDrawer(app)}
+        notchActions={
+          <Tooltip title={t('agents.viewDetail')}>
+            <button
+              type="button"
+              className="cb-notch-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                openDrawer(app);
+              }}
+            >
+              <MoreOutlined style={{ fontSize: 13 }} />
+            </button>
+          </Tooltip>
+        }
       >
-        <div style={{ padding: '12px 16px', minHeight: 72, flex: 1 }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: 8,
-            marginBottom: 8,
-            minHeight: 44
-          }}>
-            <Tooltip title={app.name}>
-              <Text
-                strong
-                style={{
-                  flex: 1,
-                  display: '-webkit-box',
-                  WebkitLineClamp: 2,
-                  WebkitBoxOrient: 'vertical',
-                  overflow: 'hidden',
-                  wordBreak: 'break-word',
-                  lineHeight: '22px',
-                  minHeight: 44
-                }}
-              >
-                {app.name}
-              </Text>
-            </Tooltip>
-          </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            {app.version && (
-              <AppVersionTag
-                localVersion={
-                  status === 'update'
-                    ? updateInfoMap.get(app.applicationId)?.currentVersion
-                    : undefined
-                }
-                remoteVersion={app.version}
-                status={status === 'update' ? 'pending_update' : 'not_installed'}
-              />
-            )}
-            {app.category && app.category !== 'general' && <Tag style={{ margin: 0 }}>{app.category}</Tag>}
-            {status === 'update' && updateInfoMap.get(app.applicationId)?.latestVersion && (
-              <Tag color="processing" icon={<SyncOutlined spin />} style={{ margin: 0, fontWeight: 600 }}>
-                {t('workbench.updateAvailableVersion', updateInfoMap.get(app.applicationId)!.latestVersion)}
-              </Tag>
-            )}
-          </div>
+        {/* Icon + title */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 32, width: 'calc(100% - 74px)' }}>
+          <AppIcon icon={iconUrl} name={app.name} category={app.category} size={28} />
+          <Tooltip title={app.name}>
+            <Text strong ellipsis style={{ fontSize: 13, lineHeight: '20px' }}>
+              {app.name}
+            </Text>
+          </Tooltip>
         </div>
+
+        {/* Single-line description */}
         <div
+          className="cb-card-desc"
           style={{
-            display: 'flex',
-            justifyContent: 'center',
-            borderTop: `1px solid ${token.colorBorderSecondary}`,
-            padding: '4px 0'
+            fontSize: 12,
+            lineHeight: '18px',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            margin: '6px 0'
           }}
         >
-          {getStatusButton(app, status)}
+          {app.description || t('workbench.noDesc')}
         </div>
-      </div>
+
+        {/* Tags */}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', minHeight: 20, marginBottom: 8 }}>
+          {owned && (
+            <Tag icon={<CrownOutlined />} color="gold" style={SMALL_TAG_STYLE}>
+              {t('discover.owner')}
+            </Tag>
+          )}
+          {isBuiltin && (
+            <Tag color="blue" style={SMALL_TAG_STYLE}>
+              {t('appStatus.builtin')}
+            </Tag>
+          )}
+          {isDraft && (
+            <Tag color="orange" style={SMALL_TAG_STYLE}>
+              {t('appStatus.draft')}
+            </Tag>
+          )}
+          {discoverStatus === 'pending_update' && (
+            <Tag color="processing" style={SMALL_TAG_STYLE}>
+              {t('appStatus.pendingUpdate')}
+            </Tag>
+          )}
+          {discoverStatus === 'reset_online' && (
+            <Tag color="warning" style={SMALL_TAG_STYLE}>
+              {t('appStatus.resetOnline')}
+            </Tag>
+          )}
+          {app.category && app.category !== 'general' && app.category !== 'other' && (
+            <Tag style={SMALL_TAG_STYLE}>{app.category}</Tag>
+          )}
+        </div>
+
+        {/* Version + action */}
+        <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8 }}>
+          <div>
+            {app.version && (
+              <AppVersionTag localVersion={localVer} remoteVersion={app.version} status={discoverStatus} />
+            )}
+          </div>
+          {renderCardAction(app, status)}
+        </div>
+      </FolderCard>
     );
   };
 
@@ -544,8 +691,8 @@ const AppLibraryPage: React.FC = () => {
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-                gap: 16
+                gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))',
+                gap: 12
               }}
             >
               {filteredApps.map((app) => renderAppCard(app))}
