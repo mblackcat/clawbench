@@ -26,6 +26,7 @@ import {
   getIsQuitting
 } from './services/tray-attention.service'
 import { setMainWindowGetter as setFeishuWatcherMainWindow } from './services/copiper-feishu-watcher.service'
+import { killAllPtySessions } from './services/pty-manager.service'
 
 const PROTOCOL = 'clawbench'
 
@@ -275,6 +276,9 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   setIsQuitting(true)
+  // Electron does not reap child processes on exit: kill every PTY session
+  // tree (AI Coding / AI Terminal) while the event loop is still up.
+  killAllPtySessions()
 })
 
 app.on('will-quit', () => {
