@@ -48,6 +48,7 @@ import { useSettingsStore } from '../../stores/useSettingsStore'
 import { ExternalMarkdownLink } from '../../utils/markdown-links'
 import { rehypeHighlightPlugin } from '../../utils/markdown-plugins'
 import { useT } from '../../i18n'
+import { isDarkTheme } from '../../theme'
 
 const { Sider, Content } = Layout
 const { Title, Text } = Typography
@@ -716,7 +717,7 @@ const SkillDetailView: React.FC = () => {
                       onChange={(value) =>
                         updateTabContent(activeTab, value || '')
                       }
-                      theme={appTheme === 'dark' ? 'vs-dark' : 'light'}
+                      theme={isDarkTheme(appTheme) ? 'vs-dark' : 'light'}
                       options={{
                         minimap: { enabled: false },
                         fontSize: 13,

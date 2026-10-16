@@ -40,6 +40,7 @@ import EmbeddedCodingPanel from '../../components/EmbeddedCodingPanel'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { useT } from '../../i18n'
 import { MONO_FONT_STACK } from '../../utils/mono-font'
+import { isDarkTheme } from '../../theme'
 
 const { Sider, Content } = Layout
 const { Title, Text } = Typography
@@ -835,7 +836,7 @@ const CodeEditor: React.FC = () => {
                     language={getFileLanguage(activeTabData.label)}
                     value={activeTabData.content}
                     onChange={(value) => updateTabContent(activeTab, value || '')}
-                    theme={appTheme === 'dark' ? 'vs-dark' : 'light'}
+                    theme={isDarkTheme(appTheme) ? 'vs-dark' : 'light'}
                     options={{
                       minimap: { enabled: false },
                       fontSize: 13,

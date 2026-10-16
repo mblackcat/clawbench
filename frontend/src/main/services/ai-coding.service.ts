@@ -113,7 +113,7 @@ function buildToolEnv(toolType: AIToolType): Record<string, string> {
 
   // Inject theme to match the app's global appearance
   const appTheme = settingsStore.get('theme') as string || 'light'
-  const isDark = appTheme === 'dark'
+  const isDark = appTheme === 'dark' || appTheme.startsWith('dark-')
 
   if (toolType === 'claude') {
     // Claude Code: CLAUDE_CODE_THEME env var (chat/SDK mode respects app theme)
