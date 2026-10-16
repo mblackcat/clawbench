@@ -70,9 +70,11 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   startTask: (taskId: string, appId: string, appName: string, opts?: StartTaskOptions) => {
     // Idempotent: never reset an existing task (early failure / dual callers
     // must not wipe logs that were already written).
+    const status = opts?.status ?? 'running'
+    let created = false
     set((state) => {
       if (state.tasks[taskId]) return state
-      const status = opts?.status ?? 'running'
+      created = true
       const task: TaskInfo = {
         taskId,
         appId,
@@ -92,6 +94,14 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         hasUnseenErrors: isError ? true : state.hasUnseenErrors
       }
     })
+    // Alert side effects only when the task was actually created (a duplicate
+    // startTask call must neither re-fire nor clear the alert).
+    if (!created) return
+    if (status === 'failed' || status === 'disabled' || opts?.initialOutput?.type === 'error') {
+      get().triggerErrorAlert(opts?.result?.summary || opts?.initialOutput?.message)
+    } else if (status === 'running') {
+      get().dismissErrorAlert()
+    }
   },
 
   updateOutput: (taskId: string, output: SubAppOutput) => {
@@ -132,9 +142,12 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     status: TaskStatus,
     result?: { success: boolean; summary: string; summaryI18nKey?: string; summaryI18nArgs?: string[] }
   ) => {
+    let becameError = false
     set((state) => {
       const task = state.tasks[taskId]
       if (!task) return state
+      becameError =
+        (status === 'failed' || status === 'disabled') && task.status !== status
       return {
         tasks: {
           ...state.tasks,
@@ -152,7 +165,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
           status === 'failed' || status === 'disabled' ? true : state.hasUnseenErrors
       }
     })
-    if (status === 'failed' && get().tasks[taskId]) {
+    // Fire once per transition into an error state (repeated status events
+    // for an already-failed task do not restart the alert).
+    if (becameError) {
       get().triggerErrorAlert(result?.summary)
     }
   },

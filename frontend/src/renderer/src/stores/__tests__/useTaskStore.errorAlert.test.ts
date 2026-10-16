@@ -65,6 +65,63 @@ describe('useTaskStore error alert & unread logs', () => {
     expect(useTaskStore.getState().errorAlertSummary).toBe(null)
   })
 
+  it('triggers error alert when a task is created already failed / disabled', () => {
+    const store = useTaskStore.getState()
+    store.startTask('task-3', 'app-3', 'Test App 3', {
+      status: 'failed',
+      result: { success: false, summary: 'Config missing' }
+    })
+    expect(useTaskStore.getState().hasErrorAlert).toBe(true)
+    expect(useTaskStore.getState().errorAlertSummary).toBe('Config missing')
+    vi.advanceTimersByTime(ERROR_ALERT_DURATION_MS)
+    expect(useTaskStore.getState().hasErrorAlert).toBe(false)
+
+    store.startTask('task-4', 'app-4', 'Disabled App', {
+      status: 'disabled',
+      result: { success: false, summary: 'App disabled by admin' }
+    })
+    expect(useTaskStore.getState().hasErrorAlert).toBe(true)
+    expect(useTaskStore.getState().errorAlertSummary).toBe('App disabled by admin')
+  })
+
+  it('uses the initial error output as summary when no result is given', () => {
+    useTaskStore.getState().startTask('task-5', 'app-5', 'Early fail', {
+      status: 'failed',
+      initialOutput: { taskId: 'task-5', type: 'error', message: 'python not found', timestamp: 1 }
+    })
+    expect(useTaskStore.getState().errorAlertSummary).toBe('python not found')
+  })
+
+  it('dismisses an existing error alert when a new task starts running', () => {
+    const store = useTaskStore.getState()
+    store.triggerErrorAlert('Previous error')
+    store.startTask('task-6', 'app-6', 'New Task')
+    expect(useTaskStore.getState().hasErrorAlert).toBe(false)
+  })
+
+  it('does not re-fire or clear the alert on a duplicate startTask', () => {
+    const store = useTaskStore.getState()
+    store.startTask('task-7', 'app-7', 'Dup', {
+      status: 'failed',
+      result: { success: false, summary: 'first' }
+    })
+    store.triggerErrorAlert('other')
+    // Duplicate start (running) for an existing task must not dismiss the alert
+    store.startTask('task-7', 'app-7', 'Dup')
+    expect(useTaskStore.getState().hasErrorAlert).toBe(true)
+    expect(useTaskStore.getState().errorAlertSummary).toBe('other')
+  })
+
+  it('fires once per transition into failed (no double trigger)', () => {
+    const store = useTaskStore.getState()
+    store.startTask('task-8', 'app-8', 'App')
+    const spy = vi.spyOn(useTaskStore.getState(), 'triggerErrorAlert')
+    store.updateStatus('task-8', 'failed', { success: false, summary: 'boom' })
+    store.updateStatus('task-8', 'failed', { success: false, summary: 'boom' })
+    expect(spy).toHaveBeenCalledTimes(1)
+    spy.mockRestore()
+  })
+
   it('ignores errors for unknown tasks', () => {
     useTaskStore.getState().updateStatus('missing', 'failed', { success: false, summary: 'x' })
     expect(useTaskStore.getState().hasErrorAlert).toBe(false)
