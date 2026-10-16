@@ -383,173 +383,402 @@ export function detectAllTerminals(
   return results
 }
 
-/**
- * Resolve the interactive shell binary and arguments for an embedded PTY session (e.g. AI Terminal),
- * honoring the user's `localTerminalPath` setting from settingsStore.
- */
-export function resolveLocalTerminalShell(): { command: string; args: string[] } {
-  const configured = ((settingsStore.get('localTerminalPath') as string) || '').trim()
+// ─── Terminal classification ─────────────────────────────────────────────────
 
-  if (configured) {
-    const lower = configured.toLowerCase()
-
-    // 1. Windows Terminal (wt.exe):
-    // wt.exe is a GUI window wrapper that launches a terminal window.
-    // Inside an embedded node-pty session, we need an interactive shell binary.
-    // Resolve to PowerShell (pwsh or powershell.exe).
-    if (lower.endsWith('wt.exe') || lower === 'wt') {
-      const all = detectAllTerminals()
-      const pwsh = all.find((t) => t.id === 'pwsh')
-      if (pwsh) return { command: pwsh.path, args: [] }
-      const winPs = all.find((t) => t.id === 'powershell')
-      if (winPs) return { command: winPs.path, args: [] }
-      return { command: 'powershell.exe', args: [] }
-    }
-
-    // 2. macOS .app bundle (e.g. /Applications/iTerm.app, Terminal.app)
-    if (configured.endsWith('.app')) {
-      return { command: process.env.SHELL || '/bin/zsh', args: [] }
-    }
-
-    // 3. Git Bash (git-bash.exe):
-    // git-bash.exe is a GUI launcher (starts mintty window).
-    // For embedded node-pty, resolve to bin\bash.exe or usr\bin\bash.exe with login args.
-    if (lower.endsWith('git-bash.exe')) {
-      const gitDir = path.dirname(configured)
-      const binBash = path.join(gitDir, 'bin', 'bash.exe')
-      const usrBash = path.join(gitDir, 'usr', 'bin', 'bash.exe')
-      if (fs.existsSync(binBash)) {
-        return { command: binBash, args: ['--login', '-i'] }
-      }
-      if (fs.existsSync(usrBash)) {
-        return { command: usrBash, args: ['--login', '-i'] }
-      }
-    }
-
-    // 4. bash.exe: start as interactive login shell
-    if (lower.endsWith('bash.exe') || lower === 'bash') {
-      return { command: configured, args: ['--login', '-i'] }
-    }
-
-    // 5. Any other configured shell (.exe or binary):
-    return { command: configured, args: [] }
-  }
-
-  // Fallback if not configured:
-  if (process.platform === 'win32') {
-    const all = detectAllTerminals()
-    const preferred = all.find((t) => t.id === 'pwsh' || t.id === 'powershell')
-    if (preferred) {
-      return { command: preferred.path, args: [] }
-    }
-    return { command: 'cmd.exe', args: [] }
-  }
-
-  return { command: process.env.SHELL || '/bin/bash', args: [] }
+/** Lower-cased basename without `.exe` / `.app`, platform-agnostic. */
+function terminalBaseName(p: string): string {
+  const trimmed = p.trim().replace(/[\\/]+$/, '')
+  const base = trimmed.split(/[\\/]/).pop() || trimmed
+  return base.toLowerCase().replace(/\.(exe|app)$/, '')
 }
 
 /**
- * Launch an external terminal window navigated to `dirPath`, optionally running `toolCommand`.
+ * Known GUI terminal emulators (window hosts, not shells). These can launch an
+ * external window but can't be used as the program of an embedded PTY.
  */
-export function openExternalTerminal(dirPath: string, toolCommand?: string | null): void {
-  const platform = process.platform
-  const configuredTerminal = (settingsStore.get('localTerminalPath') as string) || ''
-  const terminalApp = configuredTerminal || detectLocalTerminal() || ''
+const GUI_TERMINAL_EMULATORS = new Set([
+  'wt',
+  'windowsterminal',
+  'wezterm',
+  'wezterm-gui',
+  'alacritty',
+  'hyper',
+  'cmder',
+  'conemu',
+  'conemu64',
+  'mintty',
+  'tabby',
+  'git-bash',
+  'gnome-terminal',
+  'gnome-terminal-server',
+  'konsole',
+  'kitty',
+  'xterm',
+  'x-terminal-emulator',
+  'terminator',
+  'tilix',
+  'xfce4-terminal',
+  'lxterminal',
+  'mate-terminal',
+  'iterm',
+  'iterm2',
+  'terminal',
+  'warp',
+  'ghostty'
+])
 
-  logger.info(`[terminal] Opening external terminal: terminalApp="${terminalApp}", dir="${dirPath}", cmd="${toolCommand || ''}"`)
+/** True when `p` points at a GUI terminal emulator (incl. any macOS `.app` bundle). */
+export function isGuiTerminalEmulator(p: string | null | undefined): boolean {
+  if (!p || !p.trim()) return false
+  if (/\.app[\\/]?$/i.test(p.trim())) return true
+  return GUI_TERMINAL_EMULATORS.has(terminalBaseName(p))
+}
 
-  if (platform === 'darwin') {
-    const home = os.homedir()
-    let effectiveApp = terminalApp
-    if (!effectiveApp) {
-      const iTermPaths = [path.join(home, 'Applications', 'iTerm.app'), '/Applications/iTerm.app']
-      effectiveApp = iTermPaths.find((p) => fs.existsSync(p)) || ''
+export interface ResolveShellOptions {
+  /** Defaults to `settings.localTerminalPath` */
+  configured?: string | null
+  platform?: string
+  env?: NodeJS.ProcessEnv
+  fsExists?: (p: string) => boolean
+  /** Windows shell lookup (defaults to cached {@link detectAllTerminals}) */
+  listTerminals?: () => DetectedTerminalOption[]
+}
+
+/** Default interactive shell when the configured terminal isn't a shell. */
+function defaultShell(
+  platform: string,
+  env: NodeJS.ProcessEnv,
+  listTerminals: () => DetectedTerminalOption[]
+): { command: string; args: string[] } {
+  if (platform === 'win32') {
+    let all: DetectedTerminalOption[] = []
+    try {
+      all = listTerminals()
+    } catch {
+      // detection failure → plain fallbacks below
     }
+    const pwsh = all.find((t) => t.id === 'pwsh')
+    if (pwsh) return { command: pwsh.path, args: [] }
+    const winPs = all.find((t) => t.id === 'powershell')
+    if (winPs) return { command: winPs.path, args: [] }
+    const cmd = all.find((t) => t.id === 'cmd')
+    return { command: cmd?.path || 'cmd.exe', args: [] }
+  }
+  return { command: env.SHELL || '/bin/bash', args: [] }
+}
 
-    const escapedPath = dirPath.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-    const escapedCmd = toolCommand
-      ? `cd \\"${escapedPath}\\" && ${toolCommand}`
-      : `cd \\"${escapedPath}\\"`
+/**
+ * Resolve the interactive shell binary and arguments for an embedded PTY session (e.g. AI Terminal),
+ * honoring the user's `localTerminalPath` setting.
+ *
+ * `localTerminalPath` serves two purposes — the external terminal window and the
+ * embedded shell — so GUI emulators (WezTerm, Windows Terminal, iTerm …) map to a
+ * real shell here (Windows: pwsh → powershell → cmd; POSIX: $SHELL → /bin/bash).
+ */
+export function resolveLocalTerminalShell(options: ResolveShellOptions = {}): { command: string; args: string[] } {
+  const platform = options.platform ?? process.platform
+  const env = options.env ?? process.env
+  const exists = options.fsExists ?? ((p: string) => fs.existsSync(p))
+  const listTerminals = options.listTerminals ?? (() => detectAllTerminals())
+  const configured = (
+    options.configured !== undefined
+      ? options.configured ?? ''
+      : ((settingsStore.get('localTerminalPath') as string) || '')
+  ).trim()
 
-    const appName = effectiveApp.replace(/.*\//, '').replace(/\.app$/, '')
+  if (!configured) return defaultShell(platform, env, listTerminals)
 
-    if (appName === 'iTerm' || appName === 'iTerm2') {
-      const appId = effectiveApp || 'iTerm'
-      execFile('osascript', [
+  const lower = configured.toLowerCase()
+  const pathMod = platform === 'win32' ? path.win32 : path.posix
+
+  // Git Bash launcher (mintty window) → its bash.exe with login args
+  if (lower.endsWith('git-bash.exe')) {
+    const gitDir = pathMod.dirname(configured)
+    for (const candidate of [pathMod.join(gitDir, 'bin', 'bash.exe'), pathMod.join(gitDir, 'usr', 'bin', 'bash.exe')]) {
+      if (exists(candidate)) return { command: candidate, args: ['--login', '-i'] }
+    }
+    return defaultShell(platform, env, listTerminals)
+  }
+
+  if (isGuiTerminalEmulator(configured)) return defaultShell(platform, env, listTerminals)
+
+  // bash.exe: start as interactive login shell
+  if (lower.endsWith('bash.exe') || lower === 'bash') {
+    return { command: configured, args: ['--login', '-i'] }
+  }
+
+  // Any other configured shell (pwsh, powershell, cmd, zsh, fish, nu …)
+  return { command: configured, args: [] }
+}
+
+// ─── External terminal window ────────────────────────────────────────────────
+
+export interface ExternalTerminalLaunch {
+  file: string
+  args: string[]
+  cwd?: string
+  /** Windows: pass the command line verbatim (already quoted/escaped) */
+  verbatim?: boolean
+}
+
+export interface ExternalTerminalOptions {
+  platform?: string
+  env?: NodeJS.ProcessEnv
+  home?: string
+  fsExists?: (p: string) => boolean
+}
+
+/** POSIX single-quote a string for `sh`. */
+export function shQuote(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`
+}
+
+/** Escape a string for embedding inside an AppleScript double-quoted literal. */
+function appleScriptString(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+}
+
+/**
+ * Caret-escape cmd.exe metacharacters (incl. quotes) so the *outer*
+ * `cmd /c start …` passes the text through unchanged to the launched program.
+ */
+function cmdCaretEscape(s: string): string {
+  return s.replace(/([\^&|<>()"])/g, '^$1')
+}
+
+/** Quote one argument with MSVC (CommandLineToArgvW) rules. */
+function winQuoteArg(arg: string): string {
+  if (arg && !/[\s"]/.test(arg)) return arg
+  return `"${arg.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, '$1$1')}"`
+}
+
+/**
+ * `cmd /c start "" "<exe>" <tail>` — opens a new console window. `tail` is a
+ * raw command line for the target program; it is caret-escaped for the outer cmd.
+ */
+function winStart(exe: string, tail: string, cwd: string): ExternalTerminalLaunch {
+  const line = `/d /c start "" "${exe}"${tail ? ' ' + cmdCaretEscape(tail) : ''}`
+  return { file: 'cmd.exe', args: [line], cwd, verbatim: true }
+}
+
+/** Master behaviour on Windows: Windows Terminal if present, else a cmd window. */
+function windowsFallbackLaunch(
+  wtExe: string | null,
+  dirPath: string,
+  toolCommand: string | null | undefined
+): ExternalTerminalLaunch {
+  if (wtExe) {
+    // wt treats `;` as its own command separator — escape it
+    const args = ['-d', dirPath]
+    if (toolCommand) args.push('cmd.exe', '/K', toolCommand.replace(/;/g, '\\;'))
+    return { file: wtExe, args, cwd: dirPath }
+  }
+  const inner = toolCommand ? `cd /d "${dirPath}" && ${toolCommand}` : `cd /d "${dirPath}"`
+  return winStart('cmd.exe', `/K ${inner}`, dirPath)
+}
+
+/** Master behaviour on macOS: iTerm if installed, else Terminal.app, via AppleScript. */
+function macAppleScriptLaunch(
+  app: string,
+  kind: 'iterm' | 'terminal',
+  dirPath: string,
+  toolCommand: string | null | undefined
+): ExternalTerminalLaunch {
+  const shellCmd = toolCommand ? `cd ${shQuote(dirPath)} && ${toolCommand}` : `cd ${shQuote(dirPath)}`
+  const appId = appleScriptString(app)
+  const cmd = appleScriptString(shellCmd)
+  if (kind === 'iterm') {
+    return {
+      file: 'osascript',
+      args: [
         '-e', `tell application "${appId}"`,
         '-e', '  activate',
         '-e', '  set newWindow to (create window with default profile)',
         '-e', '  tell current session of newWindow',
-        '-e', `    write text "${escapedCmd}"`,
+        '-e', `    write text "${cmd}"`,
         '-e', '  end tell',
         '-e', 'end tell'
-      ])
-    } else if (!effectiveApp || appName === 'Terminal') {
-      const appId = effectiveApp || 'Terminal'
-      execFile('osascript', [
-        '-e', `tell application "${appId}" to do script "${escapedCmd}"`,
-        '-e', `tell application "${appId}" to activate`
-      ])
-    } else {
-      const args = ['-a', effectiveApp, dirPath]
-      spawn('open', args, { detached: true, stdio: 'ignore' }).unref()
+      ]
     }
-  } else if (platform === 'win32') {
-    const termLower = terminalApp.toLowerCase()
-    const isWindowsTerminal = termLower.endsWith('wt.exe') || termLower === 'wt'
-    const isPowerShell = termLower.includes('powershell') || termLower.includes('pwsh')
-    const isCmd = termLower.endsWith('cmd.exe') || termLower === 'cmd'
-    const isGitBash = termLower.includes('git-bash') || termLower.endsWith('bash.exe')
+  }
+  return {
+    file: 'osascript',
+    args: ['-e', `tell application "${appId}" to do script "${cmd}"`, '-e', `tell application "${appId}" to activate`]
+  }
+}
 
-    if (isWindowsTerminal || (!terminalApp && fs.existsSync(`${process.env.LOCALAPPDATA}\\Microsoft\\WindowsApps\\wt.exe`))) {
-      const wtCmd = terminalApp || 'wt.exe'
-      if (toolCommand) {
-        spawn('cmd.exe', ['/c', 'start', '""', wtCmd, '-d', `"${dirPath}"`, 'cmd.exe', '/K', toolCommand], {
-          detached: true,
-          stdio: 'ignore',
-          shell: true
-        }).unref()
-      } else {
-        spawn('cmd.exe', ['/c', 'start', '""', wtCmd, '-d', `"${dirPath}"`], {
-          detached: true,
-          stdio: 'ignore',
-          shell: true
-        }).unref()
+/**
+ * Build the process launch(es) for opening an external terminal at `dirPath`,
+ * optionally running `toolCommand`. Pure (aside from `fsExists`) for testability.
+ *
+ * - `terminalApp` empty → master fallback (macOS: iTerm else Terminal.app;
+ *   Windows: wt.exe else `cmd /K`; Linux: xdg-open).
+ * - configured → every branch passes the tool command; terminals that can't take
+ *   a command (Warp, Ghostty, Hyper …) fall back to the master behaviour when a
+ *   command is requested, else just open the folder.
+ */
+export function buildExternalTerminalLaunch(
+  terminalApp: string,
+  dirPath: string,
+  toolCommand?: string | null,
+  options: ExternalTerminalOptions = {}
+): ExternalTerminalLaunch {
+  const platform = options.platform ?? process.platform
+  const env = options.env ?? process.env
+  const home = options.home ?? os.homedir()
+  const exists = options.fsExists ?? ((p: string) => fs.existsSync(p))
+  const app = (terminalApp || '').trim()
+  const base = app ? terminalBaseName(app) : ''
+
+  if (platform === 'darwin') {
+    const posixShell = env.SHELL || '/bin/zsh'
+    const keepOpen = (cmd: string): string[] => ['-lc', `${cmd}; exec ${shQuote(posixShell)} -l`]
+    const masterFallback = (): ExternalTerminalLaunch => {
+      const iTerm = [path.posix.join(home, 'Applications', 'iTerm.app'), '/Applications/iTerm.app'].find((p) =>
+        exists(p)
+      )
+      return iTerm
+        ? macAppleScriptLaunch(iTerm, 'iterm', dirPath, toolCommand)
+        : macAppleScriptLaunch('Terminal', 'terminal', dirPath, toolCommand)
+    }
+    if (!app) return masterFallback()
+    if (base === 'iterm' || base === 'iterm2') return macAppleScriptLaunch(app, 'iterm', dirPath, toolCommand)
+    if (base === 'terminal') return macAppleScriptLaunch(app, 'terminal', dirPath, toolCommand)
+
+    const bundleBin = (name: string): string =>
+      app.endsWith('.app') ? path.posix.join(app, 'Contents', 'MacOS', name) : app
+    if (base === 'wezterm' || base === 'wezterm-gui') {
+      const bin = bundleBin('wezterm')
+      if (exists(bin)) {
+        const args = ['start', '--cwd', dirPath]
+        if (toolCommand) args.push('--', posixShell, ...keepOpen(toolCommand))
+        return { file: bin, args, cwd: dirPath }
       }
-    } else if (isPowerShell) {
-      const psEscapedDir = dirPath.replace(/'/g, "''")
-      const psCommand = toolCommand
-        ? `Set-Location -LiteralPath '${psEscapedDir}'; ${toolCommand}`
-        : `Set-Location -LiteralPath '${psEscapedDir}'`
-
-      spawn('cmd.exe', ['/c', 'start', '""', terminalApp, '-NoExit', '-Command', psCommand], {
-        detached: true,
-        stdio: 'ignore',
-        shell: true
-      }).unref()
-    } else if (isCmd || !terminalApp) {
-      const winCmd = toolCommand
-        ? `cd /d "${dirPath}" && ${toolCommand}`
-        : `cd /d "${dirPath}"`
-      const cmdPath = terminalApp || 'cmd.exe'
-
-      spawn('cmd.exe', ['/c', 'start', '""', cmdPath, '/K', `"${winCmd}"`], {
-        detached: true,
-        stdio: 'ignore',
-        shell: true
-      }).unref()
-    } else if (isGitBash) {
-      spawn('cmd.exe', ['/c', 'start', '""', terminalApp, `--cd="${dirPath}"`], {
-        detached: true,
-        stdio: 'ignore',
-        shell: true
-      }).unref()
-    } else {
-      // Generic Windows terminal executable
-      spawn(terminalApp, [], { cwd: dirPath, detached: true, stdio: 'ignore' }).unref()
+    } else if (base === 'alacritty') {
+      const bin = bundleBin('alacritty')
+      if (exists(bin)) {
+        const args = ['--working-directory', dirPath]
+        if (toolCommand) args.push('-e', posixShell, ...keepOpen(toolCommand))
+        return { file: bin, args, cwd: dirPath }
+      }
+    } else if (base === 'kitty') {
+      const bin = bundleBin('kitty')
+      if (exists(bin)) {
+        const args = ['--directory', dirPath]
+        if (toolCommand) args.push(posixShell, ...keepOpen(toolCommand))
+        return { file: bin, args, cwd: dirPath }
+      }
     }
-  } else {
-    // Linux fallback
-    execFile('xdg-open', [dirPath])
+    // Warp / Ghostty / Hyper / unknown: no reliable way to pass a command
+    if (toolCommand) return masterFallback()
+    return { file: 'open', args: ['-a', app, dirPath] }
+  }
+
+  if (platform === 'win32') {
+    const localAppData = env.LOCALAPPDATA || ''
+    const defaultWt = localAppData ? path.win32.join(localAppData, 'Microsoft', 'WindowsApps', 'wt.exe') : ''
+    const masterFallback = (): ExternalTerminalLaunch =>
+      windowsFallbackLaunch(defaultWt && exists(defaultWt) ? defaultWt : null, dirPath, toolCommand)
+    if (!app) return masterFallback()
+
+    if (base === 'wt' || base === 'windowsterminal') return windowsFallbackLaunch(app, dirPath, toolCommand)
+
+    if (base === 'pwsh' || base === 'powershell') {
+      const psDir = dirPath.replace(/'/g, "''")
+      const psCmd = toolCommand
+        ? `Set-Location -LiteralPath '${psDir}'; ${toolCommand}`
+        : `Set-Location -LiteralPath '${psDir}'`
+      return winStart(app, `-NoExit -Command ${psCmd}`, dirPath)
+    }
+
+    if (base === 'cmd') {
+      const inner = toolCommand ? `cd /d "${dirPath}" && ${toolCommand}` : `cd /d "${dirPath}"`
+      return winStart(app, `/K ${inner}`, dirPath)
+    }
+
+    if (base === 'git-bash') {
+      const tail = [`--cd=${winQuoteArg(dirPath)}`]
+      if (toolCommand) tail.push('-c', winQuoteArg(`${toolCommand}; exec bash`))
+      return winStart(app, tail.join(' '), dirPath)
+    }
+
+    if (base === 'bash') {
+      const tail = toolCommand
+        ? `--login -i -c ${winQuoteArg(`cd ${shQuote(dirPath.replace(/\\/g, '/'))} && ${toolCommand}; exec bash --login -i`)}`
+        : '--login -i'
+      return winStart(app, tail, dirPath)
+    }
+
+    if (base === 'wezterm' || base === 'wezterm-gui') {
+      const args = ['start', '--cwd', dirPath]
+      if (toolCommand) args.push('--', 'cmd.exe', '/K', toolCommand)
+      return { file: app, args, cwd: dirPath }
+    }
+
+    if (base === 'alacritty') {
+      const args = ['--working-directory', dirPath]
+      if (toolCommand) args.push('-e', 'cmd.exe', '/K', toolCommand)
+      return { file: app, args, cwd: dirPath }
+    }
+
+    // Hyper / Cmder / WSL / unknown: can't reliably pass a command
+    if (toolCommand) return masterFallback()
+    return { file: app, args: [], cwd: dirPath }
+  }
+
+  // Linux
+  if (app) {
+    const posixShell = env.SHELL || '/bin/bash'
+    const run = toolCommand ? [posixShell, '-lc', `${toolCommand}; exec ${shQuote(posixShell)} -l`] : []
+    switch (base) {
+      case 'gnome-terminal':
+        return { file: app, args: [`--working-directory=${dirPath}`, ...(run.length ? ['--', ...run] : [])], cwd: dirPath }
+      case 'konsole':
+        return { file: app, args: ['--workdir', dirPath, ...(run.length ? ['-e', ...run] : [])], cwd: dirPath }
+      case 'kitty':
+        return { file: app, args: ['--directory', dirPath, ...run], cwd: dirPath }
+      case 'alacritty':
+        return { file: app, args: ['--working-directory', dirPath, ...(run.length ? ['-e', ...run] : [])], cwd: dirPath }
+      case 'wezterm':
+        return { file: app, args: ['start', '--cwd', dirPath, ...(run.length ? ['--', ...run] : [])], cwd: dirPath }
+      case 'xterm':
+      case 'x-terminal-emulator':
+        return { file: app, args: run.length ? ['-e', ...run] : [], cwd: dirPath }
+      default:
+        break
+    }
+  }
+  return { file: 'xdg-open', args: [dirPath] }
+}
+
+/**
+ * Launch an external terminal window navigated to `dirPath`, optionally running `toolCommand`.
+ * Never runs synchronous detection: an unset `localTerminalPath` uses the master fallback.
+ */
+export function openExternalTerminal(dirPath: string, toolCommand?: string | null): void {
+  const terminalApp = ((settingsStore.get('localTerminalPath') as string) || '').trim()
+  const launch = buildExternalTerminalLaunch(terminalApp, dirPath, toolCommand)
+
+  logger.info(
+    `[terminal] Opening external terminal: terminalApp="${terminalApp}", dir="${dirPath}", cmd="${toolCommand || ''}" -> ${launch.file}`
+  )
+
+  if (launch.file === 'osascript' || launch.file === 'xdg-open') {
+    execFile(launch.file, launch.args, (err) => {
+      if (err) logger.warn(`[terminal] ${launch.file} failed:`, err)
+    })
+    return
+  }
+  try {
+    const child = spawn(launch.file, launch.args, {
+      cwd: launch.cwd,
+      detached: true,
+      stdio: 'ignore',
+      windowsVerbatimArguments: launch.verbatim === true
+    })
+    child.on('error', (err) => logger.warn(`[terminal] Failed to launch ${launch.file}:`, err))
+    child.unref()
+  } catch (err) {
+    logger.warn(`[terminal] Failed to launch ${launch.file}:`, err)
   }
 }
