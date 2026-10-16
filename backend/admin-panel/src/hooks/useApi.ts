@@ -10,6 +10,9 @@ const getToken = (): string | null => localStorage.getItem('admin_token');
 const setToken = (t: string) => localStorage.setItem('admin_token', t);
 const clearToken = () => localStorage.removeItem('admin_token');
 
+/** Password login endpoint — its 401 means bad credentials, not an expired session */
+const LOGIN_PATH = '/api/v1/users/login';
+
 export function useApi() {
   const baseUrl = getBaseUrl();
 
@@ -23,6 +26,17 @@ export function useApi() {
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
       const res = await fetch(`${baseUrl}${path}`, { ...options, headers });
+
+      // Session expired / invalid token: clear it and bounce to login.
+      // The login request itself is excluded so wrong credentials surface inline.
+      if (res.status === 401 && !path.startsWith(LOGIN_PATH)) {
+        clearToken();
+        localStorage.removeItem('admin_role');
+        if (!window.location.pathname.endsWith('/admin/login')) {
+          window.location.assign('/admin/login');
+        }
+        throw new ApiError('UNAUTHORIZED', 'Session expired, please sign in again', 401);
+      }
 
       const json = await res.json();
 
@@ -42,7 +56,7 @@ export function useApi() {
   const login = useCallback(
     async (email: string, password: string): Promise<string> => {
       const json = await fetchApi<{ success: boolean; data: { token: string; userId: string } }>(
-        '/api/v1/users/login',
+        LOGIN_PATH,
         {
           method: 'POST',
           body: JSON.stringify({ username: email, password }),

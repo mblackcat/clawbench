@@ -40,7 +40,9 @@ const LoginPage: React.FC = () => {
   return (
     <div className="login-page">
       <div className="login-card">
-        <div className="login-logo">C</div>
+        <div className="login-logo">
+          <img src="/admin/icon.svg" alt="ClawBench" />
+        </div>
         <h1>ClawBench Admin</h1>
         <p className="login-sub">Sign in to manage the platform</p>
 

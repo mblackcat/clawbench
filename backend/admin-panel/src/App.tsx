@@ -72,8 +72,15 @@ const AdminShell: React.FC = () => (
             </RequireAdmin>
           }
         />
-        {/* Users — admin-only (unchanged) */}
-        <Route path="users" element={<UserManagementPage />} />
+        {/* Users — admin-only */}
+        <Route
+          path="users"
+          element={
+            <RequireAdmin>
+              <UserManagementPage />
+            </RequireAdmin>
+          }
+        />
       </Routes>
     </Layout>
   </RequireAuth>
