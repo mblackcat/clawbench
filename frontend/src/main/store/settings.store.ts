@@ -1,5 +1,5 @@
 import Store from 'electron-store'
-import { getDefaultUserAppsPath, registerUserAppsDirResolver } from '../utils/paths'
+import { getUserAppsPath } from '../utils/paths'
 
 export interface ModuleVisibility {
   aiChat: boolean
@@ -378,10 +378,6 @@ export const settingsStore = new Store<SettingsSchema>({
   }
 })
 
-// Let utils/paths.getUserAppsPath() honor a configured userAppDir without an
-// import cycle (paths.ts cannot import this module).
-registerUserAppsDirResolver(() => settingsStore.get('userAppDir'))
-
 /** Coding tools enabled by default when the user has not set an explicit preference */
 export const DEFAULT_ENABLED_CODING_TOOL_IDS = new Set(['claude-code', 'codex-cli'])
 
@@ -430,7 +426,7 @@ export function getSettings(): PublicSettings {
   
   // 如果为空或不存在，设置为默认值
   if (!userAppDir) {
-    userAppDir = getDefaultUserAppsPath()
+    userAppDir = getUserAppsPath()
     settingsStore.set('userAppDir', userAppDir)
   }
   

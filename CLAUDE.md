@@ -140,7 +140,7 @@ backend/src/
 - **IPC handlers** (`ipc/`) are thin wrappers calling services
 - **Stores** (`store/`) use `electron-store` with typed schemas
 - **Auth tokens** encrypted with `safeStorage.encryptString()`
-- **Paths**: Use `utils/paths.ts` for dev vs packaged resolution (`getUserAppsPath` honours `settings.userAppDir`; `getBuiltinAppsPath`)
+- **Paths**: Use `utils/paths.ts` for dev vs packaged resolution (`getUserAppsPath` is always `{userData}/user-apps` — the install root; `settings.userAppDir` is only the developer shared-app discovery dir; `getBuiltinAppsPath`)
 - **Main-process strings**: `mainT()` from `utils/i18n.ts` (zh-CN + en)
 - **Windows env**: `utils/windows-env.ts` (registry PATH merge, tool candidate paths); child processes killed with `utils/process-tree.ts`
 - **pip mirror**: `settings.pipIndexUrl` / `CB_PIP_INDEX_URL` (none by default)

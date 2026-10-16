@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import os from 'os'
 import path from 'path'
 import {
@@ -6,27 +6,16 @@ import {
   getDefaultUserAppsPath,
   getUserAppsPath,
   getWorkbenchVenvPath,
-  getWorkbenchVenvPythonPath,
-  registerUserAppsDirResolver
+  getWorkbenchVenvPythonPath
 } from '../paths'
 
 describe('paths', () => {
-  afterEach(() => registerUserAppsDirResolver(null))
-
   it('falls back to a temp userData dir outside Electron', () => {
     expect(getAppDataPath()).toBe(path.join(os.tmpdir(), 'fernhollow-userdata'))
     expect(getDefaultUserAppsPath()).toBe(path.join(getAppDataPath(), 'user-apps'))
   })
 
-  it('getUserAppsPath honors a configured dir, else the default', () => {
-    expect(getUserAppsPath()).toBe(getDefaultUserAppsPath())
-    registerUserAppsDirResolver(() => '/custom/apps')
-    expect(getUserAppsPath()).toBe('/custom/apps')
-    registerUserAppsDirResolver(() => '   ')
-    expect(getUserAppsPath()).toBe(getDefaultUserAppsPath())
-    registerUserAppsDirResolver(() => {
-      throw new Error('store not ready')
-    })
+  it('getUserAppsPath is always the default {userData}/user-apps install root', () => {
     expect(getUserAppsPath()).toBe(getDefaultUserAppsPath())
   })
 

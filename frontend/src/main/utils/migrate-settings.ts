@@ -4,7 +4,7 @@
  */
 
 import { settingsStore } from '../store/settings.store'
-import { getDefaultUserAppsPath } from './paths'
+import { getUserAppsPath } from './paths'
 import * as logger from './logger'
 import fs from 'fs'
 import { detectLocalTerminal } from '../services/terminal-detect.service'
@@ -31,7 +31,7 @@ export function migrateSettings(): void {
     // 确保 userAppDir 有值
     let userAppDir = settingsStore.get('userAppDir')
     if (!userAppDir) {
-      userAppDir = getDefaultUserAppsPath()
+      userAppDir = getUserAppsPath()
       settingsStore.set('userAppDir', userAppDir)
       logger.info(`Set default userAppDir: ${userAppDir}`)
     }
@@ -39,7 +39,7 @@ export function migrateSettings(): void {
     // 验证目录是否存在，如果不存在则重置为默认值
     if (!fs.existsSync(userAppDir)) {
       logger.warn(`userAppDir does not exist: ${userAppDir}, resetting to default`)
-      const defaultPath = getDefaultUserAppsPath()
+      const defaultPath = getUserAppsPath()
       settingsStore.set('userAppDir', defaultPath)
 
       // 创建默认目录

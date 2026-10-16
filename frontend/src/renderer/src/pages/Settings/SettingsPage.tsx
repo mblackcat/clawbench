@@ -129,9 +129,28 @@ const SettingsPage: React.FC = () => {
     fetchSettings()
   }, [fetchSettings])
 
+  // Local draft so typing doesn't persist (and re-scan) on every keystroke;
+  // committed on blur / Enter or when a folder is picked from the dialog.
+  const [userAppDirDraft, setUserAppDirDraft] = useState(userAppDir)
+  useEffect(() => {
+    setUserAppDirDraft(userAppDir)
+  }, [userAppDir])
+
+  const commitUserAppDir = (): void => {
+    const next = userAppDirDraft.trim()
+    if (next === userAppDir) return
+    if (!next) {
+      // Empty is not a valid directory — restore the persisted value
+      setUserAppDirDraft(userAppDir)
+      return
+    }
+    updateSetting('userAppDir', next)
+  }
+
   const handleSelectDir = async (): Promise<void> => {
     const dir = await window.api.dialog.selectDirectory()
     if (dir) {
+      setUserAppDirDraft(dir)
       updateSetting('userAppDir', dir)
     }
   }
@@ -223,8 +242,10 @@ const SettingsPage: React.FC = () => {
                     <Form.Item label={t('settings.userAppDir')} style={{ marginBottom: 16 }}>
                       <Space.Compact style={{ width: '100%' }}>
                         <Input
-                          value={userAppDir}
-                          onChange={(e) => updateSetting('userAppDir', e.target.value)}
+                          value={userAppDirDraft}
+                          onChange={(e) => setUserAppDirDraft(e.target.value)}
+                          onBlur={commitUserAppDir}
+                          onPressEnter={commitUserAppDir}
                           placeholder={t('settings.userAppDirPlaceholder')}
                           style={{ flex: 1 }}
                         />
