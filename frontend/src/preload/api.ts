@@ -364,12 +364,37 @@ export const api = {
   },
 
   attention: {
-    setTrayState: (state: { flash: boolean; hasDot: boolean }) =>
-      ipcRenderer.invoke('attention:set-tray-state', state),
+    setTrayState: (state: {
+      flash: boolean
+      hasDot: boolean
+      items?: Array<{
+        id: string
+        kind: 'completion' | 'action'
+        source: 'workbench' | 'ai-chat' | 'ai-coding'
+        targetId?: string
+        workspaceId?: string
+        workspaceName?: string
+        sessionTitle?: string
+        title: string
+        body?: string
+      }>
+      balloon?: { title: string; content: string }
+    }) => ipcRenderer.invoke('attention:set-tray-state', state),
     onActivateFirst: (callback: () => void) => {
       const handler = () => callback()
       ipcRenderer.on('attention:activate-first', handler)
       return () => ipcRenderer.removeListener('attention:activate-first', handler)
+    },
+    /** Tray context menu → open a specific pending alert's target. */
+    onNavigateTo: (
+      callback: (target: { source: string; targetId?: string; workspaceId?: string }) => void
+    ) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        target: { source: string; targetId?: string; workspaceId?: string }
+      ) => callback(target)
+      ipcRenderer.on('attention:navigate-to', handler)
+      return () => ipcRenderer.removeListener('attention:navigate-to', handler)
     }
   },
 

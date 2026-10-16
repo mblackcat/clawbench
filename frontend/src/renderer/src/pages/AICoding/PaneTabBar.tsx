@@ -6,6 +6,9 @@ import {
 } from '@ant-design/icons'
 import { getAIToolIcon, TOOLS_WITH_NATIVE_SESSIONS as NATIVE_SESSION_TOOLS } from './aiToolMeta'
 import { useT, getT } from '../../i18n'
+import { useVcsSelectionStore } from '../../stores/useVcsSelectionStore'
+import { useAttentionStore } from '../../stores/useAttentionStore'
+import { EnvToolIcon, hasEnvToolIcon } from '../../components/ToolIcons'
 import type { AIToolType, AICodingSession, ClaudeViewMode } from '../../types/ai-coding'
 
 const { Text } = Typography
@@ -71,8 +74,20 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
 }) => {
   const t = useT()
   const { token } = theme.useToken()
+  // Pending AI Coding attention per session: action (needs the user) wins over completion
+  const attentionItems = useAttentionStore((s) => s.items)
+  const attentionMap = useMemo(() => {
+    const map = new Map<string, 'action' | 'completion'>()
+    for (const item of attentionItems) {
+      if (item.source !== 'ai-coding' || !item.targetId) continue
+      if (item.kind === 'action' || !map.has(item.targetId)) map.set(item.targetId, item.kind)
+    }
+    return map
+  }, [attentionItems])
   const activeSession = useMemo(() => tabs.find(t => t.id === activeTabId), [tabs, activeTabId])
   const activeToolType = activeSession?.toolType
+  // VCS the Changes panel operates on for this working dir (primitive selector → re-render safe)
+  const activeVcsType = useVcsSelectionStore((s) => s.resolveVcs(workingDir))
 
   const [nativeSessions, setNativeSessions] = useState<NativeSession[]>([])
   const [loadingNative, setLoadingNative] = useState(false)
@@ -156,11 +171,47 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
         overflow: 'hidden', minWidth: 0,
         overflowX: 'auto',
       }}>
-        <style>{`.pane-tab-scroll::-webkit-scrollbar { display: none; }`}</style>
+        <style>{`
+          .pane-tab-scroll::-webkit-scrollbar { display: none; }
+          @keyframes cb-tab-breathe-action {
+            0%, 100% {
+              background: color-mix(in srgb, ${token.colorWarning} 8%, transparent);
+              box-shadow: inset 0 0 0 1px color-mix(in srgb, ${token.colorWarning} 28%, transparent);
+            }
+            50% {
+              background: color-mix(in srgb, ${token.colorWarning} 20%, transparent);
+              box-shadow: inset 0 0 0 1.5px color-mix(in srgb, ${token.colorWarning} 65%, transparent),
+                0 0 12px color-mix(in srgb, ${token.colorWarning} 45%, transparent);
+            }
+          }
+          @keyframes cb-tab-breathe-completion {
+            0%, 100% {
+              background: color-mix(in srgb, ${token.colorWarning} 6%, transparent);
+              box-shadow: inset 0 0 0 1px color-mix(in srgb, ${token.colorWarning} 20%, transparent);
+            }
+            50% {
+              background: color-mix(in srgb, ${token.colorWarning} 14%, transparent);
+              box-shadow: inset 0 0 0 1.5px color-mix(in srgb, ${token.colorWarning} 50%, transparent),
+                0 0 10px color-mix(in srgb, ${token.colorWarning} 35%, transparent);
+            }
+          }
+          .cb-tab-breathe-action {
+            animation: cb-tab-breathe-action 1.4s ease-in-out infinite !important;
+            border-radius: 4px 4px 0 0;
+          }
+          .cb-tab-breathe-completion {
+            animation: cb-tab-breathe-completion 1.8s ease-in-out infinite !important;
+            border-radius: 4px 4px 0 0;
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .cb-tab-breathe-action, .cb-tab-breathe-completion { animation: none !important; }
+          }
+        `}</style>
         {tabs.map((session, idx) => {
           const isActive = session.id === activeTabId
           const icon = getAIToolIcon(session.toolType, 12)
           const title = session.title || `#${idx + 1}`
+          const attention = attentionMap.get(session.id)
 
           const tabContextMenu = [
             { key: 'split-right', label: t('coding.splitRight'), onClick: () => onSplitRight?.(session.id) },
@@ -176,6 +227,7 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
             <Dropdown key={session.id} menu={{ items: tabContextMenu }} trigger={['contextMenu']}>
               <div
                 draggable
+                className={attention ? `cb-tab-breathe-${attention}` : undefined}
                 onDragStart={(e) => {
                   e.dataTransfer.setData('application/x-pane-tab', JSON.stringify({ sessionId: session.id, paneId }))
                   e.dataTransfer.effectAllowed = 'move'
@@ -190,11 +242,24 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
                   color: isActive ? token.colorText : token.colorTextSecondary,
                   background: isActive ? token.colorBgContainer : 'transparent',
                   fontSize: 12, flexShrink: 0,
+                  position: 'relative',
                   transition: 'border-color 0.2s, color 0.2s',
                 }}
                 onMouseEnter={(e) => { if (!isActive) (e.currentTarget.style.background = token.colorFillQuaternary) }}
                 onMouseLeave={(e) => { if (!isActive) (e.currentTarget.style.background = 'transparent') }}
               >
+                {attention && (
+                  <span
+                    title={t(attention === 'action' ? 'coding.tabNeedsAction' : 'coding.tabCompleted')}
+                    style={{
+                      position: 'absolute', top: 4, left: 4,
+                      width: 6, height: 6, borderRadius: '50%',
+                      background: token.colorError,
+                      boxShadow: `0 0 4px ${token.colorError}`,
+                      zIndex: 2, pointerEvents: 'none',
+                    }}
+                  />
+                )}
                 {icon && <span style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>{icon}</span>}
                 <span style={{ maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis' }} title={title}>
                   {title}
@@ -285,8 +350,10 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
           </div>
         )}
 
-        {activeSession && workingDir && onToggleTerminalPanel && (
-          <Tooltip title="Terminal">
+        {/* Gated on workingDir, not on an active session: the workspace landing
+            view renders this bar with no tabs and still needs both entries. */}
+        {workingDir && onToggleTerminalPanel && (
+          <Tooltip title={t('coding.terminalPanel')}>
             <Button
               type="text" size="small" icon={<CodeOutlined />}
               onClick={onToggleTerminalPanel}
@@ -298,16 +365,32 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
           </Tooltip>
         )}
 
-        {activeSession && onToggleGitPanel && (
-          <Tooltip title="Changes">
-            <Button
-              type="text" size="small" icon={<BranchesOutlined />}
-              onClick={onToggleGitPanel}
-              style={{
-                color: gitPanelOpen ? token.colorPrimary : token.colorTextSecondary,
-                background: gitPanelOpen ? token.colorPrimaryBg : undefined,
-              }}
-            />
+        {workingDir && onToggleGitPanel && (
+          <Tooltip title={t('coding.vcsChanges')}>
+            <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+              <Button
+                type="text" size="small" icon={<BranchesOutlined />}
+                onClick={onToggleGitPanel}
+                style={{
+                  color: gitPanelOpen ? token.colorPrimary : token.colorTextSecondary,
+                  background: gitPanelOpen ? token.colorPrimaryBg : undefined,
+                }}
+              />
+              {activeVcsType !== 'none' && hasEnvToolIcon(activeVcsType) && (
+                <span
+                  style={{
+                    position: 'absolute', bottom: 1, right: 1,
+                    width: 10, height: 10, borderRadius: 3,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: token.colorBgContainer,
+                    boxShadow: `0 0 0 1px ${token.colorBorderSecondary}`,
+                    pointerEvents: 'none', zIndex: 1,
+                  }}
+                >
+                  <EnvToolIcon toolId={activeVcsType} size={7} />
+                </span>
+              )}
+            </span>
           </Tooltip>
         )}
       </div>

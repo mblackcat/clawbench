@@ -11,6 +11,10 @@ export interface AttentionItem {
   source: AttentionSource
   /** conversationId / coding sessionId / workbench taskId */
   targetId?: string
+  /** AI Coding: owning workspace (sidebar red dots, tray menu grouping) */
+  workspaceId?: string
+  workspaceName?: string
+  sessionTitle?: string
   title: string
   body?: string
   createdAt: number
@@ -36,6 +40,9 @@ interface AttentionState {
     kind: AttentionKind
     source: AttentionSource
     targetId?: string
+    workspaceId?: string
+    workspaceName?: string
+    sessionTitle?: string
     title: string
     body?: string
   }) => void
@@ -53,6 +60,10 @@ interface AttentionState {
   hasTarget: (source: AttentionSource, targetId: string) => boolean
   hasAction: () => boolean
   hasAny: () => boolean
+  getCodingAttentionCount: () => number
+  hasSessionAttention: (sessionId: string) => boolean
+  getSessionAttentionKind: (sessionId: string) => AttentionKind | null
+  hasWorkspaceAttention: (workspaceId: string) => boolean
 }
 
 function makeId(): string {
@@ -84,9 +95,13 @@ export function isViewingTarget(
   return false
 }
 
-/** Action (flash) only when the user is not on the module page at all */
-export function shouldFlashForSource(ctx: AttentionContext, source: AttentionSource): boolean {
-  return !isOnSourcePage(ctx.pathname, source)
+/** Action (flash) only when the user is not actively viewing the attention's target */
+export function shouldFlashForSource(
+  ctx: AttentionContext,
+  source: AttentionSource,
+  targetId?: string
+): boolean {
+  return !isViewingTarget(ctx, source, targetId)
 }
 
 function pickFirst(items: AttentionItem[]): AttentionItem | null {
@@ -98,13 +113,32 @@ function pickFirst(items: AttentionItem[]): AttentionItem | null {
   return [...items].sort((a, b) => a.createdAt - b.createdAt)[0]
 }
 
-function syncTray(items: AttentionItem[], ctx: AttentionContext): void {
+function syncTray(
+  items: AttentionItem[],
+  ctx: AttentionContext,
+  balloon?: { title: string; content: string }
+): void {
   try {
     const hasAction = items.some(
-      (i) => i.kind === 'action' && shouldFlashForSource(ctx, i.source)
+      (i) => i.kind === 'action' && shouldFlashForSource(ctx, i.source, i.targetId)
     )
     const hasDot = items.length > 0
-    window.api.attention?.setTrayState?.({ flash: hasAction, hasDot })
+    window.api.attention?.setTrayState?.({
+      flash: hasAction,
+      hasDot,
+      items: items.map((i) => ({
+        id: i.id,
+        kind: i.kind,
+        source: i.source,
+        targetId: i.targetId,
+        workspaceId: i.workspaceId,
+        workspaceName: i.workspaceName,
+        sessionTitle: i.sessionTitle,
+        title: i.title,
+        body: i.body
+      })),
+      balloon
+    })
   } catch {
     // Preload may not expose attention API in tests
   }
@@ -132,13 +166,13 @@ export const useAttentionStore = create<AttentionState>((set, get) => ({
 
   raise: (input) => {
     const ctx = get().context
-    // Never raise if user is already viewing this target
-    if (isViewingTarget(ctx, input.source, input.targetId)) return
-
-    // For action kind: only flash-relevant when off module page;
-    // still raise as action so session/menu red dots work when on page but other session.
-    // When already on the module page viewing another session, keep as action for session dots
-    // but tray won't flash (shouldFlashForSource).
+    // A completion is only redundant when the user is looking at that very
+    // target *and* the window is focused (otherwise they'd never notice it).
+    // Actions always raise: they persist until answered, and the tray only
+    // flashes for ones the user isn't viewing (shouldFlashForSource).
+    const isDocFocused = typeof document !== 'undefined' ? document.hasFocus() : false
+    const activelyViewing = isViewingTarget(ctx, input.source, input.targetId) && isDocFocused
+    if (input.kind === 'completion' && activelyViewing) return
 
     set((s) => {
       const keyMatch = (i: AttentionItem) =>
@@ -150,6 +184,9 @@ export const useAttentionStore = create<AttentionState>((set, get) => ({
       const item: AttentionItem = existing
         ? {
             ...existing,
+            workspaceId: input.workspaceId ?? existing.workspaceId,
+            workspaceName: input.workspaceName ?? existing.workspaceName,
+            sessionTitle: input.sessionTitle ?? existing.sessionTitle,
             title: input.title,
             body: input.body,
             // keep earliest createdAt for chronological open-first
@@ -160,6 +197,9 @@ export const useAttentionStore = create<AttentionState>((set, get) => ({
             kind: input.kind,
             source: input.source,
             targetId: input.targetId,
+            workspaceId: input.workspaceId,
+            workspaceName: input.workspaceName,
+            sessionTitle: input.sessionTitle,
             title: input.title,
             body: input.body,
             createdAt: Date.now()
@@ -180,7 +220,9 @@ export const useAttentionStore = create<AttentionState>((set, get) => ({
           : rest
 
       const items = [item, ...cleaned]
-      queueMicrotask(() => syncTray(get().items, get().context))
+      // Main shows a system notification for this alert (if enabled in settings)
+      const balloon = { title: input.title, content: input.body || input.title }
+      queueMicrotask(() => syncTray(get().items, get().context, balloon))
       return { items }
     })
   },
@@ -220,7 +262,12 @@ export const useAttentionStore = create<AttentionState>((set, get) => ({
       if (item.source === 'workbench') return false // viewing workbench → clear all workbench
       if (!item.targetId) return false
       if (item.source === 'ai-chat') return context.activeChatId !== item.targetId
-      if (item.source === 'ai-coding') return context.activeCodingId !== item.targetId
+      if (item.source === 'ai-coding') {
+        // Action attentions (questions / permissions) persist until answered
+        if (item.kind === 'action') return true
+        // Completion attentions clear when navigating to that session
+        return context.activeCodingId !== item.targetId
+      }
       return true
     })
 
@@ -246,9 +293,19 @@ export const useAttentionStore = create<AttentionState>((set, get) => ({
     get().items.some((i) => i.source === source && i.targetId === targetId),
   hasAction: () => {
     const { items, context } = get()
-    return items.some((i) => i.kind === 'action' && shouldFlashForSource(context, i.source))
+    return items.some((i) => i.kind === 'action' && shouldFlashForSource(context, i.source, i.targetId))
   },
-  hasAny: () => get().items.length > 0
+  hasAny: () => get().items.length > 0,
+  getCodingAttentionCount: () => get().items.filter((i) => i.source === 'ai-coding').length,
+  hasSessionAttention: (sessionId) =>
+    get().items.some((i) => i.source === 'ai-coding' && i.targetId === sessionId),
+  getSessionAttentionKind: (sessionId) => {
+    const matches = get().items.filter((i) => i.source === 'ai-coding' && i.targetId === sessionId)
+    if (matches.length === 0) return null
+    return matches.some((i) => i.kind === 'action') ? 'action' : 'completion'
+  },
+  hasWorkspaceAttention: (workspaceId) =>
+    get().items.some((i) => i.source === 'ai-coding' && i.workspaceId === workspaceId)
 }))
 
 // ── Convenience helpers used by other stores ──────────────────────────
@@ -286,23 +343,44 @@ export function raiseChatAction(conversationId: string, title?: string, body?: s
   })
 }
 
-export function raiseCodingCompletion(sessionId: string, title?: string): void {
+export interface CodingAttentionMeta {
+  workspaceId?: string
+  workspaceName?: string
+  sessionTitle?: string
+}
+
+export function raiseCodingCompletion(
+  sessionId: string,
+  title?: string,
+  meta?: CodingAttentionMeta
+): void {
   const t = getT()
   useAttentionStore.getState().raise({
     kind: 'completion',
     source: 'ai-coding',
     targetId: sessionId,
+    workspaceId: meta?.workspaceId,
+    workspaceName: meta?.workspaceName,
+    sessionTitle: meta?.sessionTitle || title,
     title: title || t('attention.codingDone'),
     body: t('attention.codingDoneBody')
   })
 }
 
-export function raiseCodingAction(sessionId: string, title?: string, body?: string): void {
+export function raiseCodingAction(
+  sessionId: string,
+  title?: string,
+  body?: string,
+  meta?: CodingAttentionMeta
+): void {
   const t = getT()
   useAttentionStore.getState().raise({
     kind: 'action',
     source: 'ai-coding',
     targetId: sessionId,
+    workspaceId: meta?.workspaceId,
+    workspaceName: meta?.workspaceName,
+    sessionTitle: meta?.sessionTitle || title,
     title: title || t('attention.codingAction'),
     body: body || t('attention.codingActionBody')
   })

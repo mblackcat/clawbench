@@ -25,7 +25,13 @@ const translations: Record<Lang, Record<string, string>> = {
     'pythonVenv.pipInstallFailed': 'pip 安装依赖失败，退出码：{0}',
     'terminal.cmdName': '命令提示符 (cmd.exe)',
     'attention.ptyQuestion': '需要回答问题或确认选项',
-    'attention.ptyConfirm': '等待确认或选择'
+    'attention.ptyConfirm': '等待确认或选择',
+    'tray.open': '打开界面',
+    'tray.quit': '退出',
+    'tray.tooltipAction': '需要确认',
+    'tray.tooltipDot': '有新提醒',
+    'tray.notifyDefaultBody': '有新的待处理事项',
+    'tray.itemAction': '[待确认] {0}'
   },
   en: {
     'subapp.pythonConfiguredPathUnavailable':
@@ -49,7 +55,13 @@ const translations: Record<Lang, Record<string, string>> = {
     'pythonVenv.pipInstallFailed': 'pip install failed with exit code {0}',
     'terminal.cmdName': 'Command Prompt (cmd.exe)',
     'attention.ptyQuestion': 'Needs an answer or a choice',
-    'attention.ptyConfirm': 'Waiting for confirmation or a choice'
+    'attention.ptyConfirm': 'Waiting for confirmation or a choice',
+    'tray.open': 'Open',
+    'tray.quit': 'Quit',
+    'tray.tooltipAction': 'Needs your confirmation',
+    'tray.tooltipDot': 'New alerts',
+    'tray.notifyDefaultBody': 'You have new items to review',
+    'tray.itemAction': '[Needs action] {0}'
   }
 }
 

@@ -412,8 +412,26 @@ export interface ClawBenchAPI {
     ) => () => void
   }
   attention: {
-    setTrayState: (state: { flash: boolean; hasDot: boolean }) => Promise<void>
+    setTrayState: (state: {
+      flash: boolean
+      hasDot: boolean
+      items?: Array<{
+        id: string
+        kind: 'completion' | 'action'
+        source: 'workbench' | 'ai-chat' | 'ai-coding'
+        targetId?: string
+        workspaceId?: string
+        workspaceName?: string
+        sessionTitle?: string
+        title: string
+        body?: string
+      }>
+      balloon?: { title: string; content: string }
+    }) => Promise<void>
     onActivateFirst: (callback: () => void) => () => void
+    onNavigateTo: (
+      callback: (target: { source: string; targetId?: string; workspaceId?: string }) => void
+    ) => () => void
   }
   localEnv: {
     detectAll: () => Promise<import('./local-env').LocalEnvDetectionResult>

@@ -2338,6 +2338,12 @@ const translations: Record<Lang, Record<string, string>> = {
     'coding.vcsDiscardChanges': '放弃更改',
     'coding.vcsDiscardFailed': '放弃更改失败',
     'coding.vcsNoRepo': '未检测到版本库',
+    // ── Attention & notifications ──
+    'settings.attentionNotification': '系统通知',
+    'settings.attentionNotificationDesc': 'AI Coding 会话完成或等待确认、工作台任务完成时，在窗口未激活时弹出系统通知',
+    'coding.tabNeedsAction': '等待你的确认',
+    'coding.tabCompleted': '有新的回复',
+    'coding.terminalPanel': '终端',
   },
   'en': {
     // Sidebar menu
@@ -4759,6 +4765,12 @@ const translations: Record<Lang, Record<string, string>> = {
     'coding.vcsDiscardChanges': 'Discard changes',
     'coding.vcsDiscardFailed': 'Discard failed',
     'coding.vcsNoRepo': 'No VCS repository',
+    // ── Attention & notifications ──
+    'settings.attentionNotification': 'System notifications',
+    'settings.attentionNotificationDesc': 'Show an OS notification when an AI Coding session finishes or needs input, or a workbench task completes, while the window is not focused',
+    'coding.tabNeedsAction': 'Waiting for you',
+    'coding.tabCompleted': 'New reply',
+    'coding.terminalPanel': 'Terminal',
   }
 }
 
