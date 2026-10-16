@@ -85,4 +85,48 @@ describe('urlMetadata.service', () => {
       delete process.env.NAV_METADATA_ALLOW_PRIVATE;
     });
   });
+
+  describe('fetchUrlMetadata limits', () => {
+    let server: http.Server;
+    let port: number;
+
+    beforeAll(async () => {
+      process.env.NAV_METADATA_ALLOW_PRIVATE = 'true';
+      server = http.createServer((req, res) => {
+        if (req.url === '/drip') {
+          // Slow drip: never idle long enough for the socket timeout to fire
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          const timer = setInterval(() => res.write(' '), 50);
+          res.on('close', () => clearInterval(timer));
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(
+          '<html><head><title>T</title>' +
+            '<link rel="icon" href="javascript:alert(1)">' +
+            '<link rel="shortcut icon" href="data:image/png;base64,AAAA">' +
+            '<link rel="apple-touch-icon" href="/touch.png"></head></html>'
+        );
+      });
+      await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+      port = (server.address() as AddressInfo).port;
+    });
+
+    afterAll(async () => {
+      delete process.env.NAV_METADATA_ALLOW_PRIVATE;
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    });
+
+    it('only returns http(s) icon URLs', async () => {
+      const result = await fetchUrlMetadata(`http://127.0.0.1:${port}/`);
+      expect(result.icon).toBe(`http://127.0.0.1:${port}/touch.png`);
+    });
+
+    it('enforces a total request timeout against slow drip responses', async () => {
+      const started = Date.now();
+      const result = await fetchUrlMetadata(`http://127.0.0.1:${port}/drip`, { totalTimeoutMs: 300 });
+      expect(Date.now() - started).toBeLessThan(3000);
+      expect(result.title).toBeNull();
+    });
+  });
 });

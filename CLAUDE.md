@@ -98,7 +98,7 @@ backend/src/
 | `frontend/src/renderer/src/motion/` | 动效层（敏捷/优雅，`cb-motion`），见 `docs/MOTION.md` |
 | `frontend/src/renderer/src/hooks/useXterm.ts` | Shared xterm 6 hook (fit/search/web-links/Nerd Font, preload PTY fan-out); used by `CodingTerminalView` + AI Terminal `TerminalPanel` with `TerminalSearchBar` |
 | `frontend/src/main/services/pty-manager.service.ts` | PTY sessions: chunked raw ring buffer, tool command/resume args, `touchPtyActivity` (attention "output stable"), process-tree kill, `killAllPtySessions` on quit |
-| `frontend/src/main/services/terminal-detect.service.ts` / `ide-detect.service.ts` | Terminal/IDE scan for Settings dropdowns; `openExternalTerminal()`; `resolveLocalTerminalShell()` |
+| `frontend/src/main/services/terminal-detect.service.ts` / `ide-detect.service.ts` | Terminal/IDE scan for Settings dropdowns; `openExternalTerminal()` (unset `localTerminalPath` → master fallback iTerm/Terminal.app, wt/cmd); `resolveLocalTerminalShell()` maps GUI emulators to a real shell (`localTerminalPath` serves both the external window and the embedded PTY). One-time detection runs after the window is shown (`migrate-settings.runEnvAutoDetect`, `envAutoDetectDone`) |
 | `frontend/src/main/services/python-venv.service.ts` / `python-detect.service.ts` | Workbench venv (`--system-site-packages`) + per-app `requirements.txt` installed into the interpreter that runs the app (venvs only; cache keyed by hash + interpreter in userData); Python scan. Resolve chain (`resolvePythonCommand(appPath)`): app venv → settings path → workbench venv → system |
 | `frontend/src/main/services/builtin-apps.service.ts` | Seeds bundled `builtin-apps/` into user-apps (install/upgrade, never downgrade) |
 | `frontend/src/main/services/vcs.service.ts` | Multi-VCS (git/svn/perforce) detection, changed files, diff (`renderer/src/utils/unified-diff.ts` + `DiffViewerModal`) |
@@ -140,7 +140,7 @@ backend/src/
 - **IPC handlers** (`ipc/`) are thin wrappers calling services
 - **Stores** (`store/`) use `electron-store` with typed schemas
 - **Auth tokens** encrypted with `safeStorage.encryptString()`
-- **Paths**: Use `utils/paths.ts` for dev vs packaged resolution (`getUserAppsPath` honours `settings.userAppDir`; `getBuiltinAppsPath`)
+- **Paths**: Use `utils/paths.ts` for dev vs packaged resolution (`getUserAppsPath` is always `{userData}/user-apps` — the install root; `settings.userAppDir` is only the developer shared-app discovery dir; `getBuiltinAppsPath`)
 - **Main-process strings**: `mainT()` from `utils/i18n.ts` (zh-CN + en)
 - **Windows env**: `utils/windows-env.ts` (registry PATH merge, tool candidate paths); child processes killed with `utils/process-tree.ts`
 - **pip mirror**: `settings.pipIndexUrl` / `CB_PIP_INDEX_URL` (none by default)
@@ -317,7 +317,7 @@ Multi-tenant **Projects** + **common-apps** (builtin app registry with admin kil
 - `main/services/project.service.ts`: `enrichBuiltinAppParams` (kill-switch gate: project && global enable; throws `AppDisabledError`) + config injection (`__project`, `__app_config`). `BUILTIN_APP_ID_PREFIX = 'com.clawbench.builtin.'`.
 - `main/services/subapp-run.service.ts`: shared pre-run pipeline used by every launch path (execute IPC, shortcuts, IM, scheduler, protocol, AI `run_app`): strips caller-supplied `__` keys, builtin kill-switch + `__project`/`__app_config`/`__user` injection, Python resolution with the app path, requirements into that same interpreter.
 - `main/ipc/subapp.ipc.ts`: gates builtin runs before `task-started`. `subapp:execute` returns `{ taskId, earlyTerminal? }`; on `AppDisabledError` (or a duplicate start while the app is still preparing) it returns `earlyTerminal` (status `disabled` | `failed` + i18n summary) without emitting task events — renderer seeds the task via `utils/subapp-execute.ts` (`seedTaskFromExecuteResult`). Otherwise `task-started` is emitted immediately; venv/pip progress streams as task output and a missing Python ends the task via `task-status` `failed`.
-- `main/services/builtin-apps.service.ts`: `seedBuiltinApps()` at startup copies `resources/builtin-apps/*` (manifest id `com.clawbench.builtin.*`) into user-apps — installs missing, upgrades newer, never downgrades; `resetBuiltinApp` / `getBundledBuiltinVersion` back `subapp:reset-builtin` / `subapp:get-bundled-builtin-version`.
+- `main/services/builtin-apps.service.ts`: `seedBuiltinApps()` at startup copies `resources/builtin-apps/*` (manifest id `com.clawbench.builtin.*`) into user-apps — installs missing, upgrades newer (pruning files the new bundle dropped, per the `.cb-bundled-files.json` record; user-data dirs untouched), never downgrades, and skips builtins the user deleted (`settings.removedBuiltinApps`, via `builtin:mark-removed` / `builtin:clear-removed`); `resetBuiltinApp` / `getBundledBuiltinVersion` back `subapp:reset-builtin` / `subapp:get-bundled-builtin-version`. Admin pins are merged into the user's `pinnedApps` (`utils/builtin-pins.ts`), never replacing user pins.
 - `components/ProjectSwitcher.tsx` (read-only; TopBar; hidden in local mode), `apiClient.{listProjects,joinProject,listProjectCommonApps,listCommonApps}`.
 - `store/settings.store.ts`: `activeProject`, `pinnedApps`, `commonAppConfigCache`.
 

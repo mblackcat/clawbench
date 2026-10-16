@@ -122,6 +122,8 @@ export interface ClawBenchAPI {
       token?: string
     ) => Promise<{ success: boolean; installedTo: string[]; error?: string }>
     resetBuiltin: (appId: string) => Promise<{ success: boolean; error?: string; version?: string }>
+    markBuiltinRemoved: (appId: string) => Promise<{ success: boolean }>
+    clearBuiltinRemoved: (appId: string) => Promise<{ success: boolean }>
     getBundledBuiltinVersion: (appId: string) => Promise<string | null>
     installRequirements: (
       appId: string,
@@ -425,6 +427,7 @@ export interface ClawBenchAPI {
   dialog: {
     selectDirectory: () => Promise<string | null>
     selectApp: () => Promise<string | null>
+    selectExecutable: () => Promise<string | null>
     selectFiles: () => Promise<string[]>
     saveImage: (base64Data: string) => Promise<boolean>
   }
@@ -713,7 +716,7 @@ export interface ClawBenchAPI {
     writePty: (sessionId: string, data: string) => Promise<void>
     resizePty: (sessionId: string, cols: number, rows: number) => Promise<void>
     killPty: (sessionId: string) => Promise<void>
-    onPtyData: (callback: (data: { sessionId: string; data: string }) => void, sessionId?: string) => () => void
+    onPtyData: (callback: (data: { sessionId: string; data: string; offset?: number }) => void, sessionId?: string) => () => void
     onPtyExit: (callback: (data: { sessionId: string; exitCode: number }) => void) => () => void
     detectTools: () => Promise<any[]>
     listNativeSessions: (workingDir: string, toolType: string) => Promise<Array<{
@@ -729,6 +732,7 @@ export interface ClawBenchAPI {
     }>>
     getSessionOutput: (sessionId: string) => Promise<string>
     getRawSessionOutput: (sessionId: string) => Promise<string>
+    getRawSessionSnapshot: (sessionId: string) => Promise<{ data: string; offset: number }>
     getGroups: () => Promise<import('./ai-coding').AICodingGroup[]>
     createGroup: (name: string) => Promise<import('./ai-coding').AICodingGroup>
     renameGroup: (
@@ -842,7 +846,8 @@ export interface ClawBenchAPI {
     resizeTerminal: (sessionId: string, cols: number, rows: number) => Promise<void>
     getTerminalOutput: (sessionId: string) => Promise<string>
     getRawTerminalOutput: (sessionId: string) => Promise<string>
-    onPtyData: (callback: (data: { sessionId: string; data: string }) => void, sessionId?: string) => () => void
+    getRawTerminalSnapshot: (sessionId: string) => Promise<{ data: string; offset: number }>
+    onPtyData: (callback: (data: { sessionId: string; data: string; offset?: number }) => void, sessionId?: string) => () => void
     onPtyExit: (callback: (data: { sessionId: string; exitCode: number }) => void) => () => void
     onTerminalExit: (callback: (data: { sessionId: string; exitCode: number }) => void) => () => void
     // Terminal assistant — CLI Agent mode

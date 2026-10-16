@@ -8,7 +8,8 @@ import { ipcRenderer } from 'electron'
 // aiTerminal. One ipcRenderer listener plus a sessionId index makes delivery
 // O(1); callers that pass a sessionId are never invoked for other sessions.
 
-type PtyDataCallback = (data: { sessionId: string; data: string }) => void
+/** `offset` = session output offset at the end of this chunk (absent from older mains). */
+type PtyDataCallback = (data: { sessionId: string; data: string; offset?: number }) => void
 
 const ptyDataBySession = new Map<string, Set<PtyDataCallback>>()
 const ptyDataUnscoped = new Set<PtyDataCallback>()
@@ -17,7 +18,7 @@ let ptyDataListenerBound = false
 function bindPtyDataListener(): void {
   if (ptyDataListenerBound) return
   ptyDataListenerBound = true
-  ipcRenderer.on('pty:data', (_event, payload: { sessionId: string; data: string }) => {
+  ipcRenderer.on('pty:data', (_event, payload: { sessionId: string; data: string; offset?: number }) => {
     const scoped = ptyDataBySession.get(payload.sessionId)
     if (scoped) for (const cb of scoped) cb(payload)
     for (const cb of ptyDataUnscoped) cb(payload)
@@ -85,6 +86,12 @@ export const api = {
       token?: string
     ) => ipcRenderer.invoke('subapp:install-skill-from-market', appId, downloadUrl, opts, token),
     resetBuiltin: (appId: string) => ipcRenderer.invoke('subapp:reset-builtin', appId),
+    /** Remember a deleted builtin so startup seeding won't reinstall it. */
+    markBuiltinRemoved: (appId: string) =>
+      ipcRenderer.invoke('builtin:mark-removed', appId) as Promise<{ success: boolean }>,
+    /** A builtin was (re)installed by the user: seeding may manage it again. */
+    clearBuiltinRemoved: (appId: string) =>
+      ipcRenderer.invoke('builtin:clear-removed', appId) as Promise<{ success: boolean }>,
     getBundledBuiltinVersion: (appId: string) =>
       ipcRenderer.invoke('subapp:get-bundled-builtin-version', appId),
     installRequirements: (appId: string, force?: boolean) =>
@@ -284,6 +291,7 @@ export const api = {
   dialog: {
     selectDirectory: () => ipcRenderer.invoke('dialog:select-directory'),
     selectApp: () => ipcRenderer.invoke('dialog:select-app') as Promise<string | null>,
+    selectExecutable: () => ipcRenderer.invoke('dialog:select-executable') as Promise<string | null>,
     selectFiles: () => ipcRenderer.invoke('dialog:select-files'),
     saveImage: (base64Data: string) => ipcRenderer.invoke('dialog:save-image', base64Data)
   },
@@ -759,6 +767,8 @@ export const api = {
       ipcRenderer.invoke('ai-coding:get-session-output', sessionId),
     getRawSessionOutput: (sessionId: string) =>
       ipcRenderer.invoke('ai-coding:get-raw-session-output', sessionId),
+    getRawSessionSnapshot: (sessionId: string) =>
+      ipcRenderer.invoke('ai-coding:get-raw-session-snapshot', sessionId) as Promise<{ data: string; offset: number }>,
 
     getGroups: () => ipcRenderer.invoke('ai-coding:get-groups'),
     createGroup: (name: string) => ipcRenderer.invoke('ai-coding:create-group', name),
@@ -847,6 +857,8 @@ export const api = {
       ipcRenderer.invoke('ai-terminal:get-terminal-output', sessionId),
     getRawTerminalOutput: (sessionId: string) =>
       ipcRenderer.invoke('ai-terminal:get-raw-terminal-output', sessionId),
+    getRawTerminalSnapshot: (sessionId: string) =>
+      ipcRenderer.invoke('ai-terminal:get-raw-terminal-snapshot', sessionId) as Promise<{ data: string; offset: number }>,
 
     // PTY events (shared channel with ai-coding)
     onPtyData: (callback: PtyDataCallback, sessionId?: string) =>

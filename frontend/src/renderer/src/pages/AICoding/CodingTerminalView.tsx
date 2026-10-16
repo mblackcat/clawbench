@@ -5,7 +5,8 @@ import type { Terminal } from '@xterm/xterm'
 import { useAICodingStore } from '../../stores/useAICodingStore'
 import { dismissCodingTarget } from '../../stores/useAttentionStore'
 import type { ClaudeViewMode } from '../../types/ai-coding'
-import { useXterm, type XtermHelpers } from '../../hooks/useXterm'
+import { useXterm, type XtermHelpers, type PasteOutcome } from '../../hooks/useXterm'
+import { createPtyReplayGate } from '../../utils/pty-replay'
 import { getCodingTerminalTheme } from '../../utils/terminal-theme'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import TerminalSearchBar from '../../components/TerminalSearchBar'
@@ -57,15 +58,13 @@ const CodingTerminalView: React.FC<CodingTerminalViewProps> = ({ sessionId }) =>
    * the buffered replay is queued so it is not interleaved ahead of it.
    */
   const handleReady = useCallback(async (term: Terminal, h: XtermHelpers) => {
-    let replayed = false
-    const queued: string[] = []
+    // Chunks carry their end offset so ones already in a replayed snapshot are dropped.
+    const gate = createPtyReplayGate((data) => term.write(data))
+    let snapshotOffset: number | null = null
     // Session-scoped subscription: the preload dispatcher only calls us for
     // this session's chunks instead of every terminal seeing every session.
     // Registered synchronously so unmount can always unsubscribe.
-    const unsubData = window.api.aiCoding.onPtyData(({ data }) => {
-      if (replayed) term.write(data)
-      else queued.push(data)
-    }, sessionId)
+    const unsubData = window.api.aiCoding.onPtyData(gate.push, sessionId)
     const timers: number[] = []
     let disposed = false
     h.onDispose(() => {
@@ -105,17 +104,21 @@ const CodingTerminalView: React.FC<CodingTerminalViewProps> = ({ sessionId }) =>
       // Live session. PTY output present means we are just re-attaching after a
       // tab switch — replay and leave the process alone. No output means it was
       // launched in SDK (chat) mode and needs migrating to a PTY.
-      const buffered = await window.api.aiCoding.getRawSessionOutput(sessionId)
-      if (buffered) {
-        term.write(buffered)
+      const snapshot = await window.api.aiCoding.getRawSessionSnapshot(sessionId)
+      if (snapshot.data) {
+        term.write(snapshot.data)
+        snapshotOffset = snapshot.offset
       } else {
         try { await window.api.aiCoding.stopSession(sessionId) } catch { /* already stopped */ }
         const result = await launchSession(sessionId, { forcePty: true, cols: term.cols, rows: term.rows })
         if (!result.success) fail(result.error)
       }
     } else {
-      const buffered = await window.api.aiCoding.getRawSessionOutput(sessionId)
-      if (buffered) term.write(buffered)
+      const snapshot = await window.api.aiCoding.getRawSessionSnapshot(sessionId)
+      if (snapshot.data) {
+        term.write(snapshot.data)
+        snapshotOffset = snapshot.offset
+      }
     }
 
     if (disposed) return
@@ -126,9 +129,14 @@ const CodingTerminalView: React.FC<CodingTerminalViewProps> = ({ sessionId }) =>
     // panel size after React/Allotment layout settles (route re-entry).
     timers.push(...[50, 250, 500].map((ms) => window.setTimeout(() => h.forceFit(), ms)))
 
-    replayed = true
-    for (const data of queued.splice(0)) term.write(data)
+    gate.release(snapshotOffset)
   }, [sessionId])
+
+  // Keyboard paste that delivered nothing: tell the user why (as the menu does)
+  const handlePasteResult = useCallback((outcome: PasteOutcome) => {
+    if (outcome === 'failed') message.warning(t('terminal.pasteFailed'))
+    else if (outcome === 'non-text') message.warning(t('terminal.pasteNonText'))
+  }, [message, t])
 
   const xterm = useXterm({
     sessionKey: sessionId,
@@ -138,14 +146,13 @@ const CodingTerminalView: React.FC<CodingTerminalViewProps> = ({ sessionId }) =>
     onInput: handleInput,
     onResize: handleResize,
     onReady: handleReady,
-    onSearchResults: setSearchResults
+    onSearchResults: setSearchResults,
+    onPasteResult: handlePasteResult
   })
 
   const handlePaste = useCallback(async () => {
-    const outcome = await xterm.paste()
-    if (outcome === 'failed') message.warning(t('terminal.pasteFailed'))
-    else if (outcome === 'non-text') message.warning(t('terminal.pasteNonText'))
-  }, [xterm, message, t])
+    handlePasteResult(await xterm.paste())
+  }, [xterm, handlePasteResult])
 
   const handleCloseSearch = useCallback(() => {
     setSearchOpen(false)

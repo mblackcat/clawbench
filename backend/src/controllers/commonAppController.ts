@@ -16,7 +16,9 @@ import {
   createCommonAppEvent,
   listCommonAppEvents,
   listCommonAppVersionHistory,
+  getProjectAppOverride,
 } from '../repositories/commonAppRepository';
+import { getUserById } from '../repositories/userRepository';
 import { commonAppToResponse } from '../models/project';
 import { storageService } from '../services/storage';
 import { logger } from '../utils/logger';
@@ -789,6 +791,23 @@ export async function downloadCommonAppPackageHandler(req: AuthRequest, res: Res
         error: { code: 'NOT_FOUND', message: 'Common app not found' },
       });
       return;
+    }
+
+    // Kill-switch: a globally disabled app (or one disabled for the requesting
+    // project via ?projectId=) is not downloadable — except by global admins,
+    // who manage the archive from the admin panel.
+    const projectId = typeof req.query.projectId === 'string' ? req.query.projectId.trim() : '';
+    const projectOverride = projectId ? await getProjectAppOverride(projectId, appKey) : undefined;
+    const disabled = !app.enabled || projectOverride?.enabled === false;
+    if (disabled) {
+      const user = req.userId ? await getUserById(req.userId) : undefined;
+      if (user?.role !== 'admin') {
+        res.status(403).json({
+          success: false,
+          error: { code: 'APP_DISABLED', message: 'This common app is disabled' },
+        });
+        return;
+      }
     }
 
     if (!app.filePath) {

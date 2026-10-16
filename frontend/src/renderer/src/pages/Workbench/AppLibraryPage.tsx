@@ -41,6 +41,7 @@ import {
 } from '../../utils/app-status';
 import type { SkillInstallMode, SkillTool } from '../../types/skill';
 import { useT } from '../../i18n';
+import { normalizeAppType } from '../../utils/app-match';
 
 const { Title, Text } = Typography;
 const { Search } = Input;
@@ -72,11 +73,10 @@ const AppLibraryPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<ApplicationType>('app');
   const [installing, setInstalling] = useState<Set<string>>(new Set());
   const [createModalOpen, setCreateModalOpen] = useState(false);
-  /** Local on-disk version keyed by manifest id and by name (market match: id first, then name). */
+  /** Local on-disk version keyed by manifest id (name matching is a typed fallback, see findLocalByName). */
   const [localVersionByKey, setLocalVersionByKey] = useState<{
     byId: Map<string, string>;
-    byName: Map<string, string>;
-  }>({ byId: new Map(), byName: new Map() });
+  }>({ byId: new Map() });
   const pinnedApps = useSettingsStore((state) => state.pinnedApps);
 
   // Drawer state
@@ -111,14 +111,12 @@ const AppLibraryPage: React.FC = () => {
       // Installed-by-disk detection: read fresh manifests after fetchApps
       // (market installs never populate localStorage).
       const byId = new Map<string, string>();
-      const byName = new Map<string, string>();
       for (const info of useSubAppStore.getState().appInfos) {
         if (info.source !== 'user') continue;
         const v = info.manifest.version || '';
         if (info.manifest.id) byId.set(info.manifest.id, v);
-        if (info.manifest.name && !byName.has(info.manifest.name)) byName.set(info.manifest.name, v);
       }
-      setLocalVersionByKey({ byId, byName });
+      setLocalVersionByKey({ byId });
 
       if (!isLocalMode) {
         // forceRefresh=true bypasses the 5-min cache, so switching to the
@@ -159,27 +157,43 @@ const AppLibraryPage: React.FC = () => {
     [user]
   );
 
-  /** Local version on disk: match by manifest id (= applicationId) first, then by name. */
+  /**
+   * Local install matching this market app by name — fallback only: same type,
+   * and only local apps whose own id isn't another market app's id.
+   */
+  const findLocalByName = useCallback(
+    (app: Application) => {
+      const marketIds = new Set(allApps.map((a) => a.applicationId));
+      return appInfos.find(
+        (info) =>
+          info.source === 'user' &&
+          info.manifest.name === app.name &&
+          normalizeAppType(info.manifest.type) === normalizeAppType(app.type) &&
+          !marketIds.has(info.manifest.id)
+      );
+    },
+    [allApps, appInfos]
+  );
+
+  /** Local version on disk: match by manifest id (= applicationId); name only as a typed fallback. */
   const getLocalVersion = useCallback(
     (app: Application): string | undefined => {
       if (localVersionByKey.byId.has(app.applicationId)) {
         return localVersionByKey.byId.get(app.applicationId) || undefined;
       }
-      if (localVersionByKey.byName.has(app.name)) {
-        return localVersionByKey.byName.get(app.name) || undefined;
-      }
+      const byName = findLocalByName(app);
+      if (byName) return byName.manifest.version || undefined;
       return localStorageManager.getInstalledApp(app.applicationId)?.localVersion || undefined;
     },
-    [localVersionByKey]
+    [localVersionByKey, findLocalByName]
   );
 
   const isAppInstalled = useCallback(
     (app: Application): boolean =>
       localVersionByKey.byId.has(app.applicationId) ||
-      localVersionByKey.byName.has(app.name) ||
-      localStorageManager.isAppInstalled(app.applicationId) ||
-      !!appInfos.find((info) => info.source === 'user' && info.manifest.name === app.name),
-    [localVersionByKey, appInfos]
+      !!findLocalByName(app) ||
+      localStorageManager.isAppInstalled(app.applicationId),
+    [localVersionByKey, findLocalByName]
   );
 
   /** Local-vs-online status, ignoring ownership. */
@@ -311,7 +325,10 @@ const AppLibraryPage: React.FC = () => {
     setInstalling(prev => new Set(prev).add(appId));
     try {
       await applicationManager.resetInstalledApp(appId);
-      message.success(t('appStatus.resetSuccess', appId));
+      const appName = allApps.find((a) => a.applicationId === appId)?.name
+        ?? (drawerApp?.applicationId === appId ? drawerApp.name : undefined)
+        ?? appId;
+      message.success(t('appStatus.resetSuccess', appName));
       await loadApps();
     } catch (error) {
       console.error('Failed to reset app:', error);

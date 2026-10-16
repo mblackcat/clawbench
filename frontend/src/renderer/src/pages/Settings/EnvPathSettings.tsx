@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { App, Button, Collapse, Form, Input, Select, Space, Tag, Tooltip, Typography, theme } from 'antd'
+import { App, AutoComplete, Button, Collapse, Form, Input, Space, Tag, Tooltip, Typography, theme } from 'antd'
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
@@ -13,7 +13,7 @@ import type { DetectedEnvironmentItem } from '../../types/ipc'
 const { Text } = Typography
 
 interface PathOption {
-  label: string
+  label: React.ReactNode
   value: string
   name: string
   path: string
@@ -36,12 +36,61 @@ function buildOptions(items: DetectedEnvironmentItem[], current: string, customL
   return opts
 }
 
-function filterOption(input: string, option?: PathOption): boolean {
+function filterOption(input: string, option?: Pick<PathOption, 'name' | 'path' | 'value'>): boolean {
   const q = input.toLowerCase()
   return Boolean(
     option?.name?.toLowerCase().includes(q) ||
     option?.path?.toLowerCase().includes(q) ||
     option?.value?.toLowerCase().includes(q)
+  )
+}
+
+/**
+ * Path input with scanned suggestions that also accepts any typed path.
+ * Typing only edits a local draft; the value is committed on pick, blur or
+ * Enter (and clearing commits an empty value).
+ */
+const PathAutoComplete: React.FC<{
+  value: string
+  onCommit: (value: string) => void
+  placeholder: string
+  options: PathOption[]
+  renderOption: (option: { data: PathOption }) => React.ReactNode
+}> = ({ value, onCommit, placeholder, options, renderOption }) => {
+  const [draft, setDraft] = useState(value)
+  useEffect(() => setDraft(value), [value])
+  const openRef = useRef(false)
+
+  const commit = (next: string): void => {
+    const trimmed = next.trim()
+    if (trimmed !== value) onCommit(trimmed)
+  }
+
+  return (
+    <AutoComplete<string, PathOption>
+      style={{ flex: 1, minWidth: 0 }}
+      value={draft}
+      placeholder={placeholder}
+      options={options.map((o) => ({ ...o, label: renderOption({ data: o }) }))}
+      // Show every suggestion until the user starts typing something new
+      filterOption={(input, option) => draft === value || filterOption(input, option)}
+      onChange={(val) => setDraft(val ?? '')}
+      onSelect={(val) => {
+        setDraft(val)
+        commit(val)
+      }}
+      onOpenChange={(open) => {
+        openRef.current = open
+      }}
+      // Enter with the list open picks an option (onSelect); otherwise it
+      // commits the typed path.
+      onInputKeyDown={(e) => {
+        if (e.key === 'Enter' && !openRef.current) commit(draft)
+      }}
+      onBlur={() => commit(draft)}
+      onClear={() => commit('')}
+      allowClear
+    />
   )
 }
 
@@ -84,7 +133,7 @@ const EnvPathSettings: React.FC = () => {
       setList: (list: DetectedEnvironmentItem[]) => void,
       setBusy: (busy: boolean) => void,
       isManual: boolean,
-      autofill?: { key: 'localIdePath' | 'localTerminalPath' }
+      autofill?: { key: 'localIdePath' }
     ) => {
       setBusy(true)
       try {
@@ -122,8 +171,9 @@ const EnvPathSettings: React.FC = () => {
         (force) => window.api.developer.getAvailableTerminals(force),
         setAvailableTerminals,
         setScanningTerminals,
-        isManual,
-        { key: 'localTerminalPath' }
+        isManual
+        // No autofill: an unset terminal keeps the built-in fallback (iTerm /
+        // Terminal.app, wt / cmd) and the default shell for embedded sessions.
       ),
     [scan]
   )
@@ -167,7 +217,12 @@ const EnvPathSettings: React.FC = () => {
     key: 'pythonPath' | 'localIdePath' | 'localTerminalPath',
     setList: React.Dispatch<React.SetStateAction<DetectedEnvironmentItem[]>>
   ): Promise<void> => {
-    const selected = await window.api.dialog.selectApp()
+    // Python is a plain executable (no `.app` bundle filter); IDE / terminal
+    // pickers keep the application filter.
+    const selected =
+      key === 'pythonPath'
+        ? await window.api.dialog.selectExecutable()
+        : await window.api.dialog.selectApp()
     if (!selected) return
     await updateSetting(key, selected)
     if (key === 'pythonPath') setPythonValidation({ status: null, message: '' })
@@ -219,17 +274,12 @@ const EnvPathSettings: React.FC = () => {
     extra?: React.ReactNode
   }): React.ReactNode => (
     <Space.Compact style={{ width: '100%' }}>
-      <Select<string, PathOption>
-        style={{ flex: 1, minWidth: 0 }}
-        value={opts.value || undefined}
-        onChange={(val) => opts.onChange(val || '')}
+      <PathAutoComplete
+        value={opts.value}
+        onCommit={opts.onChange}
         placeholder={opts.placeholder}
-        loading={opts.scanning}
         options={opts.options}
-        optionRender={renderOption}
-        allowClear
-        showSearch
-        filterOption={filterOption}
+        renderOption={renderOption}
       />
       {opts.extra}
       <Tooltip title={t('settings.refreshScan')}>

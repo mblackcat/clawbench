@@ -25,6 +25,7 @@ import { resolveAppPublished } from '../../types/subapp';
 import { openExternalLink } from '../../utils/markdown-links';
 import SkillsManager, { type SelfSkill } from '../../components/SkillsManager';
 import { useT } from '../../i18n';
+import { normalizeAppType } from '../../utils/app-match';
 import { seedTaskFromExecuteResult, describeEarlyTerminal } from '../../utils/subapp-execute';
 import { isAuthoredByCurrentUser } from '../../utils/app-identity';
 import { isBuiltinAppId, resolveLocalAppStatus, type AppCardStatus } from '../../utils/app-status';
@@ -208,7 +209,7 @@ const MyContributionsPage: React.FC = () => {
   useEffect(() => {
     const publishedAppNames = new Set(allApps.map(a => a.name));
     const ownedIds = new Set(ownedServerApps.map(a => a.applicationId));
-    const ownedNames = new Set(ownedServerApps.map(a => a.name));
+    const localIds = new Set(appInfos.map(i => i.manifest.id));
     const accountMode = loggedIn && !isLocalMode && !!user;
     const items: MineItem[] = [];
     const matchedServerIds = new Set<string>();
@@ -222,16 +223,22 @@ const MyContributionsPage: React.FC = () => {
       const authoredByMe = isAuthoredByCurrentUser(manifest.author, user);
       if (!isBuiltin && accountMode && !authoredByMe) {
         // Someone else's marketplace app installed here → belongs on 收藏栏.
+        // Matched by applicationId only — a name collision with someone else's
+        // market app must not hide the user's own local resource.
         const isOthersMarketApp =
-          allApps.some(a => a.applicationId === manifest.id || a.name === manifest.name) &&
-          !ownedIds.has(manifest.id) &&
-          !ownedNames.has(manifest.name);
+          allApps.some(a => a.applicationId === manifest.id) && !ownedIds.has(manifest.id);
         if (isOthersMarketApp) continue;
       }
 
+      // id first; name only as a same-type fallback onto an otherwise unmatched app
       const serverMatch =
         ownedServerApps.find(a => a.applicationId === manifest.id) ||
-        ownedServerApps.find(a => a.name === manifest.name);
+        ownedServerApps.find(
+          a =>
+            a.name === manifest.name &&
+            normalizeAppType(a.type) === normalizeAppType(manifest.type) &&
+            !localIds.has(a.applicationId)
+        );
       if (serverMatch) matchedServerIds.add(serverMatch.applicationId);
 
       let appType: AppType = 'local';

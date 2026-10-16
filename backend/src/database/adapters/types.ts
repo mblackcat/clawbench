@@ -19,6 +19,14 @@ export interface DatabaseAdapter {
   /** Run `callback` inside a single transaction. */
   transaction<T>(callback: () => Promise<T>): Promise<T>;
 
+  /**
+   * Optional: run `callback` with every `run` / `get` / `all` pinned to one
+   * dedicated connection, without opening a transaction. Needed for
+   * session-scoped settings (e.g. MySQL `SET FOREIGN_KEY_CHECKS`) on pooled
+   * adapters. Single-connection adapters may omit it.
+   */
+  withConnection?<T>(callback: () => Promise<T>): Promise<T>;
+
   /** Close the connection / pool. */
   close(): Promise<void>;
 }

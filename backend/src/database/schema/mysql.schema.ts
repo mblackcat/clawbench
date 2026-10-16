@@ -22,6 +22,56 @@ async function safeDDL(database: DatabaseAdapter, sql: string, params: any[] = [
   }
 }
 
+/** Tables whose application_id must be VARCHAR(255) (parent first). */
+const APPLICATION_ID_TABLES = ['applications', 'application_versions', 'application_execution_errors'] as const;
+
+/**
+ * Widen application_id to VARCHAR(255) on every table that still has a shorter
+ * column. FOREIGN_KEY_CHECKS is session-scoped, so the toggle and all MODIFYs
+ * run on one dedicated connection (pooled run() calls could otherwise land on
+ * different connections — leaving checks off on a pooled connection or running
+ * the MODIFY with checks on). Each table is checked and altered independently,
+ * so a partially-applied earlier run is completed on the next start; checks are
+ * always restored on that same connection.
+ */
+export async function widenApplicationIdColumns(database: DatabaseAdapter, currentDb: string): Promise<void> {
+  const needsWidening = async (table: string): Promise<boolean> => {
+    const col = await database.get<{ char_len: number | string | null }>(
+      `SELECT CHARACTER_MAXIMUM_LENGTH AS char_len FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = 'application_id'`,
+      [currentDb, table]
+    );
+    // Missing table/column (e.g. created later with the new width) → nothing to do
+    return !!col && col.char_len !== null && col.char_len !== undefined && Number(col.char_len) < 255;
+  };
+
+  const pending: string[] = [];
+  for (const table of APPLICATION_ID_TABLES) {
+    if (await needsWidening(table)) pending.push(table);
+  }
+  if (pending.length === 0) return;
+
+  const run = async (): Promise<void> => {
+    await safeDDL(database, 'SET FOREIGN_KEY_CHECKS = 0');
+    try {
+      for (const table of pending) {
+        // Re-check on the pinned connection: another instance may have done it
+        if (!(await needsWidening(table))) continue;
+        await safeDDL(database, `ALTER TABLE ${table} MODIFY COLUMN application_id VARCHAR(255) NOT NULL`);
+        logger.info(`Widened ${table}.application_id to VARCHAR(255)`);
+      }
+    } finally {
+      await safeDDL(database, 'SET FOREIGN_KEY_CHECKS = 1');
+    }
+  };
+
+  if (database.withConnection) {
+    await database.withConnection(run);
+  } else {
+    await run();
+  }
+}
+
 /**
  * MySQL schema initializer.
  *
@@ -228,29 +278,7 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
       await safeDDL(database,`ALTER TABLE applications ADD COLUMN execution_count INTEGER DEFAULT 0`);
     }
     // 应用表迁移：扩容 application_id 为 VARCHAR(255)（兼容 reverse-DNS manifest id，如 cb.username.app-slug）
-    const appIdCol = await database.get<{ char_len: number }>(
-      `SELECT CHARACTER_MAXIMUM_LENGTH AS char_len FROM INFORMATION_SCHEMA.COLUMNS
-       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'applications' AND COLUMN_NAME = 'application_id'`,
-      [currentDb]
-    );
-    if (appIdCol && appIdCol.char_len && Number(appIdCol.char_len) < 255) {
-      await safeDDL(database, 'SET FOREIGN_KEY_CHECKS = 0');
-      try {
-        await safeDDL(database, 'ALTER TABLE applications MODIFY COLUMN application_id VARCHAR(255)');
-        await safeDDL(database, 'ALTER TABLE application_versions MODIFY COLUMN application_id VARCHAR(255) NOT NULL');
-        // application_execution_errors 在下方创建；仅当已存在时才扩容
-        const execErrTable = await database.get<{ cnt: number }>(
-          `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.TABLES
-           WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'application_execution_errors'`,
-          [currentDb]
-        );
-        if (execErrTable && Number(execErrTable.cnt) > 0) {
-          await safeDDL(database, 'ALTER TABLE application_execution_errors MODIFY COLUMN application_id VARCHAR(255) NOT NULL');
-        }
-      } finally {
-        await safeDDL(database, 'SET FOREIGN_KEY_CHECKS = 1');
-      }
-    }
+    await widenApplicationIdColumns(database, currentDb);
   }
 
   // 通用列补齐 helper（check-then-add，幂等；用于已有库升级）

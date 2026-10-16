@@ -14,6 +14,8 @@ import { prefersReducedMotion, supportsViewTransitions } from './pref'
 
 type ViewTransitionLike = {
   finished: Promise<void>
+  ready?: Promise<void>
+  updateCallbackDone?: Promise<void>
 }
 
 type DocumentWithVT = Document & {
@@ -50,27 +52,35 @@ export function withViewTransition(update: () => void | Promise<void>): void {
   }
 
   inFlight = true
-  try {
-    const transition = start(() => {
-      // React 18 otherwise commits AFTER the VT callback returns, so old/new
-      // snapshots would be identical. flushSync forces the DOM update inside
-      // the callback. Async updates are still returned so VT can wait.
-      let result: void | Promise<void> = undefined
-      flushSync(() => {
-        result = update()
-      })
-      return result
+  // The update must run exactly once: inside the transition when it starts,
+  // or directly if starting throws before the callback was invoked.
+  let ran = false
+  const runUpdate = (): void | Promise<void> => {
+    ran = true
+    // React 18 otherwise commits AFTER the VT callback returns, so old/new
+    // snapshots would be identical. flushSync forces the DOM update inside
+    // the callback. Async updates are still returned so VT can wait.
+    let result: void | Promise<void> = undefined
+    flushSync(() => {
+      result = update()
     })
-    void transition.finished
-      .catch(() => {
-        /* skipTransition / interrupted — swallow to avoid unhandled rejection */
-      })
-      .finally(() => {
-        inFlight = false
-      })
+    return result
+  }
+  try {
+    // Must be invoked with `document` as receiver — an unbound call throws
+    // "Illegal invocation" and silently disables every transition.
+    const transition = start.call(doc, runUpdate)
+    const swallow = (): void => {
+      /* skipTransition / interrupted / update rejected — avoid unhandled rejections */
+    }
+    transition.ready?.catch(swallow)
+    transition.updateCallbackDone?.catch(swallow)
+    void transition.finished.catch(swallow).finally(() => {
+      inFlight = false
+    })
   } catch {
     inFlight = false
-    void Promise.resolve(update())
+    if (!ran) void Promise.resolve(update())
   }
 }
 

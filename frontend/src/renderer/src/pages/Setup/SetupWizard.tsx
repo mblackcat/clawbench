@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   Typography,
   Button,
@@ -9,6 +9,9 @@ import {
   App,
   Spin,
   Tag,
+  Modal,
+  Input,
+  Space,
   theme
 } from 'antd'
 import {
@@ -394,52 +397,35 @@ function basenameFromPath(dir: string): string {
   return parts[parts.length - 1] || dir
 }
 
-// ─── Step 4: Workspace / local directory (at least one required) ─────────────
+// ─── Step 4: Workspace / local directory (required in general mode) ──────────
 
-const StepWorkspace: React.FC<{ mode: AppMode }> = ({ mode }) => {
+const StepWorkspace: React.FC<{ mode: AppMode; required: boolean }> = ({ mode, required }) => {
   const { token } = theme.useToken()
   const t = useT()
   const { message } = App.useApp()
   const { workspaces, activeWorkspace, fetchWorkspaces, createWorkspace, deleteWorkspace, setActiveWorkspace } =
     useWorkspaceStore()
-  const updateSetting = useSettingsStore((s) => s.updateSetting)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newPath, setNewPath] = useState('')
   const [adding, setAdding] = useState(false)
   const isGeneral = mode === 'general'
   const [seeding, setSeeding] = useState(isGeneral)
-
-  /** General mode: the user-apps root follows the default local directory. */
-  const syncUserAppDir = useCallback(
-    async (dirPath: string) => {
-      if (!isGeneral || !dirPath) return
-      try {
-        await updateSetting('userAppDir', dirPath)
-      } catch {
-        // Non-fatal here; finish() re-applies from the active workspace
-      }
-    },
-    [isGeneral, updateSetting]
-  )
 
   useEffect(() => {
     let cancelled = false
     const bootstrap = async (): Promise<void> => {
       await fetchWorkspaces()
       if (cancelled) return
-      if (!isGeneral) {
+      if (!isGeneral || useWorkspaceStore.getState().workspaces.length > 0) {
         setSeeding(false)
         return
       }
-      const existing = useWorkspaceStore.getState().workspaces
-      if (existing.length > 0) {
-        const active = useWorkspaceStore.getState().activeWorkspace
-        if (active?.path) await syncUserAppDir(active.path)
-        if (!cancelled) setSeeding(false)
-        return
-      }
-      // General mode with no workspace: seed the default user-apps directory as
-      // an editable / removable default entry.
+      // General mode with no workspace: offer the default user-apps directory
+      // as an editable / removable default workspace entry.
       try {
-        const dir = useSettingsStore.getState().userAppDir
+        const dir = await window.api.workspace.ensureDefaultGeneralPath()
+        if (cancelled) return
         if (dir) {
           try {
             await createWorkspace(basenameFromPath(dir), dir)
@@ -458,24 +444,37 @@ const StepWorkspace: React.FC<{ mode: AppMode }> = ({ mode }) => {
     return () => {
       cancelled = true
     }
-  }, [isGeneral, fetchWorkspaces, createWorkspace, syncUserAppDir])
+  }, [isGeneral, fetchWorkspaces, createWorkspace])
 
-  /** Pick a folder; the name defaults to its last path segment. */
-  const handleAdd = useCallback(async () => {
+  const resetModal = useCallback(() => {
+    setModalOpen(false)
+    setNewName('')
+    setNewPath('')
+  }, [])
+
+  const handleSelectDir = useCallback(async () => {
     const dir = await window.api.dialog.selectDirectory()
-    if (!dir) return
+    if (dir) setNewPath(dir)
+  }, [])
+
+  /** Name is optional; it defaults to the folder's last path segment. */
+  const handleAdd = useCallback(async () => {
+    const dir = newPath.trim()
+    if (!dir) {
+      message.warning(t('setup.wsPathRequired'))
+      return
+    }
     setAdding(true)
     try {
       // The first workspace is auto-activated inside createWorkspace
-      const ws = await createWorkspace(basenameFromPath(dir), dir)
-      const active = useWorkspaceStore.getState().activeWorkspace
-      await syncUserAppDir(active?.path ?? ws.path)
+      await createWorkspace(newName.trim() || basenameFromPath(dir), dir)
+      resetModal()
     } catch {
       message.error(t('setup.wsAddFailed'))
     } finally {
       setAdding(false)
     }
-  }, [createWorkspace, message, t, syncUserAppDir])
+  }, [newName, newPath, createWorkspace, resetModal, message, t])
 
   const handleDelete = useCallback(
     async (id: string) => {
@@ -485,29 +484,24 @@ const StepWorkspace: React.FC<{ mode: AppMode }> = ({ mode }) => {
         // Deleting the default promotes the first remaining entry
         if (wasDefault) {
           const rest = useWorkspaceStore.getState().workspaces
-          if (rest.length > 0) {
-            await setActiveWorkspace(rest[0].id)
-            await syncUserAppDir(rest[0].path)
-          }
+          if (rest.length > 0) await setActiveWorkspace(rest[0].id)
         }
       } catch {
         message.error(t('setup.wsDeleteFailed'))
       }
     },
-    [deleteWorkspace, setActiveWorkspace, message, t, syncUserAppDir]
+    [deleteWorkspace, setActiveWorkspace, message, t]
   )
 
   const handleSetDefault = useCallback(
     async (id: string) => {
       try {
         await setActiveWorkspace(id)
-        const ws = useWorkspaceStore.getState().workspaces.find((w) => w.id === id)
-        if (ws) await syncUserAppDir(ws.path)
       } catch {
         message.error(t('setup.wsSetDefaultFailed'))
       }
     },
-    [setActiveWorkspace, message, t, syncUserAppDir]
+    [setActiveWorkspace, message, t]
   )
 
   return (
@@ -519,7 +513,7 @@ const StepWorkspace: React.FC<{ mode: AppMode }> = ({ mode }) => {
         <Paragraph type="secondary" style={{ fontSize: 14, marginBottom: 8 }}>
           {t(isGeneral ? 'setup.wsDescGeneral' : 'setup.wsDesc')}
         </Paragraph>
-        {workspaces.length === 0 && !seeding && (
+        {required && workspaces.length === 0 && !seeding && (
           <Text type="danger" style={{ fontSize: 13 }}>{t('setup.wsRequired')}</Text>
         )}
       </div>
@@ -601,14 +595,54 @@ const StepWorkspace: React.FC<{ mode: AppMode }> = ({ mode }) => {
             type="dashed"
             icon={<PlusOutlined />}
             block
-            loading={adding}
-            onClick={handleAdd}
+            onClick={() => setModalOpen(true)}
             style={{ height: 40 }}
           >
             {t('setup.wsAdd')}
           </Button>
         </>
       )}
+
+      <Modal
+        title={t('setup.wsAddTitle')}
+        open={modalOpen}
+        onOk={handleAdd}
+        onCancel={resetModal}
+        confirmLoading={adding}
+        okText={t('setup.wsAddOk')}
+        cancelText={t('setup.wsAddCancel')}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <Text style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>
+              {t('setup.wsPathLabel')}
+            </Text>
+            <Space.Compact style={{ width: '100%' }}>
+              <Input
+                placeholder={t('setup.wsPathPlaceholder')}
+                value={newPath}
+                onChange={(e) => setNewPath(e.target.value)}
+                style={{ flex: 1 }}
+              />
+              <Button icon={<FolderOpenOutlined />} onClick={handleSelectDir}>
+                {t('setup.wsBrowse')}
+              </Button>
+            </Space.Compact>
+          </div>
+          <div>
+            <Text style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>
+              {t('setup.wsNameLabel')}{' '}
+              <Text type="secondary" style={{ fontSize: 12 }}>{t('setup.wsNameOptional')}</Text>
+            </Text>
+            <Input
+              placeholder={newPath.trim() ? basenameFromPath(newPath.trim()) : t('setup.wsNamePlaceholder')}
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onPressEnter={handleAdd}
+            />
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
@@ -707,14 +741,9 @@ const SetupWizard: React.FC = () => {
   const isLocalMode = useAuthStore((s) => s.isLocalMode)
   const workspaces = useWorkspaceStore((s) => s.workspaces)
 
-  // Snapshot userAppDir so a detour through 通用 (which re-points it at the
-  // chosen local directory) is undone when the user finishes in 研发.
-  const initialUserAppDirRef = useRef<string | null>(null)
-  useEffect(() => {
-    if (settingsLoaded && initialUserAppDirRef.current === null) {
-      initialUserAppDirRef.current = useSettingsStore.getState().userAppDir
-    }
-  }, [settingsLoaded])
+  // A workspace is only mandatory for first-run general mode; 研发 mode and
+  // a forceShow re-entry may skip the step.
+  const workspaceRequired = mode === 'general' && !forceShow
 
   // Redirect if already completed setup (unless the user explicitly re-opened it)
   useEffect(() => {
@@ -763,15 +792,15 @@ const SetupWizard: React.FC = () => {
       message.warning(t('setup.projectSelectRequired'))
       return
     }
-    if (step === STEP_WORKSPACE && workspaces.length === 0) {
+    if (step === STEP_WORKSPACE && workspaceRequired && workspaces.length === 0) {
       message.warning(t('setup.wsRequiredWarn'))
       return
     }
     setStep((s) => s + 1)
-  }, [step, projectStepSatisfied, workspaces.length, message, t])
+  }, [step, projectStepSatisfied, workspaceRequired, workspaces.length, message, t])
 
   const handleFinish = useCallback(async () => {
-    if (workspaces.length === 0) {
+    if (workspaceRequired && workspaces.length === 0) {
       message.warning(t('setup.wsRequiredWarn'))
       setStep(STEP_WORKSPACE)
       return
@@ -780,18 +809,6 @@ const SetupWizard: React.FC = () => {
       setAppMode(mode)
       // Save module visibility
       await updateSetting('moduleVisibility', modules)
-
-      // 通用: user-apps root follows the default local directory.
-      // 研发: keep the directory from before the wizard.
-      if (mode === 'general') {
-        const dir = useWorkspaceStore.getState().activeWorkspace?.path ?? workspaces[0]?.path
-        if (dir) await updateSetting('userAppDir', dir)
-      } else {
-        const initial = initialUserAppDirRef.current
-        if (initial && useSettingsStore.getState().userAppDir !== initial) {
-          await updateSetting('userAppDir', initial)
-        }
-      }
 
       // Persist selected project + self-join as member (best effort)
       const selected = projects.find((p) => p.projectId === selectedProjectId)
@@ -818,7 +835,8 @@ const SetupWizard: React.FC = () => {
       message.error(t('setup.saveFailed'))
     }
   }, [
-    workspaces,
+    workspaceRequired,
+    workspaces.length,
     mode,
     modules,
     role,
@@ -881,7 +899,7 @@ const SetupWizard: React.FC = () => {
               onRetry={fetchProjects}
             />
           )}
-          {step === STEP_WORKSPACE && <StepWorkspace mode={mode} />}
+          {step === STEP_WORKSPACE && <StepWorkspace mode={mode} required={workspaceRequired} />}
           {step === STEP_LLM && <StepLLM />}
         </div>
       </div>
@@ -910,7 +928,7 @@ const SetupWizard: React.FC = () => {
             type="primary"
             onClick={handleFinish}
             icon={<CheckCircleOutlined />}
-            disabled={workspaces.length === 0}
+            disabled={workspaceRequired && workspaces.length === 0}
           >
             {t('setup.finish')}
           </Button>

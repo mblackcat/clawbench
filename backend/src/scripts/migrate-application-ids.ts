@@ -84,6 +84,32 @@ interface MigrationPlan {
   newStorageDir?: string;
 }
 
+/** 合法 SQL 列名（来自 SELECT * 的行键；防御性校验后才拼进语句） */
+const SAFE_COLUMN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * 基于源行的全部列构造 INSERT（application_id 替换为 newId）。
+ * 动态列表保证 schema 新增的列（如 A30 补齐列）不会在迁移中丢失。
+ */
+export function buildApplicationCopyInsert(
+  row: Record<string, unknown>,
+  newId: string
+): { sql: string; params: unknown[] } {
+  const columns = Object.keys(row);
+  if (!columns.includes('application_id')) {
+    throw new Error('applications row has no application_id column');
+  }
+  for (const col of columns) {
+    if (!SAFE_COLUMN.test(col)) throw new Error(`Unexpected column name: ${col}`);
+  }
+  const params = columns.map((col) => (col === 'application_id' ? newId : row[col]));
+  const placeholders = columns.map(() => '?').join(', ');
+  return {
+    sql: `INSERT INTO applications (${columns.join(', ')}) VALUES (${placeholders})`,
+    params,
+  };
+}
+
 /** 辅助：从应用名称中提取短 slug（用于无 manifest 时的备用生成） */
 function fallbackSlug(name: string): string {
   const raw = (name || '').trim();
@@ -294,29 +320,10 @@ export async function runMigration(options?: { apply?: boolean }): Promise<{
       }
 
       await database.transaction(async () => {
-        // 2. 插入新 ID 的 application 记录（保持所有其他属性与时间戳一致）
-        await database.run(
-          `INSERT INTO applications (
-            application_id, name, description, owner_id, type, category,
-            published, featured, download_count, execution_count, metadata,
-            created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            plan.newId,
-            oldApp.name,
-            oldApp.description,
-            oldApp.owner_id,
-            oldApp.type,
-            oldApp.category,
-            oldApp.published,
-            oldApp.featured,
-            oldApp.download_count,
-            oldApp.execution_count,
-            oldApp.metadata,
-            oldApp.created_at,
-            oldApp.updated_at,
-          ]
-        );
+        // 2. 插入新 ID 的 application 记录：按源行的全部列动态复制（含以后新增 /
+        //    方言特有列），只替换 application_id，保持其余属性与时间戳一致
+        const { sql, params } = buildApplicationCopyInsert(oldApp as unknown as Record<string, unknown>, plan.newId);
+        await database.run(sql, params);
 
         // 3. 将子表 application_versions 迁移到新 ID，并更新 file_path
         for (const v of plan.versions) {

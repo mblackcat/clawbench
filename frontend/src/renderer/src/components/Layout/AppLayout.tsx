@@ -231,7 +231,10 @@ const AppLayout: React.FC = () => {
                   width: '100%',
                   minHeight: 0,
                   minWidth: 0,
-                  overflowX: 'hidden',
+                  // Inner scroll container: the island clips the rounded corners
+                  // (overflow hidden in theme-overhaul.css), so horizontal
+                  // overflow scrolls here as on master instead of being cut off.
+                  overflowX: 'auto',
                   overflowY: 'auto',
                   padding: 0,
                   // Flex column so full-height pages (AI Coding / Terminal / Chat)

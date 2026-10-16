@@ -30,43 +30,19 @@ export function getPythonSdkPath(): string {
 }
 
 /**
- * Built-in default under userData for user-installed apps (`user-apps`).
- * Prefer {@link getUserAppsPath} at runtime — that honors a configured override.
+ * Default directory under userData for user-installed apps (`user-apps`).
  */
 export function getDefaultUserAppsPath(): string {
   return join(getAppDataPath(), 'user-apps')
 }
 
 /**
- * Resolver for the configured user-apps directory (`settings.userAppDir`).
+ * Returns the install root for user-installed apps: always `{userData}/user-apps`.
  *
- * Registered by `store/settings.store.ts` at module init. paths.ts must not
- * import the settings store itself: settings.store already imports paths.ts
- * (cycle), and importing electron-store here would break unit tests that only
- * need path helpers. A lazy `require()` is not an option either — the main
- * bundle keeps relative requires verbatim, so they fail at runtime.
- */
-let userAppsDirResolver: (() => string | undefined | null) | null = null
-
-export function registerUserAppsDirResolver(
-  resolver: (() => string | undefined | null) | null
-): void {
-  userAppsDirResolver = resolver
-}
-
-/**
- * Returns the effective directory for user-installed apps.
- * Uses `settings.userAppDir` when set; otherwise {@link getDefaultUserAppsPath}.
+ * Note: `settings.userAppDir` is NOT the install root — it is the developer
+ * shared-app discovery directory (see `developer:discover-shared-apps`).
  */
 export function getUserAppsPath(): string {
-  try {
-    const configured = userAppsDirResolver?.()
-    if (typeof configured === 'string' && configured.trim()) {
-      return configured
-    }
-  } catch {
-    // Store not ready yet during very early bootstrap
-  }
   return getDefaultUserAppsPath()
 }
 

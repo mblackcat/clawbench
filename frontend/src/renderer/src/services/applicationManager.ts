@@ -7,6 +7,7 @@ import { apiClient, API_BASE_URL } from './apiClient';
 import type { Application, ApplicationDetail, ApplicationType } from '../types/api';
 import { localStorageManager } from './localStorageManager';
 import { builtinAppKeyFromId, isBuiltinAppId } from '../utils/app-status';
+import { useSettingsStore } from '../stores/useSettingsStore';
 
 /**
  * 已安装应用的最小结构（用于版本检查）。与各处本地定义的 SubAppInfo 结构兼容。
@@ -156,12 +157,16 @@ class ApplicationManager {
    */
   async updateBuiltinApp(appId: string): Promise<boolean> {
     const appKey = builtinAppKeyFromId(appId);
-    const downloadUrl = `${API_BASE_URL}/common-apps/${encodeURIComponent(appKey)}/download`;
+    // Pass the active project so the server applies the project-level kill-switch too
+    const projectId = useSettingsStore.getState().activeProject?.projectId;
+    const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : '';
+    const downloadUrl = `${API_BASE_URL}/common-apps/${encodeURIComponent(appKey)}/download${query}`;
     const token = apiClient.getToken() || undefined;
     const result = await window.api.subapp.updateFromMarket(appId, downloadUrl, token);
     if (!result.success) {
       throw new Error('Builtin app update failed');
     }
+    await window.api.subapp.clearBuiltinRemoved(appId).catch(() => undefined);
     return true;
   }
 
@@ -177,6 +182,10 @@ class ApplicationManager {
 
       if (!result.success) {
         throw new Error('安装失败');
+      }
+      // A builtin the user deleted and now reinstalls is seeded/upgraded again
+      if (isBuiltinAppId(applicationId)) {
+        await window.api.subapp.clearBuiltinRemoved(applicationId).catch(() => undefined);
       }
 
       return true;

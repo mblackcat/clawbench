@@ -24,6 +24,11 @@ export interface AttentionContext {
   pathname: string
   activeChatId: string | null
   activeCodingId: string | null
+  /**
+   * AI Coding: the workspace landing panel covers the panes, so the active
+   * session isn't actually visible — treat it as not-viewing.
+   */
+  codingLandingVisible?: boolean
 }
 
 interface AttentionState {
@@ -91,7 +96,7 @@ export function isViewingTarget(
   if (source === 'workbench') return true
   if (!targetId) return true
   if (source === 'ai-chat') return ctx.activeChatId === targetId
-  if (source === 'ai-coding') return ctx.activeCodingId === targetId
+  if (source === 'ai-coding') return !ctx.codingLandingVisible && ctx.activeCodingId === targetId
   return false
 }
 
@@ -146,7 +151,7 @@ function syncTray(
 
 export const useAttentionStore = create<AttentionState>((set, get) => ({
   items: [],
-  context: { pathname: '', activeChatId: null, activeCodingId: null },
+  context: { pathname: '', activeChatId: null, activeCodingId: null, codingLandingVisible: false },
   navigateHandler: null,
 
   setContext: (partial) => {
@@ -265,7 +270,9 @@ export const useAttentionStore = create<AttentionState>((set, get) => ({
       if (item.source === 'ai-coding') {
         // Action attentions (questions / permissions) persist until answered
         if (item.kind === 'action') return true
-        // Completion attentions clear when navigating to that session
+        // Completion attentions clear when navigating to that session (not
+        // while the workspace landing panel hides it)
+        if (context.codingLandingVisible) return true
         return context.activeCodingId !== item.targetId
       }
       return true

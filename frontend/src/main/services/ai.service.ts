@@ -256,6 +256,36 @@ function buildGeminiParts(msg: ChatMessage): any[] {
   return [{ text: msg.content }]
 }
 
+// ============ Non-streaming timeouts ============
+
+/** Background (non-streaming) completions must never hang a caller forever. */
+export const COMPLETION_TIMEOUT_MS = 120_000
+const TITLE_TIMEOUT_MS = 30_000
+
+/**
+ * Run `fn` with an AbortSignal that fires after `ms`. Also races a timer so an
+ * SDK that ignores the signal still rejects; the timer is always cleared.
+ */
+export async function runWithTimeout<T>(
+  ms: number,
+  label: string,
+  fn: (signal: AbortSignal) => Promise<T>
+): Promise<T> {
+  const controller = new AbortController()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort()
+      reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`))
+    }, ms)
+  })
+  try {
+    return await Promise.race([fn(controller.signal), timeout])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
 // ============ Title generation (non-streaming, text only) ============
 
 export async function generateTitle(
@@ -281,37 +311,41 @@ export async function generateTitle(
     }
   ]
 
-  if (provider === 'anthropic' || provider === 'anthropic-compatible') {
-    return completeClaude(config, actualModelId, titlePrompt)
-  } else if (provider === 'google') {
-    return completeGoogle(config, actualModelId, titlePrompt)
-  } else if (provider === 'azure-openai') {
-    return completeAzureOpenAI(config, actualModelId, titlePrompt)
-  } else if (provider === 'openai-responses') {
-    return completeOpenAIResponses(config, actualModelId, titlePrompt, 50)
-  } else {
-    return completeOpenAI(config, actualModelId, titlePrompt)
-  }
+  return runWithTimeout(TITLE_TIMEOUT_MS, 'Title generation', (signal) => {
+    if (provider === 'anthropic' || provider === 'anthropic-compatible') {
+      return completeClaude(config, actualModelId, titlePrompt, signal)
+    } else if (provider === 'google') {
+      return completeGoogle(config, actualModelId, titlePrompt, signal)
+    } else if (provider === 'azure-openai') {
+      return completeAzureOpenAI(config, actualModelId, titlePrompt, signal)
+    } else if (provider === 'openai-responses') {
+      return completeOpenAIResponses(config, actualModelId, titlePrompt, 50, signal)
+    } else {
+      return completeOpenAI(config, actualModelId, titlePrompt, signal)
+    }
+  })
 }
 
 async function completeOpenAI(
   config: AIModelConfig,
   modelId: string,
-  messages: ChatMessage[]
+  messages: ChatMessage[],
+  signal?: AbortSignal
 ): Promise<string> {
   const client = new OpenAI({ apiKey: config.apiKey, baseURL: normalizeOpenAIBaseURL(config.endpoint) })
   const response = await client.chat.completions.create({
     model: modelId,
     messages: messages.map((m) => ({ role: m.role, content: m.content })) as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
     max_tokens: 50
-  })
+  }, { signal })
   return response.choices[0]?.message?.content?.trim() || '新对话'
 }
 
 async function completeAzureOpenAI(
   config: AIModelConfig,
   modelId: string,
-  messages: ChatMessage[]
+  messages: ChatMessage[],
+  signal?: AbortSignal
 ): Promise<string> {
   const client = new AzureOpenAI({
     apiKey: config.apiKey,
@@ -322,14 +356,15 @@ async function completeAzureOpenAI(
     model: modelId,
     messages: messages.map((m) => ({ role: m.role, content: m.content })) as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
     max_tokens: 50
-  })
+  }, { signal })
   return response.choices[0]?.message?.content?.trim() || '新对话'
 }
 
 async function completeClaude(
   config: AIModelConfig,
   modelId: string,
-  messages: ChatMessage[]
+  messages: ChatMessage[],
+  signal?: AbortSignal
 ): Promise<string> {
   const client = new Anthropic({ apiKey: config.apiKey, baseURL: normalizeAnthropicBaseURL(config.endpoint) })
   const response = await client.messages.create({
@@ -339,7 +374,7 @@ async function completeClaude(
       role: m.role as 'user' | 'assistant',
       content: m.content
     }))
-  })
+  }, { signal })
   const textBlock = response.content.find((b) => b.type === 'text')
   return (textBlock as any)?.text?.trim() || '新对话'
 }
@@ -347,12 +382,13 @@ async function completeClaude(
 async function completeGoogle(
   config: AIModelConfig,
   modelId: string,
-  messages: ChatMessage[]
+  messages: ChatMessage[],
+  signal?: AbortSignal
 ): Promise<string> {
   const genAI = new GoogleGenerativeAI(config.apiKey)
   const requestOptions = config.endpoint ? { baseUrl: config.endpoint } : undefined
   const model = genAI.getGenerativeModel({ model: modelId }, requestOptions)
-  const result = await model.generateContent(messages[messages.length - 1].content)
+  const result = await model.generateContent(messages[messages.length - 1].content, { signal })
   return result.response.text().trim() || '新对话'
 }
 
@@ -374,22 +410,25 @@ export async function completeChat(
   const actualModelId = modelId || config.models[0] || config.name
   const provider = config.provider.toLowerCase()
 
-  if (provider === 'anthropic' || provider === 'anthropic-compatible') {
-    return completeChatClaude(config, actualModelId, messages, maxTokens)
-  } else if (provider === 'google') {
-    return completeChatGoogle(config, actualModelId, messages, maxTokens)
-  } else if (provider === 'openai-responses') {
-    return completeOpenAIResponses(config, actualModelId, messages, maxTokens)
-  } else {
-    return completeChatOpenAI(config, actualModelId, messages, maxTokens)
-  }
+  return runWithTimeout(COMPLETION_TIMEOUT_MS, 'AI completion', (signal) => {
+    if (provider === 'anthropic' || provider === 'anthropic-compatible') {
+      return completeChatClaude(config, actualModelId, messages, maxTokens, signal)
+    } else if (provider === 'google') {
+      return completeChatGoogle(config, actualModelId, messages, maxTokens, signal)
+    } else if (provider === 'openai-responses') {
+      return completeOpenAIResponses(config, actualModelId, messages, maxTokens, signal)
+    } else {
+      return completeChatOpenAI(config, actualModelId, messages, maxTokens, signal)
+    }
+  })
 }
 
 async function completeChatOpenAI(
   config: AIModelConfig,
   modelId: string,
   messages: ChatMessage[],
-  maxTokens: number
+  maxTokens: number,
+  signal?: AbortSignal
 ): Promise<string> {
   const ClientClass = config.provider === 'azure-openai' ? AzureOpenAI : OpenAI
   const clientOpts: any = { apiKey: config.apiKey }
@@ -404,7 +443,7 @@ async function completeChatOpenAI(
     model: modelId,
     messages: messages.map((m) => ({ role: m.role, content: m.content })) as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
     max_tokens: maxTokens
-  })
+  }, { signal })
   return response.choices[0]?.message?.content?.trim() || ''
 }
 
@@ -412,7 +451,8 @@ async function completeChatClaude(
   config: AIModelConfig,
   modelId: string,
   messages: ChatMessage[],
-  maxTokens: number
+  maxTokens: number,
+  signal?: AbortSignal
 ): Promise<string> {
   const client = new Anthropic({ apiKey: config.apiKey, baseURL: normalizeAnthropicBaseURL(config.endpoint) })
   const systemMsg = messages.find((m) => m.role === 'system')
@@ -423,7 +463,7 @@ async function completeChatClaude(
     messages: messages
       .filter((m) => m.role !== 'system')
       .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
-  })
+  }, { signal })
   const textBlock = response.content.find((b) => b.type === 'text')
   return (textBlock as any)?.text?.trim() || ''
 }
@@ -432,13 +472,14 @@ async function completeChatGoogle(
   config: AIModelConfig,
   modelId: string,
   messages: ChatMessage[],
-  _maxTokens: number
+  _maxTokens: number,
+  signal?: AbortSignal
 ): Promise<string> {
   const genAI = new GoogleGenerativeAI(config.apiKey)
   const requestOptions = config.endpoint ? { baseUrl: config.endpoint } : undefined
   const model = genAI.getGenerativeModel({ model: modelId }, requestOptions)
   const lastMsg = messages[messages.length - 1]
-  const result = await model.generateContent(lastMsg?.content || '')
+  const result = await model.generateContent(lastMsg?.content || '', { signal })
   return result.response.text().trim() || ''
 }
 
@@ -975,14 +1016,15 @@ async function completeOpenAIResponses(
   config: AIModelConfig,
   modelId: string,
   messages: ChatMessage[],
-  maxTokens = 4096
+  maxTokens = 4096,
+  signal?: AbortSignal
 ): Promise<string> {
   const client = new OpenAI({ apiKey: config.apiKey, baseURL: normalizeOpenAIBaseURL(config.endpoint) })
   const resp: any = await client.responses.create({
     model: modelId,
     input: buildResponsesInput(messages),
     max_output_tokens: maxTokens
-  })
+  }, { signal })
   if (typeof resp.output_text === 'string' && resp.output_text) {
     return resp.output_text.trim()
   }

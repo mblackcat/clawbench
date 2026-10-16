@@ -311,6 +311,22 @@ export function registerSettingsIpc(): void {
     return result.filePaths[0]
   })
 
+  // Plain executable picker (e.g. a Python interpreter): no `.app` filter, and
+  // hidden dirs visible so ~/.pyenv, ~/.local/bin … are reachable.
+  ipcMain.handle('dialog:select-executable', async (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    if (!window) return null
+    const isWin = process.platform === 'win32'
+    const result = await dialog.showOpenDialog(window, {
+      properties: ['openFile', 'showHiddenFiles'],
+      ...(isWin
+        ? { filters: [{ name: 'Executables', extensions: ['exe', 'bat', 'cmd'] }, { name: 'All Files', extensions: ['*'] }] }
+        : {})
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths[0]
+  })
+
   ipcMain.handle('dialog:select-files', async (event) => {
     const window = BrowserWindow.fromWebContents(event.sender)
     if (!window) return []

@@ -1,5 +1,5 @@
 import Store from 'electron-store'
-import { getDefaultUserAppsPath, registerUserAppsDirResolver } from '../utils/paths'
+import { getUserAppsPath } from '../utils/paths'
 
 export interface ModuleVisibility {
   aiChat: boolean
@@ -56,6 +56,8 @@ interface SettingsSchema {
   autoUpdate: boolean
   localIdePath: string
   localTerminalPath: string
+  /** One-time terminal/IDE auto-detection has run (see migrate-settings.runEnvAutoDetect) */
+  envAutoDetectDone: boolean
   hasCompletedSetup: boolean
   aiModelConfigs: AIModelConfig[]
   imageGenConfigs: ImageGenConfig[]
@@ -112,6 +114,8 @@ interface SettingsSchema {
    * Stores previous source values so toggling off can restore them.
    */
   localEnvMirrors: Record<string, LocalEnvMirrorBackup>
+  /** Builtin app ids the user deleted — startup seeding must not reinstall them. */
+  removedBuiltinApps: string[]
 }
 
 /** Backup of pre-China-mirror config for one Local Env tool */
@@ -182,6 +186,10 @@ export const settingsStore = new Store<SettingsSchema>({
     localTerminalPath: {
       type: 'string',
       default: ''
+    },
+    envAutoDetectDone: {
+      type: 'boolean',
+      default: false
     },
     aiModelConfigs: {
       type: 'array',
@@ -374,13 +382,14 @@ export const settingsStore = new Store<SettingsSchema>({
     localEnvMirrors: {
       type: 'object',
       default: {}
+    },
+    removedBuiltinApps: {
+      type: 'array',
+      default: [],
+      items: { type: 'string' }
     }
   }
 })
-
-// Let utils/paths.getUserAppsPath() honor a configured userAppDir without an
-// import cycle (paths.ts cannot import this module).
-registerUserAppsDirResolver(() => settingsStore.get('userAppDir'))
 
 /** Coding tools enabled by default when the user has not set an explicit preference */
 export const DEFAULT_ENABLED_CODING_TOOL_IDS = new Set(['claude-code', 'codex-cli'])
@@ -430,7 +439,7 @@ export function getSettings(): PublicSettings {
   
   // 如果为空或不存在，设置为默认值
   if (!userAppDir) {
-    userAppDir = getDefaultUserAppsPath()
+    userAppDir = getUserAppsPath()
     settingsStore.set('userAppDir', userAppDir)
   }
   

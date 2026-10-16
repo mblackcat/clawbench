@@ -1149,6 +1149,50 @@ function isWingetAlreadyInstalled(code: number | null): boolean {
   return code !== null && (code >>> 0) === WINGET_NO_APPLICABLE_UPGRADE
 }
 
+/**
+ * Exit codes meaning "succeeded, reboot needed": MSI ERROR_SUCCESS_REBOOT_REQUIRED
+ * (3010) / ERROR_SUCCESS_REBOOT_INITIATED (1641), and winget's
+ * INSTALL_REBOOT_REQUIRED_TO_FINISH (0x8A150109) / INSTALL_REBOOT_INITIATED (0x8A15010B).
+ */
+const REBOOT_REQUIRED_SUCCESS_CODES = new Set([3010, 1641, 0x8a150109, 0x8a15010b])
+
+/**
+ * Permission-type failures worth one elevated retry. Deliberately narrow — a
+ * timeout or a generic failure (network, hash mismatch, policy …) is never
+ * retried elevated:
+ *  - winget COMMAND_REQUIRES_ADMIN (0x8A150019)
+ *  - Win32 ERROR_ACCESS_DENIED (5) / HRESULT E_ACCESSDENIED (0x80070005)
+ *  - MSI ERROR_INSTALL_PACKAGE_REJECTED-for-privileges (1925: "insufficient privileges")
+ *  - MSI 1603 (fatal error) — the usual symptom of a per-machine MSI run unelevated
+ */
+const PERMISSION_EXIT_CODES = new Set([0x8a150019, 5, 0x80070005, 1925, 1603])
+
+/** Installer exit code winget echoes ("Installer failed with exit code: 1603"). */
+export function parseInstallerExitCode(output: string): number | null {
+  const m = /exit code:?\s*(0x[0-9a-f]+|-?\d+)/i.exec(output)
+  if (!m) return null
+  const n = m[1].toLowerCase().startsWith('0x') ? parseInt(m[1], 16) : parseInt(m[1], 10)
+  return Number.isFinite(n) ? n >>> 0 : null
+}
+
+/** winget run counts as installed: 0, already installed, or success-with-reboot. */
+export function isWingetSuccess(result: Pick<StreamedRunResult, 'code' | 'output' | 'timedOut'>): boolean {
+  if (result.timedOut || result.code === null) return false
+  const code = result.code >>> 0
+  if (code === 0 || code === WINGET_NO_APPLICABLE_UPGRADE) return true
+  if (REBOOT_REQUIRED_SUCCESS_CODES.has(code)) return true
+  const installer = parseInstallerExitCode(result.output)
+  return installer !== null && REBOOT_REQUIRED_SUCCESS_CODES.has(installer)
+}
+
+/** Only permission-type failures (never timeouts) warrant an elevated retry. */
+export function shouldRetryWingetElevated(result: Pick<StreamedRunResult, 'code' | 'output' | 'timedOut'>): boolean {
+  if (result.timedOut || result.code === null) return false
+  if (PERMISSION_EXIT_CODES.has(result.code >>> 0)) return true
+  const installer = parseInstallerExitCode(result.output)
+  return installer !== null && PERMISSION_EXIT_CODES.has(installer)
+}
+
 function isUacCancelled(code: number | null): boolean {
   return code !== null && (code >>> 0) === ERROR_CANCELLED
 }
@@ -1306,8 +1350,9 @@ function resolveWingetForElevation(): string {
 }
 
 /**
- * Windows: install a winget package, retrying once with explicit elevation when
- * the unelevated attempt fails or stalls.
+ * Windows: install a winget package, retrying once with explicit elevation only
+ * when the unelevated attempt failed with a permission-type exit code (never
+ * after a timeout — the first installer may still be running).
  */
 async function wingetInstall(
   pkg: string,
@@ -1327,11 +1372,15 @@ async function wingetInstall(
 
   const timeout = opts.timeout ?? 480000
   const first = await runStreaming('winget', args, { timeout, label: opts.label, env: opts.env })
-  if (first.code === 0 || isWingetAlreadyInstalled(first.code)) return first
+  if (isWingetSuccess(first)) return first
+  if (!shouldRetryWingetElevated(first)) {
+    logger.warn(
+      `[local-env] winget install of ${pkg} ${first.timedOut ? 'timed out' : `failed (code ${first.code})`}, not retrying elevated`
+    )
+    return first
+  }
 
-  logger.warn(
-    `[local-env] winget install of ${pkg} ${first.timedOut ? 'timed out' : `failed (code ${first.code})`}, retrying elevated`
-  )
+  logger.warn(`[local-env] winget install of ${pkg} failed with a permission error (code ${first.code}), retrying elevated`)
   return runElevatedWindows(resolveWingetForElevation(), args, { timeout, label: opts.label })
 }
 
@@ -1382,7 +1431,7 @@ async function installSvnWindows(env: NodeJS.ProcessEnv): Promise<ToolInstallRes
     force: needsCliRepair,
     env
   })
-  const wingetOk = result.code === 0 || isWingetAlreadyInstalled(result.code)
+  const wingetOk = isWingetSuccess(result)
 
   const cli = findTortoiseSvnCli()
   if (!cli) {
@@ -1686,7 +1735,7 @@ export async function installTool(toolId: string): Promise<ToolInstallResult> {
           custom: WINGET_INSTALL_CUSTOM[id],
           env
         })
-        if (result.code === 0 || isWingetAlreadyInstalled(result.code)) {
+        if (isWingetSuccess(result)) {
           invalidateWindowsRegistryPathCache()
           logger.info(`[local-env] Tool installed: ${id}`)
           if (id === 'python') {
@@ -2360,29 +2409,48 @@ async function writeNpmRegistry(registry: string, env: NodeJS.ProcessEnv): Promi
   })
 }
 
+/** pip's `trusted-host` is only meaningful for non-TLS (http) index URLs. */
+export function pipIndexNeedsTrustedHost(indexUrl: string): boolean {
+  try {
+    return new URL(indexUrl).protocol === 'http:'
+  } catch {
+    return false
+  }
+}
+
 function dockerDaemonJsonPath(): string {
   return path.join(os.homedir(), '.docker', 'daemon.json')
 }
 
-function readDockerDaemonJson(): Record<string, unknown> {
-  const p = dockerDaemonJsonPath()
+/**
+ * Parse daemon.json. A missing / empty file is `{}`; anything unparsable (or not
+ * a JSON object) throws — overwriting it would silently drop the user's config.
+ */
+export function readDockerDaemonJson(p: string = dockerDaemonJsonPath()): Record<string, unknown> {
+  if (!fs.existsSync(p)) return {}
+  const raw = fs.readFileSync(p, 'utf8').trim()
+  if (!raw) return {}
+  let parsed: unknown
   try {
-    if (!fs.existsSync(p)) return {}
-    const raw = fs.readFileSync(p, 'utf8').trim()
-    if (!raw) return {}
-    const parsed = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+    parsed = JSON.parse(raw)
   } catch (err) {
     logger.warn('[local-env] failed to parse docker daemon.json:', err)
-    return {}
+    throw new Error(mainT('localEnv.dockerDaemonJsonInvalid', p))
   }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(mainT('localEnv.dockerDaemonJsonInvalid', p))
+  }
+  return parsed as Record<string, unknown>
 }
 
-function writeDockerDaemonJson(data: Record<string, unknown>): void {
-  const p = dockerDaemonJsonPath()
+/** Write daemon.json, keeping the previous content as `daemon.json.bak`. */
+export function writeDockerDaemonJson(data: Record<string, unknown>, p: string = dockerDaemonJsonPath()): void {
   const dir = path.dirname(p)
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true })
+  }
+  if (fs.existsSync(p)) {
+    fs.copyFileSync(p, `${p}.bak`)
   }
   fs.writeFileSync(p, `${JSON.stringify(data, null, 2)}\n`, 'utf8')
 }
@@ -2491,7 +2559,11 @@ export async function setMirrorSource(
         }
         if (!isOurPipChina(currentIndex)) {
           await writePipConfig(py, 'global.index-url', china.indexUrl, env)
-          await writePipConfig(py, 'global.trusted-host', china.trustedHost, env)
+          // trusted-host disables TLS verification for the host — only needed
+          // (and only safe to suggest) for a plain-http index.
+          if (pipIndexNeedsTrustedHost(china.indexUrl)) {
+            await writePipConfig(py, 'global.trusted-host', china.trustedHost, env)
+          }
         }
         setLocalEnvMirrorBackup('python', backup)
       } else {

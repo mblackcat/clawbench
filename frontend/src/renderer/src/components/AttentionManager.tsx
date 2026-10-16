@@ -36,6 +36,23 @@ const AttentionManager: React.FC = () => {
     })
   }, [location.pathname, activeChatId, activeCodingId])
 
+  // Window regained focus: completions for whatever is on screen now were seen
+  // (raise() keeps them while the window is unfocused).
+  useEffect(() => {
+    const onFocus = (): void => {
+      useAttentionStore.getState().clearViewed()
+    }
+    const onVisibility = (): void => {
+      if (document.visibilityState === 'visible' && document.hasFocus()) onFocus()
+    }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [])
+
   // Register navigation handler for openFirst / tray activate / tray menu items
   useEffect(() => {
     const goTo = (target: { source: string; targetId?: string }): void => {

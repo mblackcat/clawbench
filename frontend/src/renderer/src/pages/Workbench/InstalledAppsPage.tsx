@@ -76,6 +76,8 @@ import { openExternalLink } from '../../utils/markdown-links';
 import { buildInitialAppParams, saveAppParams } from '../../utils/subapp-params';
 import { useT } from '../../i18n';
 import { applicationManager } from '../../services/applicationManager';
+import { mergeAdminPins, readLastAdminPins, writeLastAdminPins } from '../../utils/builtin-pins';
+import { typedNameKey } from '../../utils/app-match';
 import { apiClient } from '../../services/apiClient';
 import { isAuthoredByCurrentUser } from '../../utils/app-identity';
 import { seedTaskFromExecuteResult, describeEarlyTerminal } from '../../utils/subapp-execute';
@@ -157,8 +159,10 @@ interface SortableCardProps {
   scheduleNextRunAt?: number
   /** 是否置顶到收藏栏分组顶部 */
   pinned?: boolean
-  /** 切换置顶状态（内置应用的置顶由管理员配置，不提供切换） */
+  /** 切换置顶状态（管理员置顶的内置应用不提供切换） */
   onTogglePin?: (id: string) => void
+  /** 该内置应用由管理员置顶（只读展示） */
+  adminPinned?: boolean
 }
 
 const SortableAppCard: React.FC<SortableCardProps> = ({
@@ -179,7 +183,8 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
   scheduleEnabled,
   scheduleNextRunAt,
   pinned,
-  onTogglePin
+  onTogglePin,
+  adminPinned
 }) => {
   const { id, manifest, status, origin } = appWithType;
   const app = manifest;
@@ -217,14 +222,12 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
 
   const notchActions = (
     <>
-      {isBuiltin ? (
-        pinned && (
-          <Tooltip title={t('workbench.pinnedByAdmin')}>
-            <span className="cb-notch-btn">
-              <PushpinFilled style={{ color: token.colorPrimary, fontSize: 13 }} />
-            </span>
-          </Tooltip>
-        )
+      {isBuiltin && adminPinned ? (
+        <Tooltip title={t('workbench.pinnedByAdmin')}>
+          <span className="cb-notch-btn">
+            <PushpinFilled style={{ color: token.colorPrimary, fontSize: 13 }} />
+          </span>
+        </Tooltip>
       ) : (
         onTogglePin && (
           <Tooltip title={pinned ? t('workbench.unpin') : t('workbench.pin')}>
@@ -391,8 +394,7 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
                 </button>
               </Tooltip>
             )}
-            {!isBuiltin &&
-              actionBtn('delete', t('workbench.delete'), 'danger', <DeleteOutlined style={{ fontSize: 13 }} />, () => onUninstall(id, app.name))}
+            {actionBtn('delete', t('workbench.delete'), 'danger', <DeleteOutlined style={{ fontSize: 13 }} />, () => onUninstall(id, app.name))}
             {needsUpdate &&
               actionBtn('update', t('appStatus.updateAction'), 'neutral', <CloudDownloadOutlined style={{ fontSize: 14, color: token.colorPrimary }} />, () => onUpdate(appWithType))}
             {needsReset &&
@@ -580,6 +582,8 @@ const InstalledAppsPage: React.FC = () => {
   const [builtinRemoteVersion, setBuiltinRemoteVersion] = useState<Map<string, string>>(new Map());
   /** appKeys whose server has an admin-published archive (update pulls server bytes). */
   const [builtinHasArchive, setBuiltinHasArchive] = useState<Set<string>>(new Set());
+  /** Builtins pinned by an admin (server common_apps.pinned); empty in local mode. */
+  const [adminPinnedIds, setAdminPinnedIds] = useState<Set<string>>(new Set());
   /**
    * Effectively-enabled builtin appKeys (project-scoped, or global without a
    * project). null = unknown (local mode / offline / fetch failed) → never hide.
@@ -671,6 +675,8 @@ const InstalledAppsPage: React.FC = () => {
   const syncBuiltins = useCallback(async () => {
     if (isLocalMode) {
       setEnabledBuiltinKeys(null);
+      // Local mode: no admin pins — every builtin pin is the user's own (toggleable)
+      setAdminPinnedIds(new Set());
       return;
     }
     const [globalRes, projectRes] = await Promise.allSettled([
@@ -680,13 +686,16 @@ const InstalledAppsPage: React.FC = () => {
 
     if (globalRes.status === 'fulfilled') {
       const { commonApps } = globalRes.value;
-      // Admin-configured pins are authoritative for builtins; user pins for others are kept.
+      // Admin pins are merged with the user's own pins (incl. builtins the user
+      // pinned); only pins that came from a since-withdrawn admin pin are dropped.
       const serverPinned = commonApps
         .filter((a) => a.pinned)
         .map((a) => `${BUILTIN_APP_ID_PREFIX}${a.appKey}`);
+      setAdminPinnedIds(new Set(serverPinned));
       const current = useSettingsStore.getState().pinnedApps;
-      const next = [...serverPinned, ...current.filter((id) => !isBuiltinAppId(id))];
-      const changed = next.length !== current.length || next.some((id) => !current.includes(id));
+      const next = mergeAdminPins(current, serverPinned, readLastAdminPins());
+      writeLastAdminPins(serverPinned);
+      const changed = next.length !== current.length || next.some((id, i) => id !== current[i]);
       if (changed) {
         await updateSetting('pinnedApps', next);
       }
@@ -735,7 +744,13 @@ const InstalledAppsPage: React.FC = () => {
       const publishedNames = new Set(published.map((a) => a.name));
       setPublishedAppNames(publishedNames);
       setMarketById(new Map(published.map((a) => [a.applicationId, a])));
-      setMarketByName(new Map(published.map((a) => [a.name, a])));
+      // Name fallback index is type-scoped (see utils/app-match); first wins on collisions
+      const byTypedName = new Map<string, Application>();
+      for (const a of published) {
+        const key = typedNameKey(a.name, a.type);
+        if (!byTypedName.has(key)) byTypedName.set(key, a);
+      }
+      setMarketByName(byTypedName);
       // 治愈：以服务端为准回写本地 manifest 的 published，修复旧版未回写的脏数据。
       const healed = await applicationManager.reconcilePublishedFlags(
         useSubAppStore.getState().appInfos,
@@ -851,10 +866,13 @@ const InstalledAppsPage: React.FC = () => {
    *
    * 发布状态以服务端为准（见 resolveAppPublished）。作者判定用
    * isAuthoredByCurrentUser。远端版本：内置 → common_apps / 自带版本；其他 →
-   * 市场应用（先按 manifest.id 再按名称匹配），兜底 checkForUpdates 结果。
+   * 市场应用（先按 manifest.id；无 id 匹配时才按同类型名称兜底），兜底 checkForUpdates 结果。
    * 被当前项目禁用的内置应用隐藏（启用态未知时不隐藏）。
    */
   const classifyApps = () => {
+    // Market ids that some local app already matches exactly — a name fallback
+    // must never attach another local app to them.
+    const localIds = new Set(appInfos.map((i) => i.id));
     const classified: AppWithType[] = appInfos
       .filter(info => info.source === 'user')
       .filter((info) => {
@@ -880,7 +898,11 @@ const InstalledAppsPage: React.FC = () => {
         if (builtin) {
           remoteVersion = builtinRemoteVersion.get(info.id);
         } else {
-          const market = marketById.get(info.id) || marketByName.get(manifest.name);
+          let market = marketById.get(info.id);
+          if (!market) {
+            const byName = marketByName.get(typedNameKey(manifest.name, manifest.type));
+            if (byName && !localIds.has(byName.applicationId)) market = byName;
+          }
           if (market) {
             remoteVersion = market.version;
             applicationId = market.applicationId;
@@ -965,7 +987,10 @@ const InstalledAppsPage: React.FC = () => {
       cancelText: t('workbench.cancel'),
       onOk: async () => {
         try {
-          await window.api.subapp.uninstall(appId);
+          const result = await window.api.subapp.uninstall(appId);
+          if (result && result.success === false) throw new Error(result.error || 'uninstall failed');
+          // Remember deleted builtins so startup seeding doesn't bring them back
+          if (isBuiltinAppId(appId)) await window.api.subapp.markBuiltinRemoved(appId);
           message.success(t('workbench.deleteSuccess'));
           await loadApps();
         } catch (error) {
@@ -1349,6 +1374,7 @@ const InstalledAppsPage: React.FC = () => {
         scheduleNextRunAt={sched?.nextRunAt}
         pinned={pinnedSet.has(app.id)}
         onTogglePin={togglePinnedApp}
+        adminPinned={app.origin === 'builtin' && adminPinnedIds.has(app.id)}
       />
     );
   };

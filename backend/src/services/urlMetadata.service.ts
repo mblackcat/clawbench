@@ -14,8 +14,10 @@ import { logger } from '../utils/logger';
  * 每次重定向同样校验）。内网部署需要抓取内网页面时可设 NAV_METADATA_ALLOW_PRIVATE=true。
  */
 
-/** 单次请求超时 */
+/** 单次请求（socket 空闲）超时 */
 const TIMEOUT_MS = 8000;
+/** 整体超时（含所有重定向）—— 防止慢速滴流响应一直占着连接 */
+export const TOTAL_TIMEOUT_MS = 15000;
 /** 只读取前 512KB —— <head> 足够，避免大页面拖垮进程 */
 const MAX_BYTES = 512 * 1024;
 /** 最多跟随的重定向次数 */
@@ -188,15 +190,23 @@ function decodeEntities(text: string): string {
  */
 function fetchHtml(
   target: string,
-  redirectsLeft: number
+  redirectsLeft: number,
+  deadline: number = Date.now() + TOTAL_TIMEOUT_MS
 ): Promise<{ body: string; finalUrl: string } | null> {
   return new Promise((resolve) => {
     let settled = false;
+    let deadlineTimer: NodeJS.Timeout | undefined;
     const finish = (value: { body: string; finalUrl: string } | null): void => {
       if (settled) return;
       settled = true;
+      if (deadlineTimer) clearTimeout(deadlineTimer);
       resolve(value);
     };
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      finish(null);
+      return;
+    }
 
     let parsedTarget: URL;
     try {
@@ -244,7 +254,7 @@ function fetchHtml(
             finish(null);
             return;
           }
-          fetchHtml(next, redirectsLeft - 1).then(finish);
+          fetchHtml(next, redirectsLeft - 1, deadline).then(finish);
           return;
         }
 
@@ -282,6 +292,13 @@ function fetchHtml(
 
     request.on('timeout', () => request.destroy());
     request.on('error', () => finish(null));
+    // Total deadline: an idle timeout alone never fires on a slow drip-feed.
+    deadlineTimer = setTimeout(() => {
+      logger.warn(`URL metadata fetch exceeded total timeout: ${parsedTarget.hostname}`);
+      request.destroy();
+      finish(null);
+    }, remaining);
+    deadlineTimer.unref?.();
   });
 }
 
@@ -291,6 +308,16 @@ function parseTitle(html: string): string | null {
   if (!match) return null;
   const title = decodeEntities(match[1]).replace(/\s+/g, ' ').trim();
   return title || null;
+}
+
+/** Only http(s) icon URLs are returned (no data:/javascript:/file: …). */
+function httpUrlOrNull(raw: string, base?: string): string | null {
+  try {
+    const u = base ? new URL(raw, base) : new URL(raw);
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 /** 从 HTML 中解析 favicon（<link rel="icon">），解析不到时回退到 /favicon.ico */
@@ -304,18 +331,11 @@ function parseIcon(html: string, baseUrl: string): string | null {
 
     const hrefMatch = /\bhref\s*=\s*["']([^"']+)["']/i.exec(tag);
     if (!hrefMatch) continue;
-    try {
-      return new URL(decodeEntities(hrefMatch[1]).trim(), baseUrl).toString();
-    } catch {
-      continue;
-    }
+    const icon = httpUrlOrNull(decodeEntities(hrefMatch[1]).trim(), baseUrl);
+    if (icon) return icon;
   }
 
-  try {
-    return new URL('/favicon.ico', baseUrl).toString();
-  } catch {
-    return null;
-  }
+  return httpUrlOrNull('/favicon.ico', baseUrl);
 }
 
 /**
@@ -323,20 +343,18 @@ function parseIcon(html: string, baseUrl: string): string | null {
  * icon 退回站点根目录的 /favicon.ico。
  *
  * @param url 绝对 URL（应先经 normalizeUrl 处理）
+ * @param options.totalTimeoutMs 整体超时（默认 TOTAL_TIMEOUT_MS）
  * @returns 标题与图标
  */
-export async function fetchUrlMetadata(url: string): Promise<UrlMetadata> {
+export async function fetchUrlMetadata(
+  url: string,
+  options: { totalTimeoutMs?: number } = {}
+): Promise<UrlMetadata> {
   try {
-    const result = await fetchHtml(url, MAX_REDIRECTS);
+    const result = await fetchHtml(url, MAX_REDIRECTS, Date.now() + (options.totalTimeoutMs ?? TOTAL_TIMEOUT_MS));
     if (!result) {
       // 页面拿不到时，favicon 仍大概率存在于站点根目录
-      let icon: string | null = null;
-      try {
-        icon = new URL('/favicon.ico', url).toString();
-      } catch {
-        icon = null;
-      }
-      return { title: null, icon };
+      return { title: null, icon: httpUrlOrNull('/favicon.ico', url) };
     }
     return {
       title: parseTitle(result.body),

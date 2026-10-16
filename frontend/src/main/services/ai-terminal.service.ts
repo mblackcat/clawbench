@@ -15,6 +15,7 @@ import {
   killPtySession,
   getPtySessionOutput,
   getRawPtyOutput,
+  getRawPtyOutputSnapshot,
   registerPtyOutputCallback,
   unregisterPtyOutputCallback
 } from './pty-manager.service'
@@ -342,6 +343,10 @@ export function getTerminalOutput(sessionId: string): string {
 
 export function getRawTerminalOutput(sessionId: string): string {
   return getRawPtyOutput(sessionId)
+}
+
+export function getRawTerminalOutputSnapshot(sessionId: string): { data: string; offset: number } {
+  return getRawPtyOutputSnapshot(sessionId)
 }
 
 /**
