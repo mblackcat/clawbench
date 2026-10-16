@@ -23,6 +23,7 @@ import { registerFeishuToolsIpc } from './feishu-tools.ipc'
 import { registerScheduledTaskIpc } from './scheduled-task.ipc'
 import { registerAppScheduleIpc } from './app-schedule.ipc'
 import { registerAttentionIpc } from './attention.ipc'
+import { registerSystemIpc } from './system.ipc'
 
 export function registerAllIpcHandlers(): void {
   registerWorkspaceIpc()
@@ -50,4 +51,5 @@ export function registerAllIpcHandlers(): void {
   registerScheduledTaskIpc()
   registerAppScheduleIpc()
   registerAttentionIpc()
+  registerSystemIpc()
 }

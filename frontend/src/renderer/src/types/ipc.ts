@@ -926,6 +926,8 @@ export interface ClawBenchAPI {
     isMaximized: () => Promise<boolean>
   }
   system: {
+    /** Best-guess LAN IPv4 of this machine (physical NIC preferred; 127.0.0.1 fallback) */
+    getLocalIp: () => Promise<string>
     onLog: (callback: (data: { level: string; message: string; timestamp: number }) => void) => () => void
   }
   platform: string

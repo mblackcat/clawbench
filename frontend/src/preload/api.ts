@@ -910,6 +910,7 @@ export const api = {
   },
 
   system: {
+    getLocalIp: () => ipcRenderer.invoke('system:get-local-ip') as Promise<string>,
     onLog: (callback: (data: { level: string; message: string; timestamp: number }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
       ipcRenderer.on('system:log', handler)
