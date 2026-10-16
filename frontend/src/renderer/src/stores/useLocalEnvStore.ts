@@ -5,6 +5,8 @@ import type {
   ToolInstallResult,
   LocalEnvDetectionResult
 } from '../types/local-env'
+import { invalidateCodingToolsCache } from '../utils/coding-tools-cache'
+import { getT } from '../i18n'
 
 // ── localStorage cache helpers ──
 
@@ -141,11 +143,17 @@ export const useLocalEnvStore = create<LocalEnvState>((set, get) => ({
   },
 
   installTool: async (toolId: string) => {
+    // Re-entry guard: a second click while the first install is still running
+    // would spawn a parallel installer for the same package.
+    if (get().installing[toolId]) {
+      return { success: false, error: getT()('localEnv.installInProgress') }
+    }
     set({ installing: { ...get().installing, [toolId]: true } })
     try {
       const result = await window.api.localEnv.install(toolId)
       set({ installing: { ...get().installing, [toolId]: false } })
       if (result.success && !result.openedBrowser) {
+        invalidateCodingToolsCache()
         // Re-detect only this tool after successful install
         await get().detectOne(toolId)
       }
@@ -163,6 +171,7 @@ export const useLocalEnvStore = create<LocalEnvState>((set, get) => ({
       const result = await window.api.localEnv.uninstall(toolId)
       set({ uninstalling: { ...get().uninstalling, [toolId]: false } })
       if (result.success) {
+        invalidateCodingToolsCache()
         // Re-detect so the card flips back to the "not installed" state
         await get().detectOne(toolId)
       }
@@ -180,6 +189,7 @@ export const useLocalEnvStore = create<LocalEnvState>((set, get) => ({
       const result = await window.api.localEnv.upgrade(toolId)
       set({ upgrading: { ...get().upgrading, [toolId]: false } })
       if (result.success) {
+        invalidateCodingToolsCache()
         // Re-detect so the card reflects the new version
         await get().detectOne(toolId)
       }

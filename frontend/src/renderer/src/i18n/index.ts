@@ -2305,6 +2305,21 @@ const translations: Record<Lang, Record<string, string>> = {
     'terminal.searchNext': '下一个 (Enter)',
     'terminal.searchPrevious': '上一个 (Shift+Enter)',
     'terminal.searchNoResults': '无结果',
+    // ── local env install / mirror (V4) ──
+    'localEnv.installingTool': '正在安装 {0}...',
+    'localEnv.installInProgress': '该工具正在安装中',
+    'localEnv.officialWebsite': '访问官网',
+    'localEnv.mirror.title': '源设置',
+    'localEnv.mirror.settingsTip': '源设置',
+    'localEnv.mirror.useChina': '使用国内源',
+    'localEnv.mirror.useChinaDesc': '默认官方源。开启后切换国内镜像，关闭后恢复原来的源',
+    'localEnv.mirror.current': '当前源',
+    'localEnv.mirror.china': '国内源',
+    'localEnv.mirror.enabled': '已切换到国内源',
+    'localEnv.mirror.disabled': '已恢复原来的源',
+    'localEnv.mirror.loadFailed': '读取源配置失败',
+    'localEnv.mirror.setFailed': '切换源失败',
+    'localEnv.mirror.dockerRestartHint': 'Docker 镜像源修改后需重启 Docker 才能生效',
   },
   'en': {
     // Sidebar menu
@@ -4693,6 +4708,21 @@ const translations: Record<Lang, Record<string, string>> = {
     'terminal.searchNext': 'Next (Enter)',
     'terminal.searchPrevious': 'Previous (Shift+Enter)',
     'terminal.searchNoResults': 'No results',
+    // ── local env install / mirror (V4) ──
+    'localEnv.installingTool': 'Installing {0}...',
+    'localEnv.installInProgress': 'This tool is already being installed',
+    'localEnv.officialWebsite': 'Visit official website',
+    'localEnv.mirror.title': 'Registry Settings',
+    'localEnv.mirror.settingsTip': 'Registry settings',
+    'localEnv.mirror.useChina': 'Use China mirror',
+    'localEnv.mirror.useChinaDesc': 'Default is the official source. On: switch to a China mirror. Off: restore the previous source.',
+    'localEnv.mirror.current': 'Current',
+    'localEnv.mirror.china': 'China mirror',
+    'localEnv.mirror.enabled': 'Switched to China mirror',
+    'localEnv.mirror.disabled': 'Restored previous source',
+    'localEnv.mirror.loadFailed': 'Failed to read registry config',
+    'localEnv.mirror.setFailed': 'Failed to switch registry',
+    'localEnv.mirror.dockerRestartHint': 'Restart Docker for registry mirror changes to take effect',
   }
 }
 
