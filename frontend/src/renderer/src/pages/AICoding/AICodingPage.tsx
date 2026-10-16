@@ -17,6 +17,7 @@ import WorkspaceLandingPanel from './WorkspaceLandingPanel'
 import PaneTabBar from './PaneTabBar'
 import { useT } from '../../i18n'
 import { useAICodingStore } from '../../stores/useAICodingStore'
+import { useAttentionStore } from '../../stores/useAttentionStore'
 import { findLeafBySessionId, collectLeaves } from '../../types/split-layout'
 import type { AIToolType } from '../../types/ai-coding'
 
@@ -117,6 +118,18 @@ const AICodingPage: React.FC = () => {
   // The landing view takes over the right side whenever a workspace title was
   // clicked, open sessions or not; the panes stay mounted underneath.
   const showLanding = !!landingWorkspace
+
+  // Attention: the landing panel covers the active session, so a completion
+  // for it must not be auto-cleared / suppressed as "being viewed".
+  useEffect(() => {
+    useAttentionStore.getState().setContext({ codingLandingVisible: showLanding })
+  }, [showLanding])
+  useEffect(
+    () => () => {
+      useAttentionStore.getState().setContext({ codingLandingVisible: false })
+    },
+    []
+  )
 
   // The Changes panel follows the landing workspace while it is shown,
   // otherwise the active session's workspace.
