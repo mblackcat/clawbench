@@ -53,7 +53,8 @@ import {
 import type { AIToolType } from '../../store/ai-coding.store'
 import { listSubApps, getSubAppPath } from '../subapp.service'
 import { listWorkspaces, setActiveWorkspace } from '../workspace.service'
-import { executeSubAppWithCallbacks, resolvePythonCommand } from '../python-runner.service'
+import { executeSubAppWithCallbacks } from '../python-runner.service'
+import { prepareSubAppRun } from '../subapp-run.service'
 import { listRecentMarketApps, searchMarketApps, installMarketApp } from './marketplace.service'
 import { getPythonSdkPath } from '../../utils/paths'
 import * as logger from '../../utils/logger'
@@ -646,17 +647,15 @@ class IMBridgeService {
 
     const sdkPath = getPythonSdkPath()
     const taskId = randomUUID()
-    let pythonPath: string
-
-    try {
-      const python = await resolvePythonCommand(app.path)
-      pythonPath = python.path
-      logger.info(
-        `Using ${python.source} Python for IM app ${app.manifest.id}: ${python.path} (${python.version})`
-      )
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      logger.error(`IM app execution failed to resolve Python for ${app.manifest.id}:`, message)
+    // Shared pre-run pipeline: strips reserved `__` keys from chat-supplied
+    // params, applies the builtin kill-switch, resolves Python, installs deps.
+    const prep = await prepareSubAppRun(
+      { appId: app.manifest.id, appName: app.manifest.name, appPath },
+      params
+    )
+    if (!prep.ok) {
+      const message = prep.message
+      logger.error(`IM app execution blocked for ${app.manifest.id} (${prep.stage}):`, message)
       const resultCard = buildAppResultCard(app.manifest.name, false, message, '')
       if (runCardId && this.adapter) {
         try {
@@ -669,6 +668,7 @@ class IMBridgeService {
       }
       return
     }
+    const pythonPath = prep.python.path
 
     // Use active workspace if available, otherwise use placeholder
     const chatState = this.getChatState(chatId)
@@ -687,7 +687,7 @@ class IMBridgeService {
       app.manifest.version,
       appPath,
       app.manifest.entry,
-      params,
+      prep.params,
       workspace,
       pythonPath,
       sdkPath,

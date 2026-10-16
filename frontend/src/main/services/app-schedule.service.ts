@@ -8,10 +8,8 @@ import {
 } from '../store/app-schedule.store'
 import { getManifest, getSubAppPath } from './subapp.service'
 import { getActiveWorkspace } from './workspace.service'
-import {
-  executeSubAppWithCallbacks,
-  resolvePythonCommand
-} from './python-runner.service'
+import { executeSubAppWithCallbacks } from './python-runner.service'
+import { prepareSubAppRun } from './subapp-run.service'
 import { getPythonSdkPath } from '../utils/paths'
 import { computeNextRun } from '../utils/schedule-rule'
 import * as logger from '../utils/logger'
@@ -205,14 +203,30 @@ async function startScheduledExecution(schedule: AppSchedule): Promise<void> {
       return
     }
 
-    let pythonPath: string
-    try {
-      pythonPath = (await resolvePythonCommand(appPath)).path
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err)
-      finishScheduled(taskId, schedule, false, `Python not available: ${msg}`)
+    // Shared pre-run pipeline (builtin kill-switch, reserved-key stripping,
+    // Python + requirements); progress lines go to the output panel.
+    const prep = await prepareSubAppRun(
+      { appId, appName: manifest.name || appName, appPath },
+      schedule.params || {},
+      (message, level) =>
+        sendToAllWindows('subapp:output', {
+          taskId,
+          type: 'output',
+          message,
+          level,
+          timestamp: Date.now()
+        })
+    )
+    if (!prep.ok) {
+      finishScheduled(
+        taskId,
+        schedule,
+        false,
+        prep.stage === 'python' ? `Python not available: ${prep.message}` : prep.message
+      )
       return
     }
+    const pythonPath = prep.python.path
 
     const sdkPath = getPythonSdkPath()
 
@@ -223,7 +237,7 @@ async function startScheduledExecution(schedule: AppSchedule): Promise<void> {
       manifest.version,
       appPath,
       manifest.entry,
-      schedule.params || {},
+      prep.params,
       workspace as unknown as Parameters<typeof executeSubAppWithCallbacks>[7],
       pythonPath,
       sdkPath,
