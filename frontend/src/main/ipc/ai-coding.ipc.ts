@@ -1,7 +1,5 @@
 import { ipcMain, shell } from 'electron'
-import { execFile, spawn } from 'child_process'
-import * as fs from 'fs'
-import * as os from 'os'
+import { openExternalTerminal } from '../services/terminal-detect.service'
 import {
   getSessions,
   createSession,
@@ -367,84 +365,11 @@ export function registerAICodingIpc(): void {
   })
 
   ipcMain.handle('ai-coding:open-terminal', async (_event, dirPath: string, toolCommand?: string) => {
-    if (!validateDirPath(dirPath)) throw new Error('Invalid directory path')
-    if (toolCommand && validateCommand(toolCommand) === null) throw new Error('Invalid terminal command')
-    const platform = process.platform
-    // Build the shell command: always cd first, then optionally launch the tool
-    const cdAndRun = toolCommand ? `cd "${dirPath}" && ${toolCommand}` : `cd "${dirPath}"`
-    if (platform === 'darwin') {
-      const configuredTerminal = (settingsStore.get('localTerminalPath') as string) || ''
-      const home = os.homedir()
-
-      // Resolve which terminal app to use
-      let terminalApp = ''
-      if (configuredTerminal) {
-        terminalApp = configuredTerminal
-      } else {
-        const iTermPaths = [`${home}/Applications/iTerm.app`, '/Applications/iTerm.app']
-        const foundITerm = iTermPaths.find((p) => fs.existsSync(p))
-        terminalApp = foundITerm || ''
-      }
-
-      // Escape " and \ in the path for embedding in an AppleScript string
-      const escapedPath = dirPath.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-      const escapedCmd = toolCommand
-        ? `cd \\"${escapedPath}\\" && ${toolCommand}`
-        : `cd \\"${escapedPath}\\"`
-
-      // Derive the app name from the .app path (e.g. "Ghostty" from "/Applications/Ghostty.app")
-      const appName = terminalApp.replace(/.*\//, '').replace(/\.app$/, '')
-
-      if (appName === 'iTerm' || appName === 'iTerm2') {
-        // Use full .app path as AppleScript application identifier for reliability
-        const appId = terminalApp || 'iTerm'
-        execFile('osascript', [
-          '-e', `tell application "${appId}"`,
-          '-e', '  activate',
-          '-e', '  set newWindow to (create window with default profile)',
-          '-e', `  tell current session of newWindow`,
-          '-e', `    write text "${escapedCmd}"`,
-          '-e', '  end tell',
-          '-e', 'end tell'
-        ])
-      } else if (!terminalApp || appName === 'Terminal') {
-        const appId = terminalApp || 'Terminal'
-        execFile('osascript', [
-          '-e', `tell application "${appId}" to do script "${escapedCmd}"`,
-          '-e', `tell application "${appId}" to activate`
-        ])
-      } else {
-        // Generic terminal (Ghostty, Warp, Alacritty, etc.): use `open -a` with dirPath
-        // Most modern terminals open a new window in the given directory
-        const args = ['-a', terminalApp, dirPath]
-        spawn('open', args, { detached: true, stdio: 'ignore' }).unref()
-      }
-    } else if (platform === 'win32') {
-      // Try Windows Terminal first, fall back to cmd.exe
-      // Note: 'start' treats the first quoted arg as window title, so we pass '""' as title
-      const wtExe = `${process.env.LOCALAPPDATA}\\Microsoft\\WindowsApps\\wt.exe`
-      const winCmd = toolCommand
-        ? `cd /d "${dirPath}" && ${toolCommand}`
-        : `cd /d "${dirPath}"`
-      if (fs.existsSync(wtExe)) {
-        // Use wt.exe -d to set starting directory; quote dirPath for paths with spaces
-        spawn('cmd.exe', ['/c', 'start', '""', 'wt.exe', '-d', `"${dirPath}"`, 'cmd.exe', '/K', toolCommand || ''], {
-          detached: true,
-          stdio: 'ignore',
-          shell: true
-        }).unref()
-      } else {
-        // Wrap the whole winCmd in an extra pair of quotes so cmd.exe /K parses it correctly
-        spawn('cmd.exe', ['/c', 'start', '""', 'cmd.exe', '/K', `"${winCmd}"`], {
-          detached: true,
-          stdio: 'ignore',
-          shell: true
-        }).unref()
-      }
-    } else {
-      void cdAndRun // suppress unused warning; Linux open is best-effort
-      execFile('xdg-open', [dirPath])
-    }
+    const safePath = validateDirPath(dirPath)
+    if (!safePath) throw new Error('Invalid directory path')
+    const safeCommand = toolCommand ? validateCommand(toolCommand) : undefined
+    if (toolCommand && !safeCommand) throw new Error('Invalid terminal command')
+    openExternalTerminal(safePath, safeCommand)
     return { success: true }
   })
 
