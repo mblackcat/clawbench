@@ -2317,6 +2317,8 @@ const translations: Record<Lang, Record<string, string>> = {
     'nav.folderTooltip': '{0} 个链接',
     'project.switched': '已切换项目',
     'project.switchFailed': '切换项目失败',
+    'paramField.optional': '（可选）',
+    'paramDrawer.close': '关闭',
   },
   'en': {
     // Sidebar menu
@@ -4717,6 +4719,8 @@ const translations: Record<Lang, Record<string, string>> = {
     'nav.folderTooltip': '{0} links',
     'project.switched': 'Project switched',
     'project.switchFailed': 'Failed to switch project',
+    'paramField.optional': '(optional)',
+    'paramDrawer.close': 'Close',
   }
 }
 
