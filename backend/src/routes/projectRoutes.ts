@@ -16,6 +16,18 @@ import {
   updateProjectAppConfigHandler,
   listProjectAppConfigsHandler,
 } from '../controllers/projectController';
+import {
+  getProjectNavHandler,
+  createNavGroupHandler,
+  updateNavGroupHandler,
+  deleteNavGroupHandler,
+  createNavLinkHandler,
+  updateNavLinkHandler,
+  deleteNavLinkHandler,
+  refreshNavLinkMetadataHandler,
+  reorderNavHandler,
+  recordNavLinkClickHandler,
+} from '../controllers/projectNavController';
 
 /**
  * 项目相关路由 — 全部需要认证。
@@ -84,6 +96,69 @@ projectRouter.get('/:projectId/app-configs', listProjectAppConfigsHandler);
  * 写入项目级应用配置（canManage）
  */
 projectRouter.put('/:projectId/app-configs/:appKey', updateProjectAppConfigHandler);
+
+/**
+ * GET /api/v1/projects/:projectId/nav
+ * 获取项目导航栏（分组 + 链接，任意登录用户可读）
+ */
+projectRouter.get('/:projectId/nav', getProjectNavHandler);
+
+/**
+ * PUT /api/v1/projects/:projectId/nav/order
+ * 批量调整导航顺序 / 分组归属（canManage）
+ */
+projectRouter.put('/:projectId/nav/order', reorderNavHandler);
+
+/**
+ * POST /api/v1/projects/:projectId/nav/groups
+ * 创建导航分组（canManage）
+ */
+projectRouter.post('/:projectId/nav/groups', createNavGroupHandler);
+
+/**
+ * PUT /api/v1/projects/:projectId/nav/groups/:groupId
+ * 更新导航分组（canManage）
+ */
+projectRouter.put('/:projectId/nav/groups/:groupId', updateNavGroupHandler);
+
+/**
+ * DELETE /api/v1/projects/:projectId/nav/groups/:groupId
+ * 删除导航分组（canManage；组内链接移到顶层）
+ */
+projectRouter.delete('/:projectId/nav/groups/:groupId', deleteNavGroupHandler);
+
+/**
+ * POST /api/v1/projects/:projectId/nav/links
+ * 创建导航链接（canManage；title/icon 缺省时抓取 URL 自动补全）
+ */
+projectRouter.post('/:projectId/nav/links', createNavLinkHandler);
+
+/**
+ * POST /api/v1/projects/:projectId/nav/links/:linkId/click
+ * 上报导航链接点击（任意登录用户）
+ */
+projectRouter.post('/:projectId/nav/links/:linkId/click', recordNavLinkClickHandler);
+
+/**
+ * POST /api/v1/projects/:projectId/nav/links/:linkId/refresh-metadata
+ * 重新抓取链接标题与图标（canManage）
+ */
+projectRouter.post(
+  '/:projectId/nav/links/:linkId/refresh-metadata',
+  refreshNavLinkMetadataHandler
+);
+
+/**
+ * PUT /api/v1/projects/:projectId/nav/links/:linkId
+ * 更新导航链接（canManage）
+ */
+projectRouter.put('/:projectId/nav/links/:linkId', updateNavLinkHandler);
+
+/**
+ * DELETE /api/v1/projects/:projectId/nav/links/:linkId
+ * 删除导航链接（canManage）
+ */
+projectRouter.delete('/:projectId/nav/links/:linkId', deleteNavLinkHandler);
 
 /**
  * GET /api/v1/projects/:projectId
