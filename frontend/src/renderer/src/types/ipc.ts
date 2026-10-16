@@ -122,6 +122,8 @@ export interface ClawBenchAPI {
       token?: string
     ) => Promise<{ success: boolean; installedTo: string[]; error?: string }>
     resetBuiltin: (appId: string) => Promise<{ success: boolean; error?: string; version?: string }>
+    markBuiltinRemoved: (appId: string) => Promise<{ success: boolean }>
+    clearBuiltinRemoved: (appId: string) => Promise<{ success: boolean }>
     getBundledBuiltinVersion: (appId: string) => Promise<string | null>
     installRequirements: (
       appId: string,

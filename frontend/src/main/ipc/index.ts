@@ -24,6 +24,7 @@ import { registerScheduledTaskIpc } from './scheduled-task.ipc'
 import { registerAppScheduleIpc } from './app-schedule.ipc'
 import { registerAttentionIpc } from './attention.ipc'
 import { registerSystemIpc } from './system.ipc'
+import { registerBuiltinAppsIpc } from './builtin-apps.ipc'
 
 export function registerAllIpcHandlers(): void {
   registerWorkspaceIpc()
@@ -52,4 +53,5 @@ export function registerAllIpcHandlers(): void {
   registerAppScheduleIpc()
   registerAttentionIpc()
   registerSystemIpc()
+  registerBuiltinAppsIpc()
 }

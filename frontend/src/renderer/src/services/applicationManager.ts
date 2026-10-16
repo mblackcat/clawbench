@@ -166,6 +166,7 @@ class ApplicationManager {
     if (!result.success) {
       throw new Error('Builtin app update failed');
     }
+    await window.api.subapp.clearBuiltinRemoved(appId).catch(() => undefined);
     return true;
   }
 
@@ -181,6 +182,10 @@ class ApplicationManager {
 
       if (!result.success) {
         throw new Error('安装失败');
+      }
+      // A builtin the user deleted and now reinstalls is seeded/upgraded again
+      if (isBuiltinAppId(applicationId)) {
+        await window.api.subapp.clearBuiltinRemoved(applicationId).catch(() => undefined);
       }
 
       return true;

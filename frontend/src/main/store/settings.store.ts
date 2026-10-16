@@ -114,6 +114,8 @@ interface SettingsSchema {
    * Stores previous source values so toggling off can restore them.
    */
   localEnvMirrors: Record<string, LocalEnvMirrorBackup>
+  /** Builtin app ids the user deleted — startup seeding must not reinstall them. */
+  removedBuiltinApps: string[]
 }
 
 /** Backup of pre-China-mirror config for one Local Env tool */
@@ -380,6 +382,11 @@ export const settingsStore = new Store<SettingsSchema>({
     localEnvMirrors: {
       type: 'object',
       default: {}
+    },
+    removedBuiltinApps: {
+      type: 'array',
+      default: [],
+      items: { type: 'string' }
     }
   }
 })

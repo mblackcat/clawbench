@@ -86,6 +86,12 @@ export const api = {
       token?: string
     ) => ipcRenderer.invoke('subapp:install-skill-from-market', appId, downloadUrl, opts, token),
     resetBuiltin: (appId: string) => ipcRenderer.invoke('subapp:reset-builtin', appId),
+    /** Remember a deleted builtin so startup seeding won't reinstall it. */
+    markBuiltinRemoved: (appId: string) =>
+      ipcRenderer.invoke('builtin:mark-removed', appId) as Promise<{ success: boolean }>,
+    /** A builtin was (re)installed by the user: seeding may manage it again. */
+    clearBuiltinRemoved: (appId: string) =>
+      ipcRenderer.invoke('builtin:clear-removed', appId) as Promise<{ success: boolean }>,
     getBundledBuiltinVersion: (appId: string) =>
       ipcRenderer.invoke('subapp:get-bundled-builtin-version', appId),
     installRequirements: (appId: string, force?: boolean) =>
