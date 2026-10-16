@@ -108,8 +108,12 @@ const WorkspaceSwitcher: React.FC = () => {
       form.resetFields()
       setSelectedDir('')
       setEditingWorkspace(null)
-    } catch {
-      // validation failed
+    } catch (err) {
+      // Form validation throws a plain object; the workspace API throws an Error
+      const msg = err instanceof Error ? err.message : ''
+      if (msg.includes('DUPLICATE_WORKSPACE_PATH')) {
+        message.warning(t('workspace.switcherDuplicatePath'))
+      }
     }
   }
 
@@ -184,11 +188,16 @@ const WorkspaceSwitcher: React.FC = () => {
         open={dropdownOpen}
         onOpenChange={setDropdownOpen}
       >
-        <Button type="text" style={{ padding: '4px 11px' }}>
-          <Space size={4}>
-            <span>{activeWorkspace?.name || t('workspace.select')}</span>
+        <Button
+          type="text"
+          style={{ height: 26, padding: '0 11px', display: 'inline-flex', alignItems: 'center', lineHeight: 1 }}
+        >
+          <Space size={4} style={{ lineHeight: 1 }}>
+            <span style={{ fontSize: 12, lineHeight: 1 }}>
+              {activeWorkspace?.name || t('workspace.select')}
+            </span>
             {activeWorkspace && (
-              <Tag style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>
+              <Tag style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 }}>
                 {activeWorkspace.vcsType}
               </Tag>
             )}

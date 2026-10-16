@@ -2365,6 +2365,8 @@ const translations: Record<Lang, Record<string, string>> = {
     'coding.sessionArchived': '已归档，已从列表隐藏（不会删除）',
     'coding.moreWorkspaces': '展开查看全部（共 {0} 个）',
     'coding.untitledWorkspace': '未命名工作区',
+    // ── Workspace switcher ──
+    'workspace.switcherDuplicatePath': '该目录已添加为工作区，请勿重复添加',
   },
   'en': {
     // Sidebar menu
@@ -4813,6 +4815,8 @@ const translations: Record<Lang, Record<string, string>> = {
     'coding.sessionArchived': 'Archived — hidden from the list (not deleted)',
     'coding.moreWorkspaces': 'Expand to see all ({0})',
     'coding.untitledWorkspace': 'Untitled workspace',
+    // ── Workspace switcher ──
+    'workspace.switcherDuplicatePath': 'This folder is already a workspace',
   }
 }
 
