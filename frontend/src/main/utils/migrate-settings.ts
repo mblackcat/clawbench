@@ -7,7 +7,7 @@ import { settingsStore } from '../store/settings.store'
 import { getUserAppsPath } from './paths'
 import * as logger from './logger'
 import fs from 'fs'
-import { detectLocalTerminal } from '../services/terminal-detect.service'
+import { detectLocalTerminal, isGuiTerminalEmulator } from '../services/terminal-detect.service'
 import { detectLocalIde } from '../services/ide-detect.service'
 
 /**
@@ -57,17 +57,34 @@ export function migrateSettings(): void {
       settingsStore.set('moduleVisibility', mv as any)
       logger.info('Migrated moduleVisibility key: aiWorkbench -> aiCoding')
     }
+  } catch (error) {
+    logger.error('Failed to migrate settings:', error)
+  }
+}
 
-    // Auto-detect the default local terminal / IDE on first run (only when unset)
+/**
+ * One-time auto-detection of the default local terminal / IDE (only fills unset
+ * fields). Detection shells out synchronously (`reg query`, `where` …), so it is
+ * NOT part of {@link migrateSettings}: call it after the window is shown. The
+ * `envAutoDetectDone` flag keeps it from running on every launch.
+ *
+ * `localTerminalPath` is used both as the external terminal and as the embedded
+ * PTY shell. GUI emulators (iTerm, Windows Terminal, WezTerm …) are not stored:
+ * leaving the field unset keeps the master fallback for the external window
+ * (iTerm/Terminal.app, wt/cmd) and the default shell for embedded sessions.
+ */
+export function runEnvAutoDetect(): void {
+  if (settingsStore.get('envAutoDetectDone')) return
+  try {
     if (!settingsStore.get('localTerminalPath')) {
       try {
         const detectedTerminal = detectLocalTerminal()
-        if (detectedTerminal) {
+        if (detectedTerminal && !isGuiTerminalEmulator(detectedTerminal)) {
           settingsStore.set('localTerminalPath', detectedTerminal)
           logger.info(`Initialized default localTerminalPath: ${detectedTerminal}`)
         }
       } catch (err) {
-        logger.warn('Failed to auto-detect default terminal on startup:', err)
+        logger.warn('Failed to auto-detect default terminal:', err)
       }
     }
     if (!settingsStore.get('localIdePath')) {
@@ -78,10 +95,22 @@ export function migrateSettings(): void {
           logger.info(`Initialized default localIdePath: ${detectedIde}`)
         }
       } catch (err) {
-        logger.warn('Failed to auto-detect default IDE on startup:', err)
+        logger.warn('Failed to auto-detect default IDE:', err)
       }
     }
-  } catch (error) {
-    logger.error('Failed to migrate settings:', error)
+  } finally {
+    settingsStore.set('envAutoDetectDone', true)
   }
+}
+
+/** Schedule {@link runEnvAutoDetect} off the startup path (after the window is shown). */
+export function scheduleEnvAutoDetect(delayMs = 2000): void {
+  if (settingsStore.get('envAutoDetectDone')) return
+  setTimeout(() => {
+    try {
+      runEnvAutoDetect()
+    } catch (err) {
+      logger.warn('Env auto-detect failed:', err)
+    }
+  }, delayMs)
 }

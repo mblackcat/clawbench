@@ -18,7 +18,7 @@ import {
 } from './services/shortcut.service'
 import { settingsStore } from './store/settings.store'
 import * as logger from './utils/logger'
-import { migrateSettings } from './utils/migrate-settings'
+import { migrateSettings, scheduleEnvAutoDetect } from './utils/migrate-settings'
 import { initScheduler } from './services/scheduled-task.service'
 import { initAppScheduler } from './services/app-schedule.service'
 import { startMemoryUpdater } from './services/memory-updater.service'
@@ -245,7 +245,10 @@ app.whenReady().then(() => {
   const coldStartProtocolUrl = extractProtocolUrl(process.argv)
   const isColdSilent = !!coldStartProtocolUrl && isProtocolSilent(coldStartProtocolUrl)
 
-  createWindow({ showOnReady: !isColdSilent })
+  const firstWindow = createWindow({ showOnReady: !isColdSilent })
+  // One-time terminal/IDE detection shells out synchronously — keep it off the
+  // startup path and run it once the window has painted.
+  firstWindow.once('ready-to-show', () => scheduleEnvAutoDetect())
   createAppTray({ onQuit: quitApplication })
   registerAllIpcHandlers()
   if (coldStartProtocolUrl) {

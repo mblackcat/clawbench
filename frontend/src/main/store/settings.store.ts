@@ -56,6 +56,8 @@ interface SettingsSchema {
   autoUpdate: boolean
   localIdePath: string
   localTerminalPath: string
+  /** One-time terminal/IDE auto-detection has run (see migrate-settings.runEnvAutoDetect) */
+  envAutoDetectDone: boolean
   hasCompletedSetup: boolean
   aiModelConfigs: AIModelConfig[]
   imageGenConfigs: ImageGenConfig[]
@@ -182,6 +184,10 @@ export const settingsStore = new Store<SettingsSchema>({
     localTerminalPath: {
       type: 'string',
       default: ''
+    },
+    envAutoDetectDone: {
+      type: 'boolean',
+      default: false
     },
     aiModelConfigs: {
       type: 'array',
