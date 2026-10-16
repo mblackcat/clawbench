@@ -286,7 +286,7 @@ export function registerSubAppIpc(): void {
         'market'
       )
 
-      const result = installApp(sourceDir)
+      const result = installApp(sourceDir, { expectedId: appId })
       cleanup()
 
       if (!result.success) {
@@ -326,7 +326,7 @@ export function registerSubAppIpc(): void {
       )
 
       // force=true: full replace (reset to online). Otherwise merge so local data survives.
-      const result = installApp(sourceDir, { preserveLocal: !force })
+      const result = installApp(sourceDir, { preserveLocal: !force, expectedId: appId })
       cleanup()
 
       if (!result.success) {

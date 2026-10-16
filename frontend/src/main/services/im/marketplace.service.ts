@@ -114,7 +114,7 @@ export async function installMarketApp(appId: string): Promise<{ success: boolea
       appSourceDir = join(extractDir, subDirs[0].name)
     }
 
-    const result = installApp(appSourceDir)
+    const result = installApp(appSourceDir, { expectedId: appId })
 
     // Cleanup
     try {

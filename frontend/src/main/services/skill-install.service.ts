@@ -19,6 +19,7 @@ import os from 'os'
 import { join, basename, dirname } from 'path'
 import { getUserAppsPath } from '../utils/paths'
 import * as logger from '../utils/logger'
+import { validateManifestId, isStrictlyInside } from './subapp.service'
 
 export type SkillTool = 'claude' | 'codex' | 'gemini'
 
@@ -232,7 +233,12 @@ function ensureWorkbenchCopy(
     const id = explicitId || meta.manifestId || `skill.${meta.name}`
     const userApps = getUserAppsPath()
     fs.mkdirSync(userApps, { recursive: true })
+    const idError = validateManifestId(id)
+    if (idError) return { success: false, error: idError }
     const targetDir = join(userApps, id)
+    if (!isStrictlyInside(userApps, targetDir)) {
+      return { success: false, error: `Refusing to install outside the apps directory: ${id}` }
+    }
 
     // If the source already IS this workbench dir, nothing to do.
     if (fs.existsSync(targetDir) && fs.realpathSync(targetDir) === fs.realpathSync(sourceDir)) {
