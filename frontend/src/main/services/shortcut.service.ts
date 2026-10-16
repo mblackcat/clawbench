@@ -8,9 +8,17 @@ import { getPythonSdkPath } from '../utils/paths'
 import { mainT } from '../utils/i18n'
 import * as logger from '../utils/logger'
 import { getShortcutApps } from './shortcut-selection'
+import { getCachedEnabledBuiltinKeys } from './project.service'
 
 /** Currently registered accelerator strings so we can unregister them later. */
 let registeredAccelerators: string[] = []
+/** Digit keys (1–9) that successfully bound — UI only shows these. */
+let registeredDigits: number[] = []
+
+/** Digits that currently have a working global shortcut binding. */
+export function getRegisteredShortcutDigits(): number[] {
+  return [...registeredDigits]
+}
 
 /**
  * Returns the main BrowserWindow (first window), or null.
@@ -25,7 +33,14 @@ function getMainWindow(): BrowserWindow | null {
  */
 async function handleShortcutTrigger(index: number): Promise<void> {
   const appOrder = (settingsStore.get('appOrder') ?? []) as string[]
-  const userApps = getShortcutApps(listSubApps(), appOrder)
+  const pinnedApps = (settingsStore.get('pinnedApps') ?? []) as string[]
+  // Align with favorites: omit project-disabled builtins when cache is warm.
+  const userApps = getShortcutApps(
+    listSubApps(),
+    appOrder,
+    pinnedApps,
+    getCachedEnabledBuiltinKeys()
+  )
 
   if (index > userApps.length) return
 
@@ -85,7 +100,7 @@ async function handleShortcutTrigger(index: number): Promise<void> {
 
   let pythonPath: string
   try {
-    const python = await resolvePythonCommand()
+    const python = await resolvePythonCommand(appInfo.path)
     pythonPath = python.path
     logger.info(
       `Using ${python.source} Python for shortcut app ${manifest.id}: ${python.path} (${python.version})`
@@ -145,8 +160,12 @@ async function handleShortcutTrigger(index: number): Promise<void> {
  * Registers global shortcuts based on current settings.
  */
 export function registerGlobalShortcuts(): void {
+  registeredDigits = []
   const enabled = settingsStore.get('appShortcutEnabled') ?? true
-  if (!enabled) return
+  if (!enabled) {
+    logger.info('Global shortcuts disabled by settings')
+    return
+  }
 
   const modifier = settingsStore.get('appShortcutModifier') ?? 'Control+Shift'
 
@@ -159,6 +178,7 @@ export function registerGlobalShortcuts(): void {
       })
       if (ok) {
         registeredAccelerators.push(accelerator)
+        registeredDigits.push(digit)
       } else {
         logger.warn(`Failed to register global shortcut: ${accelerator}`)
       }
@@ -167,7 +187,9 @@ export function registerGlobalShortcuts(): void {
     }
   }
 
-  logger.info(`Global shortcuts registered with modifier: ${modifier}`)
+  logger.info(
+    `Global shortcuts registered with modifier: ${modifier} (bound: ${registeredDigits.join(',') || 'none'})`
+  )
 }
 
 /**
@@ -191,4 +213,5 @@ export function unregisterGlobalShortcuts(): void {
     }
   }
   registeredAccelerators = []
+  registeredDigits = []
 }
