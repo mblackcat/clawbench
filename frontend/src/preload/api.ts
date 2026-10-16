@@ -291,6 +291,7 @@ export const api = {
   dialog: {
     selectDirectory: () => ipcRenderer.invoke('dialog:select-directory'),
     selectApp: () => ipcRenderer.invoke('dialog:select-app') as Promise<string | null>,
+    selectExecutable: () => ipcRenderer.invoke('dialog:select-executable') as Promise<string | null>,
     selectFiles: () => ipcRenderer.invoke('dialog:select-files'),
     saveImage: (base64Data: string) => ipcRenderer.invoke('dialog:save-image', base64Data)
   },

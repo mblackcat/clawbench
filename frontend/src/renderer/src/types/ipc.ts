@@ -427,6 +427,7 @@ export interface ClawBenchAPI {
   dialog: {
     selectDirectory: () => Promise<string | null>
     selectApp: () => Promise<string | null>
+    selectExecutable: () => Promise<string | null>
     selectFiles: () => Promise<string[]>
     saveImage: (base64Data: string) => Promise<boolean>
   }
