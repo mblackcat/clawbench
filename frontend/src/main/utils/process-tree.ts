@@ -1,4 +1,4 @@
-import { spawnSync } from 'child_process'
+import { spawn, spawnSync } from 'child_process'
 import * as logger from './logger'
 
 /**
@@ -46,4 +46,34 @@ export function killProcessTree(pid: number | undefined): void {
       /* expected once the group has exited */
     }
   }, 2000).unref?.()
+}
+
+/**
+ * Kill several process trees without blocking (app shutdown).
+ *
+ * Windows: one detached `taskkill /T /F /PID a /PID b …` — no serial 5s sync
+ * waits per session; detached so it outlives the quitting app. POSIX: the
+ * group kills are already asynchronous signals.
+ */
+export function killProcessTrees(pids: Array<number | undefined>): void {
+  const valid = pids.filter((p): p is number => typeof p === 'number' && p > 0)
+  if (valid.length === 0) return
+
+  if (process.platform === 'win32') {
+    try {
+      const args = valid.flatMap((pid) => ['/PID', String(pid)])
+      const child = spawn('taskkill', [...args, '/T', '/F'], {
+        windowsHide: true,
+        detached: true,
+        stdio: 'ignore'
+      })
+      child.on('error', (err) => logger.warn(`[process-tree] taskkill failed: ${String(err)}`))
+      child.unref()
+    } catch (err) {
+      logger.warn(`[process-tree] taskkill failed for pids ${valid.join(',')}: ${String(err)}`)
+    }
+    return
+  }
+
+  for (const pid of valid) killProcessTree(pid)
 }
