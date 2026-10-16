@@ -109,7 +109,7 @@ const AICodeButton: React.FC<AICodeButtonProps> = ({ appId }) => {
   )
 
   // Build menu items from installed tools
-  const installedTools = tools.filter((c) => c.installed)
+  const installedTools = tools.filter((c) => c.installed && c.enabled !== false)
   const menuItems = installedTools.map((cli) => ({
     key: cli.toolType,
     label: (

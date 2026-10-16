@@ -1,12 +1,21 @@
-import React, { useMemo, useCallback } from 'react'
+import React, { useCallback } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { useAICodingStore, defaultMode, defaultEffort } from '../../stores/useAICodingStore'
 import CodingMessageList from './CodingMessageList'
 import CodingInput from './CodingInput'
 import { useT } from '../../i18n'
-import type { CodingMode, CodingEffort, CodingImage, CodingMessage } from '../../types/ai-coding'
+import type { CodingMode, CodingEffort, CodingImage, CodingMessage, CodingContentBlock } from '../../types/ai-coding'
 
 let localMsgCounter = 0
 function genLocalMsgId(): string { return `wm-local-${Date.now()}-${++localMsgCounter}` }
+
+/**
+ * Stable empties. `store.sessionMessages[id] || []` used to mint a fresh array
+ * on every render, which invalidated every downstream memo and defeated
+ * React.memo on the message list and the input box.
+ */
+const NO_MESSAGES: CodingMessage[] = []
+const NO_BLOCKS: CodingContentBlock[] = []
 
 /**
  * Slash command handling strategy:
@@ -33,24 +42,36 @@ interface CodingChatPanelProps {
 
 const CodingChatPanel: React.FC<CodingChatPanelProps> = ({ sessionId, onNewSession, onCloseSession }) => {
   const t = useT()
+  // Per-slice selectors. Subscribing to the whole store meant every streaming
+  // token of *any* session re-rendered every chat panel and every terminal in
+  // the app — the reason typing here felt laggy while a reply was arriving.
+  const session = useAICodingStore((s) => s.sessions.find((x) => x.id === sessionId))
+  const workingDir = useAICodingStore((s) =>
+    session ? s.workspaces.find((w) => w.id === session.workspaceId)?.workingDir : undefined
+  )
+  const messages = useAICodingStore((s) => s.sessionMessages[sessionId] ?? NO_MESSAGES)
+  const isStreaming = useAICodingStore((s) => s.sessionStreaming[sessionId] ?? false)
+  const streamingBlocks = useAICodingStore((s) => s.sessionStreamingBlocks[sessionId] ?? NO_BLOCKS)
+  const storedMode = useAICodingStore((s) => s.sessionModes[sessionId])
+  const storedEffort = useAICodingStore((s) => s.sessionEffort[sessionId])
+  const hasPendingQuestion = useAICodingStore((s) => !!s.sessionPendingQuestions[sessionId])
+  const contextUsage = useAICodingStore((s) => s.sessionContextUsage[sessionId] || undefined)
+
+  // Actions are stable references, so a shallow-compared bag never re-renders.
   const {
-    sessions, workspaces,
-    sessionMessages, sessionStreaming, sessionStreamingBlocks, sessionModes, sessionEffort, sessionContextUsage,
-    sessionPendingQuestions,
     sendUserMessage, setSessionMode, setSessionEffort, interruptSession, stopSession,
     clearSessionMessages,
-  } = useAICodingStore()
+  } = useAICodingStore(useShallow((s) => ({
+    sendUserMessage: s.sendUserMessage,
+    setSessionMode: s.setSessionMode,
+    setSessionEffort: s.setSessionEffort,
+    interruptSession: s.interruptSession,
+    stopSession: s.stopSession,
+    clearSessionMessages: s.clearSessionMessages,
+  })))
 
-  const session = useMemo(() => sessions.find(s => s.id === sessionId), [sessions, sessionId])
-  const workspace = useMemo(() => session ? workspaces.find(w => w.id === session.workspaceId) : null, [workspaces, session])
-
-  const messages = sessionMessages[sessionId] || []
-  const isStreaming = sessionStreaming[sessionId] || false
-  const streamingBlocks = sessionStreamingBlocks[sessionId] || []
-  const mode: CodingMode = sessionModes[sessionId] || (session ? defaultMode(session.toolType) : 'manual')
-  const effort: CodingEffort = sessionEffort[sessionId] || (session ? defaultEffort(session.toolType) : 'high')
-  const hasPendingQuestion = !!sessionPendingQuestions[sessionId]
-  const contextUsage = sessionContextUsage[sessionId] || undefined
+  const mode: CodingMode = storedMode || (session ? defaultMode(session.toolType) : 'manual')
+  const effort: CodingEffort = storedEffort || (session ? defaultEffort(session.toolType) : 'high')
 
   /** Add a local system message bubble */
   const addLocalMessage = useCallback((text: string) => {
@@ -92,7 +113,10 @@ const CodingChatPanel: React.FC<CodingChatPanelProps> = ({ sessionId, onNewSessi
       return
     }
     if (text === '/cost') {
-      const totalCost = messages.reduce((sum, m) => sum + (m.costUsd || 0), 0)
+      // Read from the store rather than closing over `messages`, so handleSend
+      // keeps a stable identity across message updates (React.memo on the input).
+      const current = useAICodingStore.getState().sessionMessages[sessionId] ?? NO_MESSAGES
+      const totalCost = current.reduce((sum, m) => sum + (m.costUsd || 0), 0)
       addLocalMessage(t('coding.totalCost', totalCost.toFixed(4)))
       return
     }
@@ -101,7 +125,7 @@ const CodingChatPanel: React.FC<CodingChatPanelProps> = ({ sessionId, onNewSessi
     if (text === '/plan') { setSessionMode(sessionId, 'plan'); addLocalMessage(t('coding.switchedPlan')); return }
     if (UNSUPPORTED_COMMANDS.has(text)) { addLocalMessage(t('coding.commandNeedsCli', text)); return }
     sendUserMessage(sessionId, text, images)
-  }, [sessionId, session?.toolType, sendUserMessage, clearSessionMessages, setSessionMode, addLocalMessage, messages, contextUsage, t])
+  }, [sessionId, session?.toolType, sendUserMessage, clearSessionMessages, setSessionMode, addLocalMessage, contextUsage, t])
 
   const handleModeChange = useCallback((m: CodingMode) => {
     setSessionMode(sessionId, m)
@@ -133,7 +157,7 @@ const CodingChatPanel: React.FC<CodingChatPanelProps> = ({ sessionId, onNewSessi
         mode={mode}
         effort={effort}
         hasPendingQuestion={hasPendingQuestion}
-        workingDir={workspace?.workingDir}
+        workingDir={workingDir}
         costUsd={session.costUsd}
         messageCount={messages.length}
         contextUsage={contextUsage}
