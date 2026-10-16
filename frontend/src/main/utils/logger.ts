@@ -10,8 +10,10 @@ function forwardToRenderer(level: string, args: unknown[]): void {
   // Only forward logs with a [module] prefix to avoid noise
   if (!msg.startsWith('[')) return
   const entry = { level, message: msg, timestamp: Date.now() }
-  for (const win of BrowserWindow.getAllWindows()) {
-    if (!win.isDestroyed()) {
+  // BrowserWindow is undefined outside the Electron runtime (unit tests)
+  const windows = typeof BrowserWindow?.getAllWindows === 'function' ? BrowserWindow.getAllWindows() : []
+  for (const win of windows) {
+    if (win && !win.isDestroyed()) {
       win.webContents.send('system:log', entry)
     }
   }
