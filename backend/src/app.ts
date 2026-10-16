@@ -24,6 +24,12 @@ import { feishuEventRouter } from './routes/feishuEventRoutes';
 export function createApp(): Application {
   const app = express();
 
+  // 反代后取真实客户端 IP（默认关闭，见 TRUST_PROXY）；否则 express-rate-limit
+  // 会按代理 IP 限流。
+  if (config.trustProxy !== false) {
+    app.set('trust proxy', config.trustProxy);
+  }
+
   // 基础中间件
   // CORS：设置了 CORS_ORIGIN 时启用白名单。生产环境缺失会在 config 加载时
   // 直接报错（fail-secure），因此走到 else 开放分支的只可能是开发环境。
@@ -57,20 +63,92 @@ export function createApp(): Application {
   // 请求日志
   app.use(requestLogger);
 
-  // 登录/注册限流，防暴力破解（测试环境跳过，避免用例间相互限流）
-  if (config.nodeEnv !== 'test') {
+  // 限流（测试环境跳过，避免用例间相互限流；RATE_LIMIT_ENABLED=false 可整体关闭）
+  if (config.nodeEnv !== 'test' && config.rateLimit.enabled) {
+    const limits = config.rateLimit;
+    const tooMany = (message: string) => ({
+      success: false,
+      error: { code: 'TOO_MANY_REQUESTS', message },
+    });
+    const HOUR = 60 * 60 * 1000;
+    const QUARTER = 15 * 60 * 1000;
+
+    // 登录/注册：防暴力破解
     const authLimiter = rateLimit({
-      windowMs: 15 * 60 * 1000,
-      limit: 20,
+      windowMs: QUARTER,
+      limit: limits.authPer15Min,
       standardHeaders: true,
       legacyHeaders: false,
-      message: {
-        success: false,
-        error: { code: 'TOO_MANY_REQUESTS', message: 'Too many attempts, please try again later' },
-      },
+      message: tooMany('Too many attempts, please try again later'),
     });
     app.use('/api/v1/users/login', authLimiter);
     app.use('/api/v1/users/register', authLimiter);
+
+    // 安装包下载（公开端点）：只统计 GET 安装包，electron-updater 轮询的
+    // latest*.yml / .blockmap 元数据不计入
+    const releaseDownloadLimiter = rateLimit({
+      windowMs: HOUR,
+      limit: limits.releaseDownloadPerHour,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: tooMany('Too many download attempts, please try again later'),
+      skip: (req) => {
+        if (req.method !== 'GET') return true;
+        const pathOnly = (req.originalUrl || req.url || '').split('?')[0];
+        return /\.(ya?ml|blockmap)$/i.test(pathOnly) || /\/latest\/?$/.test(pathOnly);
+      },
+    });
+    app.use('/api/v1/releases/:filename', releaseDownloadLimiter);
+
+    // 市场应用下载
+    const appDownloadLimiter = rateLimit({
+      windowMs: HOUR,
+      limit: limits.appDownloadPerHour,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: tooMany('Too many download attempts, please try again later'),
+    });
+    app.use('/api/v1/applications/:applicationId/download', appDownloadLimiter);
+
+    // 上传：防刷
+    const uploadLimiter = rateLimit({
+      windowMs: HOUR,
+      limit: limits.uploadPerHour,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: tooMany('Too many upload attempts, please try again later'),
+      skip: (req) => req.method !== 'POST',
+    });
+    app.use('/api/v1/applications/:applicationId/upload', uploadLimiter);
+    app.use('/api/v1/common-apps/:appKey/upload', uploadLimiter);
+    app.use('/api/v1/releases/upload', uploadLimiter);
+
+    // AI 流式接口
+    const aiStreamLimiter = rateLimit({
+      windowMs: QUARTER,
+      limit: limits.aiStreamPer15Min,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: tooMany('Too many AI requests, please try again later'),
+    });
+    app.use('/api/v1/ai/chat/stream', aiStreamLimiter);
+    app.use('/api/v1/ai/chat/generate-title', aiStreamLimiter);
+
+    // 创建应用：只作用于 POST /api/v1/applications（不影响列表/详情/更新/下载，
+    // 否则浏览发现页会耗尽额度）
+    const createAppLimiter = rateLimit({
+      windowMs: HOUR,
+      limit: limits.createAppPerHour,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: tooMany('Too many application creation attempts, please try again later'),
+      skip: (req) => {
+        if (req.method !== 'POST') return true;
+        const pathOnly = (req.originalUrl || req.url || '').split('?')[0];
+        return !/^\/api\/v1\/applications\/?$/.test(pathOnly);
+      },
+    });
+    app.use('/api/v1/applications', createAppLimiter);
   }
 
   // 健康检查端点

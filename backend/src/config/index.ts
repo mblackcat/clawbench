@@ -32,6 +32,28 @@ if (nodeEnv === 'production' && (!corsOrigins || corsOrigins.length === 0)) {
   );
 }
 
+/**
+ * TRUST_PROXY → Express `trust proxy` setting.
+ * 未设置 / 'false' / '0' → false（默认，直连部署）；'true' → true；
+ * 正整数 → 信任的代理跳数（反代后通常为 1）；其它字符串（如 'loopback'、子网列表）原样传给 Express。
+ */
+export function parseTrustProxy(raw: string | undefined): boolean | number | string {
+  const value = (raw ?? '').trim();
+  if (!value || value === 'false') return false;
+  if (value === 'true') return true;
+  if (/^\d+$/.test(value)) {
+    const hops = parseInt(value, 10);
+    return hops === 0 ? false : hops;
+  }
+  return value;
+}
+
+/** 读取正整数环境变量，非法值回退默认值 */
+function envInt(name: string, fallback: number): number {
+  const parsed = parseInt(process.env[name] ?? '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 export const config = {
   // 服务器配置
   port: parseInt(process.env.PORT || '3001', 10),
@@ -41,6 +63,27 @@ export const config = {
   // 生产环境必须设置，见上方守卫）
   cors: {
     origins: corsOrigins,
+  },
+
+  // 反向代理：Express `trust proxy`（默认关闭；部署在 Nginx/Caddy 后时设 TRUST_PROXY=1，
+  // 否则限流会按代理 IP 计数）
+  trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
+
+  // 限流阈值（每个客户端 IP；test 环境不启用限流）
+  rateLimit: {
+    enabled: process.env.RATE_LIMIT_ENABLED !== 'false',
+    /** 登录/注册：每 15 分钟 */
+    authPer15Min: envInt('RATE_LIMIT_AUTH_PER_15MIN', 20),
+    /** 安装包下载（不含 latest*.yml / .blockmap 元数据）：每小时 */
+    releaseDownloadPerHour: envInt('RATE_LIMIT_RELEASE_DOWNLOAD_PER_HOUR', 50),
+    /** 市场应用下载：每小时 */
+    appDownloadPerHour: envInt('RATE_LIMIT_APP_DOWNLOAD_PER_HOUR', 100),
+    /** 上传（应用包 / 通用应用归档 / 安装包）：每小时 */
+    uploadPerHour: envInt('RATE_LIMIT_UPLOAD_PER_HOUR', 30),
+    /** AI 流式对话 / 标题生成：每 15 分钟 */
+    aiStreamPer15Min: envInt('RATE_LIMIT_AI_STREAM_PER_15MIN', 100),
+    /** 创建应用（仅 POST /api/v1/applications）：每小时 */
+    createAppPerHour: envInt('RATE_LIMIT_CREATE_APP_PER_HOUR', 10),
   },
 
   // 数据库配置

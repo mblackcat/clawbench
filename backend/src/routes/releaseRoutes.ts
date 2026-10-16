@@ -8,11 +8,14 @@ import {
   deleteReleaseFileHandler,
   listLatestReleasesHandler,
 } from '../controllers/releaseController';
+import { releaseArtifactFileFilter } from '../utils/uploadFilters';
 
 // Release artifacts can be large (DMG/EXE up to 500 MB)
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 500 * 1024 * 1024 },
+  // 安装包 + electron-updater 元数据（.yml）与差分文件（.blockmap）
+  fileFilter: releaseArtifactFileFilter,
 });
 
 export const releaseRouter = Router();

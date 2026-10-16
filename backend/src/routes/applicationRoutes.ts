@@ -13,6 +13,7 @@ import {
   reportExecutionHandler,
 } from '../controllers/applicationController';
 import { authenticate } from '../middleware/auth';
+import { appPackageFileFilter } from '../utils/uploadFilters';
 
 // 配置 multer 用于文件上传（使用内存存储）
 const upload = multer({
@@ -20,6 +21,8 @@ const upload = multer({
   limits: {
     fileSize: 100 * 1024 * 1024, // 100MB
   },
+  // 仅接受应用归档（.clawbench-app / zip / tar / gz）
+  fileFilter: appPackageFileFilter,
 });
 
 /**
