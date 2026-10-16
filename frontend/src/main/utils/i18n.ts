@@ -23,7 +23,12 @@ const translations: Record<Lang, Record<string, string>> = {
     'pythonVenv.createFailed': '创建 Python 虚拟环境失败',
     'pythonVenv.notReady': 'Python 虚拟环境未就绪',
     'pythonVenv.pipInstallFailed': 'pip 安装依赖失败，退出码：{0}',
-    'terminal.cmdName': '命令提示符 (cmd.exe)'
+    'terminal.cmdName': '命令提示符 (cmd.exe)',
+    'auth.modalWindowTitle': '飞书授权登录',
+    'auth.openBrowserFailedWin':
+      '无法调用系统默认浏览器打开授权链接（错误码 0x800401F5），请在系统设置中设置默认浏览器，或复制链接在浏览器中打开：{0}',
+    'auth.openBrowserFailed': '无法打开系统默认浏览器，请在浏览器中手动打开链接：{0}',
+    'auth.openLoginWindowFailed': '无法启动系统默认浏览器或登录窗口，请在浏览器中手动打开：{0}'
   },
   en: {
     'subapp.pythonConfiguredPathUnavailable':
@@ -45,7 +50,12 @@ const translations: Record<Lang, Record<string, string>> = {
     'pythonVenv.createFailed': 'Failed to create the Python virtual environment',
     'pythonVenv.notReady': 'The Python virtual environment is not ready',
     'pythonVenv.pipInstallFailed': 'pip install failed with exit code {0}',
-    'terminal.cmdName': 'Command Prompt (cmd.exe)'
+    'terminal.cmdName': 'Command Prompt (cmd.exe)',
+    'auth.modalWindowTitle': 'Feishu Sign-in',
+    'auth.openBrowserFailedWin':
+      'Could not launch the default browser to open the sign-in link (error 0x800401F5). Set a default browser in system settings, or copy the link into a browser: {0}',
+    'auth.openBrowserFailed': 'Could not open the default browser. Please open this link manually: {0}',
+    'auth.openLoginWindowFailed': 'Could not launch a browser or the sign-in window. Please open this link manually: {0}'
   }
 }
 
