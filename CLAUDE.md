@@ -93,7 +93,9 @@ backend/src/
 | `frontend/src/renderer/src/stores/useChatStore.ts` | Chat state: conversations, messages, streaming, tool calling |
 | `frontend/src/renderer/src/components/ThinkingBlock.tsx` | Shared AI thinking/reasoning block component (used by AIChat, AICoding, AITerminal) |
 | `frontend/src/renderer/src/utils/markdown-plugins.ts` | Shared rehype-highlight config with lowlight/common (37 languages) for reduced bundle size |
-| `frontend/src/renderer/src/components/WeatherEffect.tsx` | 全屏天气粒子效果（雪/雨/风叶/烟花/樱花/流星/孔明灯），Canvas overlay + useWeatherEffect hook |
+| `frontend/src/renderer/src/components/WeatherEffect.tsx` | 全屏天气粒子效果（雪/雨/风叶/烟花/樱花/流星/孔明灯），Canvas overlay；状态在 `stores/useWeatherStore.ts` |
+| `frontend/src/renderer/src/theme/index.ts` | 主题模块：antd tokens、4 套配色（light-lagoon/light-meadow/dark-gunmetal/dark-ocean）、`isDarkTheme`/`getBaseTheme` 等 helper |
+| `frontend/src/renderer/src/motion/` | 动效层（敏捷/优雅，`cb-motion`），见 `docs/MOTION.md` |
 | `frontend/src/renderer/src/i18n/index.ts` | 全局多语言翻译（中英文），useT() hook |
 | `frontend/src/renderer/src/pages/AIChat/WelcomeChatView.tsx` | AI Chat 欢迎界面：无对话时显示 Logo 动画 + 提示语 + 居中输入框 |
 | `frontend/python-sdk/clawbench_sdk/base_app.py` | Abstract base class for Python sub-apps |
@@ -213,15 +215,15 @@ if __name__ == "__main__":
 
 ## Weather Effect (天气效果)
 
-状态栏右下角的天气粒子特效系统，纯装饰性功能。
+全屏天气粒子特效系统（"氛围"），纯装饰性功能。入口在右上角头像菜单的「氛围」行（原底部状态栏已移除）。
 
-**文件**: `frontend/src/renderer/src/components/WeatherEffect.tsx`
+**文件**: `frontend/src/renderer/src/components/WeatherEffect.tsx`（画布）、`stores/useWeatherStore.ts`（状态 + 自动天气调度，`useAutoWeather()` 在 AppLayout 挂载一次）、`components/WeatherIcon.tsx`（图标 + `useWeatherNames`）
 
 **效果类型**: snow（雪花）、rain（雨滴）、leaves（风吹树叶）、fireworks（烟花）、sakura（樱花雨）、meteor（流星雨）、lantern（孔明灯）
 
 **交互**:
-- 左键点击状态栏云朵图标：开关天气效果（每次开启随机选择效果类型）
-- 右键点击图标：切换效果类型（snow → rain → leaves → fireworks → sakura → meteor → lantern 循环）
+- 头像菜单「氛围」开/关胶囊：开关天气效果（每次开启随机选择效果类型）
+- 点击「氛围」文字（已开启时）或右键：切换效果类型（snow → rain → leaves → fireworks → sakura → meteor → lantern 循环）
 
 **自动触发**:
 - 每小时 50% 概率自动出现随机天气，持续 5~15 分钟后自动消失
@@ -231,7 +233,7 @@ if __name__ == "__main__":
 **技术要点**:
 - Canvas 全屏 overlay，`pointer-events: none` + `z-index: 9999`，不影响任何用户交互
 - 粒子透明度 0.1~0.4，可见但不干扰阅读
-- 状态栏图标使用 inline SVG（非 emoji），避免 macOS CoreText 字体警告
+- 菜单图标使用 inline SVG（非 emoji），避免 macOS CoreText 字体警告
 - 状态通过 localStorage 持久化（`cb-weather-visible`、`cb-weather-type`、`cb-weather-manual`、`cb-weather-auto`）
 
 ## Hermes Agent Integration
@@ -272,7 +274,15 @@ Top-bar capsule toggle (`constants/app-mode.ts`, `AppMode = 'general' | 'pro'`, 
 - **通用 (general)** — left sidebar hidden; workbench-focused. **All product routes remain reachable** (AI-inclusive allow-list in `isGeneralModePath`) — only the sider collapses.
 - `resolveDefaultRoute(lastRoute, mode)` drives root + post-login landing. It **never drops** `/ai-chat`, `/ai-agents/*`, `/openclaw` — pro mode preserves them; general mode restores an allowed lastRoute else falls back to `/workbench/installed`.
 - Sidebar gating: `AppLayout` renders `<Sider>` only when `shouldShowLeftSider(appMode)`; a misroute-guard redirects stale paths to workbench in general mode.
+- Switching to 研发 auto-enables the AI Coding + Local Env modules (`withProModulesEnabled`); 通用 hides the workspace switcher and git branch selector in the TopBar.
 - Mode state lives in `useSettingsStore` (`appMode` / `setAppMode`), hydrated from localStorage on boot.
+
+## Shell chrome (no StatusBar)
+
+- The bottom StatusBar was removed. Task status lives on the **avatar ring** (TopBar): spinning conic ring while a sub-app runs, pulsing warning ring for 6s after an error (`useTaskStore.errorAlert*`, tooltip shows the summary), green ring for 3.5s on completion.
+- **Logs entry**: sidebar bottom button (研发) or a TopBar icon (通用, no sider). Both use `components/Layout/LogsIndicator.tsx`, which carries the merged badge (attention items / unread notifications / unseen task errors / unread system logs).
+- Avatar menu: 4-swatch palette picker, language, motion (敏捷/优雅), atmosphere (weather), guide, settings, local IP (copy), version + manual update check, logout. A downloaded update also shows an "Update Client" button next to the avatar (updater no longer installs silently on quit).
+- Content renders inside `.cb-content-island` with its own `ConfigProvider` (`getIslandThemeConfig`). Compare themes with `isDarkTheme()` / `getBaseTheme()` from `theme/`, never `=== 'dark'`.
 
 ## Projects & Common Apps (admin layer)
 

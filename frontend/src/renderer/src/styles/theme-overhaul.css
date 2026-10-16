@@ -484,6 +484,14 @@ textarea,
 .cb-topbar::before {
   display: none !important;
 }
+/* TopBar vertical separators (dark frame default; light-lagoon override below) */
+.cb-topbar-divider {
+  width: 1px;
+  height: 16px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.12);
+}
+
 /* --- TopBar Controls on Dark Frame --- */
 .cb-topbar .ant-btn-text {
   color: #ECEEF2 !important;
@@ -1296,7 +1304,9 @@ b, strong {
   animation: cb-attention-flash 0.8s ease-in-out infinite;
 }
 
-/* --- User Avatar status animations (loading, error, complete) --- */
+/* --- User Avatar status animations (running, error, complete) ---
+   Pulse color comes from --cb-ring-color (set inline from antd tokens:
+   colorWarning for errors, colorSuccess for completion). */
 @keyframes cb-avatar-spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
@@ -1304,23 +1314,34 @@ b, strong {
 
 @keyframes cb-avatar-error-pulse {
   0%, 100% {
-    box-shadow: 0 0 6px 1px rgba(250, 173, 20, 0.75), 0 0 14px rgba(250, 173, 20, 0.35);
+    box-shadow:
+      0 0 6px 1px color-mix(in srgb, var(--cb-ring-color, #FAAD14) 75%, transparent),
+      0 0 14px color-mix(in srgb, var(--cb-ring-color, #FAAD14) 35%, transparent);
   }
   50% {
-    box-shadow: 0 0 12px 3px rgba(250, 173, 20, 0.95), 0 0 20px rgba(250, 173, 20, 0.55);
+    box-shadow:
+      0 0 12px 3px color-mix(in srgb, var(--cb-ring-color, #FAAD14) 95%, transparent),
+      0 0 20px color-mix(in srgb, var(--cb-ring-color, #FAAD14) 55%, transparent);
   }
 }
 
 @keyframes cb-avatar-complete-pulse {
   0% {
-    box-shadow: 0 0 4px 1px rgba(82, 196, 26, 0.6);
+    box-shadow: 0 0 4px 1px color-mix(in srgb, var(--cb-ring-color, #52C41A) 60%, transparent);
   }
   50% {
-    box-shadow: 0 0 12px 3px rgba(82, 196, 26, 0.95), 0 0 18px rgba(82, 196, 26, 0.55);
+    box-shadow:
+      0 0 12px 3px color-mix(in srgb, var(--cb-ring-color, #52C41A) 95%, transparent),
+      0 0 18px color-mix(in srgb, var(--cb-ring-color, #52C41A) 55%, transparent);
   }
   100% {
-    box-shadow: 0 0 4px 1px rgba(82, 196, 26, 0.4);
+    box-shadow: 0 0 4px 1px color-mix(in srgb, var(--cb-ring-color, #52C41A) 40%, transparent);
   }
+}
+
+/* Agile motion: keep the ring static (no spin / pulse) */
+:root[data-motion='agile'] .cb-avatar-running-ring {
+  animation-duration: 0s !important;
 }
 
 /* --- Dark mode secondary UI text that often goes too dim --- */
