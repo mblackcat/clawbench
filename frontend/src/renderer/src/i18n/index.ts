@@ -782,6 +782,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'hermes.docs': '文档',
     'hermes.modelCustom': '自定义模型 ID',
     'hermes.modelCustomPlaceholder': '输入任意 model id',
+    'hermes.field.baseUrl': 'Base URL',
     'hermes.field.awsRegion': 'AWS Region',
     'hermes.field.awsProfile': 'AWS Profile',
     'hermes.field.oauthAccount': 'OAuth 账户',
@@ -1446,6 +1447,7 @@ const translations: Record<Lang, Record<string, string>> = {
     // 通用
     'common.confirm': '确定',
     'common.cancel': '取消',
+    'common.failed': '失败',
     'common.back': '返回',
     'common.delete': '删除',
     'common.save': '保存',
@@ -3313,6 +3315,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'hermes.customDesc': 'Any OpenAI-compatible API endpoint',
     'hermes.modelName': 'Model Name',
     'hermes.baseUrlOptional': 'Base URL (optional)',
+    'hermes.field.baseUrl': 'Base URL',
     'hermes.activeProvider': 'Active',
     'hermes.telegramDesc': 'Chat with Hermes via Telegram Bot',
     'hermes.discordDesc': 'Use Hermes in Discord servers',
@@ -4030,6 +4033,7 @@ const translations: Record<Lang, Record<string, string>> = {
     // Common
     'common.confirm': 'OK',
     'common.cancel': 'Cancel',
+    'common.failed': 'failed',
     'common.back': 'Back',
     'common.delete': 'Delete',
     'common.save': 'Save',
