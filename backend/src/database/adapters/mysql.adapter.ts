@@ -99,6 +99,18 @@ export class MysqlAdapter implements DatabaseAdapter {
     }
   }
 
+  async withConnection<T>(callback: () => Promise<T>): Promise<T> {
+    if (!this.pool) throw new Error('Database not connected');
+    // Already pinned (nested / inside a transaction): reuse that connection
+    if (txStorage.getStore()) return callback();
+    const conn = await this.pool.getConnection();
+    try {
+      return await txStorage.run(conn, callback);
+    } finally {
+      conn.release();
+    }
+  }
+
   async close(): Promise<void> {
     if (!this.pool) return;
     await this.pool.end();
