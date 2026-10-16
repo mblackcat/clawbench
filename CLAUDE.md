@@ -69,9 +69,9 @@ backend/src/
 | Developer | `/developer/*` | App editor (3-step), SkillEditor (3-step), PromptEditor, LinkEditor, Monaco code editor, publisher |
 | AI Chat | `/ai-chat` | Multi-model chat (OpenAI/Claude/Gemini), streaming, tool calling, MCP, welcome view |
 | AI Agents | `/ai-agents` | AI agent management hub; OpenClaw at `/ai-agents/openclaw`; Hermes Agent at `/ai-agents/hermes` |
-| AI Coding | `/ai-coding` | AI coding sessions (Claude Code/Codex/Gemini), Feishu IM control |
-| AI Terminal | `/ai-terminal` | Terminal + DB dual mode: local/SSH terminals, multi-DB GUI (MySQL/PG/Mongo/SQLite), AI assistant |
-| Local Env | `/local-env` | Dev tool detection & install (Python/Node/Git/Docker + AI tools) |
+| AI Coding | `/ai-coding` | AI coding sessions (Claude Code/Codex/Gemini/Grok/…/Antigravity `agy`/Oh My Pi `omp`), workspace landing, split view, sidebar pin/sort/archive, VCS changes (git/svn/perforce, diff viewer), Feishu IM control |
+| AI Terminal | `/ai-terminal` | Terminal + DB dual mode: local/SSH terminals, multi-DB GUI (MySQL/PG/Mongo/SQLite), AI assistant (model chat **or** CLI Agent mode) |
+| Local Env | `/local-env` | Dev tool detection & install (Python/Node/Git/SVN/Perforce/Docker + AI CLIs incl. agy/omp), winget/Homebrew, pip/npm/docker China mirrors toggle |
 | Settings | `/settings` | General, modules, AI models, MCP servers, image generation |
 
 ### Core Files
@@ -96,6 +96,16 @@ backend/src/
 | `frontend/src/renderer/src/components/WeatherEffect.tsx` | 全屏天气粒子效果（雪/雨/风叶/烟花/樱花/流星/孔明灯），Canvas overlay；状态在 `stores/useWeatherStore.ts` |
 | `frontend/src/renderer/src/theme/index.ts` | 主题模块：antd tokens、4 套配色（light-lagoon/light-meadow/dark-gunmetal/dark-ocean）、`isDarkTheme`/`getBaseTheme` 等 helper |
 | `frontend/src/renderer/src/motion/` | 动效层（敏捷/优雅，`cb-motion`），见 `docs/MOTION.md` |
+| `frontend/src/renderer/src/hooks/useXterm.ts` | Shared xterm 6 hook (fit/search/web-links/Nerd Font, preload PTY fan-out); used by `CodingTerminalView` + AI Terminal `TerminalPanel` with `TerminalSearchBar` |
+| `frontend/src/main/services/pty-manager.service.ts` | PTY sessions: chunked raw ring buffer, tool command/resume args, `touchPtyActivity` (attention "output stable"), process-tree kill, `killAllPtySessions` on quit |
+| `frontend/src/main/services/terminal-detect.service.ts` / `ide-detect.service.ts` | Terminal/IDE scan for Settings dropdowns; `openExternalTerminal()`; `resolveLocalTerminalShell()` |
+| `frontend/src/main/services/python-venv.service.ts` / `python-detect.service.ts` | Workbench venv + per-app `requirements.txt`; Python scan. Resolve chain (`resolvePythonCommand`): app venv → settings path → workbench venv → system |
+| `frontend/src/main/services/builtin-apps.service.ts` | Seeds bundled `builtin-apps/` into user-apps (install/upgrade, never downgrade) |
+| `frontend/src/main/services/vcs.service.ts` | Multi-VCS (git/svn/perforce) detection, changed files, diff (`renderer/src/utils/unified-diff.ts` + `DiffViewerModal`) |
+| `frontend/src/main/services/tray-attention.service.ts` | Attention tray + optional system notifications (sources: workbench / ai-chat / ai-coding); renderer `stores/useAttentionStore.ts` |
+| `frontend/src/main/services/protocol/` | `clawbench://` URL router (`registry` + commands `app`/`auth`/`install`). **No shell `cmd` command** by design; `app` auto-install asks the user |
+| `frontend/src/main/services/terminal-assistant.service.ts` + `terminal-exec-mcp.ts` | AI Terminal CLI Agent mode: per-host AI Coding group/session, exec target via `clawbench-terminal` MCP |
+| `frontend/src/main/utils/ipc-validation.ts` | IPC argument validation (paths, commands, tool types — keep `VALID_TOOL_TYPES` in sync with `AIToolType`) |
 | `frontend/src/renderer/src/i18n/index.ts` | 全局多语言翻译（中英文），useT() hook |
 | `frontend/src/renderer/src/pages/AIChat/WelcomeChatView.tsx` | AI Chat 欢迎界面：无对话时显示 Logo 动画 + 提示语 + 居中输入框 |
 | `frontend/python-sdk/clawbench_sdk/base_app.py` | Abstract base class for Python sub-apps |
@@ -117,6 +127,12 @@ backend/src/
 - **DnD**: `@dnd-kit/core` + `@dnd-kit/sortable` with `PointerSensor` + `activationConstraint`
 - **Markdown**: Use `rehypeHighlightPlugin` from `utils/markdown-plugins.ts` (NOT raw `rehype-highlight`) — uses lowlight/common for reduced bundle size
 - **AI Shared Components**: `ThinkingBlock` in `components/ThinkingBlock.tsx` — shared across AIChat, AICoding, AITerminal
+- **Theme palettes**: `theme/index.ts` (`light-lagoon`/`light-meadow`/`dark-gunmetal`/`dark-ocean`; legacy `light`/`dark` aliases). Use `isDarkTheme()`/`getBaseTheme()` — never `theme === 'dark'`. Terminal colors from `utils/terminal-theme.ts`
+- **Motion**: `motion/` (`cb-motion` agile/elegant, view transitions, stagger) + `styles/motion.css`; respects reduced motion — see `docs/MOTION.md`
+- **Terminals**: always go through `hooks/useXterm.ts` (xterm 6); don't instantiate `Terminal` directly
+- **Admin check**: `useIsAdmin()` hook in `useAuthStore`; outside React use `isAdminUser(user)` from `utils/is-admin-user.ts`
+- **Coding tool list**: detect results are cached in `utils/coding-tools-cache.ts`; call `invalidateCodingToolsCache()` after install/uninstall/enable changes
+- **AI tool ids**: AI Coding `AIToolType` (`antigravity`, `omp`, …) ↔ Local Env ids (`antigravity-cli`, `omp`, …) via `TOOL_ID_TO_AI_TYPE` (renderer) / `AI_TYPE_TO_TOOL_ID` (cli-detect). Only `claude-code`/`codex-cli` are enabled by default
 
 ### Main Process
 
@@ -124,7 +140,10 @@ backend/src/
 - **IPC handlers** (`ipc/`) are thin wrappers calling services
 - **Stores** (`store/`) use `electron-store` with typed schemas
 - **Auth tokens** encrypted with `safeStorage.encryptString()`
-- **Paths**: Use `utils/paths.ts` for dev vs packaged resolution
+- **Paths**: Use `utils/paths.ts` for dev vs packaged resolution (`getUserAppsPath` honours `settings.userAppDir`; `getBuiltinAppsPath`)
+- **Main-process strings**: `mainT()` from `utils/i18n.ts` (zh-CN + en)
+- **Windows env**: `utils/windows-env.ts` (registry PATH merge, tool candidate paths); child processes killed with `utils/process-tree.ts`
+- **pip mirror**: `settings.pipIndexUrl` / `CB_PIP_INDEX_URL` (none by default)
 
 ### Backend
 
