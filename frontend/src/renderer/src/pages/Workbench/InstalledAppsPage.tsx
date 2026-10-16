@@ -7,10 +7,11 @@
  */
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { Typography, Empty, Button, Tag, Tooltip, theme, App, Space, Segmented, Tabs } from 'antd';
+import { Typography, Empty, Button, Tag, Tooltip, theme, App, Space, Segmented, Tabs, Divider, Spin } from 'antd';
 import {
   SyncOutlined,
-  PlayCircleOutlined,
+  CaretRightOutlined,
+  MoreOutlined,
   DeleteOutlined,
   HolderOutlined,
   ThunderboltOutlined,
@@ -53,12 +54,19 @@ import { useWorkspaceStore } from '../../stores/useWorkspaceStore';
 import { useChatStore } from '../../stores/useChatStore';
 import { useSkillStore } from '../../stores/useSkillStore';
 import { useAppScheduleStore } from '../../stores/useAppScheduleStore';
+import { useProjectNavStore } from '../../stores/useProjectNavStore';
 import type { ScannedSkill } from '../../types/skill';
+import type { Application } from '../../types/api';
 import dayjs from 'dayjs';
 import ParamDrawer from '../../components/ParamDrawer';
 import CreateTypeModal from '../../components/CreateTypeModal';
+import NavBookmarkBar from '../../components/NavBookmarkBar';
+import { FolderCard } from '../../components/FolderCard';
+import { AppIcon } from '../../components/AppIcon';
 import { AppStatusTag, AppVersionTag } from '../../components/AppStatusTag';
 import {
+  BUILTIN_APP_ID_PREFIX,
+  builtinAppKeyFromId,
   isBuiltinAppId,
   resolveLocalAppStatus,
   type AppCardStatus,
@@ -68,6 +76,8 @@ import { openExternalLink } from '../../utils/markdown-links';
 import { buildInitialAppParams, saveAppParams } from '../../utils/subapp-params';
 import { useT } from '../../i18n';
 import { applicationManager } from '../../services/applicationManager';
+import { apiClient } from '../../services/apiClient';
+import { isAuthoredByCurrentUser } from '../../utils/app-identity';
 import { seedTaskFromExecuteResult, describeEarlyTerminal } from '../../utils/subapp-execute';
 
 const { Title, Text } = Typography;
@@ -98,7 +108,15 @@ interface AppWithType extends SubAppInfo {
   remoteVersion?: string
   /** App origin: own / builtin / installed. */
   origin: AppOrigin
+  /** Marketplace applicationId when matched (id first, then name). */
+  applicationId?: string
 }
+
+/**
+ * Module-level cache of the last classified list so returning to the page
+ * paints immediately (optimistic first paint) while fresh data loads.
+ */
+let cachedClassifiedApps: AppWithType[] = [];
 
 /**
  * Converts an Electron accelerator modifier string to a human-readable label.
@@ -119,7 +137,7 @@ interface SortableCardProps {
   appWithType: AppWithType
   index: number
   shortcutLabel: string | null
-  token: any
+  token: ReturnType<typeof theme.useToken>['token']
   t: (key: string, ...args: string[]) => string
   getManifestTypeTag: (type?: string) => React.ReactNode
   onRun: (id: string, name: string, manifest: SubAppManifest) => void
@@ -129,25 +147,22 @@ interface SortableCardProps {
   onTryPrompt: (id: string) => void
   onViewDetail: (id: string) => void
   onShowDetail: (id: string, manifest: SubAppManifest) => void
-  /** 是否有新版本（市场版本高于本地版本） */
-  hasUpdate?: boolean
-  /** 市场最新版本号（hasUpdate 为 true 时展示） */
-  latestVersion?: string
-  /** 点击更新按钮 */
-  onUpdate: (id: string, name: string) => void
+  /** 更新到最新版本（市场 / 服务端归档 / 自带版本） */
+  onUpdate: (app: AppWithType) => void
+  /** 重置为线上 / 自带版本（本地版本高于基线时） */
+  onReset: (app: AppWithType) => void
   /** 该 app 是否已开启定时执行 */
   scheduleEnabled?: boolean
   /** 下次执行时间戳（scheduleEnabled 为 true 时展示） */
   scheduleNextRunAt?: number
   /** 是否置顶到收藏栏分组顶部 */
   pinned?: boolean
-  /** 切换置顶状态 */
+  /** 切换置顶状态（内置应用的置顶由管理员配置，不提供切换） */
   onTogglePin?: (id: string) => void
 }
 
 const SortableAppCard: React.FC<SortableCardProps> = ({
   appWithType,
-  index,
   shortcutLabel,
   token,
   t,
@@ -159,17 +174,21 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
   onTryPrompt,
   onViewDetail,
   onShowDetail,
-  hasUpdate,
-  latestVersion,
   onUpdate,
+  onReset,
   scheduleEnabled,
   scheduleNextRunAt,
   pinned,
   onTogglePin
 }) => {
-  const { id, manifest } = appWithType;
+  const { id, manifest, status, origin } = appWithType;
   const app = manifest;
   const manifestType = app.type || 'app';
+  const isBuiltin = origin === 'builtin';
+  const isDraft = status === 'draft';
+  const needsUpdate = status === 'pending_update';
+  const needsReset = status === 'reset_builtin' || status === 'reset_online';
+  const hasSchedule = manifestType === 'app' && !!scheduleEnabled && !!scheduleNextRunAt;
 
   const {
     attributes,
@@ -184,293 +203,204 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
-    position: 'relative'
+    position: 'relative',
+    height: '100%'
   };
+
+  const variant = isBuiltin
+    ? 'builtin'
+    : isDraft
+      ? 'draft'
+      : origin === 'own'
+        ? 'own-published'
+        : 'regular';
+
+  const notchActions = (
+    <>
+      {isBuiltin ? (
+        pinned && (
+          <Tooltip title={t('workbench.pinnedByAdmin')}>
+            <span className="cb-notch-btn">
+              <PushpinFilled style={{ color: token.colorPrimary, fontSize: 13 }} />
+            </span>
+          </Tooltip>
+        )
+      ) : (
+        onTogglePin && (
+          <Tooltip title={pinned ? t('workbench.unpin') : t('workbench.pin')}>
+            <button
+              type="button"
+              className="cb-notch-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                onTogglePin(id);
+              }}
+            >
+              {pinned ? (
+                <PushpinFilled style={{ color: token.colorPrimary, fontSize: 13 }} />
+              ) : (
+                <PushpinOutlined style={{ fontSize: 13 }} />
+              )}
+            </button>
+          </Tooltip>
+        )
+      )}
+      <Tooltip title={t('workbench.dragSortTip')}>
+        <div
+          {...attributes}
+          {...listeners}
+          onClick={(e) => e.stopPropagation()}
+          className="cb-notch-btn"
+          style={{ cursor: 'grab', touchAction: 'none' }}
+        >
+          <HolderOutlined style={{ fontSize: 13 }} />
+        </div>
+      </Tooltip>
+    </>
+  );
+
+  /** Round action button; stops propagation so the card click (detail) doesn't fire. */
+  const actionBtn = (
+    key: string,
+    title: string,
+    kind: 'primary' | 'danger' | 'neutral',
+    icon: React.ReactNode,
+    onClick: () => void
+  ) => (
+    <Tooltip key={key} title={title}>
+      <button
+        type="button"
+        className={`cb-round-action-btn cb-round-action-${kind}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClick();
+        }}
+      >
+        {icon}
+      </button>
+    </Tooltip>
+  );
+
+  const typeActions =
+    manifestType === 'ai-skill'
+      ? [
+          actionBtn('detail', t('skillDetail.detail'), 'neutral', <FileTextOutlined style={{ fontSize: 13 }} />, () => onViewDetail(id)),
+          actionBtn('activate', t('workbench.activateSkill'), 'primary', <ThunderboltOutlined style={{ fontSize: 14 }} />, () => onActivateSkill(id, app.name))
+        ]
+      : manifestType === 'prompt'
+        ? [
+            actionBtn('copy', t('workbench.copy'), 'neutral', <CopyOutlined style={{ fontSize: 13 }} />, () => onCopyPrompt(id)),
+            actionBtn('try', t('workbench.tryIt'), 'primary', <RocketOutlined style={{ fontSize: 14 }} />, () => onTryPrompt(id))
+          ]
+        : [
+            actionBtn('run', t('workbench.run'), 'primary', <CaretRightOutlined style={{ fontSize: 14, marginLeft: 2 }} />, () => onRun(id, app.name, manifest))
+          ];
 
   return (
     <div ref={setNodeRef} style={style}>
-      <div
-        className="cb-glass-card"
-        style={{ position: 'relative' }}
+      <FolderCard
+        variant={variant}
+        pinned={pinned}
+        notchActions={notchActions}
+        style={{ cursor: 'pointer' }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onShowDetail(id, manifest);
+        }}
       >
-        {/* Pin + drag handle + shortcut label in top-right */}
+        {/* Header: icon + single-line title (leaves room for the notch actions) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 32, width: 'calc(100% - 74px)' }}>
+          <AppIcon icon={manifest.icon} name={app.name} category={manifest.category} size={28} />
+          <Tooltip
+            title={
+              <div>
+                <div>{app.name}</div>
+                <div style={{ marginTop: 2, fontSize: 12 }}>{t('workbench.cardTipClick')}</div>
+                {shortcutLabel && (
+                  <div style={{ marginTop: 2, fontSize: 12 }}>
+                    {t('workbench.shortcutTooltip', shortcutLabel)}
+                  </div>
+                )}
+              </div>
+            }
+          >
+            <Text
+              strong
+              ellipsis
+              style={{
+                fontSize: 13,
+                lineHeight: '20px',
+                color: isDraft ? token.colorTextSecondary : undefined,
+                fontWeight: pinned && !isDraft ? 700 : 600
+              }}
+            >
+              {app.name}
+            </Text>
+          </Tooltip>
+        </div>
+
+        {/* Single-line description */}
+        <div
+          className="cb-card-desc"
+          style={{
+            fontSize: 12,
+            lineHeight: '18px',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            margin: '6px 0'
+          }}
+        >
+          {manifest.description || t('workbench.noDesc')}
+        </div>
+
+        {/* Tag row */}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', minHeight: 20, marginBottom: 8 }}>
+          {getManifestTypeTag(app.type)}
+          <AppStatusTag status={status} />
+        </div>
+
+        {/* Bottom row: version on the left, round actions on the right */}
         <div
           style={{
-            position: 'absolute',
-            top: 6,
-            right: 6,
+            marginTop: 'auto',
             display: 'flex',
             alignItems: 'center',
-            gap: 4
+            justifyContent: 'space-between',
+            gap: 6,
+            paddingTop: 8
           }}
         >
-          {onTogglePin && (
-            <Tooltip title={pinned ? t('workbench.unpin') : t('workbench.pin')}>
-              <div
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onTogglePin(id)
-                }}
-                style={{
-                  cursor: 'pointer',
-                  color: pinned ? token.colorPrimary : token.colorTextQuaternary,
-                  fontSize: 14,
-                  padding: '2px 0',
-                  lineHeight: 1
-                }}
-              >
-                {pinned ? <PushpinFilled /> : <PushpinOutlined />}
-              </div>
-            </Tooltip>
-          )}
-          <div
-            {...attributes}
-            {...listeners}
-            style={{
-              cursor: 'grab',
-              color: token.colorTextQuaternary,
-              fontSize: 14,
-              padding: '2px 0',
-              touchAction: 'none'
-            }}
-          >
-            <HolderOutlined />
-          </div>
-        </div>
-
-        <div
-          style={{ padding: '12px 16px', minHeight: 72, flex: 1, cursor: 'pointer' }}
-          onClick={(e) => {
-            e.stopPropagation()
-            onShowDetail(id, manifest)
-          }}
-        >
-          <div style={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: 8,
-            marginBottom: 8,
-            minHeight: 44
-          }}>
-            <Tooltip
-              title={
-                <div>
-                  <div>{t('workbench.cardTipClick')}</div>
-                  {shortcutLabel && (
-                    <div style={{ marginTop: 4 }}>
-                      {t('workbench.shortcutTooltip', shortcutLabel)}
-                    </div>
-                  )}
-                </div>
-              }
-            >
-              <Text
-                strong
-                style={{
-                  flex: 1,
-                  display: '-webkit-box',
-                  WebkitLineClamp: 2,
-                  WebkitBoxOrient: 'vertical',
-                  overflow: 'hidden',
-                  wordBreak: 'break-word',
-                  lineHeight: '22px',
-                  minHeight: 44
-                }}
-              >
-                {app.name}
-              </Text>
-            </Tooltip>
-          </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <AppVersionTag
-              localVersion={app.version}
-              remoteVersion={appWithType.remoteVersion}
-              status={appWithType.status}
-            />
-            {getManifestTypeTag(app.type)}
-            <AppStatusTag status={appWithType.status} />
-            {hasUpdate && (
-              <Tag
-                color="processing"
-                icon={<SyncOutlined spin />}
-                style={{
-                  margin: 0,
-                  fontWeight: 600,
-                  animation: 'cb-update-pulse 1.8s ease-in-out infinite'
-                }}
-              >
-                {latestVersion ? t('workbench.updateAvailableVersion', latestVersion) : t('workbench.updateAvailable')}
-              </Tag>
-            )}
-            {manifestType === 'app' && scheduleEnabled && scheduleNextRunAt && (
+          <AppVersionTag
+            localVersion={app.version}
+            remoteVersion={appWithType.remoteVersion}
+            status={status}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {hasSchedule && (
               <Tooltip title={`${t('appSchedule.nextRun')}: ${dayjs(scheduleNextRunAt).format('YYYY-MM-DD HH:mm')}`}>
-                <Tag
-                  color="processing"
-                  icon={<SyncOutlined spin />}
-                  style={{ margin: 0, whiteSpace: 'nowrap' }}
+                <button
+                  type="button"
+                  className="cb-round-action-btn cb-round-action-neutral"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onShowDetail(id, manifest);
+                  }}
                 >
-                  {t('appSchedule.nextRunShort')} {dayjs(scheduleNextRunAt).format('MM-DD HH:mm')}
-                </Tag>
+                  <SyncOutlined spin style={{ color: token.colorPrimary, fontSize: 13 }} />
+                </button>
               </Tooltip>
             )}
+            {!isBuiltin &&
+              actionBtn('delete', t('workbench.delete'), 'danger', <DeleteOutlined style={{ fontSize: 13 }} />, () => onUninstall(id, app.name))}
+            {needsUpdate &&
+              actionBtn('update', t('appStatus.updateAction'), 'neutral', <CloudDownloadOutlined style={{ fontSize: 14, color: token.colorPrimary }} />, () => onUpdate(appWithType))}
+            {needsReset &&
+              actionBtn('reset', t('appStatus.reset'), 'neutral', <SyncOutlined style={{ fontSize: 13, color: token.colorWarning }} />, () => onReset(appWithType))}
+            {typeActions}
           </div>
         </div>
-        <div
-          style={{
-            display: 'flex',
-            borderTop: `1px solid ${token.colorBorderSecondary}`
-          }}
-        >
-          {/* 删除按钮 */}
-          <div
-            onClick={() => onUninstall(id, app.name)}
-            style={{
-              flex: 1,
-              padding: '8px 0',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 6,
-              cursor: 'pointer',
-              color: token.colorError,
-              fontWeight: 500,
-              fontSize: 13
-            }}
-          >
-            <DeleteOutlined /> {t('workbench.delete')}
-          </div>
-
-          <div
-            style={{
-              width: 1,
-              alignSelf: 'stretch',
-              background: token.colorBorderSecondary
-            }}
-          />
-
-          {/* 根据类型显示不同操作 */}
-          {manifestType === 'ai-skill' ? (
-            <>
-              <div
-                onClick={() => onViewDetail(id)}
-                style={{
-                  flex: 1,
-                  padding: '8px 0',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6,
-                  cursor: 'pointer',
-                  color: token.colorPrimary,
-                  fontWeight: 500,
-                  fontSize: 13
-                }}
-              >
-                <FileTextOutlined /> {t('skillDetail.detail')}
-              </div>
-              <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorderSecondary }} />
-              <div
-                onClick={() => onActivateSkill(id, app.name)}
-                style={{
-                  flex: 1,
-                  padding: '8px 0',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6,
-                  cursor: 'pointer',
-                  color: token.colorWarning,
-                  fontWeight: 500,
-                  fontSize: 13
-                }}
-              >
-                <ThunderboltOutlined /> {t('workbench.activateSkill')}
-              </div>
-            </>
-          ) : manifestType === 'prompt' ? (
-            <>
-              <div
-                onClick={() => onCopyPrompt(id)}
-                style={{
-                  flex: 1,
-                  padding: '8px 0',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6,
-                  cursor: 'pointer',
-                  color: token.colorPrimary,
-                  fontWeight: 500,
-                  fontSize: 13
-                }}
-              >
-                <CopyOutlined /> {t('workbench.copy')}
-              </div>
-              <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorderSecondary }} />
-              <div
-                onClick={() => onTryPrompt(id)}
-                style={{
-                  flex: 1,
-                  padding: '8px 0',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6,
-                  cursor: 'pointer',
-                  color: token.colorSuccess,
-                  fontWeight: 500,
-                  fontSize: 13
-                }}
-              >
-                <RocketOutlined /> {t('workbench.tryIt')}
-              </div>
-            </>
-          ) : (
-            <>
-              {/* 更新按钮（仅 app 类型且有新版本时显示，位于 删除 与 运行 之间） */}
-              {manifestType === 'app' && hasUpdate && (
-                <>
-                  <div
-                    onClick={() => onUpdate(id, app.name)}
-                    style={{
-                      flex: 1,
-                      padding: '8px 0',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 6,
-                      cursor: 'pointer',
-                      color: token.colorPrimary,
-                      fontWeight: 600,
-                      fontSize: 13
-                    }}
-                  >
-                    <CloudDownloadOutlined /> {t('workbench.update')}
-                  </div>
-                  <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorderSecondary }} />
-                </>
-              )}
-              <div
-                onClick={() => onRun(id, app.name, manifest)}
-                style={{
-                  flex: 1,
-                  padding: '8px 0',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6,
-                  cursor: 'pointer',
-                  color: token.colorSuccess,
-                  fontWeight: 500,
-                  fontSize: 13
-                }}
-              >
-                <PlayCircleOutlined /> {t('workbench.run')}
-              </div>
-            </>
-          )}
-        </div>
-      </div>
+      </FolderCard>
     </div>
   );
 };
@@ -636,11 +566,27 @@ const InstalledAppsPage: React.FC = () => {
   const navigate = useNavigate();
   const { token } = theme.useToken();
   const { modal, message } = App.useApp();
-  const [apps, setApps] = useState<AppWithType[]>([]);
+  const [apps, setApps] = useState<AppWithType[]>(() => cachedClassifiedApps);
+  // Initial load spinner only when there is nothing cached to paint.
+  const [loading, setLoading] = useState(() => cachedClassifiedApps.length === 0);
   // Server-side set of published app names (mirror of the marketplace). Used
   // to authoritatively decide whether a locally-favorited app has been
   // published — same source of truth as 我的 page. Empty in local mode.
   const [publishedAppNames, setPublishedAppNames] = useState<Set<string>>(new Set());
+  /** Marketplace apps by applicationId / name — remote version + applicationId (id first, then name). */
+  const [marketById, setMarketById] = useState<Map<string, Application>>(new Map());
+  const [marketByName, setMarketByName] = useState<Map<string, Application>>(new Map());
+  /** Builtin server (or bundled) version keyed by full app id. */
+  const [builtinRemoteVersion, setBuiltinRemoteVersion] = useState<Map<string, string>>(new Map());
+  /** appKeys whose server has an admin-published archive (update pulls server bytes). */
+  const [builtinHasArchive, setBuiltinHasArchive] = useState<Set<string>>(new Set());
+  /**
+   * Effectively-enabled builtin appKeys (project-scoped, or global without a
+   * project). null = unknown (local mode / offline / fetch failed) → never hide.
+   */
+  const [enabledBuiltinKeys, setEnabledBuiltinKeys] = useState<Set<string> | null>(null);
+  /** Digits 1–9 the main process actually bound as global shortcuts. */
+  const [registeredShortcutDigits, setRegisteredShortcutDigits] = useState<Set<number>>(new Set());
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerManifest, setDrawerManifest] = useState<SubAppManifest | null>(null);
   const [drawerAppId, setDrawerAppId] = useState<string>('');
@@ -673,6 +619,8 @@ const InstalledAppsPage: React.FC = () => {
   const fetchSettings = useSettingsStore((state) => state.fetchSettings);
   const pinnedApps = useSettingsStore((state) => state.pinnedApps);
   const togglePinnedApp = useSettingsStore((state) => state.togglePinnedApp);
+  const activeProjectId = useSettingsStore((state) => state.activeProject?.projectId ?? null);
+  const fetchNav = useProjectNavStore((s) => s.fetchNav);
 
   // Workspace skills for the AI Skills tab
   const projectSkills = useSkillStore((s) => s.projectSkills)
@@ -697,38 +645,169 @@ const InstalledAppsPage: React.FC = () => {
     })
   );
 
-  useEffect(() => {
-    const init = async () => {
-      await loadApps();
-      fetchSettings();
-      fetchSchedules();
-      // 联网模式下打开收藏栏时检查一次已安装应用的更新（checkForUpdates 内部
-      // 读取 store 中最新的 appInfos，因此必须在 loadApps 完成后调用）
-      if (!isLocalMode) {
-        checkForUpdates().catch(() => { /* 非关键路径 */ });
-        // Fetch published app names from server so we can correctly mark apps
-        // as 已发布 — the server is the single source of truth (the local
-        // manifest.published may be stale false from old publish flows).
-        try {
-          const published = await applicationManager.fetchApplications(true);
-          const publishedNames = new Set(published.map((a) => a.name));
-          setPublishedAppNames(publishedNames);
-          // 治愈：以服务端为准回写本地 manifest 的 published，修复旧版未回写的脏数据。
-          const healed = await applicationManager.reconcilePublishedFlags(
-            useSubAppStore.getState().appInfos,
-            publishedNames
-          );
-          if (healed > 0) {
-            await loadApps(); // 重新扫描磁盘，使治愈后的标记在 UI 反映
-          }
-        } catch {
-          // 非关键路径：网络异常时回退到 manifest.published
-        }
+  const loadApps = useCallback(async () => {
+    try {
+      await fetchApps();
+    } catch (error) {
+      console.error('Failed to load apps:', error);
+    }
+  }, [fetchApps]);
+
+  const refreshRegisteredShortcuts = useCallback(async () => {
+    try {
+      const digits = await window.api.settings.getRegisteredShortcuts();
+      setRegisteredShortcutDigits(new Set(digits));
+    } catch {
+      setRegisteredShortcutDigits(new Set());
+    }
+  }, []);
+
+  /**
+   * Builtin sync: admin pins → pinnedApps, server/bundled versions, archive
+   * availability, and which builtins are enabled for the active project.
+   * Global + project lists are fetched in parallel; any failure keeps the
+   * local view (builtins are never hidden when enablement is unknown).
+   */
+  const syncBuiltins = useCallback(async () => {
+    if (isLocalMode) {
+      setEnabledBuiltinKeys(null);
+      return;
+    }
+    const [globalRes, projectRes] = await Promise.allSettled([
+      apiClient.listCommonApps(),
+      activeProjectId ? apiClient.listProjectCommonApps(activeProjectId) : Promise.resolve(null)
+    ]);
+
+    if (globalRes.status === 'fulfilled') {
+      const { commonApps } = globalRes.value;
+      // Admin-configured pins are authoritative for builtins; user pins for others are kept.
+      const serverPinned = commonApps
+        .filter((a) => a.pinned)
+        .map((a) => `${BUILTIN_APP_ID_PREFIX}${a.appKey}`);
+      const current = useSettingsStore.getState().pinnedApps;
+      const next = [...serverPinned, ...current.filter((id) => !isBuiltinAppId(id))];
+      const changed = next.length !== current.length || next.some((id) => !current.includes(id));
+      if (changed) {
+        await updateSetting('pinnedApps', next);
       }
+
+      const versions = new Map<string, string>();
+      const archiveKeys = new Set<string>();
+      await Promise.all(
+        commonApps.map(async (ca) => {
+          const id = `${BUILTIN_APP_ID_PREFIX}${ca.appKey}`;
+          if (ca.version) {
+            versions.set(id, ca.version);
+          } else {
+            try {
+              const bundled = await window.api.subapp.getBundledBuiltinVersion(id);
+              if (bundled) versions.set(id, bundled);
+            } catch {
+              /* ignore */
+            }
+          }
+          if (ca.hasArchive) archiveKeys.add(ca.appKey);
+        })
+      );
+      setBuiltinRemoteVersion(versions);
+      setBuiltinHasArchive(archiveKeys);
+    }
+
+    if (activeProjectId) {
+      setEnabledBuiltinKeys(
+        projectRes.status === 'fulfilled' && projectRes.value
+          ? new Set(projectRes.value.commonApps.map((a) => a.appKey))
+          : null
+      );
+    } else {
+      setEnabledBuiltinKeys(
+        globalRes.status === 'fulfilled'
+          ? new Set(globalRes.value.commonApps.filter((a) => a.enabled !== false).map((a) => a.appKey))
+          : null
+      );
+    }
+  }, [isLocalMode, activeProjectId, updateSetting]);
+
+  /** Marketplace snapshot: published names + id/name maps for version matching. */
+  const syncMarketApps = useCallback(async () => {
+    try {
+      const published = await applicationManager.fetchApplications(true);
+      const publishedNames = new Set(published.map((a) => a.name));
+      setPublishedAppNames(publishedNames);
+      setMarketById(new Map(published.map((a) => [a.applicationId, a])));
+      setMarketByName(new Map(published.map((a) => [a.name, a])));
+      // 治愈：以服务端为准回写本地 manifest 的 published，修复旧版未回写的脏数据。
+      const healed = await applicationManager.reconcilePublishedFlags(
+        useSubAppStore.getState().appInfos,
+        publishedNames
+      );
+      if (healed > 0) {
+        await loadApps(); // 重新扫描磁盘，使治愈后的标记在 UI 反映
+      }
+    } catch {
+      // 非关键路径：网络异常时回退到 manifest.published
+    }
+  }, [loadApps]);
+
+  const syncRemoteData = useCallback(async () => {
+    if (isLocalMode) return;
+    await Promise.allSettled([
+      checkForUpdates(),
+      syncMarketApps(),
+      syncBuiltins()
+    ]);
+  }, [isLocalMode, checkForUpdates, syncMarketApps, syncBuiltins]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const init = async () => {
+      // Phase 1: local data (apps on disk, settings, bound shortcuts) → paint.
+      try {
+        await Promise.all([loadApps(), fetchSettings(), refreshRegisteredShortcuts()]);
+        if (cancelled) return;
+        fetchSchedules();
+      } catch (err) {
+        console.error('Failed to load local workbench data:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+      // Phase 2: remote state in the background (market, builtins, pins).
+      if (!cancelled) void syncRemoteData();
     };
-    init();
+    void init();
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Project switch: refresh nav bookmarks and project-scoped builtin enablement.
+  const isFirstProjectEffect = React.useRef(true);
+  useEffect(() => {
+    void fetchNav();
+    if (isFirstProjectEffect.current) {
+      // Initial builtin sync already runs in phase 2 of init.
+      isFirstProjectEffect.current = false;
+      return;
+    }
+    void syncBuiltins();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeProjectId, fetchNav]);
+
+  // Re-query which digits actually bound after shortcut settings change.
+  useEffect(() => {
+    void refreshRegisteredShortcuts();
+  }, [appShortcutEnabled, appShortcutModifier, refreshRegisteredShortcuts]);
+
+  const handleRefresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      await loadApps();
+      await syncRemoteData();
+    } finally {
+      setLoading(false);
+    }
+  }, [loadApps, syncRemoteData]);
 
   // Refresh schedule badges when a scheduled app run fires (success or failure)
   useEffect(() => {
@@ -750,51 +829,71 @@ const InstalledAppsPage: React.FC = () => {
     setWorkspaceSkills(projectSkills)
   }, [projectSkills])
 
-  // 监听 appInfos 变化，分类应用
+  // 监听数据变化，分类应用
   useEffect(() => {
     classifyApps();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appInfos, user, appOrder, publishedAppNames, pinnedApps, updateMap]);
-
-  const loadApps = async () => {
-    try {
-      await fetchApps();
-    } catch (error) {
-      console.error('Failed to load apps:', error);
-    }
-  };
+  }, [
+    appInfos,
+    user,
+    appOrder,
+    publishedAppNames,
+    pinnedApps,
+    updateMap,
+    marketById,
+    marketByName,
+    builtinRemoteVersion,
+    enabledBuiltinKeys
+  ]);
 
   /**
-   * 分类应用并按 appOrder 排序，再按类型分组
+   * 分类应用并排序（置顶在前，区内按 appOrder），再按类型分组。
    *
-   * 发布状态以服务端为准（见 resolveAppPublished）：服务端 publishedAppNames 命中
-   * 即为已发布；manifest.published 仅作离线正向兜底。本地的 false 不得否决服务端。
-   * 否则：作者是自己 → draft；否则 → local。
+   * 发布状态以服务端为准（见 resolveAppPublished）。作者判定用
+   * isAuthoredByCurrentUser。远端版本：内置 → common_apps / 自带版本；其他 →
+   * 市场应用（先按 manifest.id 再按名称匹配），兜底 checkForUpdates 结果。
+   * 被当前项目禁用的内置应用隐藏（启用态未知时不隐藏）。
    */
   const classifyApps = () => {
     const classified: AppWithType[] = appInfos
       .filter(info => info.source === 'user')
+      .filter((info) => {
+        if (!isBuiltinAppId(info.id) || enabledBuiltinKeys === null) return true;
+        return enabledBuiltinKeys.has(builtinAppKeyFromId(info.id));
+      })
       .map(info => {
         const manifest = info.manifest;
-        let appType: AppType = 'local';
-
+        const builtin = isBuiltinAppId(info.id);
         const isPublished = resolveAppPublished(manifest, publishedAppNames);
-        const authorId = getAuthorId(manifest.author);
-        const currentUserId = user?.feishu_id || user?.id;
-        const isOwn = !!(authorId && currentUserId && authorId === currentUserId);
-        const origin: AppOrigin = isBuiltinAppId(info.id) ? 'builtin' : isOwn ? 'own' : 'installed';
+        const isOwn = !builtin && isAuthoredByCurrentUser(manifest.author, user);
+        const origin: AppOrigin = builtin ? 'builtin' : isOwn ? 'own' : 'installed';
 
+        let appType: AppType = 'local';
         if (isPublished) {
           appType = 'published';
         } else if (isOwn) {
           appType = 'draft';
-        } else {
-          appType = 'local';
         }
 
-        // Status-model fields for AppStatusTag / AppVersionTag.
-        const upd = updateMap[info.id];
-        const remoteVersion = upd?.hasUpdate ? upd.latestVersion : undefined;
+        let remoteVersion: string | undefined;
+        let applicationId: string | undefined;
+        if (builtin) {
+          remoteVersion = builtinRemoteVersion.get(info.id);
+        } else {
+          const market = marketById.get(info.id) || marketByName.get(manifest.name);
+          if (market) {
+            remoteVersion = market.version;
+            applicationId = market.applicationId;
+          }
+          if (!remoteVersion) {
+            const upd = updateMap[info.id];
+            if (upd?.latestVersion) {
+              remoteVersion = upd.latestVersion;
+              applicationId = applicationId ?? upd.applicationId;
+            }
+          }
+        }
+
         const status = resolveLocalAppStatus({
           origin,
           isPublished,
@@ -802,7 +901,7 @@ const InstalledAppsPage: React.FC = () => {
           remoteVersion
         });
 
-        return { ...info, appType, status, remoteVersion, origin };
+        return { ...info, appType, status, remoteVersion, origin, applicationId };
       });
 
     // Sort: pinned apps first (within their type group — grouping happens
@@ -818,6 +917,7 @@ const InstalledAppsPage: React.FC = () => {
       return ia - ib;
     });
 
+    cachedClassifiedApps = classified;
     setApps(classified);
   };
 
@@ -856,12 +956,6 @@ const InstalledAppsPage: React.FC = () => {
     }
   }, [groupedApps, activeTab]);
 
-  const getAuthorId = (author: string | { name: string; email?: string; feishu_id?: string } | undefined): string | undefined => {
-    if (!author) return undefined;
-    if (typeof author === 'string') return undefined;
-    return author.feishu_id;
-  };
-
   const handleUninstall = useCallback((appId: string, appName: string) => {
     modal.confirm({
       title: t('workbench.confirmDelete'),
@@ -880,12 +974,15 @@ const InstalledAppsPage: React.FC = () => {
         }
       }
     });
-  }, [modal, message]);
+  }, [modal, message, t, loadApps]);
 
   /**
-   * 更新已安装应用到市场最新版本（非破坏性合并：保留本地生成的文件）。
+   * 更新到最新版本（非破坏性合并：保留本地生成的文件）。
+   * 内置应用：服务端有管理员发布的归档则拉取服务端版本，否则重装自带版本。
+   * 其他应用：按匹配到的市场 applicationId（兜底 manifest.id）更新。
    */
-  const handleUpdate = useCallback((appId: string, appName: string) => {
+  const handleUpdate = useCallback((app: AppWithType) => {
+    const appName = app.manifest.name;
     modal.confirm({
       title: t('workbench.updateConfirmTitle'),
       content: t('workbench.updateConfirmContent', appName),
@@ -894,7 +991,16 @@ const InstalledAppsPage: React.FC = () => {
       onOk: async () => {
         const hide = message.loading(t('workbench.updating', appName), 0);
         try {
-          await applicationManager.updateInstalledApp(appId);
+          if (app.origin === 'builtin') {
+            if (builtinHasArchive.has(builtinAppKeyFromId(app.id))) {
+              await applicationManager.updateBuiltinApp(app.id);
+            } else {
+              const result = await window.api.subapp.resetBuiltin(app.id);
+              if (!result.success) throw new Error(result.error || t('workbench.updateFailed'));
+            }
+          } else {
+            await applicationManager.updateInstalledApp(app.applicationId ?? app.id);
+          }
           hide();
           message.success(t('workbench.updateSuccess', appName));
           await loadApps();
@@ -908,7 +1014,42 @@ const InstalledAppsPage: React.FC = () => {
         }
       }
     });
-  }, [modal, message, checkForUpdates]);
+  }, [modal, message, t, builtinHasArchive, loadApps, checkForUpdates]);
+
+  /**
+   * 重置：本地版本高于基线时，完整替换为自带版本（内置）或线上版本（市场安装），丢弃本地改动。
+   */
+  const handleReset = useCallback((app: AppWithType) => {
+    const appName = app.manifest.name;
+    const isBuiltin = app.origin === 'builtin';
+    modal.confirm({
+      title: t('appStatus.resetConfirmTitle'),
+      content: isBuiltin
+        ? t('appStatus.resetBuiltinConfirm', appName)
+        : t('appStatus.resetOnlineConfirm', appName),
+      okText: t('appStatus.reset'),
+      okType: 'danger',
+      cancelText: t('workbench.cancel'),
+      onOk: async () => {
+        const hide = message.loading(t('workbench.updating', appName), 0);
+        try {
+          if (isBuiltin) {
+            const result = await window.api.subapp.resetBuiltin(app.id);
+            if (!result.success) throw new Error(result.error || t('appStatus.resetFailed'));
+          } else {
+            await applicationManager.resetInstalledApp(app.applicationId ?? app.id);
+          }
+          hide();
+          message.success(t('appStatus.resetSuccess', appName));
+          await loadApps();
+        } catch (error) {
+          hide();
+          console.error('Failed to reset app:', error);
+          message.error(t('appStatus.resetFailed'));
+        }
+      }
+    });
+  }, [modal, message, t, loadApps]);
 
   const handleRun = useCallback(async (appId: string, appName: string, manifest: SubAppManifest) => {
     const params = manifest.params || [];
@@ -1131,59 +1272,102 @@ const InstalledAppsPage: React.FC = () => {
         console.error('Failed to fetch favicon:', error);
       }
     }
-  }, [message, t]);
+  }, [message, t, loadApps]);
 
+  const pinnedSet = useMemo(() => new Set(pinnedApps), [pinnedApps]);
+
+  /**
+   * Drag sort only within the same type group AND the same pinned / unpinned
+   * section; the persisted appOrder keeps every other item in place.
+   */
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    // Only allow reorder within the same type group
     const activeApp = apps.find((a) => a.id === active.id);
     const overApp = apps.find((a) => a.id === over.id);
     if (!activeApp || !overApp) return;
-    const activeType = activeApp.manifest.type || 'app';
-    const overType = overApp.manifest.type || 'app';
-    if (activeType !== overType) return;
+    const sectionKey = (a: AppWithType) =>
+      `${a.manifest.type || 'app'}:${pinnedSet.has(a.id) ? 'pinned' : 'rest'}`;
+    if (sectionKey(activeApp) !== sectionKey(overApp)) return;
 
-    const oldIndex = apps.findIndex((a) => a.id === active.id);
-    const newIndex = apps.findIndex((a) => a.id === over.id);
+    const key = sectionKey(activeApp);
+    const section = apps.filter((a) => sectionKey(a) === key);
+    const oldIndex = section.findIndex((a) => a.id === active.id);
+    const newIndex = section.findIndex((a) => a.id === over.id);
     if (oldIndex === -1 || newIndex === -1) return;
+    const [moved] = section.splice(oldIndex, 1);
+    section.splice(newIndex, 0, moved);
 
-    const reordered = [...apps];
-    const [moved] = reordered.splice(oldIndex, 1);
-    reordered.splice(newIndex, 0, moved);
+    let cursor = 0;
+    const reordered = apps.map((a) => (sectionKey(a) === key ? section[cursor++] : a));
 
+    cachedClassifiedApps = reordered;
     setApps(reordered);
-    // Persist order
-    const newOrder = reordered.map((a) => a.id);
-    updateSetting('appOrder', newOrder);
-  }, [apps, updateSetting]);
+    updateSetting('appOrder', reordered.map((a) => a.id));
+  }, [apps, pinnedSet, updateSetting]);
 
   const hasApps = apps.length > 0;
 
-  /** Renders the sortable card grid for a single category group (no header). */
-  const renderGroupGrid = (group: { key: string; items: AppWithType[] }) => (
-    <SortableContext items={group.items.map((a) => a.id)} strategy={rectSortingStrategy}>
-      <div
-        style={
-          group.key === 'link'
-            ? {
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(102px, 1fr))',
-                gridAutoRows: '60px',
-                gridAutoFlow: 'dense',
-                gap: 16
-              }
-            : {
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-                gap: 16
-              }
-        }
-      >
-        {group.items.map((app, index) => {
-          if (group.key === 'link') {
-            return (
+  const gridStyle: React.CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))',
+    gap: 12
+  };
+
+  /**
+   * Card for an app/skill/prompt. `shortcutIndex` is the position in the app
+   * group (pinned first, matching the main-process shortcut order); the hint
+   * is shown only when that digit actually bound.
+   */
+  const renderAppCard = (app: AppWithType, index: number, shortcutIndex: number) => {
+    const digit = shortcutIndex + 1;
+    const shortcutLabel =
+      shortcutIndex >= 0 && digit <= 9 && appShortcutEnabled && registeredShortcutDigits.has(digit)
+        ? `${modifierLabel} + ${digit}`
+        : null;
+    const sched = scheduleByApp.get(app.id);
+    return (
+      <SortableAppCard
+        key={app.id}
+        appWithType={app}
+        index={index}
+        shortcutLabel={shortcutLabel}
+        token={token}
+        t={t}
+        getManifestTypeTag={getManifestTypeTag}
+        onRun={handleRun}
+        onUninstall={handleUninstall}
+        onActivateSkill={handleActivateSkill}
+        onCopyPrompt={handleCopyPrompt}
+        onTryPrompt={handleTryPrompt}
+        onViewDetail={handleViewDetail}
+        onShowDetail={handleShowDetail}
+        onUpdate={handleUpdate}
+        onReset={handleReset}
+        scheduleEnabled={!!sched?.enabled}
+        scheduleNextRunAt={sched?.nextRunAt}
+        pinned={pinnedSet.has(app.id)}
+        onTogglePin={togglePinnedApp}
+      />
+    );
+  };
+
+  /** Renders the sortable card grid(s) for a single category group (no header). */
+  const renderGroupGrid = (group: { key: string; items: AppWithType[] }) => {
+    if (group.key === 'link') {
+      return (
+        <SortableContext items={group.items.map((a) => a.id)} strategy={rectSortingStrategy}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(102px, 1fr))',
+              gridAutoRows: '60px',
+              gridAutoFlow: 'dense',
+              gap: 16
+            }}
+          >
+            {group.items.map((app) => (
               <SortableLinkCard
                 key={app.id}
                 appWithType={app}
@@ -1192,47 +1376,51 @@ const InstalledAppsPage: React.FC = () => {
                 onOpen={handleOpenLink}
                 onUninstall={handleUninstall}
               />
-            );
-          }
-          // 快捷键只对第一组（app）的前 9 个生效
-          const globalIndex = group.key === 'app' ? index : -1;
-          const shortcutLabel =
-            globalIndex >= 0 && globalIndex < 9 && appShortcutEnabled
-              ? `${modifierLabel} + ${globalIndex + 1}`
-              : null;
-          const sched = scheduleByApp.get(app.id);
-          return (
-            <SortableAppCard
-              key={app.id}
-              appWithType={app}
-              index={index}
-              shortcutLabel={shortcutLabel}
-              token={token}
-              t={t}
-              getManifestTypeTag={getManifestTypeTag}
-              onRun={handleRun}
-              onUninstall={handleUninstall}
-              onActivateSkill={handleActivateSkill}
-              onCopyPrompt={handleCopyPrompt}
-              onTryPrompt={handleTryPrompt}
-              onViewDetail={handleViewDetail}
-              onShowDetail={handleShowDetail}
-              hasUpdate={!!updateMap[app.id]?.hasUpdate}
-              latestVersion={updateMap[app.id]?.latestVersion}
-              onUpdate={handleUpdate}
-              scheduleEnabled={!!sched?.enabled}
-              scheduleNextRunAt={sched?.nextRunAt}
-              pinned={pinnedApps.includes(app.id)}
-              onTogglePin={togglePinnedApp}
-            />
-          );
-        })}
-      </div>
-    </SortableContext>
-  );
+            ))}
+          </div>
+        </SortableContext>
+      );
+    }
+
+    // Pinned and unpinned sections sort independently.
+    const pinnedItems = group.items.filter((a) => pinnedSet.has(a.id));
+    const restItems = group.items.filter((a) => !pinnedSet.has(a.id));
+    // 快捷键只对 app 组生效（顺序：置顶区在前）
+    const shortcutIndexOf = (i: number) => (group.key === 'app' ? i : -1);
+    return (
+      <>
+        {pinnedItems.length > 0 && (
+          <SortableContext items={pinnedItems.map((a) => a.id)} strategy={rectSortingStrategy}>
+            <div style={gridStyle}>
+              {pinnedItems.map((app, i) => renderAppCard(app, i, shortcutIndexOf(i)))}
+            </div>
+          </SortableContext>
+        )}
+        {pinnedItems.length > 0 && restItems.length > 0 && (
+          <Divider style={{ margin: '16px 0' }}>
+            <span style={{ color: token.colorTextTertiary, fontSize: 12 }}>
+              <MoreOutlined />
+            </span>
+          </Divider>
+        )}
+        {restItems.length > 0 && (
+          <SortableContext items={restItems.map((a) => a.id)} strategy={rectSortingStrategy}>
+            <div style={gridStyle}>
+              {restItems.map((app, i) =>
+                renderAppCard(app, pinnedItems.length + i, shortcutIndexOf(pinnedItems.length + i))
+              )}
+            </div>
+          </SortableContext>
+        )}
+      </>
+    );
+  };
 
   return (
     <div style={{ padding: 24 }}>
+      {/* 项目导航栏（后端配置；本地模式 / 无配置时不渲染） */}
+      <NavBookmarkBar />
+
       <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Title level={4} style={{ margin: 0 }}>{t('workbench.title')}</Title>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -1257,13 +1445,28 @@ const InstalledAppsPage: React.FC = () => {
               {t('workbench.create')}
             </Button>
           </Space.Compact>
-          <Button icon={<SyncOutlined />} onClick={loadApps}>
+          <Button icon={<SyncOutlined />} onClick={handleRefresh} loading={loading}>
             {t('workbench.refresh')}
           </Button>
         </div>
       </div>
 
-      {!hasApps && workspaceSkills.length === 0 ? (
+      {loading && !hasApps ? (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            alignItems: 'center',
+            minHeight: 360
+          }}
+        >
+          <Spin size="large" />
+          <Text type="secondary" style={{ marginTop: 16 }}>
+            {t('workbench.loading')}
+          </Text>
+        </div>
+      ) : !hasApps && workspaceSkills.length === 0 ? (
         <Empty description={t('workbench.noFavorites')} />
       ) : (
         <DndContext

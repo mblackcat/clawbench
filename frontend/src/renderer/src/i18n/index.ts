@@ -2326,6 +2326,8 @@ const translations: Record<Lang, Record<string, string>> = {
     'mine.deleteRemoteSuccess': '已删除云端应用',
     'mine.deleteRemoteFailed': '删除云端应用失败',
     'mine.loading': '加载中…',
+    'workbench.dragSortTip': '长按拖拽排序',
+    'workbench.loading': '加载中…',
   },
   'en': {
     // Sidebar menu
@@ -4735,6 +4737,8 @@ const translations: Record<Lang, Record<string, string>> = {
     'mine.deleteRemoteSuccess': 'Cloud app deleted',
     'mine.deleteRemoteFailed': 'Failed to delete the cloud app',
     'mine.loading': 'Loading…',
+    'workbench.dragSortTip': 'Hold and drag to reorder',
+    'workbench.loading': 'Loading…',
   }
 }
 
