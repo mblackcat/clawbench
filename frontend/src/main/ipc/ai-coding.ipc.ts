@@ -32,7 +32,8 @@ import {
   deleteGroup,
   getIMConfig,
   saveIMConfig,
-  detectAvailableCLIs
+  detectAvailableCLIs,
+  onPtyInput
 } from '../services/ai-coding.service'
 import { listNativeSessions, loadNativeSessionTranscript } from '../services/native-sessions.service'
 import { writeToPty, resizePty, killPtySession } from '../services/pty-manager.service'
@@ -40,6 +41,28 @@ import { loadShellEnv } from '../services/cli-detect.service'
 import { getIMBridgeService } from '../services/im/im-bridge.service'
 import { settingsStore } from '../store/settings.store'
 import { getIMAutoConnect, setIMAutoConnect } from '../store/ai-coding.store'
+import {
+  validateToolType,
+  validateId,
+  validateDirPath,
+  validateFilePath,
+  validatePermissionMode,
+  validateEffort,
+  validatePtyDimensions,
+  validateCommand,
+  validateImageData
+} from '../utils/ipc-validation'
+import * as logger from '../utils/logger'
+
+function assertId(id: unknown, what: string): asserts id is string {
+  if (!validateId(id)) throw new Error(`Invalid ${what} ID format`)
+}
+
+function assertGroupName(name: unknown): asserts name is string {
+  if (typeof name !== 'string' || name.trim().length === 0 || name.length > 100) {
+    throw new Error('Invalid group name')
+  }
+}
 
 /**
  * Auto-connect IM if AI Coding module is enabled and Feishu credentials
@@ -89,22 +112,28 @@ export function registerAICodingIpc(): void {
   ipcMain.handle(
     'ai-coding:create-workspace',
     async (_event, workingDir: string, groupId: string) => {
-      return createWorkspace(workingDir, groupId)
+      const safeDir = validateDirPath(workingDir)
+      if (!safeDir) throw new Error('Invalid working directory path')
+      assertId(groupId, 'group')
+      return createWorkspace(safeDir, groupId)
     }
   )
 
   ipcMain.handle(
     'ai-coding:update-workspace',
     async (_event, id: string, updates: Record<string, unknown>) => {
+      assertId(id, 'workspace')
       return updateWorkspace(id, updates)
     }
   )
 
   ipcMain.handle('ai-coding:delete-workspace', async (_event, id: string) => {
+    assertId(id, 'workspace')
     return deleteWorkspace(id)
   })
 
   ipcMain.handle('ai-coding:get-workspace-sessions', async (_event, workspaceId: string) => {
+    assertId(workspaceId, 'workspace')
     return getSessionsForWorkspace(workspaceId)
   })
 
@@ -117,49 +146,74 @@ export function registerAICodingIpc(): void {
   ipcMain.handle(
     'ai-coding:create-session',
     async (_event, workspaceId: string, toolType: string, source?: string) => {
+      assertId(workspaceId, 'workspace')
+      if (!validateToolType(toolType)) throw new Error('Invalid tool type')
       return source === 'im'
-        ? createSession(workspaceId, toolType as any, 'im')
-        : createRuntimeSession(workspaceId, toolType as any)
+        ? createSession(workspaceId, toolType, 'im')
+        : createRuntimeSession(workspaceId, toolType)
     }
   )
 
   ipcMain.handle(
     'ai-coding:update-session',
     async (_event, id: string, updates: Record<string, unknown>) => {
+      assertId(id, 'session')
       return updateSession(id, updates)
     }
   )
 
   ipcMain.handle('ai-coding:delete-session', async (_event, id: string) => {
+    assertId(id, 'session')
     return deleteSession(id)
   })
 
   ipcMain.handle('ai-coding:stop-session', async (_event, id: string) => {
+    assertId(id, 'session')
     return stopSession(id)
   })
 
   ipcMain.handle('ai-coding:launch-session', async (_event, id: string, opts?: { forcePty?: boolean; cols?: number; rows?: number; effort?: string }) => {
+    assertId(id, 'session')
+    if (opts?.effort && !validateEffort(opts.effort)) throw new Error('Invalid effort level')
     return launchSession(id, opts)
   })
 
   ipcMain.handle('ai-coding:write-to-session', async (_event, sessionId: string, text: string, images?: { data: string; mediaType: string }[]) => {
-    return writeToSession(sessionId, text, images)
+    assertId(sessionId, 'session')
+    if (typeof text !== 'string') throw new Error('Invalid message text')
+    let safeImages = images
+    if (images !== undefined) {
+      if (!Array.isArray(images)) throw new Error('Invalid image data')
+      safeImages = images.filter((img) => validateImageData(img))
+      if (safeImages.length !== images.length) {
+        logger.warn(`[AICoding] Dropped ${images.length - safeImages.length} unsupported image attachment(s)`)
+      }
+    }
+    return writeToSession(sessionId, text, safeImages)
   })
 
   ipcMain.handle('ai-coding:read-file-base64', async (_event, filePath: string) => {
-    return readImageBase64(filePath)
+    const safePath = validateFilePath(filePath, { allowParentSegments: true })
+    if (!safePath) throw new Error('Invalid file path')
+    return readImageBase64(safePath)
   })
 
   ipcMain.handle('ai-coding:interrupt-session', async (_event, sessionId: string) => {
+    assertId(sessionId, 'session')
     interruptSession(sessionId)
     return { success: true }
   })
 
   ipcMain.handle('ai-coding:execute-slash-command', async (_event, sessionId: string, command: string) => {
-    return executeSessionSlashCommand(sessionId, command)
+    assertId(sessionId, 'session')
+    const safeCommand = validateCommand(command)
+    if (safeCommand === null) throw new Error('Invalid command')
+    return executeSessionSlashCommand(sessionId, safeCommand)
   })
 
   ipcMain.handle('ai-coding:set-permission-mode', async (_event, sessionId: string, mode: string) => {
+    assertId(sessionId, 'session')
+    if (!validatePermissionMode(mode)) throw new Error('Invalid permission mode')
     return setSessionPermissionMode(sessionId, mode)
   })
 
@@ -171,6 +225,11 @@ export function registerAICodingIpc(): void {
       requestId: string,
       decision: { behavior: 'allow' | 'deny'; message?: string; updatedInput?: Record<string, unknown> }
     ) => {
+      assertId(sessionId, 'session')
+      assertId(requestId, 'request')
+      if (decision?.behavior !== 'allow' && decision?.behavior !== 'deny') {
+        throw new Error('Invalid decision behavior')
+      }
       return resolveSessionPermission(sessionId, requestId, decision)
     }
   )
@@ -178,29 +237,42 @@ export function registerAICodingIpc(): void {
   ipcMain.handle(
     'ai-coding:answer-question',
     async (_event, sessionId: string, questionId: string, answers: Record<string, string>) => {
+      assertId(sessionId, 'session')
+      assertId(questionId, 'question')
       return answerSessionQuestion(sessionId, questionId, answers)
     }
   )
 
   ipcMain.handle('ai-coding:set-effort', async (_event, sessionId: string, effort: string) => {
+    assertId(sessionId, 'session')
+    if (!validateEffort(effort)) throw new Error('Invalid effort level')
     return setSessionEffort(sessionId, effort)
   })
 
   // ── PTY management ──
 
   ipcMain.handle('pty:create', async (_event, sessionId: string) => {
+    assertId(sessionId, 'session')
     return launchSession(sessionId)
   })
 
+  // Keystroke / resize traffic is high-frequency and fire-and-forget: drop
+  // malformed calls quietly instead of rejecting into the renderer.
   ipcMain.handle('pty:write', async (_event, sessionId: string, data: string) => {
+    if (!validateId(sessionId) || typeof data !== 'string') return
     writeToPty(sessionId, data)
+    onPtyInput(sessionId, data)
   })
 
   ipcMain.handle('pty:resize', async (_event, sessionId: string, cols: number, rows: number) => {
-    resizePty(sessionId, cols, rows)
+    if (!validateId(sessionId)) return
+    const dims = validatePtyDimensions(cols, rows)
+    if (!dims) return
+    resizePty(sessionId, dims.cols, dims.rows)
   })
 
   ipcMain.handle('pty:kill', async (_event, sessionId: string) => {
+    assertId(sessionId, 'session')
     killPtySession(sessionId)
   })
 
@@ -213,11 +285,18 @@ export function registerAICodingIpc(): void {
   // ── Native session listing (Claude, Codex, Gemini, etc.) ──
 
   ipcMain.handle('ai-coding:list-native-sessions', async (_event, workingDir: string, toolType: string) => {
-    return listNativeSessions(workingDir, toolType as any)
+    const safeDir = validateDirPath(workingDir)
+    if (!safeDir) throw new Error('Invalid working directory')
+    if (!validateToolType(toolType)) throw new Error('Invalid tool type')
+    return listNativeSessions(safeDir, toolType)
   })
 
   ipcMain.handle('ai-coding:load-native-session-transcript', async (_event, workingDir: string, toolType: string, sessionId: string) => {
-    return loadNativeSessionTranscript(workingDir, toolType as any, sessionId)
+    const safeDir = validateDirPath(workingDir)
+    if (!safeDir) throw new Error('Invalid working directory')
+    if (!validateToolType(toolType)) throw new Error('Invalid tool type')
+    assertId(sessionId, 'session')
+    return loadNativeSessionTranscript(safeDir, toolType, sessionId)
   })
 
   // ── Session output (for IM cards) ──
@@ -237,14 +316,18 @@ export function registerAICodingIpc(): void {
   })
 
   ipcMain.handle('ai-coding:create-group', async (_event, name: string) => {
+    assertGroupName(name)
     return createGroup(name)
   })
 
   ipcMain.handle('ai-coding:rename-group', async (_event, id: string, name: string) => {
+    assertId(id, 'group')
+    assertGroupName(name)
     return renameGroup(id, name)
   })
 
   ipcMain.handle('ai-coding:delete-group', async (_event, id: string) => {
+    assertId(id, 'group')
     return deleteGroup(id)
   })
 
@@ -279,10 +362,13 @@ export function registerAICodingIpc(): void {
   })
 
   ipcMain.handle('ai-coding:open-directory', async (_event, dirPath: string) => {
+    if (!validateDirPath(dirPath)) throw new Error('Invalid directory path')
     return shell.openPath(dirPath)
   })
 
   ipcMain.handle('ai-coding:open-terminal', async (_event, dirPath: string, toolCommand?: string) => {
+    if (!validateDirPath(dirPath)) throw new Error('Invalid directory path')
+    if (toolCommand && validateCommand(toolCommand) === null) throw new Error('Invalid terminal command')
     const platform = process.platform
     // Build the shell command: always cd first, then optionally launch the tool
     const cdAndRun = toolCommand ? `cd "${dirPath}" && ${toolCommand}` : `cd "${dirPath}"`

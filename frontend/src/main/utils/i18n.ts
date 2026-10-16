@@ -23,7 +23,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'pythonVenv.createFailed': '创建 Python 虚拟环境失败',
     'pythonVenv.notReady': 'Python 虚拟环境未就绪',
     'pythonVenv.pipInstallFailed': 'pip 安装依赖失败，退出码：{0}',
-    'terminal.cmdName': '命令提示符 (cmd.exe)'
+    'terminal.cmdName': '命令提示符 (cmd.exe)',
+    'attention.ptyQuestion': '需要回答问题或确认选项',
+    'attention.ptyConfirm': '等待确认或选择'
   },
   en: {
     'subapp.pythonConfiguredPathUnavailable':
@@ -45,7 +47,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'pythonVenv.createFailed': 'Failed to create the Python virtual environment',
     'pythonVenv.notReady': 'The Python virtual environment is not ready',
     'pythonVenv.pipInstallFailed': 'pip install failed with exit code {0}',
-    'terminal.cmdName': 'Command Prompt (cmd.exe)'
+    'terminal.cmdName': 'Command Prompt (cmd.exe)',
+    'attention.ptyQuestion': 'Needs an answer or a choice',
+    'attention.ptyConfirm': 'Waiting for confirmation or a choice'
   }
 }
 
