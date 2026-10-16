@@ -145,12 +145,6 @@ function appendRawOutput(sessionId: string, data: string): void {
  * Resolve the shell command + args for a given tool type.
  */
 export function getToolCommand(toolType: AIToolType): { command: string; args: string[] } {
-  // Antigravity CLI (agy) / Oh My Pi (omp). Compared as plain strings so this
-  // compiles whether or not AIToolType already includes them.
-  const extraTool: string = toolType
-  if (extraTool === 'antigravity') return { command: 'agy', args: [] }
-  // Oh My Pi is hosted as its interactive TUI only.
-  if (extraTool === 'omp') return { command: 'omp', args: [] }
   switch (toolType) {
     case 'claude':
       return { command: 'claude', args: [] }
@@ -198,10 +192,6 @@ export function getToolCommand(toolType: AIToolType): { command: string; args: s
  * Get resume arguments for tools that support session resumption.
  */
 export function getResumeArgs(toolType: AIToolType, toolSessionId: string): string[] {
-  const extraTool: string = toolType
-  if (extraTool === 'antigravity') return ['--conversation', toolSessionId]
-  // Oh My Pi: -r / --resume <ID prefix | path>
-  if (extraTool === 'omp') return ['--resume', toolSessionId]
   switch (toolType) {
     case 'claude':
     case 'gemini':
