@@ -816,6 +816,18 @@ export const api = {
       ipcRenderer.on('ai-terminal:exit', handler)
       return () => ipcRenderer.removeListener('ai-terminal:exit', handler)
     },
+    // Terminal assistant — CLI Agent mode
+    assistantTools: () => ipcRenderer.invoke('ai-terminal:assistant-tools'),
+    createAssistantSession: (
+      toolType: string,
+      kind: 'shell' | 'db',
+      target: { key: string; label?: string; isLocal?: boolean },
+      contextSnapshot?: string,
+      execTarget?: { kind: 'shell' | 'db'; ptySessionId?: string; dbConnId?: string }
+    ) =>
+      ipcRenderer.invoke('ai-terminal:create-assistant-session', toolType, kind, target, contextSnapshot, execTarget),
+    disposeAssistantSession: (sessionId: string) =>
+      ipcRenderer.invoke('ai-terminal:dispose-assistant-session', sessionId),
     onDBIdleDisconnected: (callback: (data: { id: string }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
       ipcRenderer.on('ai-terminal:db-idle-disconnected', handler)

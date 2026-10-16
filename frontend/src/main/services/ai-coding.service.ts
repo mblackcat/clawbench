@@ -474,7 +474,7 @@ export function createSession(
 export function createRuntimeSession(
   workspaceId: string,
   toolType: AIToolType,
-  updates: Partial<Pick<AICodingSession, 'toolSessionId' | 'title'>> = {}
+  updates: Partial<Pick<AICodingSession, 'toolSessionId' | 'title' | 'execTarget'>> = {}
 ): AICodingSession {
   const now = Date.now()
   const session: AICodingSession = {
@@ -563,7 +563,8 @@ export async function launchSession(
         handleSDKClose,
         handleSDKError,
         toolEnv,
-        opts?.effort
+        opts?.effort,
+        session.execTarget
       )
       if (!result.success) return result
     } else if (session.toolType === 'codex' && !opts?.forcePty) {
@@ -676,6 +677,43 @@ export function createGroup(name: string): AICodingGroup {
   groups.push(group)
   setAICodingGroups(groups)
   return group
+}
+
+// ── AI Terminal assistant helpers ──
+
+/** Find a group by display name, creating it when missing. */
+export function ensureGroupByName(name: string): AICodingGroup {
+  const existing = getAICodingConfig().groups.find((g) => g.name === name)
+  if (existing) return existing
+  return createGroup(name)
+}
+
+/**
+ * Like {@link ensureWorkspaceForWorkingDir} but pins the workspace to `groupId`
+ * and optionally sets its title. An existing workspace for the directory is
+ * moved into the group, so repeated AI Terminal assistant sessions for the same
+ * host converge on one workspace.
+ */
+export function ensureWorkspaceForWorkingDirInGroup(
+  workingDir: string,
+  groupId: string,
+  title?: string
+): AICodingWorkspace {
+  const existing = findWorkspaceByWorkingDir(workingDir)
+  if (existing) {
+    const patch: Partial<Omit<AICodingWorkspace, 'id' | 'createdAt'>> = {}
+    if (existing.groupId !== groupId) patch.groupId = groupId
+    if (title && existing.title !== title) patch.title = title
+    if (Object.keys(patch).length > 0) {
+      return updateWorkspace(existing.id, patch) ?? existing
+    }
+    return existing
+  }
+  const workspace = createWorkspace(workingDir, groupId)
+  if (title && title !== workspace.title) {
+    return updateWorkspace(workspace.id, { title }) ?? workspace
+  }
+  return workspace
 }
 
 export function renameGroup(id: string, name: string): AICodingGroup | null {

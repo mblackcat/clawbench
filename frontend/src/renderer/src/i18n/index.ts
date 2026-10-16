@@ -2356,6 +2356,16 @@ const translations: Record<Lang, Record<string, string>> = {
     'setup.wsDefault': '默认',
     'setup.wsSetDefault': '设为默认',
     'setup.wsSetDefaultFailed': '设置默认工作区失败',
+    // ── terminal assistant CLI Agent mode (V4) ──
+    'terminal.assistantModeModel': '模型对话',
+    'terminal.assistantModeModelTip': '使用已配置的 AI 模型对话，可调用终端 / 数据库工具',
+    'terminal.assistantModeCli': 'CLI Agent',
+    'terminal.assistantModeCliTip': '复用已安装的 AI 编程工具（Claude Code / Codex 等）作为终端助手',
+    'terminal.selectTool': '选择工具',
+    'terminal.noToolEnabled': '未启用工具',
+    'terminal.newSession': '新建会话',
+    'terminal.enableToolHint': '请先在「本地环境」中安装并启用 Claude Code 或 Codex 等 AI 编程工具，助手将复用其能力。',
+    'terminal.pickToolHint': '在左上角选择一个 AI 编程工具以开始会话。',
   },
   'en': {
     // Sidebar menu
@@ -4795,6 +4805,16 @@ const translations: Record<Lang, Record<string, string>> = {
     'setup.wsDefault': 'Default',
     'setup.wsSetDefault': 'Set as default',
     'setup.wsSetDefaultFailed': 'Failed to set the default workspace',
+    // ── terminal assistant CLI Agent mode (V4) ──
+    'terminal.assistantModeModel': 'Model chat',
+    'terminal.assistantModeModelTip': 'Chat with a configured AI model that can call terminal / database tools',
+    'terminal.assistantModeCli': 'CLI Agent',
+    'terminal.assistantModeCliTip': 'Reuse an installed AI coding tool (Claude Code / Codex ...) as the terminal assistant',
+    'terminal.selectTool': 'Select tool',
+    'terminal.noToolEnabled': 'No tool enabled',
+    'terminal.newSession': 'New session',
+    'terminal.enableToolHint': 'Install and enable an AI coding tool such as Claude Code or Codex in Local Env first; the assistant reuses it.',
+    'terminal.pickToolHint': 'Pick an AI coding tool at the top-left to start a session.',
   }
 }
 

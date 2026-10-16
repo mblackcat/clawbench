@@ -794,6 +794,16 @@ export interface ClawBenchAPI {
     onPtyData: (callback: (data: { sessionId: string; data: string }) => void, sessionId?: string) => () => void
     onPtyExit: (callback: (data: { sessionId: string; exitCode: number }) => void) => () => void
     onTerminalExit: (callback: (data: { sessionId: string; exitCode: number }) => void) => () => void
+    // Terminal assistant — CLI Agent mode
+    assistantTools: () => Promise<Array<{ toolType: string; name: string; installed: boolean; version?: string }>>
+    createAssistantSession: (
+      toolType: string,
+      kind: 'shell' | 'db',
+      target: { key: string; label?: string; isLocal?: boolean },
+      contextSnapshot?: string,
+      execTarget?: { kind: 'shell' | 'db'; ptySessionId?: string; dbConnId?: string }
+    ) => Promise<{ sessionId: string; workspaceId: string; workingDir: string }>
+    disposeAssistantSession: (sessionId: string) => Promise<{ success: boolean }>
     onDBIdleDisconnected: (callback: (data: { id: string }) => void) => () => void
     getQuickCommands: () => Promise<import('./ai-terminal').QuickCommand[]>
     saveQuickCommand: (data: Partial<import('./ai-terminal').QuickCommand>) => Promise<import('./ai-terminal').QuickCommand>

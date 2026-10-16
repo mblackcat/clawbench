@@ -2,6 +2,11 @@ import { ipcMain, BrowserWindow } from 'electron'
 import * as aiTerminalService from '../services/ai-terminal.service'
 import { loadShellEnv } from '../services/cli-detect.service'
 import * as logger from '../utils/logger'
+import {
+  createTerminalAssistantSession,
+  disposeTerminalAssistantSession,
+  listTerminalAssistantTools
+} from '../services/terminal-assistant.service'
 
 export function registerAITerminalIpc(): void {
   // Pre-load shell environment so SSH inherits user profile variables
@@ -176,5 +181,56 @@ export function registerAITerminalIpc(): void {
 
   ipcMain.handle('ai-terminal:delete-mongo-documents', async (_event, id: string, collection: string, filter: any) => {
     return aiTerminalService.deleteMongoDocuments(id, collection, filter)
+  })
+
+  // ── Terminal AI assistant — CLI Agent mode (reuses AI Coding CLI sessions) ──
+
+  ipcMain.handle('ai-terminal:assistant-tools', async () => {
+    return listTerminalAssistantTools()
+  })
+
+  ipcMain.handle(
+    'ai-terminal:create-assistant-session',
+    async (
+      _event,
+      toolType: string,
+      kind: string,
+      target: { key: string; label?: string; isLocal?: boolean },
+      contextSnapshot?: string,
+      execTarget?: { kind: 'shell' | 'db'; ptySessionId?: string; dbConnId?: string }
+    ) => {
+      if (kind !== 'shell' && kind !== 'db') {
+        throw new Error('Invalid assistant kind')
+      }
+      if (!target || typeof target.key !== 'string' || !target.key.trim()) {
+        throw new Error('Invalid assistant target')
+      }
+      // Validate the tool against the live installed/enabled set.
+      const tool = (await listTerminalAssistantTools()).find((c) => c.toolType === toolType)
+      if (!tool) {
+        throw new Error('Invalid or unavailable assistant tool type')
+      }
+      // Keep execTarget only when it carries a usable id for its kind; otherwise
+      // the session falls back to guidance-only (code-block) behaviour.
+      const cleanExecTarget =
+        execTarget &&
+        execTarget.kind === kind &&
+        ((execTarget.kind === 'shell' && typeof execTarget.ptySessionId === 'string' && !!execTarget.ptySessionId) ||
+          (execTarget.kind === 'db' && typeof execTarget.dbConnId === 'string' && !!execTarget.dbConnId))
+          ? { kind: execTarget.kind, ptySessionId: execTarget.ptySessionId, dbConnId: execTarget.dbConnId }
+          : undefined
+      return createTerminalAssistantSession(
+        tool.toolType,
+        kind,
+        { key: target.key, label: target.label, isLocal: !!target.isLocal },
+        typeof contextSnapshot === 'string' ? contextSnapshot.slice(0, 20000) : undefined,
+        cleanExecTarget
+      )
+    }
+  )
+
+  ipcMain.handle('ai-terminal:dispose-assistant-session', async (_event, sessionId: string) => {
+    disposeTerminalAssistantSession(sessionId)
+    return { success: true }
   })
 }

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
-import { Input, Button, Typography, theme, Space, Tooltip, Spin } from 'antd'
+import { Input, Button, Typography, theme, Space, Tooltip, Spin, Segmented } from 'antd'
 import {
   SendOutlined, StopOutlined, ThunderboltOutlined,
   HourglassOutlined, ClearOutlined, ControlOutlined,
@@ -23,6 +23,7 @@ import ThinkingBlock from '../../components/ThinkingBlock'
 import { externalLinkMarkdownComponents } from '../../utils/markdown-links'
 import { runAgentClientLoop } from '../../utils/agent-client-loop'
 import '../AIChat/chat-styles.css'
+import { useTerminalCliAgent } from './useTerminalCliAgent'
 
 const { TextArea } = Input
 const { Text } = Typography
@@ -268,6 +269,18 @@ function MessageBubble({ msg, isStreaming, streamingContent, streamingThinking, 
   )
 }
 
+/** Assistant engine: OSS model chat (agent loop + terminal tools) or a CLI coding agent. */
+type AssistantMode = 'model' | 'cli'
+const ASSISTANT_MODE_KEY = 'cb-terminal-assistant-mode'
+
+function readAssistantMode(): AssistantMode {
+  try {
+    return localStorage.getItem(ASSISTANT_MODE_KEY) === 'cli' ? 'cli' : 'model'
+  } catch {
+    return 'model'
+  }
+}
+
 // ── Main Component ──────────────────────────────────────────────────────────
 const AIAssistantPanel: React.FC = () => {
   const { token } = theme.useToken()
@@ -277,6 +290,16 @@ const AIAssistantPanel: React.FC = () => {
   const [chatMode, setChatMode] = useState<'fast' | 'thinking'>('fast')
   const [toolsEnabled, setToolsEnabled] = useState(true)
   const [bottomTab, setBottomTab] = useState<'ai' | 'sql'>('ai')
+  const [assistantMode, setAssistantModeState] = useState<AssistantMode>(readAssistantMode)
+  const setAssistantMode = useCallback((mode: AssistantMode) => {
+    setAssistantModeState(mode)
+    try { localStorage.setItem(ASSISTANT_MODE_KEY, mode) } catch { /* ignore */ }
+  }, [])
+  const cliAgent = useTerminalCliAgent({
+    enabled: assistantMode === 'cli' && bottomTab === 'ai',
+    collapsed,
+    expand: () => setCollapsed(false)
+  })
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   // SQL Executor state
@@ -864,13 +887,29 @@ const AIAssistantPanel: React.FC = () => {
           )}
           {bottomTab === 'ai' && (
             <div onClick={e => e.stopPropagation()}>
+              <Segmented
+                size="small"
+                value={assistantMode}
+                onChange={(v) => setAssistantMode(v as AssistantMode)}
+                options={[
+                  { value: 'model', label: <Tooltip title={t('terminal.assistantModeModelTip')}>{t('terminal.assistantModeModel')}</Tooltip> },
+                  { value: 'cli', label: <Tooltip title={t('terminal.assistantModeCliTip')}>{t('terminal.assistantModeCli')}</Tooltip> }
+                ]}
+                style={{ fontSize: 11 }}
+              />
+            </div>
+          )}
+          {bottomTab === 'ai' && assistantMode === 'model' && (
+            <div onClick={e => e.stopPropagation()}>
               <ModelSelector placement="topLeft" size="small" />
             </div>
           )}
+          {bottomTab === 'ai' && assistantMode === 'cli' && cliAgent.headerControls}
         </Space>
         <Space size={4}>
-          {/* Fast / Thinking capsule toggle - only for AI tab */}
-          {bottomTab === 'ai' && (
+          {bottomTab === 'ai' && assistantMode === 'cli' && cliAgent.actionControls}
+          {/* Fast / Thinking capsule toggle - only for AI tab (model chat mode) */}
+          {bottomTab === 'ai' && assistantMode === 'model' && (
             <>
               <div
                 onClick={e => e.stopPropagation()}
@@ -954,7 +993,10 @@ const AIAssistantPanel: React.FC = () => {
         </Space>
       </div>
 
-      {!collapsed && bottomTab === 'ai' && (
+      {/* CLI Agent mode body */}
+      {!collapsed && bottomTab === 'ai' && assistantMode === 'cli' && cliAgent.body}
+
+      {!collapsed && bottomTab === 'ai' && assistantMode === 'model' && (
         <>
           {/* Messages */}
           {(currentMessages.length > 0 || aiStreaming) && (
