@@ -423,6 +423,15 @@ export interface ClawBenchAPI {
     uninstallNpmPackage: (packageName: string) => Promise<import('./local-env').ToolInstallResult>
     getCodingToolsEnabled: () => Promise<Record<string, boolean>>
     setCodingToolEnabled: (toolId: string, enabled: boolean) => Promise<Record<string, boolean>>
+    getMirrorSource: (
+      toolId: import('./local-env').MirrorToolId,
+      pythonPath?: string
+    ) => Promise<import('./local-env').MirrorSourceResult>
+    setMirrorSource: (
+      toolId: import('./local-env').MirrorToolId,
+      enabled: boolean,
+      pythonPath?: string
+    ) => Promise<import('./local-env').MirrorSourceResult>
   }
   openclaw: {
     checkInstalled: () => Promise<import('./openclaw').OpenClawInstallCheck>

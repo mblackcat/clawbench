@@ -23,7 +23,14 @@ const translations: Record<Lang, Record<string, string>> = {
     'pythonVenv.createFailed': '创建 Python 虚拟环境失败',
     'pythonVenv.notReady': 'Python 虚拟环境未就绪',
     'pythonVenv.pipInstallFailed': 'pip 安装依赖失败，退出码：{0}',
-    'terminal.cmdName': '命令提示符 (cmd.exe)'
+    'terminal.cmdName': '命令提示符 (cmd.exe)',
+    // ── local-env installer errors (V4) ──
+    'localEnv.installTimeout': '{0} 安装超时，可能是安装程序在等待管理员授权。请重试并允许 UAC 提示，或从官网手动安装。',
+    'localEnv.installUacCancelled': '{0} 安装需要管理员权限，授权被取消。请重试并允许 UAC 提示，或从官网手动安装。',
+    'localEnv.installWingetFailed': '{0} 安装失败（winget 退出码 {1}）{2}',
+    'localEnv.svnCliMissing': 'TortoiseSVN 已安装，但未找到 svn 命令行工具。请在安装向导中勾选 "command line client tools" 后重装。',
+    'localEnv.svnVersionFailed': '已安装 {0}，但执行 svn --version 失败，请重启后重试。',
+    'localEnv.windowsManualUninstall': 'Windows 上请手动卸载 {0}'
   },
   en: {
     'subapp.pythonConfiguredPathUnavailable':
@@ -45,7 +52,14 @@ const translations: Record<Lang, Record<string, string>> = {
     'pythonVenv.createFailed': 'Failed to create the Python virtual environment',
     'pythonVenv.notReady': 'The Python virtual environment is not ready',
     'pythonVenv.pipInstallFailed': 'pip install failed with exit code {0}',
-    'terminal.cmdName': 'Command Prompt (cmd.exe)'
+    'terminal.cmdName': 'Command Prompt (cmd.exe)',
+    // ── local-env installer errors (V4) ──
+    'localEnv.installTimeout': '{0} install timed out — the installer may be waiting for administrator approval. Retry and accept the UAC prompt, or install manually from the official site.',
+    'localEnv.installUacCancelled': '{0} needs administrator rights and the UAC prompt was cancelled. Retry and accept the prompt, or install manually from the official site.',
+    'localEnv.installWingetFailed': '{0} install failed (winget exit code {1}){2}',
+    'localEnv.svnCliMissing': 'TortoiseSVN is installed but the svn command-line tools were not found. Reinstall with "command line client tools" selected.',
+    'localEnv.svnVersionFailed': '{0} is installed but "svn --version" failed. Restart and try again.',
+    'localEnv.windowsManualUninstall': 'Please uninstall {0} manually on Windows'
   }
 }
 

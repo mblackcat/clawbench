@@ -9,7 +9,10 @@ import {
   listPipPackages,
   uninstallPipPackage,
   listNpmGlobalPackages,
-  uninstallNpmGlobalPackage
+  uninstallNpmGlobalPackage,
+  getMirrorSource,
+  setMirrorSource,
+  type MirrorToolId
 } from '../services/local-env.service'
 import {
   getCodingToolsEnabled,
@@ -64,4 +67,18 @@ export function registerLocalEnvIpc(): void {
   ipcMain.handle('local-env:set-coding-tool-enabled', async (_event, toolId: string, enabled: boolean) => {
     return setCodingToolEnabled(toolId, enabled)
   })
+
+  ipcMain.handle(
+    'local-env:get-mirror-source',
+    async (_event, toolId: MirrorToolId, pythonPath?: string) => {
+      return getMirrorSource(toolId, pythonPath)
+    }
+  )
+
+  ipcMain.handle(
+    'local-env:set-mirror-source',
+    async (_event, toolId: MirrorToolId, enabled: boolean, pythonPath?: string) => {
+      return setMirrorSource(toolId, enabled, pythonPath)
+    }
+  )
 }

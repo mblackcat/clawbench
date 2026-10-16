@@ -315,12 +315,12 @@ class CodingToolProvider implements InternalToolProvider {
       },
       {
         name: 'create_coding_session',
-        description: 'Create and launch a coding session in a workspace, optionally sending an initial prompt. toolType: claude | codex | gemini | grok | opencode | trae | qoder | kimi | zcode | mimo.',
+        description: 'Create and launch a coding session in a workspace, optionally sending an initial prompt. toolType: claude | codex | gemini | grok | opencode | trae | qoder | kimi | zcode | mimo | antigravity | omp.',
         inputSchema: {
           type: 'object',
           properties: {
             workspaceId: { type: 'string', description: 'Coding workspace id (from list_coding_workspaces)' },
-            toolType: { type: 'string', description: 'claude | codex | gemini | grok | opencode | trae | qoder | kimi | zcode | mimo' },
+            toolType: { type: 'string', description: 'claude | codex | gemini | grok | opencode | trae | qoder | kimi | zcode | mimo | antigravity | omp' },
             initialPrompt: { type: 'string', description: 'Optional first message sent after launch' },
             source: { type: 'string', description: 'local or im (default local)' },
           },

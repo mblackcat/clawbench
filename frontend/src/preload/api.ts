@@ -524,7 +524,11 @@ export const api = {
       ipcRenderer.invoke('local-env:uninstall-npm-package', packageName),
     getCodingToolsEnabled: () => ipcRenderer.invoke('local-env:get-coding-tools-enabled') as Promise<Record<string, boolean>>,
     setCodingToolEnabled: (toolId: string, enabled: boolean) =>
-      ipcRenderer.invoke('local-env:set-coding-tool-enabled', toolId, enabled) as Promise<Record<string, boolean>>
+      ipcRenderer.invoke('local-env:set-coding-tool-enabled', toolId, enabled) as Promise<Record<string, boolean>>,
+    getMirrorSource: (toolId: 'python' | 'nodejs' | 'docker', pythonPath?: string) =>
+      ipcRenderer.invoke('local-env:get-mirror-source', toolId, pythonPath),
+    setMirrorSource: (toolId: 'python' | 'nodejs' | 'docker', enabled: boolean, pythonPath?: string) =>
+      ipcRenderer.invoke('local-env:set-mirror-source', toolId, enabled, pythonPath)
   },
 
   copiper: {

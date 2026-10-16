@@ -105,6 +105,24 @@ interface SettingsSchema {
    * Empty (default) = leave pip's own configuration / PyPI untouched.
    */
   pipIndexUrl: string
+  /**
+   * Local Env China-mirror backups (keyed by toolId: python | nodejs | docker).
+   * Stores previous source values so toggling off can restore them.
+   */
+  localEnvMirrors: Record<string, LocalEnvMirrorBackup>
+}
+
+/** Backup of pre-China-mirror config for one Local Env tool */
+export interface LocalEnvMirrorBackup {
+  enabled: boolean
+  /** pip: previous global.index-url (null = was unset) */
+  previousIndexUrl?: string | null
+  /** pip: previous global.trusted-host */
+  previousTrustedHost?: string | null
+  /** npm: previous registry */
+  previousRegistry?: string | null
+  /** docker: previous registry-mirrors (null = key was absent) */
+  previousRegistryMirrors?: string[] | null
 }
 
 interface PublicSettings {
@@ -343,6 +361,10 @@ export const settingsStore = new Store<SettingsSchema>({
     pipIndexUrl: {
       type: 'string',
       default: ''
+    },
+    localEnvMirrors: {
+      type: 'object',
+      default: {}
     }
   }
 })
@@ -376,6 +398,21 @@ export function setCodingToolEnabled(toolId: string, enabled: boolean): Record<s
 
 export function setCodingToolsEnabled(map: Record<string, boolean>): void {
   settingsStore.set('codingToolsEnabled', map)
+}
+
+export function getLocalEnvMirrorBackup(toolId: string): LocalEnvMirrorBackup | undefined {
+  const map = settingsStore.get('localEnvMirrors') ?? {}
+  return map[toolId]
+}
+
+export function setLocalEnvMirrorBackup(toolId: string, backup: LocalEnvMirrorBackup | null): void {
+  const map = { ...(settingsStore.get('localEnvMirrors') ?? {}) }
+  if (backup === null) {
+    delete map[toolId]
+  } else {
+    map[toolId] = backup
+  }
+  settingsStore.set('localEnvMirrors', map)
 }
 
 export function getSettings(): PublicSettings {

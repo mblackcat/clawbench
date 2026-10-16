@@ -1,4 +1,4 @@
-import { exec, execFile } from 'child_process'
+import { exec, execFile, spawn } from 'child_process'
 import { promisify } from 'util'
 import * as fs from 'fs'
 import * as os from 'os'
@@ -6,6 +6,22 @@ import * as path from 'path'
 import * as https from 'https'
 import { shell } from 'electron'
 import * as logger from '../utils/logger'
+import { mainT } from '../utils/i18n'
+import {
+  getLocalEnvMirrorBackup,
+  setLocalEnvMirrorBackup,
+  type LocalEnvMirrorBackup
+} from '../store/settings.store'
+import {
+  getWindowsRegistryPath,
+  invalidateWindowsRegistryPathCache,
+  getToolCandidatePaths,
+  getOmpCandidatePaths,
+  reorderWindowsPathString,
+  ensureWindowsPythonPathPriority,
+  isWindowsAppsPath
+} from '../utils/windows-env'
+import { getWorkbenchVenvPythonPath } from '../utils/paths'
 
 const execFileAsync = promisify(execFile)
 const execAsync = promisify(exec)
@@ -17,6 +33,7 @@ type ToolId =
   | 'claude-code' | 'codex-cli' | 'gemini-cli' | 'grok-cli'
   | 'opencode' | 'traecli' | 'qoder-cli'
   | 'kimi-code' | 'zcode' | 'mimo-code'
+  | 'antigravity-cli' | 'omp'
   | 'homebrew'
 
 interface ToolInstallation {
@@ -62,42 +79,6 @@ interface LocalEnvDetectionResult {
   tools: ToolDetectionResult[]
   packageManagers: PackageManagerInfo
   platform: string
-}
-
-let cachedWinRegistryPath: { value: string; timestamp: number } | null = null
-
-/**
- * Windows only: read the live Machine + User PATH straight from the environment
- * (via a fresh PowerShell process), bypassing `process.env.PATH`. The Electron
- * main process only snapshots its environment at launch, so a tool installed by
- * winget/an installer wizard *during this session* updates the registry but is
- * invisible to `process.env` until the app restarts — which made freshly
- * installed tools (e.g. MySQL) keep showing as "not installed" after a
- * successful install + refresh. Re-reading the registry directly fixes that
- * without requiring a restart. Cached briefly to avoid spawning PowerShell on
- * every detection call.
- */
-async function getWindowsRegistryPath(): Promise<string> {
-  if (cachedWinRegistryPath && Date.now() - cachedWinRegistryPath.timestamp < 5000) {
-    return cachedWinRegistryPath.value
-  }
-  try {
-    const { stdout } = await execFileAsync(
-      'powershell',
-      [
-        '-NoProfile',
-        '-NonInteractive',
-        '-Command',
-        "[System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')"
-      ],
-      { timeout: 8000 }
-    )
-    const value = stdout.trim()
-    cachedWinRegistryPath = { value, timestamp: Date.now() }
-    return value
-  } catch {
-    return ''
-  }
 }
 
 /**
@@ -192,7 +173,8 @@ async function getAugmentedEnv(): Promise<NodeJS.ProcessEnv> {
         parts.push(ep)
       }
     }
-    env[pathKey] = p
+    // Real Python dirs must precede the WindowsApps python.exe Store alias
+    env[pathKey] = reorderWindowsPathString(p).newPath
   }
   return env
 }
@@ -283,7 +265,17 @@ async function detectPython(env: NodeJS.ProcessEnv): Promise<ToolDetectionResult
     }
   }
 
-  const allPaths = dedup([...python3Paths, ...pythonPaths])
+  let allPaths = dedup([...python3Paths, ...pythonPaths])
+
+  if (process.platform === 'win32') {
+    // `%LOCALAPPDATA%\Microsoft\WindowsApps\python(3).exe` are App Execution
+    // Alias stubs, never a distinct installation: disabled they pop the Store,
+    // enabled they forward to a real interpreter already listed. realpath does
+    // not follow AppExecLink reparse points, so dedup() can't collapse them.
+    const isWindowsAppsAlias = (cand: string): boolean =>
+      /[\\/]Microsoft[\\/]WindowsApps[\\/]python(3(\.\d+)?)?\.exe$/i.test(cand)
+    allPaths = allPaths.filter((cand) => !isWindowsAppsAlias(cand))
+  }
 
   for (const p of allPaths) {
     const version = await getVersion(p, ['--version'], env)
@@ -401,6 +393,30 @@ async function detectGit(env: NodeJS.ProcessEnv): Promise<ToolDetectionResult> {
   return result
 }
 
+/** Windows: the TortoiseSVN install root, whether or not the CLI feature is present. */
+function findTortoiseSvnRoot(): string | null {
+  if (process.platform !== 'win32') return null
+  const roots = [process.env['ProgramFiles'], process.env['ProgramFiles(x86)']].filter(Boolean) as string[]
+  for (const root of roots) {
+    const candidate = path.join(root, 'TortoiseSVN')
+    if (fs.existsSync(candidate)) return candidate
+  }
+  return null
+}
+
+/**
+ * TortoiseSVN installs svn.exe at <ProgramFiles>\TortoiseSVN\bin\svn.exe, but
+ * only when its "command line client tools" feature was selected. Used as a
+ * fallback when `svn` isn't on PATH (CLI-less TortoiseSVN, or the registry PATH
+ * refresh hasn't propagated yet).
+ */
+function findTortoiseSvnCli(): string | null {
+  const root = findTortoiseSvnRoot()
+  if (!root) return null
+  const candidate = path.join(root, 'bin', 'svn.exe')
+  return fs.existsSync(candidate) ? candidate : null
+}
+
 async function detectSvn(env: NodeJS.ProcessEnv): Promise<ToolDetectionResult> {
   const result: ToolDetectionResult = {
     toolId: 'svn',
@@ -409,12 +425,20 @@ async function detectSvn(env: NodeJS.ProcessEnv): Promise<ToolDetectionResult> {
     installations: []
   }
 
-  const version = await getVersion('svn', ['--version', '--quiet'], env)
-  if (version) {
-    const svnPaths = await whichAll('svn', env)
-    const svnPath = svnPaths[0] || 'svn'
+  let version = await getVersion('svn', ['--version', '--quiet'], env)
+  let svnPath = (await whichAll('svn', env))[0]
 
-    result.installations.push({ path: svnPath, version: version })
+  // Fall back to TortoiseSVN's well-known CLI location if `svn` isn't on PATH.
+  if (!version) {
+    const cli = findTortoiseSvnCli()
+    if (cli) {
+      version = await getVersion(cli, ['--version', '--quiet'], env)
+      if (version) svnPath = cli
+    }
+  }
+
+  if (version) {
+    result.installations.push({ path: svnPath || 'svn', version })
     result.installed = true
   }
 
@@ -615,8 +639,16 @@ async function detectNpmGlobalTool(
 ): Promise<ToolDetectionResult> {
   const result: ToolDetectionResult = { toolId, name, installed: false, installations: [] }
 
-  const paths = await whichAll(cmd, env)
-  const uniquePaths = dedup(paths)
+  // Known install locations first (npm/pnpm/bun shims on Windows aren't always
+  // on the stale process PATH), then whatever PATH resolves.
+  const candidates: string[] = []
+  for (const cand of getToolCandidatePaths(cmd)) {
+    if (fs.existsSync(cand) && !candidates.includes(cand)) candidates.push(cand)
+  }
+  for (const p of await whichAll(cmd, env)) {
+    if (!candidates.includes(p)) candidates.push(p)
+  }
+  const uniquePaths = dedup(candidates)
 
   for (const p of uniquePaths) {
     const raw = await getVersion(p, ['--version'], env)
@@ -650,10 +682,9 @@ async function detectClaudeCode(env: NodeJS.ProcessEnv): Promise<ToolDetectionRe
 
   const candidates: string[] = []
 
-  // Preferred location for native installer (POSIX only — the install.sh is Unix-only)
-  if (process.platform !== 'win32') {
-    const nativePath = path.join(os.homedir(), '.local', 'bin', 'claude')
-    candidates.push(nativePath)
+  // Known native-installer / package-manager locations (all platforms)
+  for (const cand of getToolCandidatePaths('claude')) {
+    if (fs.existsSync(cand) && !candidates.includes(cand)) candidates.push(cand)
   }
 
   // Also check PATH for other locations (includes npm-global shims on Windows)
@@ -699,10 +730,9 @@ async function detectGrokCli(env: NodeJS.ProcessEnv): Promise<ToolDetectionResul
   // convention as Claude Code's native installer.
   const candidates: string[] = []
 
-  // Preferred location for the native installer (POSIX only — install.sh is Unix-only)
-  if (process.platform !== 'win32') {
-    const nativePath = path.join(os.homedir(), '.local', 'bin', 'grok')
-    candidates.push(nativePath)
+  // Known native-installer / package-manager locations (all platforms)
+  for (const cand of getToolCandidatePaths('grok')) {
+    if (fs.existsSync(cand) && !candidates.includes(cand)) candidates.push(cand)
   }
 
   // Also check PATH for other install locations (e.g. npm-global shims on Windows)
@@ -834,6 +864,59 @@ async function detectMimoCode(env: NodeJS.ProcessEnv): Promise<ToolDetectionResu
   return result
 }
 
+async function detectAntigravityCli(env: NodeJS.ProcessEnv): Promise<ToolDetectionResult> {
+  const result: ToolDetectionResult = {
+    toolId: 'antigravity-cli',
+    name: 'Antigravity CLI',
+    installed: false,
+    installations: []
+  }
+  const candidates: string[] = []
+  for (const bin of ['agy', 'antigravity']) {
+    for (const cand of getToolCandidatePaths(bin)) {
+      if (fs.existsSync(cand) && !candidates.includes(cand)) candidates.push(cand)
+    }
+    for (const p of await whichAll(bin, env)) {
+      if (!candidates.includes(p)) candidates.push(p)
+    }
+  }
+  for (const binPath of candidates) {
+    try {
+      const raw = await getVersion(binPath, ['--version'], env)
+      if (!raw) continue
+      const m = raw.match(/(\d+\.\d+\.\d+)/)
+      if (m) result.installations.push({ path: binPath, version: m[1] })
+    } catch {
+      // Binary not found or not executable
+    }
+  }
+  result.installed = result.installations.length > 0
+  return result
+}
+
+async function detectOmp(env: NodeJS.ProcessEnv): Promise<ToolDetectionResult> {
+  const result: ToolDetectionResult = { toolId: 'omp', name: 'Oh My Pi', installed: false, installations: [] }
+  const candidates: string[] = []
+  for (const p of getOmpCandidatePaths()) {
+    if (fs.existsSync(p) && !candidates.includes(p)) candidates.push(p)
+  }
+  for (const p of await whichAll('omp', env)) {
+    if (!candidates.includes(p)) candidates.push(p)
+  }
+  for (const binPath of candidates) {
+    try {
+      const raw = await getVersion(binPath, ['--version'], env)
+      if (!raw) continue
+      const m = raw.match(/(\d+\.\d+\.\d+)/)
+      result.installations.push({ path: binPath, version: m ? m[1] : raw })
+    } catch {
+      // Binary not found or not executable
+    }
+  }
+  result.installed = result.installations.length > 0
+  return result
+}
+
 // ── Package Managers / System Tools ──
 
 async function detectBrew(env: NodeJS.ProcessEnv): Promise<ToolDetectionResult> {
@@ -882,6 +965,7 @@ export async function detectAll(): Promise<LocalEnvDetectionResult> {
     git, svn, perforce,
     claudeCode, codexCli, geminiCli, grokCli,
     openCode, traeCli, qoderCli, kimiCode, zcode, mimoCode,
+    antigravityCli, omp,
     homebrew,
     packageManagers
   ] = await Promise.all([
@@ -907,17 +991,20 @@ export async function detectAll(): Promise<LocalEnvDetectionResult> {
     detectKimiCode(env),
     detectZCode(env),
     detectMimoCode(env),
+    detectAntigravityCli(env),
+    detectOmp(env),
     process.platform === 'darwin' ? detectBrew(env) : Promise.resolve<ToolDetectionResult>({ toolId: 'homebrew', name: 'Homebrew', installed: false, installations: [] }),
     detectPackageManagers(env)
   ])
 
-  // AI tools kept in user-facing order: Claude → Codex → Gemini → Grok → OpenCode → Trae → Qoder → Kimi → ZCode → MiMo
+  // AI tools kept in user-facing order: Claude → Codex → Gemini → Grok → OpenCode → Trae → Qoder → Kimi → ZCode → MiMo → Antigravity → Oh My Pi
   const tools: ToolDetectionResult[] = [
     python, nodejs, go, java, docker,
     mysql, postgresql, mongodb, redis,
     git, svn, perforce,
     claudeCode, codexCli, geminiCli, grokCli,
-    openCode, traeCli, qoderCli, kimiCode, zcode, mimoCode
+    openCode, traeCli, qoderCli, kimiCode, zcode, mimoCode,
+    antigravityCli, omp
   ]
 
   // Include Homebrew only on macOS
@@ -955,6 +1042,8 @@ const DETECT_FN_MAP: Partial<Record<ToolId, (env: NodeJS.ProcessEnv) => Promise<
   'kimi-code': detectKimiCode,
   zcode: detectZCode,
   'mimo-code': detectMimoCode,
+  'antigravity-cli': detectAntigravityCli,
+  omp: detectOmp,
   homebrew: detectBrew,
 }
 
@@ -993,7 +1082,9 @@ const DOWNLOAD_URLS: Partial<Record<ToolId, string>> = {
   'qoder-cli': 'https://docs.qoder.com/cli/install',
   'kimi-code': 'https://code.kimi.com',
   zcode: 'https://zcode.z.ai/en',
-  'mimo-code': 'https://mimo.xiaomi.com/mimocode/start'
+  'mimo-code': 'https://mimo.xiaomi.com/mimocode/start',
+  'antigravity-cli': 'https://antigravity.google',
+  omp: 'https://omp.sh'
 }
 
 const BREW_PACKAGES: Partial<Record<ToolId, string>> = {
@@ -1007,7 +1098,8 @@ const BREW_PACKAGES: Partial<Record<ToolId, string>> = {
   mongodb: 'mongodb/brew/mongodb-community',
   redis: 'redis',
   git: 'git',
-  svn: 'subversion'
+  svn: 'subversion',
+  'antigravity-cli': '--cask antigravity-cli'
 }
 
 const WINGET_PACKAGES: Partial<Record<ToolId, string>> = {
@@ -1023,6 +1115,291 @@ const WINGET_PACKAGES: Partial<Record<ToolId, string>> = {
   redis: 'tporadowski.redis',
   git: 'Git.Git',
   svn: 'TortoiseSVN.TortoiseSVN'
+}
+
+/**
+ * Windows only: per-tool installer arguments appended to winget's own silent
+ * args via `--custom`. `--custom` (append) rather than `--override` (replace):
+ * override discards winget's generated silent/no-restart flags, turning a
+ * silent MSI into an interactive one that blocks behind an unseen window.
+ *
+ * TortoiseSVN's MSI installs the shell extension by default but NOT the
+ * Subversion command-line tools — `svn.exe` only lands in ...\TortoiseSVN\bin
+ * when the `CLI` feature is selected. ADDLOCAL=ALL requests the complete
+ * feature set (Main + ProgramMenu + CLI).
+ */
+const WINGET_INSTALL_CUSTOM: Partial<Record<ToolId, string>> = {
+  svn: 'ADDLOCAL=ALL'
+}
+
+// ── Windows install plumbing ──
+
+interface StreamedRunResult {
+  code: number | null
+  output: string
+  timedOut: boolean
+}
+
+/** winget: 0x8A15002B — package is already installed / no applicable upgrade. */
+const WINGET_NO_APPLICABLE_UPGRADE = 0x8a15002b
+/** Windows ERROR_CANCELLED — the user dismissed the UAC prompt. */
+const ERROR_CANCELLED = 1223
+
+function isWingetAlreadyInstalled(code: number | null): boolean {
+  return code !== null && (code >>> 0) === WINGET_NO_APPLICABLE_UPGRADE
+}
+
+function isUacCancelled(code: number | null): boolean {
+  return code !== null && (code >>> 0) === ERROR_CANCELLED
+}
+
+/** Drop winget's spinner/progress-bar redraws, keep lines with real content. */
+function isMeaningfulOutputLine(line: string): boolean {
+  return /[A-Za-z一-龥]/.test(line)
+}
+
+/**
+ * Spawn a command and log each output line as it arrives, then resolve with its
+ * exit code instead of throwing. A buffered execFile surfaced nothing at all
+ * when an install hung, so a stalled install looked like "spinner forever, no
+ * logs, no toast".
+ */
+async function runStreaming(
+  command: string,
+  args: string[],
+  opts: { timeout: number; env?: NodeJS.ProcessEnv; label: string }
+): Promise<StreamedRunResult> {
+  logger.info(`[local-env] ${opts.label}: ${command} ${args.join(' ')}`)
+  return new Promise((resolve) => {
+    let child: ReturnType<typeof spawn>
+    try {
+      child = spawn(command, args, { env: opts.env, windowsHide: true })
+    } catch (err: unknown) {
+      logger.error(`[local-env] ${opts.label} failed to spawn:`, err)
+      resolve({ code: null, output: err instanceof Error ? err.message : String(err), timedOut: false })
+      return
+    }
+
+    let output = ''
+    let timedOut = false
+    let lastLogged = ''
+
+    const onChunk = (buf: Buffer): void => {
+      const text = buf.toString()
+      output += text
+      for (const raw of text.split(/\r?\n/)) {
+        const line = raw.trim()
+        if (!line || line === lastLogged || !isMeaningfulOutputLine(line)) continue
+        lastLogged = line
+        logger.info(`[local-env] ${opts.label} | ${line}`)
+      }
+    }
+    child.stdout?.on('data', onChunk)
+    child.stderr?.on('data', onChunk)
+
+    const timer = setTimeout(() => {
+      timedOut = true
+      logger.error(`[local-env] ${opts.label} timed out after ${opts.timeout}ms, killing`)
+      try { child.kill() } catch { /* already gone */ }
+    }, opts.timeout)
+
+    child.on('error', (err) => {
+      clearTimeout(timer)
+      logger.error(`[local-env] ${opts.label} error:`, err)
+      resolve({ code: null, output: `${output}\n${err.message}`.trim(), timedOut })
+    })
+    child.on('close', (code) => {
+      clearTimeout(timer)
+      logger.info(`[local-env] ${opts.label} exited with code ${code}`)
+      resolve({ code, output: output.trim(), timedOut })
+    })
+  })
+}
+
+/**
+ * Windows: re-run a command through a foreground UAC prompt. winget cannot
+ * elevate itself mid-run; a package MSI's own UAC prompt can end up behind the
+ * app window (or be auto-denied). Requesting elevation up front makes the
+ * prompt explicit and turns a declined prompt into a reportable error.
+ */
+async function runElevatedWindows(
+  command: string,
+  args: string[],
+  opts: { timeout: number; label: string }
+): Promise<StreamedRunResult> {
+  const psList = args.map((a) => `'${a.replace(/'/g, "''")}'`).join(',')
+  const script =
+    `try { ` +
+    `$p = Start-Process -FilePath '${command.replace(/'/g, "''")}' -ArgumentList ${psList} -Verb RunAs -Wait -PassThru; ` +
+    `exit $p.ExitCode ` +
+    `} catch { Write-Output $_.Exception.Message; exit ${ERROR_CANCELLED} }`
+  return runStreaming(
+    'powershell',
+    ['-NoProfile', '-NonInteractive', '-Command', script],
+    { timeout: opts.timeout, label: `${opts.label} (elevated)` }
+  )
+}
+
+/**
+ * Windows: persist `dir` into the *user* PATH if it isn't on PATH already, and
+ * make it visible to the running app without a restart.
+ *
+ * Only used for TortoiseSVN's bin dir: its CLI feature appends to the *machine*
+ * PATH, which silently does nothing when the MSI ran without admin rights.
+ * Adding it to the user PATH needs no elevation and makes `svn` work in a newly
+ * opened terminal. This is an explicit, persistent change (HKCU\Environment).
+ */
+async function ensureWindowsUserPathContains(dir: string): Promise<boolean> {
+  if (process.platform !== 'win32') return false
+  const normalize = (p: string): string => p.trim().replace(/\\+$/, '').toLowerCase()
+  const target = normalize(dir)
+
+  const known = `${process.env.PATH || ''};${await getWindowsRegistryPath()}`
+  if (known.split(';').some((p) => normalize(p) === target)) return false
+
+  const script =
+    `$d = '${dir.replace(/'/g, "''")}'; ` +
+    `$u = [Environment]::GetEnvironmentVariable('Path','User'); ` +
+    `if ($null -eq $u) { $u = '' }; ` +
+    `$parts = @($u -split ';' | Where-Object { $_ -ne '' }); ` +
+    `if (($parts | ForEach-Object { $_.TrimEnd('\\').ToLower() }) -notcontains $d.TrimEnd('\\').ToLower()) { ` +
+    `[Environment]::SetEnvironmentVariable('Path', (($parts + $d) -join ';'), 'User'); ` +
+    `Write-Output 'PATH updated' }`
+
+  const result = await runStreaming(
+    'powershell',
+    ['-NoProfile', '-NonInteractive', '-Command', script],
+    { timeout: 15000, label: 'path-update' }
+  )
+  if (result.code !== 0) {
+    logger.error(`[local-env] Failed to add ${dir} to user PATH: ${result.output}`)
+    return false
+  }
+
+  // Also make it usable in this session (process env was snapshotted at launch).
+  process.env.PATH = `${process.env.PATH || ''};${dir}`
+  invalidateWindowsRegistryPathCache()
+  logger.info(`[local-env] Added to user PATH: ${dir}`)
+  return true
+}
+
+/**
+ * Windows: the real winget.exe inside the DesktopAppInstaller package. `winget`
+ * on PATH is a per-user App Execution Alias; an elevated Start-Process can run
+ * under a profile where that alias doesn't exist. Falls back to the alias.
+ */
+function resolveWingetForElevation(): string {
+  const programFiles = process.env['ProgramFiles']
+  if (!programFiles) return 'winget'
+  const appsDir = path.join(programFiles, 'WindowsApps')
+  try {
+    const match = fs
+      .readdirSync(appsDir)
+      .filter((e) => /^Microsoft\.DesktopAppInstaller_.*_x64__8wekyb3d8bbwe$/.test(e))
+      .sort()
+      .reverse()
+      .map((e) => path.join(appsDir, e, 'winget.exe'))
+      .find((p) => fs.existsSync(p))
+    if (match) return match
+  } catch { /* WindowsApps is ACL-locked on some machines */ }
+  return 'winget'
+}
+
+/**
+ * Windows: install a winget package, retrying once with explicit elevation when
+ * the unelevated attempt fails or stalls.
+ */
+async function wingetInstall(
+  pkg: string,
+  opts: { label: string; custom?: string; force?: boolean; timeout?: number; env?: NodeJS.ProcessEnv }
+): Promise<StreamedRunResult> {
+  // `--id <pkg> -e` (exact match) so a partial-id collision can't trigger an
+  // interactive "choose a package" prompt; --disable-interactivity turns any
+  // remaining prompt into a clean error instead of a hang.
+  const args = [
+    'install', '--id', pkg, '-e', '--silent',
+    '--accept-source-agreements', '--accept-package-agreements',
+    '--disable-interactivity'
+  ]
+  // --force skips the "already installed" short-circuit (reinstall with more features).
+  if (opts.force) args.push('--force')
+  if (opts.custom) args.push('--custom', opts.custom)
+
+  const timeout = opts.timeout ?? 480000
+  const first = await runStreaming('winget', args, { timeout, label: opts.label, env: opts.env })
+  if (first.code === 0 || isWingetAlreadyInstalled(first.code)) return first
+
+  logger.warn(
+    `[local-env] winget install of ${pkg} ${first.timedOut ? 'timed out' : `failed (code ${first.code})`}, retrying elevated`
+  )
+  return runElevatedWindows(resolveWingetForElevation(), args, { timeout, label: opts.label })
+}
+
+/** Human-readable tail of installer output, for surfacing in the UI toast. */
+function outputTail(output: string, maxLines = 4): string {
+  const lines = output.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && isMeaningfulOutputLine(l))
+  return lines.slice(-maxLines).join('; ')
+}
+
+/** Readable error for a failed winget run: timeout vs UAC cancel vs exit code. */
+function describeWingetFailure(name: string, result: StreamedRunResult): string {
+  if (result.timedOut) return mainT('localEnv.installTimeout', name)
+  if (isUacCancelled(result.code)) return mainT('localEnv.installUacCancelled', name)
+  const tail = outputTail(result.output)
+  return mainT('localEnv.installWingetFailed', name, String(result.code), tail ? `: ${tail}` : '')
+}
+
+/**
+ * Windows SVN: install TortoiseSVN *with* the command-line client, then make
+ * `svn` resolvable from a normal shell:
+ *  1. the MSI must run to completion (elevation, no interactive prompt);
+ *  2. the CLI feature must be selected (ADDLOCAL=ALL; --force over a CLI-less
+ *     existing install, which winget would otherwise treat as a no-op);
+ *  3. ...\TortoiseSVN\bin must be on PATH — added to the user PATH explicitly.
+ */
+async function installSvnWindows(env: NodeJS.ProcessEnv): Promise<ToolInstallResult> {
+  const pkg = WINGET_PACKAGES.svn!
+  const openDownloadPage = async (error: string): Promise<ToolInstallResult> => {
+    await shell.openExternal(DOWNLOAD_URLS.svn!)
+    return { success: false, error }
+  }
+
+  try {
+    await execFileAsync('where', ['winget'], { timeout: 5000, env })
+  } catch {
+    await shell.openExternal(DOWNLOAD_URLS.svn!)
+    return { success: true, openedBrowser: true }
+  }
+
+  const needsCliRepair = findTortoiseSvnRoot() !== null && findTortoiseSvnCli() === null
+  if (needsCliRepair) {
+    logger.info('[local-env] TortoiseSVN present without CLI tools, forcing reinstall with ADDLOCAL=ALL')
+  }
+
+  const result = await wingetInstall(pkg, {
+    label: 'svn-install',
+    custom: WINGET_INSTALL_CUSTOM.svn,
+    force: needsCliRepair,
+    env
+  })
+  const wingetOk = result.code === 0 || isWingetAlreadyInstalled(result.code)
+
+  const cli = findTortoiseSvnCli()
+  if (!cli) {
+    if (!wingetOk) return openDownloadPage(describeWingetFailure('SVN', result))
+    return openDownloadPage(mainT('localEnv.svnCliMissing'))
+  }
+
+  // svn.exe exists — guarantee it is reachable as `svn` from a new shell.
+  await ensureWindowsUserPathContains(path.dirname(cli))
+
+  const version = await getVersion(cli, ['--version', '--quiet'], env)
+  if (!version) {
+    return { success: false, error: mainT('localEnv.svnVersionFailed', cli) }
+  }
+
+  logger.info(`[local-env] Tool installed: svn ${version} at ${cli}`)
+  return { success: true }
 }
 
 /**
@@ -1102,6 +1479,7 @@ export async function installTool(toolId: string): Promise<ToolInstallResult> {
     }
     try {
       await execAsync('curl -fsSL https://claude.ai/install.sh | bash', { timeout: 600000, env })
+      invalidateWindowsRegistryPathCache()
       logger.info(`[local-env] Tool installed: ${id}`)
       return { success: true }
     } catch (err: any) {
@@ -1120,6 +1498,7 @@ export async function installTool(toolId: string): Promise<ToolInstallResult> {
     }
     try {
       await execAsync('curl -fsSL https://x.ai/cli/install.sh | bash', { timeout: 600000, env })
+      invalidateWindowsRegistryPathCache()
       logger.info(`[local-env] Tool installed: ${id}`)
       return { success: true }
     } catch (err: any) {
@@ -1167,6 +1546,67 @@ export async function installTool(toolId: string): Promise<ToolInstallResult> {
     }
   }
 
+  // Oh My Pi — official installer script on every platform (PowerShell on Windows)
+  if (id === 'omp') {
+    try {
+      if (process.platform === 'win32') {
+        await execAsync(
+          'powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://omp.sh/install.ps1 | iex"',
+          { timeout: 600000, env }
+        )
+        invalidateWindowsRegistryPathCache()
+        const ompDir = path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'omp')
+        if (fs.existsSync(ompDir)) {
+          process.env.PATH = `${process.env.PATH || ''};${ompDir}`
+        }
+      } else {
+        await execAsync('curl -fsSL https://omp.sh/install | sh', { timeout: 600000, env })
+      }
+      logger.info(`[local-env] Tool installed: ${id}`)
+      return { success: true }
+    } catch (err: unknown) {
+      logger.error('Failed to install Oh My Pi via install script:', err)
+      await shell.openExternal('https://omp.sh')
+      return { success: true, openedBrowser: true }
+    }
+  }
+
+  // Antigravity CLI — official installer script (PowerShell on Windows, curl on POSIX)
+  if (id === 'antigravity-cli') {
+    try {
+      if (process.platform === 'win32') {
+        await execAsync(
+          'powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://antigravity.google/cli/install.ps1 | iex"',
+          { timeout: 600000, env }
+        )
+        invalidateWindowsRegistryPathCache()
+        const agyDir = path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'agy', 'bin')
+        if (fs.existsSync(agyDir)) {
+          process.env.PATH = `${process.env.PATH || ''};${agyDir}`
+        }
+      } else {
+        await execAsync('curl -fsSL https://antigravity.google/cli/install.sh | bash', { timeout: 600000, env })
+      }
+      logger.info(`[local-env] Tool installed: ${id}`)
+      return { success: true }
+    } catch (err: unknown) {
+      logger.error('Failed to install Antigravity CLI via install script:', err)
+      // macOS: fall back to the Homebrew cask before sending the user to the browser
+      if (process.platform === 'darwin' && BREW_PACKAGES[id]) {
+        try {
+          await execFileAsync('which', ['brew'], { timeout: 5000, env })
+          await execAsync(`brew install ${BREW_PACKAGES[id]}`, { timeout: 600000, env })
+          logger.info(`[local-env] Tool installed via brew: ${id}`)
+          return { success: true }
+        } catch (brewErr: unknown) {
+          logger.error('Failed to install Antigravity CLI via brew cask:', brewErr)
+        }
+      }
+      await shell.openExternal('https://antigravity.google/docs/cli/install')
+      return { success: true, openedBrowser: true }
+    }
+  }
+
   // ZCode is a desktop app — open official download page
   if (id === 'zcode') {
     await shell.openExternal('https://zcode.z.ai/en')
@@ -1185,6 +1625,7 @@ export async function installTool(toolId: string): Promise<ToolInstallResult> {
     try {
       const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm'
       await execFileAsync(npmCmd, ['install', '-g', npmPkg], { timeout: 600000, env })
+      invalidateWindowsRegistryPathCache()
       logger.info(`[local-env] Tool installed: ${id}`)
       return { success: true }
     } catch (err: any) {
@@ -1232,23 +1673,36 @@ export async function installTool(toolId: string): Promise<ToolInstallResult> {
       // brew not available, fall back to browser
     }
   } else if (process.platform === 'win32') {
+    // SVN needs more than a plain winget install: CLI feature + PATH wiring
+    if (id === 'svn') return installSvnWindows(env)
+
     // Try winget first
     try {
       await execFileAsync('where', ['winget'], { timeout: 5000, env })
       const pkg = WINGET_PACKAGES[id]
       if (pkg) {
-        try {
-          await execAsync(
-            `winget install ${pkg} --accept-source-agreements --accept-package-agreements`,
-            { timeout: 600000, env }
-          )
+        const result = await wingetInstall(pkg, {
+          label: `${id}-install`,
+          custom: WINGET_INSTALL_CUSTOM[id],
+          env
+        })
+        if (result.code === 0 || isWingetAlreadyInstalled(result.code)) {
+          invalidateWindowsRegistryPathCache()
           logger.info(`[local-env] Tool installed: ${id}`)
+          if (id === 'python') {
+            // Process-only PATH reorder (no registry rewrite): real Python dirs
+            // ahead of the WindowsApps Store alias for this session's children.
+            try {
+              await ensureWindowsPythonPathPriority()
+            } catch (err: unknown) {
+              logger.warn('[local-env] Failed to reorder Python PATH after install:', err)
+            }
+          }
           const launchedSetup = await maybeLaunchPostInstallSetup(id)
           return { success: true, launchedSetup }
-        } catch (err: any) {
-          logger.error(`Failed to install ${id} via winget:`, err)
-          return { success: false, error: err.stderr || err.message }
         }
+        logger.error(`Failed to install ${id} via winget (code ${result.code})`)
+        return { success: false, error: describeWingetFailure(id, result) }
       }
     } catch {
       // winget not available, fall back to browser
@@ -1311,6 +1765,50 @@ export async function uninstallTool(toolId: string): Promise<ToolInstallResult> 
     }
   }
 
+  // Oh My Pi — installer script drops the binary in ~/.local/bin
+  if (id === 'omp') {
+    if (process.platform === 'win32') {
+      return { success: false, error: mainT('localEnv.windowsManualUninstall', 'Oh My Pi') }
+    }
+    try {
+      const binPath = path.join(os.homedir(), '.local', 'bin', 'omp')
+      if (fs.existsSync(binPath)) fs.unlinkSync(binPath)
+      logger.info(`[local-env] Tool uninstalled: ${id}`)
+      return { success: true }
+    } catch (err: unknown) {
+      logger.error(`Failed to uninstall ${id}:`, err)
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+
+  // Antigravity CLI — remove the installer-script binary (and the brew cask on macOS)
+  if (id === 'antigravity-cli') {
+    try {
+      if (process.platform === 'win32') {
+        const agyPath = path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'agy', 'bin', 'agy.exe')
+        if (fs.existsSync(agyPath)) fs.unlinkSync(agyPath)
+      } else {
+        for (const bin of ['agy', 'antigravity']) {
+          const binPath = path.join(os.homedir(), '.local', 'bin', bin)
+          if (fs.existsSync(binPath)) fs.unlinkSync(binPath)
+        }
+        if (process.platform === 'darwin') {
+          try {
+            await execFileAsync('brew', ['list', '--cask', 'antigravity-cli'], { timeout: 15000, env })
+            await execFileAsync('brew', ['uninstall', '--cask', 'antigravity-cli'], { timeout: 300000, env })
+          } catch {
+            // not installed via brew (or brew unavailable)
+          }
+        }
+      }
+      logger.info(`[local-env] Tool uninstalled: ${id}`)
+      return { success: true }
+    } catch (err: unknown) {
+      logger.error(`Failed to uninstall ${id}:`, err)
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+
   // ZCode desktop app — no safe programmatic uninstall
   if (id === 'zcode') {
     return { success: false, error: '请通过系统方式卸载 ZCode 桌面应用' }
@@ -1370,7 +1868,10 @@ export async function uninstallTool(toolId: string): Promise<ToolInstallResult> 
     if (pkg) {
       try {
         await execFileAsync('where', ['winget'], { timeout: 5000, env })
-        await execAsync(`winget uninstall ${pkg} --accept-source-agreements`, { timeout: 300000, env })
+        await execAsync(
+          `winget uninstall --id ${pkg} -e --accept-source-agreements --disable-interactivity`,
+          { timeout: 300000, env }
+        )
         logger.info(`[local-env] Tool uninstalled: ${id}`)
         return { success: true }
       } catch (err: any) {
@@ -1430,6 +1931,45 @@ export async function upgradeTool(toolId: string): Promise<ToolInstallResult> {
     }
   }
 
+  // Oh My Pi — re-run the official installer to pull the latest release
+  if (id === 'omp') {
+    try {
+      if (process.platform === 'win32') {
+        await execAsync(
+          'powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://omp.sh/install.ps1 | iex"',
+          { timeout: 600000, env }
+        )
+      } else {
+        await execAsync('curl -fsSL https://omp.sh/install | sh', { timeout: 600000, env })
+      }
+      logger.info(`[local-env] Tool upgraded: ${id}`)
+      return { success: true }
+    } catch (err: any) {
+      logger.error(`Failed to upgrade ${id} via install script:`, err)
+      return { success: false, error: err.stderr || err.message }
+    }
+  }
+
+  // Antigravity CLI — ships `agy update`; reinstall when the binary can't be found
+  if (id === 'antigravity-cli') {
+    try {
+      let agyPath: string | undefined
+      for (const cand of getToolCandidatePaths('agy')) {
+        if (fs.existsSync(cand)) { agyPath = cand; break }
+      }
+      if (!agyPath) agyPath = (await whichAll('agy', env))[0]
+      if (agyPath) {
+        await execBinary(agyPath, ['update'], { timeout: 300000, env })
+        logger.info(`[local-env] Tool upgraded: ${id}`)
+        return { success: true }
+      }
+      return installTool(id)
+    } catch (err: any) {
+      logger.error(`Failed to upgrade ${id}:`, err)
+      return { success: false, error: err.stderr || err.message }
+    }
+  }
+
   // Other AI CLIs — reinstall the npm package at @latest
   const npmPkg = NPM_PACKAGES[id]
   if (npmPkg) {
@@ -1457,6 +1997,9 @@ export async function upgradeTool(toolId: string): Promise<ToolInstallResult> {
  */
 const VERSION_CHECK_PACKAGES: Partial<Record<ToolId, string>> = {
   'claude-code': '@anthropic-ai/claude-code',
+  // omp installs via its own script, but the CLI is published to npm in
+  // lockstep with each release, so the registry is a reliable version source.
+  omp: '@oh-my-pi/pi-coding-agent',
   // Grok/ZCode/Trae have no reliable npm version channel
   ...NPM_PACKAGES
 }
@@ -1514,9 +2057,24 @@ export async function checkLatestVersions(toolIds: string[]): Promise<Record<str
  */
 async function resolvePythonPath(pythonPath: string | undefined, env: NodeJS.ProcessEnv): Promise<string> {
   if (pythonPath) return pythonPath
+  // Prefer the workbench venv when it exists — that's what sub-apps run with.
+  const venvPy = getWorkbenchVenvPythonPath()
+  if (fs.existsSync(venvPy)) return venvPy
   const cmd = process.platform === 'win32' ? 'python' : 'python3'
-  const candidates = dedup(await whichAll(cmd, env))
-  return candidates[0] || cmd
+  const candidates = dedup(await whichAll(cmd, env)).filter((p) => !isWindowsAppsPath(path.dirname(p)))
+  if (candidates[0]) return candidates[0]
+
+  if (process.platform === 'win32') {
+    try {
+      const { scanAvailablePythons } = await import('./python-detect.service')
+      const scanned = await scanAvailablePythons({ env }, false)
+      const found = scanned.find((sp) => sp.path && !isWindowsAppsPath(path.dirname(sp.path)))
+      if (found?.path) return found.path
+    } catch {
+      // ignore — fall back to the bareword
+    }
+  }
+  return cmd
 }
 
 /**
@@ -1618,5 +2176,409 @@ export async function uninstallNpmGlobalPackage(packageName: string): Promise<To
   } catch (err: any) {
     logger.error(`Failed to uninstall npm global package ${packageName}:`, err)
     return { success: false, error: err.stderr || err.message }
+  }
+}
+
+// ── China mirrors (pip / npm / docker) ──
+
+export type MirrorToolId = 'python' | 'nodejs' | 'docker'
+
+export interface MirrorSourceStatus {
+  toolId: MirrorToolId
+  enabled: boolean
+  currentSource: string
+  chinaSource: string
+  needsRestart?: boolean
+}
+
+export interface MirrorSourceResult {
+  success: boolean
+  status?: MirrorSourceStatus
+  error?: string
+}
+
+/**
+ * Hardcoded China mirrors — pick the most widely used / best maintained
+ * public endpoints (as of 2026). Toggle OFF = official defaults above.
+ *
+ * - pip:    Tsinghua TUNA (docs: mirrors.tuna.tsinghua.edu.cn/help/pypi/)
+ * - npm:    npmmirror.com (ex-taobao cnpm; de-facto standard in CN)
+ * - docker: DaoCloud public registry-mirrors (docker.m.daocloud.io)
+ */
+const CHINA_MIRRORS = {
+  python: {
+    indexUrl: 'https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple',
+    trustedHost: 'mirrors.tuna.tsinghua.edu.cn'
+  },
+  nodejs: {
+    registry: 'https://registry.npmmirror.com'
+  },
+  docker: {
+    registryMirrors: ['https://docker.m.daocloud.io']
+  }
+} as const
+
+/** Official upstream defaults when China mirror is off / restored with no backup */
+const OFFICIAL_DEFAULTS = {
+  python: 'https://pypi.org/simple',
+  nodejs: 'https://registry.npmjs.org/',
+  dockerLabel: 'Docker Hub (official)'
+} as const
+
+function normalizeUrl(url: string): string {
+  return url.trim().replace(/\/+$/, '').toLowerCase()
+}
+
+function urlsEqual(a: string | null | undefined, b: string): boolean {
+  if (!a) return false
+  return normalizeUrl(a) === normalizeUrl(b)
+}
+
+/** True only when current config matches the mirror *we* apply (not any third-party CN mirror). */
+function isOurPipChina(url: string | null | undefined): boolean {
+  if (!url) return false
+  const u = normalizeUrl(url)
+  const ours = normalizeUrl(CHINA_MIRRORS.python.indexUrl)
+  // Also accept the older TUNA host form so re-toggle still works after upgrade
+  return u === ours || u === normalizeUrl('https://pypi.tuna.tsinghua.edu.cn/simple')
+}
+
+function isOurNpmChina(url: string | null | undefined): boolean {
+  return urlsEqual(url, CHINA_MIRRORS.nodejs.registry)
+}
+
+function isOurDockerChina(mirrors: string[] | null | undefined): boolean {
+  if (!mirrors || mirrors.length === 0) return false
+  const ours = CHINA_MIRRORS.docker.registryMirrors.map((m) => normalizeUrl(m))
+  const cur = mirrors.map((m) => normalizeUrl(m))
+  return ours.length === cur.length && ours.every((m, i) => m === cur[i])
+}
+
+/** Used when restoring: if previous snapshot itself was a China mirror, fall back to official. */
+function isAnyChinaPipUrl(url: string | null | undefined): boolean {
+  if (!url) return false
+  const u = normalizeUrl(url)
+  return (
+    u.includes('tuna.tsinghua') ||
+    u.includes('mirrors.aliyun.com/pypi') ||
+    u.includes('mirrors.cloud.tencent.com/pypi') ||
+    u.includes('mirrors.huaweicloud.com/repository/pypi') ||
+    u.includes('pypi.douban') ||
+    u.includes('npmmirror.com/pypi')
+  )
+}
+
+function isAnyChinaNpmRegistry(url: string | null | undefined): boolean {
+  if (!url) return false
+  const u = normalizeUrl(url)
+  return (
+    u.includes('registry.npmmirror.com') ||
+    u.includes('registry.npm.taobao.org') ||
+    u.includes('mirrors.cloud.tencent.com/npm') ||
+    u.includes('mirrors.huaweicloud.com/repository/npm')
+  )
+}
+
+function isAnyChinaDockerMirrors(mirrors: string[] | null | undefined): boolean {
+  if (!mirrors || mirrors.length === 0) return false
+  return mirrors.some((m) => {
+    const u = normalizeUrl(m)
+    return (
+      u.includes('daocloud.io') ||
+      u.includes('docker.mirrors.ustc.edu.cn') ||
+      u.includes('hub-mirror.c.163.com') ||
+      u.includes('mirror.baidubce.com') ||
+      u.includes('dockerproxy.com') ||
+      u.includes('docker.nju.edu.cn')
+    )
+  })
+}
+
+async function readPipConfig(
+  py: string,
+  key: string,
+  env: NodeJS.ProcessEnv
+): Promise<string | null> {
+  try {
+    const { stdout } = await execBinary(py, ['-m', 'pip', 'config', 'get', key], {
+      timeout: 15000,
+      env,
+      cwd: os.homedir()
+    })
+    const val = stdout.trim()
+    return val || null
+  } catch {
+    return null
+  }
+}
+
+async function writePipConfig(
+  py: string,
+  key: string,
+  value: string | null,
+  env: NodeJS.ProcessEnv
+): Promise<void> {
+  if (value === null || value === '') {
+    try {
+      await execBinary(py, ['-m', 'pip', 'config', 'unset', key], {
+        timeout: 15000,
+        env,
+        cwd: os.homedir()
+      })
+    } catch {
+      // already unset
+    }
+    return
+  }
+  await execBinary(py, ['-m', 'pip', 'config', 'set', key, value], {
+    timeout: 15000,
+    env,
+    cwd: os.homedir()
+  })
+}
+
+async function readNpmRegistry(env: NodeJS.ProcessEnv): Promise<string> {
+  const npmCmd = await resolveNpmCmdPath(env)
+  try {
+    const { stdout } = await execBinary(npmCmd, ['config', 'get', 'registry'], {
+      timeout: 15000,
+      env,
+      cwd: os.homedir()
+    })
+    return stdout.trim() || OFFICIAL_DEFAULTS.nodejs
+  } catch {
+    return OFFICIAL_DEFAULTS.nodejs
+  }
+}
+
+async function writeNpmRegistry(registry: string, env: NodeJS.ProcessEnv): Promise<void> {
+  const npmCmd = await resolveNpmCmdPath(env)
+  await execBinary(npmCmd, ['config', 'set', 'registry', registry], {
+    timeout: 15000,
+    env,
+    cwd: os.homedir()
+  })
+}
+
+function dockerDaemonJsonPath(): string {
+  return path.join(os.homedir(), '.docker', 'daemon.json')
+}
+
+function readDockerDaemonJson(): Record<string, unknown> {
+  const p = dockerDaemonJsonPath()
+  try {
+    if (!fs.existsSync(p)) return {}
+    const raw = fs.readFileSync(p, 'utf8').trim()
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+  } catch (err) {
+    logger.warn('[local-env] failed to parse docker daemon.json:', err)
+    return {}
+  }
+}
+
+function writeDockerDaemonJson(data: Record<string, unknown>): void {
+  const p = dockerDaemonJsonPath()
+  const dir = path.dirname(p)
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true })
+  }
+  fs.writeFileSync(p, `${JSON.stringify(data, null, 2)}\n`, 'utf8')
+}
+
+function readDockerRegistryMirrors(): string[] | null {
+  const data = readDockerDaemonJson()
+  if (!Object.prototype.hasOwnProperty.call(data, 'registry-mirrors')) return null
+  const mirrors = data['registry-mirrors']
+  if (!Array.isArray(mirrors)) return []
+  return mirrors.map(String)
+}
+
+function writeDockerRegistryMirrors(mirrors: string[] | null): void {
+  const data = readDockerDaemonJson()
+  if (mirrors === null) {
+    delete data['registry-mirrors']
+  } else {
+    data['registry-mirrors'] = mirrors
+  }
+  writeDockerDaemonJson(data)
+}
+
+async function getPythonMirrorStatus(pythonPath?: string): Promise<MirrorSourceStatus> {
+  const env = await getAugmentedEnv()
+  const py = await resolvePythonPath(pythonPath, env)
+  const indexUrl = await readPipConfig(py, 'global.index-url', env)
+  const china = CHINA_MIRRORS.python.indexUrl
+  const backup = getLocalEnvMirrorBackup('python')
+  // Default = official. Switch is ON only when we turned it on, or config already equals our CN mirror.
+  const enabled = backup?.enabled === true || isOurPipChina(indexUrl)
+  return {
+    toolId: 'python',
+    enabled,
+    currentSource: indexUrl || OFFICIAL_DEFAULTS.python,
+    chinaSource: china
+  }
+}
+
+async function getNodejsMirrorStatus(): Promise<MirrorSourceStatus> {
+  const env = await getAugmentedEnv()
+  const registry = await readNpmRegistry(env)
+  const china = CHINA_MIRRORS.nodejs.registry
+  const backup = getLocalEnvMirrorBackup('nodejs')
+  const enabled = backup?.enabled === true || isOurNpmChina(registry)
+  return {
+    toolId: 'nodejs',
+    enabled,
+    currentSource: registry || OFFICIAL_DEFAULTS.nodejs,
+    chinaSource: china
+  }
+}
+
+function getDockerMirrorStatus(): MirrorSourceStatus {
+  const mirrors = readDockerRegistryMirrors()
+  const china = CHINA_MIRRORS.docker.registryMirrors
+  const backup = getLocalEnvMirrorBackup('docker')
+  const enabled = backup?.enabled === true || isOurDockerChina(mirrors)
+  const current =
+    mirrors === null || mirrors.length === 0
+      ? OFFICIAL_DEFAULTS.dockerLabel
+      : mirrors.join(', ')
+  return {
+    toolId: 'docker',
+    enabled,
+    currentSource: current,
+    chinaSource: china.join(', '),
+    needsRestart: true
+  }
+}
+
+export async function getMirrorSource(
+  toolId: MirrorToolId,
+  pythonPath?: string
+): Promise<MirrorSourceResult> {
+  try {
+    if (toolId === 'python') return { success: true, status: await getPythonMirrorStatus(pythonPath) }
+    if (toolId === 'nodejs') return { success: true, status: await getNodejsMirrorStatus() }
+    if (toolId === 'docker') return { success: true, status: getDockerMirrorStatus() }
+    return { success: false, error: `Unsupported tool: ${toolId}` }
+  } catch (err: any) {
+    logger.error(`[local-env] getMirrorSource(${toolId}) failed:`, err)
+    return { success: false, error: err.stderr || err.message || String(err) }
+  }
+}
+
+export async function setMirrorSource(
+  toolId: MirrorToolId,
+  enabled: boolean,
+  pythonPath?: string
+): Promise<MirrorSourceResult> {
+  try {
+    if (toolId === 'python') {
+      const env = await getAugmentedEnv()
+      const py = await resolvePythonPath(pythonPath, env)
+      const china = CHINA_MIRRORS.python
+
+      if (enabled) {
+        const currentIndex = await readPipConfig(py, 'global.index-url', env)
+        const currentHost = await readPipConfig(py, 'global.trusted-host', env)
+        const existing = getLocalEnvMirrorBackup('python')
+        // Snapshot previous (usually official) only the first time we switch on
+        const backup: LocalEnvMirrorBackup = {
+          enabled: true,
+          previousIndexUrl: existing?.enabled ? existing.previousIndexUrl : currentIndex,
+          previousTrustedHost: existing?.enabled ? existing.previousTrustedHost : currentHost
+        }
+        if (!isOurPipChina(currentIndex)) {
+          await writePipConfig(py, 'global.index-url', china.indexUrl, env)
+          await writePipConfig(py, 'global.trusted-host', china.trustedHost, env)
+        }
+        setLocalEnvMirrorBackup('python', backup)
+      } else {
+        const backup = getLocalEnvMirrorBackup('python')
+        // No backup → clear config so pip falls back to official pypi.org
+        let restoreIndex: string | null =
+          backup && Object.prototype.hasOwnProperty.call(backup, 'previousIndexUrl')
+            ? backup.previousIndexUrl ?? null
+            : null
+        let restoreHost: string | null =
+          backup && Object.prototype.hasOwnProperty.call(backup, 'previousTrustedHost')
+            ? backup.previousTrustedHost ?? null
+            : null
+        // Never restore into another China mirror; land on official
+        if (isAnyChinaPipUrl(restoreIndex) || isOurPipChina(restoreIndex)) {
+          restoreIndex = null
+          restoreHost = null
+        }
+        await writePipConfig(py, 'global.index-url', restoreIndex, env)
+        await writePipConfig(py, 'global.trusted-host', restoreHost, env)
+        setLocalEnvMirrorBackup('python', null)
+      }
+      return { success: true, status: await getPythonMirrorStatus(pythonPath) }
+    }
+
+    if (toolId === 'nodejs') {
+      const env = await getAugmentedEnv()
+      const china = CHINA_MIRRORS.nodejs.registry
+
+      if (enabled) {
+        const current = await readNpmRegistry(env)
+        const existing = getLocalEnvMirrorBackup('nodejs')
+        const backup: LocalEnvMirrorBackup = {
+          enabled: true,
+          previousRegistry: existing?.enabled ? existing.previousRegistry : current
+        }
+        if (!isOurNpmChina(current)) {
+          await writeNpmRegistry(china, env)
+        }
+        setLocalEnvMirrorBackup('nodejs', backup)
+      } else {
+        const backup = getLocalEnvMirrorBackup('nodejs')
+        let restore = backup?.previousRegistry || OFFICIAL_DEFAULTS.nodejs
+        if (isAnyChinaNpmRegistry(restore) || isOurNpmChina(restore)) {
+          restore = OFFICIAL_DEFAULTS.nodejs
+        }
+        await writeNpmRegistry(restore, env)
+        setLocalEnvMirrorBackup('nodejs', null)
+      }
+      return { success: true, status: await getNodejsMirrorStatus() }
+    }
+
+    if (toolId === 'docker') {
+      const china = [...CHINA_MIRRORS.docker.registryMirrors]
+
+      if (enabled) {
+        const current = readDockerRegistryMirrors()
+        const existing = getLocalEnvMirrorBackup('docker')
+        const backup: LocalEnvMirrorBackup = {
+          enabled: true,
+          previousRegistryMirrors: existing?.enabled
+            ? existing.previousRegistryMirrors
+            : current
+        }
+        if (!isOurDockerChina(current)) {
+          writeDockerRegistryMirrors(china)
+        }
+        setLocalEnvMirrorBackup('docker', backup)
+      } else {
+        const backup = getLocalEnvMirrorBackup('docker')
+        // No backup → remove registry-mirrors (Docker Hub official)
+        let restore: string[] | null =
+          backup && Object.prototype.hasOwnProperty.call(backup, 'previousRegistryMirrors')
+            ? backup.previousRegistryMirrors ?? null
+            : null
+        if (isAnyChinaDockerMirrors(restore) || isOurDockerChina(restore)) {
+          restore = null
+        }
+        writeDockerRegistryMirrors(restore)
+        setLocalEnvMirrorBackup('docker', null)
+      }
+      return { success: true, status: getDockerMirrorStatus() }
+    }
+
+    return { success: false, error: `Unsupported tool: ${toolId}` }
+  } catch (err: any) {
+    logger.error(`[local-env] setMirrorSource(${toolId}, ${enabled}) failed:`, err)
+    return { success: false, error: err.stderr || err.message || String(err) }
   }
 }
