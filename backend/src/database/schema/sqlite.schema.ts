@@ -233,6 +233,47 @@ export async function initializeSqliteSchema(database: DatabaseAdapter): Promise
       FOREIGN KEY (project_id) REFERENCES projects(project_id)
     )
   `);
+  // 迁移：已有库补 project 级 enabled
+  const projectAppConfigCols = await database.all<{ name: string }>(
+    `PRAGMA table_info(project_app_configs)`
+  );
+  if (!projectAppConfigCols.some((c) => c.name === 'enabled')) {
+    await database.run(
+      `ALTER TABLE project_app_configs ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`
+    );
+  }
+
+  // 项目导航栏分组表（客户端工作台收藏夹样式的文件夹）
+  await database.run(`
+    CREATE TABLE IF NOT EXISTS project_nav_groups (
+      group_id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      icon TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (project_id) REFERENCES projects(project_id)
+    )
+  `);
+
+  // 项目导航栏链接表（group_id 为 NULL 表示顶层）
+  await database.run(`
+    CREATE TABLE IF NOT EXISTS project_nav_links (
+      link_id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      group_id TEXT,
+      url TEXT NOT NULL,
+      title TEXT NOT NULL,
+      icon TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      click_count INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (project_id) REFERENCES projects(project_id),
+      FOREIGN KEY (group_id) REFERENCES project_nav_groups(group_id)
+    )
+  `);
 
   // 通用应用表（内置 / admin 登记，kill-switch + 置顶 + 全局配置）
   await database.run(`
@@ -248,10 +289,43 @@ export async function initializeSqliteSchema(database: DatabaseAdapter): Promise
       download_count INTEGER NOT NULL DEFAULT 0,
       execution_count INTEGER NOT NULL DEFAULT 0,
       config TEXT,
+      file_path TEXT,
+      file_size INTEGER,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     )
   `);
+
+  // 迁移：为已有库补齐 common_apps 新增列（check-then-add，幂等）
+  const commonAppColumns = await database.all<{ name: string }>(`PRAGMA table_info(common_apps)`);
+  const hasCommonAppCol = (name: string) => commonAppColumns.some((c) => c.name === name);
+  if (!hasCommonAppCol('pinned')) {
+    await database.run(`ALTER TABLE common_apps ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`);
+    for (const seed of COMMON_APP_SEEDS) {
+      if (seed.pinned) {
+        await database.run(`UPDATE common_apps SET pinned = 1 WHERE app_key = ?`, [seed.appKey]);
+      }
+    }
+  }
+  if (!hasCommonAppCol('version')) {
+    await database.run(`ALTER TABLE common_apps ADD COLUMN version TEXT`);
+  }
+  if (!hasCommonAppCol('builtin')) {
+    await database.run(`ALTER TABLE common_apps ADD COLUMN builtin INTEGER NOT NULL DEFAULT 1`);
+  }
+  if (!hasCommonAppCol('download_count')) {
+    await database.run(`ALTER TABLE common_apps ADD COLUMN download_count INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!hasCommonAppCol('execution_count')) {
+    await database.run(`ALTER TABLE common_apps ADD COLUMN execution_count INTEGER NOT NULL DEFAULT 0`);
+  }
+  // admin 上传的通用应用归档（为空则无服务端内容）
+  if (!hasCommonAppCol('file_path')) {
+    await database.run(`ALTER TABLE common_apps ADD COLUMN file_path TEXT`);
+  }
+  if (!hasCommonAppCol('file_size')) {
+    await database.run(`ALTER TABLE common_apps ADD COLUMN file_size INTEGER`);
+  }
 
   // 幂等 seed 内置通用应用（已存在的行不覆盖；ClawBench 默认空种子）
   const seedNow = Date.now();
@@ -296,6 +370,14 @@ export async function initializeSqliteSchema(database: DatabaseAdapter): Promise
     )
   `);
 
+  // 迁移：common_app_events 补 cancelled（用户主动取消记为运行事件，不计入错误）
+  const commonAppEventColumns = await database.all<{ name: string }>(
+    `PRAGMA table_info(common_app_events)`
+  );
+  if (!commonAppEventColumns.some((c) => c.name === 'cancelled')) {
+    await database.run(`ALTER TABLE common_app_events ADD COLUMN cancelled INTEGER NOT NULL DEFAULT 0`);
+  }
+
   // 通用应用版本历史表
   await database.run(`
     CREATE TABLE IF NOT EXISTS common_app_version_history (
@@ -331,6 +413,9 @@ export async function initializeSqliteSchema(database: DatabaseAdapter): Promise
   await database.run(`CREATE INDEX IF NOT EXISTS idx_projects_created_by ON projects(created_by)`);
   await database.run(`CREATE INDEX IF NOT EXISTS idx_project_members_user ON project_members(user_id)`);
   await database.run(`CREATE INDEX IF NOT EXISTS idx_common_apps_enabled_sort ON common_apps(enabled, sort_order)`);
+  await database.run(`CREATE INDEX IF NOT EXISTS idx_project_nav_groups_project ON project_nav_groups(project_id, sort_order)`);
+  await database.run(`CREATE INDEX IF NOT EXISTS idx_project_nav_links_project ON project_nav_links(project_id, sort_order)`);
+  await database.run(`CREATE INDEX IF NOT EXISTS idx_project_nav_links_group ON project_nav_links(group_id)`);
 
   logger.info('SQLite schema initialized successfully');
 }

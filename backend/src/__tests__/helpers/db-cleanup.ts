@@ -19,6 +19,8 @@ export async function cleanAllTables(): Promise<void> {
   await database.run('DELETE FROM common_app_version_history');
   await database.run('DELETE FROM common_app_events');
   await database.run('DELETE FROM common_app_execution_errors');
+  await database.run('DELETE FROM project_nav_links');
+  await database.run('DELETE FROM project_nav_groups');
   await database.run('DELETE FROM project_app_configs');
   await database.run('DELETE FROM project_members');
   await database.run('DELETE FROM common_apps');
