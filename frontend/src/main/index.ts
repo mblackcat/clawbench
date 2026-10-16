@@ -1,7 +1,7 @@
 import log from 'electron-log/main'
 log.initialize()
 
-import { app, BrowserWindow, nativeImage, shell } from 'electron'
+import { app, BrowserWindow, nativeImage, nativeTheme, shell } from 'electron'
 import { existsSync } from 'fs'
 import { join, resolve } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -19,6 +19,7 @@ import {
 import { settingsStore } from './store/settings.store'
 import * as logger from './utils/logger'
 import { migrateSettings, scheduleEnvAutoDetect } from './utils/migrate-settings'
+import { resolveWindowBackground } from './utils/window-background'
 import { initScheduler } from './services/scheduled-task.service'
 import { initAppScheduler } from './services/app-schedule.service'
 import { startMemoryUpdater } from './services/memory-updater.service'
@@ -152,7 +153,7 @@ function createWindow(options?: { showOnReady?: boolean }): BrowserWindow {
     show: false,
     autoHideMenuBar: true,
     // 根据用户主题设置窗口底色，避免路由切换白屏闪烁
-    backgroundColor: savedTheme === 'dark' || savedTheme.startsWith('dark-') ? '#17171A' : '#F5F6F8',
+    backgroundColor: resolveWindowBackground(savedTheme, nativeTheme.shouldUseDarkColors),
     // macOS: 隐藏标题栏但保留红绿灯按钮（内嵌到内容区）
     ...(isMac ? { titleBarStyle: 'hiddenInset' } : {}),
     // Windows: 完全无框，自定义窗口控制按钮
