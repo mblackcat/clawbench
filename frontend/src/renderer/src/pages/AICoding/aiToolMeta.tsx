@@ -9,6 +9,7 @@ import type { AIToolType } from '../../types/ai-coding'
 export const TOOLS_WITH_NATIVE_SESSIONS: AIToolType[] = [
   'claude',
   'codex',
+  'antigravity',
   'gemini',
   'grok',
   'opencode',
@@ -16,13 +17,15 @@ export const TOOLS_WITH_NATIVE_SESSIONS: AIToolType[] = [
   'kimi',
   'zcode',
   'trae',
-  'mimo'
+  'mimo',
+  'omp'
 ]
 
 /** Soft preset colors — dark mode chips are further toned in theme-overhaul.css */
 export const AI_TOOL_TAG_COLORS: Partial<Record<AIToolType, string>> = {
   claude: 'purple',
   codex: 'green',
+  antigravity: 'blue',
   gemini: 'blue',
   grok: 'default',
   opencode: 'default',
@@ -31,6 +34,7 @@ export const AI_TOOL_TAG_COLORS: Partial<Record<AIToolType, string>> = {
   kimi: 'blue',
   zcode: 'geekblue',
   mimo: 'orange',
+  omp: 'magenta',
   terminal: 'default',
   qwen: 'gold'
 }
@@ -38,6 +42,7 @@ export const AI_TOOL_TAG_COLORS: Partial<Record<AIToolType, string>> = {
 export const AI_TOOL_NAMES: Record<AIToolType, string> = {
   claude: 'Claude',
   codex: 'Codex',
+  antigravity: 'Antigravity',
   gemini: 'Gemini',
   grok: 'Grok',
   opencode: 'OpenCode',
@@ -46,6 +51,7 @@ export const AI_TOOL_NAMES: Record<AIToolType, string> = {
   kimi: 'Kimi Code',
   zcode: 'ZCode',
   mimo: 'MiMo Code',
+  omp: 'Oh My Pi',
   terminal: 'Terminal',
   qwen: 'Qwen Code'
 }
@@ -53,6 +59,7 @@ export const AI_TOOL_NAMES: Record<AIToolType, string> = {
 export const AI_TOOL_SHORT_NAMES: Record<AIToolType, string> = {
   claude: 'Claude',
   codex: 'Codex',
+  antigravity: 'Antigravity',
   gemini: 'Gemini',
   grok: 'Grok',
   opencode: 'OpenCode',
@@ -61,6 +68,7 @@ export const AI_TOOL_SHORT_NAMES: Record<AIToolType, string> = {
   kimi: 'Kimi',
   zcode: 'ZCode',
   mimo: 'MiMo',
+  omp: 'omp',
   terminal: 'Term',
   qwen: 'Qwen'
 }
@@ -74,6 +82,7 @@ export const AI_TOOL_TAG_STYLE: React.CSSProperties = {
 const AI_TOOL_ICON_PROVIDERS: Partial<Record<AIToolType, string | null>> = {
   claude: 'claude',
   codex: 'openai',
+  antigravity: 'antigravity',
   gemini: 'google',
   grok: 'grok',
   opencode: 'opencode',
@@ -82,6 +91,7 @@ const AI_TOOL_ICON_PROVIDERS: Partial<Record<AIToolType, string | null>> = {
   kimi: 'kimi',
   zcode: 'zhipu',
   mimo: 'mimo',
+  omp: 'omp',
   terminal: null,
   qwen: 'qwen'
 }

@@ -336,7 +336,7 @@ class IMBridgeService {
       return
     }
 
-    const validTools = ['claude', 'codex', 'gemini']
+    const validTools = ['claude', 'codex', 'gemini', 'antigravity']
 
     if (!toolArg) {
       await this.adapter?.sendText(chatId,
@@ -344,6 +344,7 @@ class IMBridgeService {
         '1. claude — Claude Code\n' +
         '2. codex — Codex CLI\n' +
         '3. gemini — Gemini CLI\n' +
+        '4. antigravity — Antigravity CLI\n' +
         '发送 `/new <工具名>` 创建会话'
       )
       return
@@ -427,7 +428,7 @@ class IMBridgeService {
 
     // Prompt user to create session if none exist
     if (wSessions.length === 0) {
-      await this.adapter?.sendText(chatId, '该工作区暂无会话，请使用 `/new <工具名>` 创建会话，支持工具 claude|codex|gemini ')
+      await this.adapter?.sendText(chatId, '该工作区暂无会话，请使用 `/new <工具名>` 创建会话，支持工具 claude|codex|gemini|antigravity ')
       return
     }
 

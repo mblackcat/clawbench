@@ -139,6 +139,12 @@ export function getToolCommand(toolType: AIToolType): { command: string; args: s
     case 'qwen':
       // Legacy sessions: fall back to qwen binary if still installed
       return { command: 'qwen', args: [] }
+    case 'antigravity':
+      // Antigravity CLI ships as `agy`
+      return { command: 'agy', args: [] }
+    case 'omp':
+      // Oh My Pi is hosted as its interactive TUI only
+      return { command: 'omp', args: [] }
     case 'terminal':
       return {
         command: process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash'),
@@ -173,6 +179,12 @@ export function getResumeArgs(toolType: AIToolType, toolSessionId: string): stri
     case 'opencode':
       // OpenCode: -s / --session <id>
       return ['--session', toolSessionId]
+    case 'antigravity':
+      // Antigravity CLI: --conversation <id>
+      return ['--conversation', toolSessionId]
+    case 'omp':
+      // Oh My Pi: -r / --resume <ID prefix | path>
+      return ['--resume', toolSessionId]
     default:
       return []
   }
@@ -275,6 +287,10 @@ export function createPtySession(
     rawOutputBuffers.set(sessionId, combined.length > RAW_RING_BUFFER_MAX
       ? combined.slice(combined.length - RAW_RING_BUFFER_MAX)
       : combined)
+
+    // Attention: reset the "output stable" timer on every chunk (TUIs repaint
+    // without completing lines, so appendPtyOutput alone misses activity)
+    touchPtyActivity(sessionId)
 
     const existing = pendingBuffers.get(sessionId) ?? ''
     pendingBuffers.set(sessionId, existing + data)
@@ -416,4 +432,23 @@ export function unregisterPtyOutputCallback(sessionId: string): void {
     clearTimeout(timer)
     outputChangeTimers.delete(sessionId)
   }
+}
+
+/**
+ * Reset the debounced output-stabilized timer for a PTY session whenever it
+ * produces data. The registered callback fires once no data has arrived for
+ * OUTPUT_STABILIZE_MS (used by AI Coding attention: turn finished / waiting).
+ */
+export function touchPtyActivity(sessionId: string): void {
+  const cb = outputChangeCallbacks.get(sessionId)
+  if (!cb) return
+  const existingTimer = outputChangeTimers.get(sessionId)
+  if (existingTimer) clearTimeout(existingTimer)
+  outputChangeTimers.set(
+    sessionId,
+    setTimeout(() => {
+      outputChangeTimers.delete(sessionId)
+      cb(sessionId)
+    }, OUTPUT_STABILIZE_MS)
+  )
 }

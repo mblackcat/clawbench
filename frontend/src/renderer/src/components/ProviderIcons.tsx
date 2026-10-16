@@ -110,6 +110,22 @@ const MimoSvg: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   </svg>
 )
 
+// Oh My Pi (omp) — the official mark from omp.sh/favicon.svg: a π glyph in the
+// brand's pink→purple→cyan gradient on the dark #0f0a14 rounded square.
+const OmpSvg: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  <svg viewBox="0 0 64 64" width="1em" height="1em" fill="none" {...props}>
+    <rect width="64" height="64" rx="12" fill="#0f0a14" />
+    <path fill="url(#pi_omp_g)" d="M14 16h36v8H40v32h-8V24h-6v22h-8V24h-4z" />
+    <defs>
+      <linearGradient id="pi_omp_g" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stopColor="#ed4abf" />
+        <stop offset=".5" stopColor="#9b4dff" />
+        <stop offset="1" stopColor="#5ad8e6" />
+      </linearGradient>
+    </defs>
+  </svg>
+)
+
 const AzureOpenAISvg: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" {...props}>
     <path clipRule="evenodd" d="M16.233 0c.713 0 1.345.551 1.572 1.329.227.778 1.555 5.59 1.555 5.59v9.562h-4.813L14.645 0h1.588z" fill="url(#pi_azure_g0)" fillRule="evenodd" />
@@ -151,6 +167,7 @@ const PROVIDER_ICONS: ProviderIconMap = {
   google: GeminiSvg,
   'gemini-api': GeminiSvg,
   'google-gemini-cli': GeminiSvg,
+  antigravity: GeminiSvg,
   openrouter: OpenAISvg,
   xai: OpenAISvg,
   bedrock: ClaudeSvg,
@@ -178,6 +195,7 @@ const PROVIDER_ICONS: ProviderIconMap = {
   qoder: QoderSvg,
   mimo: MimoSvg,
   zcode: ZhipuSvg,
+  omp: OmpSvg,
 }
 
 const PROVIDER_BRAND_COLORS: Record<string, string> = {
@@ -192,6 +210,7 @@ const PROVIDER_BRAND_COLORS: Record<string, string> = {
   google: '#1C7DEB',
   'gemini-api': '#1C7DEB',
   'google-gemini-cli': '#1C7DEB',
+  antigravity: '#1C7DEB',
   openrouter: '#10a37f',
   xai: '#111111',
   bedrock: '#D97757',
@@ -219,6 +238,7 @@ const PROVIDER_BRAND_COLORS: Record<string, string> = {
   qoder: '#6F42C1',
   mimo: '#FF6900',
   zcode: '#3B82F6',
+  omp: '#9B4DFF',
 }
 
 export function getProviderIcon(provider: string): React.FC<React.SVGProps<SVGSVGElement>> {
@@ -250,6 +270,7 @@ export function toolTypeToProvider(toolType: string): string {
   switch (toolType) {
     case 'claude': return 'claude'
     case 'codex': return 'codex'
+    case 'antigravity': return 'antigravity'
     case 'gemini': return 'google'
     case 'grok': return 'grok'
     case 'opencode': return 'opencode'
@@ -259,6 +280,7 @@ export function toolTypeToProvider(toolType: string): string {
     case 'zcode': return 'zhipu'
     case 'mimo': return 'mimo'
     case 'qwen': return 'qwen'
+    case 'omp': return 'omp'
     default: return 'openai'
   }
 }
