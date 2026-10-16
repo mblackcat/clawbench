@@ -63,7 +63,20 @@ const translations: Record<Lang, Record<string, string>> = {
     'protocol.notRunnable': '「{0}」不是可运行的应用',
     'protocol.pythonUnavailable': 'Python 环境不可用：{0}',
     'protocol.runningInBackground': '正在后台运行：{0}',
-    'protocol.launchFailed': '应用启动异常：{0}'
+    'protocol.launchFailed': '应用启动异常：{0}',
+    // ── sub-app run preparation / protocol run confirmation ──
+    'pythonVenv.creating': '首次运行：正在创建工作台 Python 环境，可能需要一两分钟…',
+    'pythonVenv.installingRequirements': '正在安装依赖：{0}',
+    'pythonVenv.requirementsSkipped':
+      '当前 Python（{0}）不是虚拟环境，已跳过 requirements.txt 自动安装；如缺少依赖请手动安装',
+    'pythonVenv.requirementsFailed': '依赖安装失败，将继续运行：{0}',
+    'subapp.alreadyStarting': '「{0}」正在启动中，请稍候',
+    'protocol.confirmRunTitle': '运行应用',
+    'protocol.confirmRunMessage': '外部链接请求运行「{0}」，是否继续？',
+    'protocol.confirmRunDetail':
+      '应用 ID：{0}\n参数：{1}\n\n该请求来自工作台之外（例如网页链接）。如果你不认识这个链接来源，请选择取消。',
+    'protocol.confirmRunOk': '运行',
+    'protocol.noParams': '（无）'
   },
   en: {
     'subapp.pythonConfiguredPathUnavailable':
@@ -125,7 +138,20 @@ const translations: Record<Lang, Record<string, string>> = {
     'protocol.notRunnable': '"{0}" is not a runnable app',
     'protocol.pythonUnavailable': 'Python is unavailable: {0}',
     'protocol.runningInBackground': 'Running in background: {0}',
-    'protocol.launchFailed': 'Failed to launch app: {0}'
+    'protocol.launchFailed': 'Failed to launch app: {0}',
+    // ── sub-app run preparation / protocol run confirmation ──
+    'pythonVenv.creating': 'First run: creating the workbench Python environment, this may take a minute...',
+    'pythonVenv.installingRequirements': 'Installing dependencies: {0}',
+    'pythonVenv.requirementsSkipped':
+      'Python ({0}) is not a virtual environment, so requirements.txt was not installed automatically. Install missing packages manually if needed.',
+    'pythonVenv.requirementsFailed': 'Dependency install failed, continuing anyway: {0}',
+    'subapp.alreadyStarting': '"{0}" is already starting, please wait',
+    'protocol.confirmRunTitle': 'Run app',
+    'protocol.confirmRunMessage': 'An external link asks to run "{0}". Continue?',
+    'protocol.confirmRunDetail':
+      'App ID: {0}\nParameters: {1}\n\nThis request came from outside the app (for example a web link). Cancel if you do not recognize where the link came from.',
+    'protocol.confirmRunOk': 'Run',
+    'protocol.noParams': '(none)'
   }
 }
 
