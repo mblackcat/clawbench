@@ -44,6 +44,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'localEnv.svnCliMissing': 'TortoiseSVN 已安装，但未找到 svn 命令行工具。请在安装向导中勾选 "command line client tools" 后重装。',
     'localEnv.svnVersionFailed': '已安装 {0}，但执行 svn --version 失败，请重启后重试。',
     'localEnv.windowsManualUninstall': 'Windows 上请手动卸载 {0}',
+    'localEnv.dockerDaemonJsonInvalid': '{0} 不是有效的 JSON 对象，已中止修改以免覆盖现有配置。请先修复该文件后重试。',
     // ── protocol router (V4) ──
     'protocol.parseFailed': '协议地址解析失败：{0}',
     'protocol.unknownCommand': '未知或不支持的协议命令："{0}"',
@@ -106,6 +107,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'localEnv.svnCliMissing': 'TortoiseSVN is installed but the svn command-line tools were not found. Reinstall with "command line client tools" selected.',
     'localEnv.svnVersionFailed': '{0} is installed but "svn --version" failed. Restart and try again.',
     'localEnv.windowsManualUninstall': 'Please uninstall {0} manually on Windows',
+    'localEnv.dockerDaemonJsonInvalid': '{0} is not a valid JSON object — aborted to avoid overwriting your configuration. Fix the file and try again.',
     // ── protocol router (V4) ──
     'protocol.parseFailed': 'Failed to parse protocol URL: {0}',
     'protocol.unknownCommand': 'Unknown or unsupported protocol command: "{0}"',
