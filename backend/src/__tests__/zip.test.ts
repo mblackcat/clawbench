@@ -1,7 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { zipDirectory, readZipEntry } from '../utils/zip';
+import { zipDirectory, readZipEntry, validatePackageManifestId } from '../utils/zip';
 
 describe('Zip utilities', () => {
   let testDir: string;
@@ -46,5 +46,31 @@ describe('Zip utilities', () => {
     expect(readZipEntry(Buffer.from('not a zip at all'), 'main.py')).toBeNull();
     expect(readZipEntry(Buffer.alloc(0), 'main.py')).toBeNull();
     expect(readZipEntry(path.join(testDir, 'missing.zip'), 'main.py')).toBeNull();
+  });
+
+  async function zipWith(files: Record<string, string>): Promise<Buffer> {
+    const dir = fs.mkdtempSync(path.join(testDir, 'pkg-'));
+    for (const [name, content] of Object.entries(files)) {
+      fs.writeFileSync(path.join(dir, name), content);
+    }
+    const out = path.join(testDir, `${path.basename(dir)}.zip`);
+    await zipDirectory(dir, out);
+    return fs.readFileSync(out);
+  }
+
+  it('caps decompressed entry size (zip bomb guard)', async () => {
+    const zip = await zipWith({ 'big.txt': 'a'.repeat(200_000) });
+    expect(readZipEntry(zip, 'big.txt')).toHaveLength(200_000);
+    expect(readZipEntry(zip, 'big.txt', { maxOutputLength: 1000 })).toBeNull();
+  });
+
+  it('validates the manifest id of uploaded packages leniently', async () => {
+    expect(validatePackageManifestId(await zipWith({ 'manifest.json': '{"id":"cb.ok.app"}' }))).toBeNull();
+    expect(validatePackageManifestId(await zipWith({ 'main.py': 'x' }))).toBeNull();
+    expect(validatePackageManifestId(await zipWith({ 'manifest.json': '{"name":"no id"}' }))).toBeNull();
+    for (const bad of ['../evil', 'a/b', '.hidden', 'a..b', '']) {
+      const zip = await zipWith({ 'manifest.json': JSON.stringify({ id: bad }) });
+      expect(validatePackageManifestId(zip)).toMatch(/Invalid manifest id/);
+    }
   });
 });
