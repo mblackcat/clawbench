@@ -1,7 +1,9 @@
 import React from 'react'
-import { Tag, Typography, Tooltip, theme } from 'antd'
-import { PlayCircleOutlined } from '@ant-design/icons'
+import { Tag, Typography, Tooltip } from 'antd'
+import { CaretRightOutlined } from '@ant-design/icons'
 import type { SubAppManifest } from '../types/subapp'
+import { AppIcon } from './AppIcon'
+import { FolderCard } from './FolderCard'
 import { useT } from '../i18n'
 
 const { Text } = Typography
@@ -13,52 +15,71 @@ interface SubAppCardProps {
 }
 
 const SubAppCard: React.FC<SubAppCardProps> = ({ manifest, onRun, onDetail }) => {
-  const { id, name, version } = manifest
-  const { token } = theme.useToken()
+  const { id, name, version, description, icon } = manifest
   const t = useT()
 
   return (
-    <div
-      className="cb-glass-card"
-      style={{
-        cursor: 'pointer'
-      }}
+    <FolderCard
+      style={{ cursor: 'pointer' }}
+      onClick={() => onDetail(manifest)}
     >
       <div
-        onClick={() => onDetail(manifest)}
         style={{
-          padding: '16px 20px',
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          minWidth: 0,
-          flex: 1
+          height: 32,
+          width: 'calc(100% - 74px)'
         }}
       >
+        <AppIcon icon={icon} name={name} category={manifest.category} size={28} />
         <Tooltip title={name}>
-          <Text strong ellipsis style={{ maxWidth: 160 }}>
+          <Text strong ellipsis style={{ fontSize: 13, lineHeight: '20px' }}>
             {name}
           </Text>
         </Tooltip>
-        <Tag style={{ margin: 0, flexShrink: 0 }}>v{version}</Tag>
       </div>
+
       <div
-        onClick={(e) => { e.stopPropagation(); onRun(id) }}
+        className="cb-card-desc"
         style={{
-          padding: '8px 16px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 6,
-          borderTop: `1px solid ${token.colorBorderSecondary}`,
-          color: token.colorPrimary,
-          fontWeight: 500,
-          fontSize: 13
+          fontSize: 12,
+          lineHeight: '18px',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          margin: '6px 0 6px 0'
         }}
       >
-        <PlayCircleOutlined /> {t('workbench.run')}
+        {description || t('workbench.noDesc')}
       </div>
-    </div>
+
+      <div
+        style={{
+          marginTop: 'auto',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingTop: 8
+        }}
+      >
+        <Tag className="card-ver" style={{ margin: 0, fontSize: 10, lineHeight: '16px', height: 18, padding: '0 5px' }}>
+          v{version}
+        </Tag>
+        <Tooltip title={t('workbench.run')}>
+          <button
+            type="button"
+            className="cb-round-action-btn cb-round-action-primary"
+            onClick={(e) => {
+              e.stopPropagation()
+              onRun(id)
+            }}
+          >
+            <CaretRightOutlined style={{ fontSize: 14, marginLeft: 2 }} />
+          </button>
+        </Tooltip>
+      </div>
+    </FolderCard>
   )
 }
 

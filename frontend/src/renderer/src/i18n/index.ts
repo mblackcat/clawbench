@@ -2313,6 +2313,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'appEditor.category.other': '其他',
     'appPublisher.builtinPublishSuccess': '内置应用「{0}」v{1} 已覆盖发布到服务端',
     'appPublisher.builtinBadge': '内置',
+    'workbench.noDesc': '暂无描述',
   },
   'en': {
     // Sidebar menu
@@ -4709,6 +4710,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'appEditor.category.other': 'Other',
     'appPublisher.builtinPublishSuccess': 'Builtin app "{0}" v{1} was published to the server',
     'appPublisher.builtinBadge': 'Builtin',
+    'workbench.noDesc': 'No description',
   }
 }
 
