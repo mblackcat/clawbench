@@ -41,6 +41,30 @@ export interface XtermHelpers {
   onDispose: (cleanup: () => void) => void
 }
 
+export type PasteOutcome = 'ok' | 'empty' | 'non-text' | 'failed'
+
+/**
+ * Read the clipboard and forward text via `onInput`. An empty readText() is
+ * probed so hosts can tell an image/file payload ('non-text') from a truly
+ * empty clipboard ('empty').
+ */
+async function pasteFromClipboard(onInput: (data: string) => void): Promise<PasteOutcome> {
+  try {
+    const text = await navigator.clipboard.readText()
+    if (text) {
+      onInput(text)
+      return 'ok'
+    }
+    try {
+      const items = await navigator.clipboard.read()
+      if (items.some((item) => !item.types.some((tp) => tp === 'text/plain'))) return 'non-text'
+    } catch { /* clipboard.read() unsupported or denied */ }
+    return 'empty'
+  } catch {
+    return 'failed'
+  }
+}
+
 export interface UseXtermOptions {
   /** Terminal identity. Changing it disposes and rebuilds the instance. */
   sessionKey: string
@@ -60,6 +84,11 @@ export interface UseXtermOptions {
   /** Match count / active index for a search bar. */
   onSearchResults?: (result: { resultIndex: number; resultCount: number }) => void
   /**
+   * Outcome of a keyboard paste (Cmd/Ctrl+V) that delivered nothing
+   * ('non-text' / 'failed'), so the host can tell the user why.
+   */
+  onPasteResult?: (outcome: PasteOutcome) => void
+  /**
    * Re-publish the size on window resize / tab visibility / intersection.
    * Needed by hosts whose container is laid out lazily (Allotment panes,
    * route re-entry); plain always-visible hosts can leave it off.
@@ -71,7 +100,7 @@ export interface UseXtermResult {
   containerRef: React.RefObject<HTMLDivElement>
   termRef: React.MutableRefObject<Terminal | null>
   copy: () => void
-  paste: () => Promise<'ok' | 'empty' | 'non-text' | 'failed'>
+  paste: () => Promise<PasteOutcome>
   selectAll: () => void
   clear: () => void
   focus: () => void
@@ -360,9 +389,9 @@ export function useXterm(options: UseXtermOptions): UseXtermResult {
           // preventDefault so the browser does not also fire its native `paste`
           // event on xterm's hidden textarea — that would write it twice.
           event.preventDefault()
-          navigator.clipboard.readText()
-            .then((text) => { if (text) cbRef.current.onInput(text) })
-            .catch(() => { /* clipboard denied or empty */ })
+          void pasteFromClipboard((text) => cbRef.current.onInput(text)).then((outcome) => {
+            if (outcome === 'non-text' || outcome === 'failed') cbRef.current.onPasteResult?.(outcome)
+          })
           return false
         }
       }
@@ -466,25 +495,10 @@ export function useXterm(options: UseXtermOptions): UseXtermResult {
     if (selection) navigator.clipboard.writeText(selection).catch(() => { /* denied */ })
   }, [])
 
-  const paste = useCallback(async (): Promise<'ok' | 'empty' | 'non-text' | 'failed'> => {
-    try {
-      const text = await navigator.clipboard.readText()
-      if (text) {
-        cbRef.current.onInput(text)
-        return 'ok'
-      }
-      // readText() came back empty — the clipboard may hold an image/file
-      // rather than being genuinely empty. Probe so the host can warn only
-      // when there really is a non-text payload.
-      try {
-        const items = await navigator.clipboard.read()
-        if (items.some((item) => !item.types.some((tp) => tp === 'text/plain'))) return 'non-text'
-      } catch { /* clipboard.read() unsupported or denied */ }
-      return 'empty'
-    } catch {
-      return 'failed'
-    }
-  }, [])
+  const paste = useCallback(
+    (): Promise<PasteOutcome> => pasteFromClipboard((text) => cbRef.current.onInput(text)),
+    []
+  )
 
   const selectAll = useCallback(() => termRef.current?.selectAll(), [])
   const clear = useCallback(() => termRef.current?.clear(), [])

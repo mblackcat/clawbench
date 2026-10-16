@@ -10,7 +10,7 @@ import {
 import type { Terminal } from '@xterm/xterm'
 import { useAITerminalStore } from '../../stores/useAITerminalStore'
 import { useT } from '../../i18n'
-import { useXterm, type XtermHelpers } from '../../hooks/useXterm'
+import { useXterm, type XtermHelpers, type PasteOutcome } from '../../hooks/useXterm'
 import { createPtyReplayGate } from '../../utils/pty-replay'
 import { getShellTerminalTheme } from '../../utils/terminal-theme'
 import { useSettingsStore } from '../../stores/useSettingsStore'
@@ -100,6 +100,12 @@ const TerminalPanel: React.FC<Props> = ({ sessionId }) => {
     }, 1200)
   }, [])
 
+  // Keyboard paste that delivered nothing: tell the user why (as the menu does)
+  const handlePasteResult = useCallback((outcome: PasteOutcome) => {
+    if (outcome === 'failed') message.warning(t('terminal.pasteFailed'))
+    else if (outcome === 'non-text') message.warning(t('terminal.pasteNonText'))
+  }, [message, t])
+
   const xterm = useXterm({
     sessionKey: sessionId,
     theme: terminalTheme,
@@ -109,13 +115,12 @@ const TerminalPanel: React.FC<Props> = ({ sessionId }) => {
     onReady: handleReady,
     onSelection: handleSelection,
     onSearchResults: setSearchResults,
+    onPasteResult: handlePasteResult,
   })
 
   const handlePaste = useCallback(async () => {
-    const outcome = await xterm.paste()
-    if (outcome === 'failed') message.warning(t('terminal.pasteFailed'))
-    else if (outcome === 'non-text') message.warning(t('terminal.pasteNonText'))
-  }, [xterm, message, t])
+    handlePasteResult(await xterm.paste())
+  }, [xterm, handlePasteResult])
 
   const handleCloseSearch = useCallback(() => {
     setSearchOpen(false)

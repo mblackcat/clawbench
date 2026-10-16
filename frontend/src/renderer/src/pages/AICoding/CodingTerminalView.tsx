@@ -5,7 +5,7 @@ import type { Terminal } from '@xterm/xterm'
 import { useAICodingStore } from '../../stores/useAICodingStore'
 import { dismissCodingTarget } from '../../stores/useAttentionStore'
 import type { ClaudeViewMode } from '../../types/ai-coding'
-import { useXterm, type XtermHelpers } from '../../hooks/useXterm'
+import { useXterm, type XtermHelpers, type PasteOutcome } from '../../hooks/useXterm'
 import { createPtyReplayGate } from '../../utils/pty-replay'
 import { getCodingTerminalTheme } from '../../utils/terminal-theme'
 import { useSettingsStore } from '../../stores/useSettingsStore'
@@ -132,6 +132,12 @@ const CodingTerminalView: React.FC<CodingTerminalViewProps> = ({ sessionId }) =>
     gate.release(snapshotOffset)
   }, [sessionId])
 
+  // Keyboard paste that delivered nothing: tell the user why (as the menu does)
+  const handlePasteResult = useCallback((outcome: PasteOutcome) => {
+    if (outcome === 'failed') message.warning(t('terminal.pasteFailed'))
+    else if (outcome === 'non-text') message.warning(t('terminal.pasteNonText'))
+  }, [message, t])
+
   const xterm = useXterm({
     sessionKey: sessionId,
     theme: terminalTheme,
@@ -140,14 +146,13 @@ const CodingTerminalView: React.FC<CodingTerminalViewProps> = ({ sessionId }) =>
     onInput: handleInput,
     onResize: handleResize,
     onReady: handleReady,
-    onSearchResults: setSearchResults
+    onSearchResults: setSearchResults,
+    onPasteResult: handlePasteResult
   })
 
   const handlePaste = useCallback(async () => {
-    const outcome = await xterm.paste()
-    if (outcome === 'failed') message.warning(t('terminal.pasteFailed'))
-    else if (outcome === 'non-text') message.warning(t('terminal.pasteNonText'))
-  }, [xterm, message, t])
+    handlePasteResult(await xterm.paste())
+  }, [xterm, handlePasteResult])
 
   const handleCloseSearch = useCallback(() => {
     setSearchOpen(false)
