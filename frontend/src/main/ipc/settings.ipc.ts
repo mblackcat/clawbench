@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import * as logger from '../utils/logger'
 import { detectOne } from '../services/local-env.service'
+import { scanAvailablePythons } from '../services/python-detect.service'
 import {
   getSettings,
   setSetting,
@@ -17,7 +18,8 @@ import {
 } from '../services/settings.service'
 import { setLastChatModel, getLastChatModel, setLastBuiltinChatModel, getLastBuiltinChatModel, getLastChatModelSource, getChatPreferences, setChatPreferences, getAiToolsConfig, getAiToolsConfigRaw, setAiToolsConfig, getAgentSettings, setAgentSettings } from '../store/settings.store'
 import { saveApiToken, clearApiToken } from '../store/api-credentials.store'
-import { refreshGlobalShortcuts } from '../services/shortcut.service'
+import { refreshGlobalShortcuts, getRegisteredShortcutDigits } from '../services/shortcut.service'
+import { warmProjectCommonAppsCache } from '../services/project.service'
 import { detectLarkCli, resetFeishuCliCache } from '../services/feishu-tools.service'
 import { isFeishuUser, getFeishuPlatformAppId } from '../store/auth.store'
 import { ensureFeishuPlatformAppId } from '../services/auth.service'
@@ -32,7 +34,28 @@ export function registerSettingsIpc(): void {
     if (key === 'appShortcutEnabled' || key === 'appShortcutModifier') {
       refreshGlobalShortcuts()
     }
+    // Warm project common-apps cache so shortcuts/favorites hide disabled builtins.
+    if (key === 'activeProject') {
+      const projectId =
+        value && typeof value === 'object' && typeof (value as { projectId?: unknown }).projectId === 'string'
+          ? (value as { projectId: string }).projectId
+          : undefined
+      if (projectId) {
+        warmProjectCommonAppsCache(projectId).catch((err) =>
+          logger.warn('Failed to warm project common-apps cache:', err)
+        )
+      }
+    }
     return result
+  })
+
+  /** Digits 1–9 that successfully bound as global shortcuts (empty if disabled / all failed). */
+  ipcMain.handle('settings:get-registered-shortcuts', async () => {
+    return getRegisteredShortcutDigits()
+  })
+
+  ipcMain.handle('settings:get-available-pythons', async (_event, forceRefresh?: boolean) => {
+    return scanAvailablePythons({}, Boolean(forceRefresh))
   })
 
   ipcMain.handle('settings:validate-python', async (_event, pythonPath: string) => {

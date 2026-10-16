@@ -255,6 +255,17 @@ export interface ClawBenchAPI {
     set: (key: string, value: unknown) => Promise<void>
     validatePython: (pythonPath: string) => Promise<{ valid: boolean; version: string }>
     detectPython: () => Promise<string | null>
+    /** Verified Python installations (workbench venv, settings, scanned; excludes WindowsApps aliases). */
+    getAvailablePythons: (forceRefresh?: boolean) => Promise<Array<{
+      id: string
+      name: string
+      path: string
+      version?: string
+      isDefault?: boolean
+      description?: string
+    }>>
+    /** Digits 1–9 that successfully bound as global app shortcuts (empty if disabled / failed). */
+    getRegisteredShortcuts: () => Promise<number[]>
     getEnvConfig: () => Promise<{ enableAccountLogin: boolean; enableLocalMode: boolean }>
     getAiModels: () => Promise<AIModelConfig[]>
     saveAiModel: (config: Partial<AIModelConfig>) => Promise<AIModelConfig>

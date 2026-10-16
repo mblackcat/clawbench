@@ -8,6 +8,8 @@ import { join } from 'path'
 import { getTempDir } from '../../utils/paths'
 import { unzipArchive } from '../../utils/zip'
 import { listSubApps, installApp } from '../subapp.service'
+import { installAppRequirements } from '../python-venv.service'
+import { fetchPackageArchive } from '../../utils/download-guard'
 import * as logger from '../../utils/logger'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api/v1'
@@ -88,15 +90,14 @@ export async function searchMarketApps(keywords: string, limit = 10): Promise<Ma
 export async function installMarketApp(appId: string): Promise<{ success: boolean; name?: string; error?: string }> {
   try {
     // Download zip
-    const resp = await fetch(`${API_BASE_URL}/applications/${encodeURIComponent(appId)}/download`)
-    if (!resp.ok) throw new Error(`下载失败: ${resp.status}`)
-
-    const buffer = await resp.arrayBuffer()
+    const buffer = await fetchPackageArchive(
+      `${API_BASE_URL}/applications/${encodeURIComponent(appId)}/download`
+    )
     const tmpDir = getTempDir()
     if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true })
 
     const zipPath = join(tmpDir, `market-${appId.replace(/[^a-zA-Z0-9._-]/g, '_')}.zip`)
-    fs.writeFileSync(zipPath, Buffer.from(buffer))
+    fs.writeFileSync(zipPath, buffer)
 
     // Extract zip
     const extractDir = join(tmpDir, `market-extract-${Date.now()}`)
@@ -123,6 +124,13 @@ export async function installMarketApp(appId: string): Promise<{ success: boolea
 
     if (!result.success) {
       return { success: false, error: result.error }
+    }
+    if (result.targetDir) {
+      try {
+        await installAppRequirements(result.targetDir)
+      } catch (reqErr) {
+        logger.warn(`[Marketplace] Failed to install requirements for ${appId}:`, reqErr)
+      }
     }
 
     logger.info(`[Marketplace] Installed app: ${result.manifest?.name} (${appId})`)

@@ -648,7 +648,7 @@ class IMBridgeService {
     let pythonPath: string
 
     try {
-      const python = await resolvePythonCommand()
+      const python = await resolvePythonCommand(app.path)
       pythonPath = python.path
       logger.info(
         `Using ${python.source} Python for IM app ${app.manifest.id}: ${python.path} (${python.version})`

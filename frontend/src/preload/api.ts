@@ -132,6 +132,10 @@ export const api = {
     validatePython: (pythonPath: string) =>
       ipcRenderer.invoke('settings:validate-python', pythonPath),
     detectPython: () => ipcRenderer.invoke('settings:detect-python') as Promise<string | null>,
+    getAvailablePythons: (forceRefresh?: boolean) =>
+      ipcRenderer.invoke('settings:get-available-pythons', forceRefresh),
+    getRegisteredShortcuts: () =>
+      ipcRenderer.invoke('settings:get-registered-shortcuts') as Promise<number[]>,
     getEnvConfig: () => ipcRenderer.invoke('settings:get-env-config'),
     getAiModels: () => ipcRenderer.invoke('settings:get-ai-models'),
     saveAiModel: (config: Record<string, unknown>) =>

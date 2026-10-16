@@ -245,7 +245,7 @@ class WorkbenchToolProvider implements InternalToolProvider {
 
     let pythonPath: string
     try {
-      const python = await resolvePythonCommand()
+      const python = await resolvePythonCommand(appPath)
       pythonPath = python.path
     } catch (err: any) {
       return { content: `Python not available: ${err.message}`, isError: true }
