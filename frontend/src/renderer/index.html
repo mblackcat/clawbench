@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ClawBench</title>
+    <!-- Motion layer: apply data-motion before first paint so tokens are in effect before React hydrates. No IPC. -->
+    <script>
+      try {
+        var stored = localStorage.getItem('cb-motion');
+        var motion = stored === 'agile' || stored === 'off' ? 'agile' : 'elegant';
+        document.documentElement.setAttribute('data-motion', motion);
+      } catch (e) {}
+    </script>
   </head>
   <body style="margin:0; background:#17171A;">
     <div id="root"></div>
