@@ -22,7 +22,7 @@ export async function createApplication(
   ownerId: string,
   input: CreateApplicationInput
 ): Promise<Application> {
-  const applicationId = uuidv4();
+  const applicationId = input.applicationId ? input.applicationId.trim() : uuidv4();
   const now = Date.now();
 
   await database.run(

@@ -53,7 +53,41 @@ export async function createApplicationHandler(
     }
 
     // 验证请求体
-    const { name, description, type, category, metadata } = req.body;
+    const { applicationId, id, name, description, type, category, metadata } = req.body;
+    // 可选：客户端指定应用 ID（通常为 manifest.id，如 cb.username.app-slug）；未指定时回退 uuid
+    const requestedAppId: unknown = applicationId !== undefined ? applicationId : id;
+    let customAppId: string | undefined;
+
+    if (requestedAppId !== undefined && requestedAppId !== null) {
+      if (typeof requestedAppId !== 'string' || requestedAppId.trim().length === 0) {
+        res.status(400).json({
+          success: false,
+          error: { code: 'INVALID_INPUT', message: 'Application ID must be a non-empty string' },
+        });
+        return;
+      }
+      const trimmedAppId = requestedAppId.trim();
+      if (trimmedAppId.length > 255) {
+        res.status(400).json({
+          success: false,
+          error: { code: 'INVALID_INPUT', message: 'Application ID cannot exceed 255 characters' },
+        });
+        return;
+      }
+      // 首字符必须是字母或数字：ID 会作为存储目录名，禁止 "." / ".." 之类的路径片段
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(trimmedAppId)) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'INVALID_INPUT',
+            message:
+              'Application ID can only contain letters, numbers, dots, hyphens, and underscores, and must start with a letter or number',
+          },
+        });
+        return;
+      }
+      customAppId = trimmedAppId;
+    }
 
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
       res.status(400).json({
@@ -113,8 +147,17 @@ export async function createApplicationHandler(
       return;
     }
 
+    if (customAppId && (await getApplicationById(customAppId))) {
+      res.status(409).json({
+        success: false,
+        error: { code: 'CONFLICT', message: `Application with ID "${customAppId}" already exists` },
+      });
+      return;
+    }
+
     // 构建创建输入
     const input: CreateApplicationInput = {
+      applicationId: customAppId,
       name: name.trim(),
       description: description?.trim(),
       type: type || 'app',
@@ -941,9 +984,10 @@ export async function reportExecutionHandler(
 ): Promise<void> {
   try {
     const { applicationId } = req.params;
-    const { version, success, errorMessage, errorDetails } = req.body as {
+    const { version, success, cancelled, errorMessage, errorDetails } = req.body as {
       version?: unknown;
       success?: unknown;
+      cancelled?: unknown;
       errorMessage?: unknown;
       errorDetails?: unknown;
     };
@@ -975,7 +1019,15 @@ export async function reportExecutionHandler(
 
     await incrementExecutionCount(applicationId);
 
-    if (!success && typeof errorMessage === 'string' && errorMessage.trim().length > 0) {
+    // 用户主动取消不算执行错误：计入运行次数，但不写错误日志
+    const wasCancelled =
+      cancelled === true || cancelled === 1 || cancelled === 'true' || cancelled === '1';
+    if (
+      !wasCancelled &&
+      !success &&
+      typeof errorMessage === 'string' &&
+      errorMessage.trim().length > 0
+    ) {
       await createExecutionError({
         applicationId,
         userId: req.userId,
@@ -985,7 +1037,7 @@ export async function reportExecutionHandler(
       });
     }
 
-    res.status(200).json({ success: true, data: { recorded: true } });
+    res.status(200).json({ success: true, data: { recorded: true, cancelled: wasCancelled } });
   } catch (error) {
     logger.error('Error reporting application execution:', error);
     res.status(500).json({
