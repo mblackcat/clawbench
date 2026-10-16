@@ -159,6 +159,56 @@ describe('Common App Archive API (admin publish / download)', () => {
     expect(res.body).toEqual(uploadedBytes);
   });
 
+  it('download respects the global kill-switch (403 for users, admins still allowed)', async () => {
+    const off = await request(app)
+      .put('/api/v1/common-apps/env-check')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ enabled: false });
+    expect(off.status).toBe(200);
+    try {
+      const userRes = await request(app)
+        .get('/api/v1/common-apps/env-check/download')
+        .set('Authorization', `Bearer ${userToken}`);
+      expect(userRes.status).toBe(403);
+      expect(userRes.body.error.code).toBe('APP_DISABLED');
+
+      const adminRes = await request(app)
+        .get('/api/v1/common-apps/env-check/download')
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(adminRes.status).toBe(200);
+    } finally {
+      await request(app)
+        .put('/api/v1/common-apps/env-check')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ enabled: true });
+    }
+  });
+
+  it('download respects a project-level disable when ?projectId= is given', async () => {
+    const created = await request(app)
+      .post('/api/v1/projects')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Archive Project' });
+    expect(created.status).toBe(201);
+    const projectId = created.body.data.project.projectId;
+    const cfg = await request(app)
+      .put(`/api/v1/projects/${projectId}/app-configs/env-check`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ enabled: false });
+    expect(cfg.status).toBe(200);
+
+    const blocked = await request(app)
+      .get(`/api/v1/common-apps/env-check/download?projectId=${encodeURIComponent(projectId)}`)
+      .set('Authorization', `Bearer ${userToken}`);
+    expect(blocked.status).toBe(403);
+
+    // Without project context only the global flag applies
+    const ok = await request(app)
+      .get('/api/v1/common-apps/env-check/download')
+      .set('Authorization', `Bearer ${userToken}`);
+    expect(ok.status).toBe(200);
+  });
+
   it('download 404 for an app without a published archive', async () => {
     const res = await request(app)
       .get('/api/v1/common-apps/clean-project/download')

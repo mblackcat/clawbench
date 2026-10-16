@@ -109,6 +109,7 @@ export function createApp(): Application {
       message: tooMany('Too many download attempts, please try again later'),
     });
     app.use('/api/v1/applications/:applicationId/download', appDownloadLimiter);
+    app.use('/api/v1/common-apps/:appKey/download', appDownloadLimiter);
 
     // 上传：防刷
     const uploadLimiter = rateLimit({
