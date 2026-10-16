@@ -20,6 +20,7 @@ import {
 } from './pty-manager.service'
 import { getAugmentedEnv, loadShellEnv } from './cli-detect.service'
 import * as logger from '../utils/logger'
+import { resolveLocalTerminalShell } from './terminal-detect.service'
 
 // ── SSH Config Parsing ──
 
@@ -285,10 +286,10 @@ export async function openTerminal(
   const env = getAugmentedEnv() as Record<string, string>
 
   if (!conn || conn.type === 'local') {
-    // Local terminal
-    command = process.platform === 'win32'
-      ? 'cmd.exe'
-      : (process.env.SHELL || '/bin/bash')
+    // Local terminal: honor the user's configured terminal (settings.localTerminalPath)
+    const localShell = resolveLocalTerminalShell()
+    command = localShell.command
+    args = localShell.args
   } else {
     // SSH connection via system ssh command — use absolute path
     command = resolveSSHBinary(env)

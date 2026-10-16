@@ -107,6 +107,24 @@ interface SettingsSchema {
   pipIndexUrl: string
   /** AI Coding / workbench attention: also show an OS notification per alert. Default true. */
   attentionSystemNotification: boolean
+  /**
+   * Local Env China-mirror backups (keyed by toolId: python | nodejs | docker).
+   * Stores previous source values so toggling off can restore them.
+   */
+  localEnvMirrors: Record<string, LocalEnvMirrorBackup>
+}
+
+/** Backup of pre-China-mirror config for one Local Env tool */
+export interface LocalEnvMirrorBackup {
+  enabled: boolean
+  /** pip: previous global.index-url (null = was unset) */
+  previousIndexUrl?: string | null
+  /** pip: previous global.trusted-host */
+  previousTrustedHost?: string | null
+  /** npm: previous registry */
+  previousRegistry?: string | null
+  /** docker: previous registry-mirrors (null = key was absent) */
+  previousRegistryMirrors?: string[] | null
 }
 
 interface PublicSettings {
@@ -127,6 +145,7 @@ interface PublicSettings {
   pinnedApps: string[]
   activeProject: Partial<ActiveProjectInfo>
   attentionSystemNotification: boolean
+  pipIndexUrl: string
 }
 
 export const settingsStore = new Store<SettingsSchema>({
@@ -351,6 +370,10 @@ export const settingsStore = new Store<SettingsSchema>({
     attentionSystemNotification: {
       type: 'boolean',
       default: true
+    },
+    localEnvMirrors: {
+      type: 'object',
+      default: {}
     }
   }
 })
@@ -386,6 +409,21 @@ export function setCodingToolsEnabled(map: Record<string, boolean>): void {
   settingsStore.set('codingToolsEnabled', map)
 }
 
+export function getLocalEnvMirrorBackup(toolId: string): LocalEnvMirrorBackup | undefined {
+  const map = settingsStore.get('localEnvMirrors') ?? {}
+  return map[toolId]
+}
+
+export function setLocalEnvMirrorBackup(toolId: string, backup: LocalEnvMirrorBackup | null): void {
+  const map = { ...(settingsStore.get('localEnvMirrors') ?? {}) }
+  if (backup === null) {
+    delete map[toolId]
+  } else {
+    map[toolId] = backup
+  }
+  settingsStore.set('localEnvMirrors', map)
+}
+
 export function getSettings(): PublicSettings {
   // 获取或初始化 userAppDir
   let userAppDir = settingsStore.get('userAppDir')
@@ -413,7 +451,8 @@ export function getSettings(): PublicSettings {
     appOrder: settingsStore.get('appOrder') ?? [],
     pinnedApps: settingsStore.get('pinnedApps') ?? DEFAULT_PINNED_APP_IDS,
     activeProject: settingsStore.get('activeProject') ?? {},
-    attentionSystemNotification: isAttentionSystemNotificationEnabled()
+    attentionSystemNotification: isAttentionSystemNotificationEnabled(),
+    pipIndexUrl: settingsStore.get('pipIndexUrl') ?? ''
   }
 }
 

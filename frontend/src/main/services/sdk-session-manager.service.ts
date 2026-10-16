@@ -29,6 +29,7 @@ import { createMessageQueue, type MessageQueue } from './coding-adapters/message
 import { processClaudeMessage, createClaudeStreamState, type ClaudeStreamState } from './coding-adapters/claude-stream'
 import { scanAndMergeInstructions } from './coding-adapters/instructions'
 import type { CodingStreamEvent } from './coding-adapters/stream-events'
+import { createTerminalExecMcp, TERMINAL_EXEC_MCP_NAME, type TerminalExecTarget } from './terminal-exec-mcp'
 
 // Lazy-import the SDK to avoid issues if it's not installed
 let sdkQuery: typeof import('@anthropic-ai/claude-agent-sdk').query | null = null
@@ -111,6 +112,12 @@ interface SDKSessionState {
    */
   earlyQuestionAnswers: Map<string, Record<string, string>>
   env?: Record<string, string | undefined>
+  /**
+   * Live terminal/DB surface (AI Terminal assistant sessions only). When set an
+   * in-process MCP server is attached so Claude can run commands/SQL on the
+   * user's actual terminal tab or DB connection.
+   */
+  execTarget?: TerminalExecTarget
   /** Server-side streaming accumulation state. */
   streamState: ClaudeStreamState
   /** Callbacks registered by ai-coding.service.ts. */
@@ -368,7 +375,8 @@ export function launchSDKSession(
   onClose?: (sessionId: string) => void,
   onError?: (sessionId: string, err: Error) => void,
   env?: Record<string, string | undefined>,
-  effort?: string
+  effort?: string,
+  execTarget?: TerminalExecTarget
 ): { success: boolean; error?: string } {
   closeSDKSession(sessionId)
 
@@ -385,6 +393,7 @@ export function launchSDKSession(
     pendingQuestions: new Map(),
     earlyQuestionAnswers: new Map(),
     env,
+    execTarget,
     streamState: createClaudeStreamState(),
     onEvent,
     onClose,
@@ -589,6 +598,13 @@ async function startQuery(sessionId: string, state: SDKSessionState): Promise<vo
   // extra system context. CLAUDE.md is read natively via settingSources.
   const mergedInstructions = scanAndMergeInstructions(state.cwd, 'claude')
   if (mergedInstructions) options.systemPrompt = mergedInstructions
+
+  // AI Terminal assistant: in-process MCP tools acting on the live terminal / DB
+  // connection. Every tool call still goes through canUseTool.
+  if (state.execTarget) {
+    const execServer = await createTerminalExecMcp(state.execTarget)
+    if (execServer) options.mcpServers = { [TERMINAL_EXEC_MCP_NAME]: execServer }
+  }
 
   const q = queryFn({ prompt: state.messageQueue, options })
   state.activeQuery = q

@@ -15,11 +15,7 @@ import {
 } from 'antd'
 import {
   FolderOpenOutlined,
-  CheckCircleOutlined,
-  CloseCircleOutlined,
   CloseOutlined,
-  CodeOutlined,
-  SearchOutlined,
   QuestionCircleOutlined
 } from '@ant-design/icons'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -32,6 +28,7 @@ import AIToolsSettings from './AIToolsSettings'
 import AIAssistantSettings from './AIAssistantSettings'
 import ProjectSelectCard from './ProjectSelectCard'
 import { generalModeFallbackPath } from '../../constants/app-mode'
+import EnvPathSettings from './EnvPathSettings'
 import { useT } from '../../i18n'
 
 const { Title, Text } = Typography
@@ -112,10 +109,7 @@ const SettingsPage: React.FC = () => {
     VALID_TAB_KEYS.includes(hashTab) ? hashTab : 'general'
   )
   const {
-    pythonPath,
     userAppDir,
-    localIdePath,
-    localTerminalPath,
     appShortcutEnabled,
     appShortcutModifier,
     fetchSettings,
@@ -123,15 +117,6 @@ const SettingsPage: React.FC = () => {
   } = useSettingsStore()
   const { token } = theme.useToken()
   const t = useT()
-
-  const [pythonValidation, setPythonValidation] = useState<{
-    status: 'success' | 'error' | null
-    message: string
-  }>({ status: null, message: '' })
-  const [validating, setValidating] = useState(false)
-  const [detectingIde, setDetectingIde] = useState(false)
-  const [detectingTerminal, setDetectingTerminal] = useState(false)
-  const [detectingPython, setDetectingPython] = useState(false)
 
   useEffect(() => {
     const tab = location.hash.replace('#', '')
@@ -144,108 +129,10 @@ const SettingsPage: React.FC = () => {
     fetchSettings()
   }, [fetchSettings])
 
-  const handleValidatePython = async (): Promise<void> => {
-    setValidating(true)
-    setPythonValidation({ status: null, message: '' })
-    try {
-      const result = await window.api.settings.validatePython(pythonPath)
-      if (result && (result as any).valid) {
-        const version = (result as any).version
-        setPythonValidation({
-          status: 'success',
-          message: version
-            ? t('settings.pythonValidated', version)
-            : t('settings.pythonValidatedPlain')
-        })
-      } else {
-        setPythonValidation({ status: 'error', message: t('settings.pythonInvalid') })
-      }
-    } catch (err) {
-      setPythonValidation({
-        status: 'error',
-        message: err instanceof Error ? err.message : t('settings.validationFailed')
-      })
-    } finally {
-      setValidating(false)
-    }
-  }
-
   const handleSelectDir = async (): Promise<void> => {
     const dir = await window.api.dialog.selectDirectory()
     if (dir) {
       updateSetting('userAppDir', dir)
-    }
-  }
-
-  const handleBrowsePython = async (): Promise<void> => {
-    const selected = await window.api.dialog.selectApp()
-    if (selected) {
-      updateSetting('pythonPath', selected)
-    }
-  }
-
-  const handleDetectPython = async (): Promise<void> => {
-    setDetectingPython(true)
-    try {
-      const detected = await window.api.settings.detectPython()
-      if (detected) {
-        updateSetting('pythonPath', detected)
-        message.success(t('settings.pythonDetected', detected))
-      } else {
-        message.warning(t('settings.pythonNotFound'))
-      }
-    } catch {
-      message.error(t('settings.detectFailed'))
-    } finally {
-      setDetectingPython(false)
-    }
-  }
-
-  const handleDetectIde = async (): Promise<void> => {
-    setDetectingIde(true)
-    try {
-      const detected = await window.api.developer.detectIde()
-      if (detected) {
-        updateSetting('localIdePath', detected)
-        message.success(t('settings.ideDetected', detected))
-      } else {
-        message.warning(t('settings.ideNotFound'))
-      }
-    } catch (err) {
-      message.error(t('settings.detectFailed'))
-    } finally {
-      setDetectingIde(false)
-    }
-  }
-
-  const handleDetectTerminal = async (): Promise<void> => {
-    setDetectingTerminal(true)
-    try {
-      const detected = await window.api.developer.detectTerminal()
-      if (detected) {
-        updateSetting('localTerminalPath', detected)
-        message.success(t('settings.terminalDetected', detected))
-      } else {
-        message.warning(t('settings.terminalNotFound'))
-      }
-    } catch {
-      message.error(t('settings.detectFailed'))
-    } finally {
-      setDetectingTerminal(false)
-    }
-  }
-
-  const handleBrowseIde = async (): Promise<void> => {
-    const selected = await window.api.dialog.selectApp()
-    if (selected) {
-      updateSetting('localIdePath', selected)
-    }
-  }
-
-  const handleBrowseTerminal = async (): Promise<void> => {
-    const selected = await window.api.dialog.selectApp()
-    if (selected) {
-      updateSetting('localTerminalPath', selected)
     }
   }
 
@@ -386,109 +273,8 @@ const SettingsPage: React.FC = () => {
                   </Form>
                 </Card>
 
-                {/* Card 2: Python Path + IDE Path + Terminal Path */}
-                <Card
-                  size="small"
-                  style={{ borderRadius: token.borderRadiusLG, borderColor: token.colorPrimaryBorder }}
-                  styles={{ body: { padding: '14px 16px' } }}
-                >
-                  <Form layout="vertical" style={{ marginBottom: 0 }}>
-                    <Form.Item label={t('settings.pythonPath')} style={{ marginBottom: 16 }}>
-                      <Space.Compact style={{ width: '100%' }}>
-                        <Input
-                          value={pythonPath}
-                          onChange={(e) => updateSetting('pythonPath', e.target.value)}
-                          placeholder="/usr/bin/python3"
-                          style={{ flex: 1 }}
-                        />
-                        <Button loading={validating} onClick={handleValidatePython}>
-                          {t('settings.pythonTest')}
-                        </Button>
-                        <Button
-                          icon={<SearchOutlined />}
-                          loading={detectingPython}
-                          onClick={handleDetectPython}
-                        >
-                          {t('settings.autoDetect')}
-                        </Button>
-                        <Button
-                          icon={<FolderOpenOutlined />}
-                          onClick={handleBrowsePython}
-                        >
-                          {t('settings.browse')}
-                        </Button>
-                      </Space.Compact>
-                      {pythonValidation.status && (
-                        <div style={{ marginTop: 4 }}>
-                          {pythonValidation.status === 'success' ? (
-                            <Text type="success">
-                              <CheckCircleOutlined /> {pythonValidation.message}
-                            </Text>
-                          ) : (
-                            <Text type="danger">
-                              <CloseCircleOutlined /> {pythonValidation.message}
-                            </Text>
-                          )}
-                        </div>
-                      )}
-                    </Form.Item>
-
-                    <Form.Item label={t('settings.idePath')} style={{ marginBottom: 16 }}>
-                      <Space.Compact style={{ width: '100%' }}>
-                        <Input
-                          value={localIdePath}
-                          onChange={(e) => updateSetting('localIdePath', e.target.value)}
-                          placeholder={t('settings.idePathPlaceholder')}
-                          prefix={<CodeOutlined />}
-                          style={{ flex: 1 }}
-                        />
-                        <Button
-                          icon={<SearchOutlined />}
-                          loading={detectingIde}
-                          onClick={handleDetectIde}
-                        >
-                          {t('settings.autoDetect')}
-                        </Button>
-                        <Button
-                          icon={<FolderOpenOutlined />}
-                          onClick={handleBrowseIde}
-                        >
-                          {t('settings.browse')}
-                        </Button>
-                      </Space.Compact>
-                      <Text type="secondary" style={{ fontSize: 12 }}>
-                        {t('settings.idePathDesc')}
-                      </Text>
-                    </Form.Item>
-
-                    <Form.Item label={t('settings.terminalPath')} style={{ marginBottom: 0 }}>
-                      <Space.Compact style={{ width: '100%' }}>
-                        <Input
-                          value={localTerminalPath}
-                          onChange={(e) => updateSetting('localTerminalPath', e.target.value)}
-                          placeholder={t('settings.terminalPathPlaceholder')}
-                          style={{ flex: 1 }}
-                        />
-                        <Button
-                          icon={<SearchOutlined />}
-                          loading={detectingTerminal}
-                          onClick={handleDetectTerminal}
-                        >
-                          {t('settings.autoDetect')}
-                        </Button>
-                        <Button
-                          icon={<FolderOpenOutlined />}
-                          onClick={handleBrowseTerminal}
-                        >
-                          {t('settings.browse')}
-                        </Button>
-                      </Space.Compact>
-                      <Text type="secondary" style={{ fontSize: 12 }}>
-                        {t('settings.terminalPathDesc')}
-                      </Text>
-                    </Form.Item>
-                  </Form>
-                </Card>
+                {/* Card 2: Python / IDE / terminal paths (scanned pickers) */}
+                <EnvPathSettings />
               </div>
             )
           },

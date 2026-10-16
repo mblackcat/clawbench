@@ -27,7 +27,7 @@ interface Props {
 
 const DBQueryEditor: React.FC<Props> = ({ tabId, connectionId }) => {
   const { token } = theme.useToken()
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const t = useT()
   const [sql, setSql] = useState('')
   const [loading, setLoading] = useState(false)
@@ -115,6 +115,24 @@ const DBQueryEditor: React.FC<Props> = ({ tabId, connectionId }) => {
         const data = await window.api.aiTerminal.queryDB(connectionId, sqlToRun)
         setResult(data)
       } else {
+        // Schema-destroying statements get a second confirmation (no whitelist:
+        // any statement can still run once confirmed).
+        const statementsOnly = sqlToRun.replace(/--[^\n]*|\/\*[\s\S]*?\*\//g, ' ')
+        const dangerous = statementsOnly.match(/\b(DROP|TRUNCATE|ALTER)\b/i)
+        if (dangerous) {
+          const confirmed = await new Promise<boolean>((resolve) => {
+            modal.confirm({
+              title: t('db.dangerousConfirmTitle'),
+              content: t('db.dangerousConfirmContent', dangerous[1].toUpperCase()),
+              okText: t('common.confirm'),
+              okButtonProps: { danger: true },
+              cancelText: t('common.cancel'),
+              onOk: () => resolve(true),
+              onCancel: () => resolve(false)
+            })
+          })
+          if (!confirmed) return
+        }
         const data = await window.api.aiTerminal.executeDB(connectionId, sqlToRun)
         setResult({
           columns: ['affected_rows', 'execution_time_ms'],
@@ -130,7 +148,7 @@ const DBQueryEditor: React.FC<Props> = ({ tabId, connectionId }) => {
     } finally {
       setLoading(false)
     }
-  }, [sql, connectionId, message, t])
+  }, [sql, connectionId, message, modal, t])
 
   // Keep executeRef in sync
   executeRef.current = handleExecute

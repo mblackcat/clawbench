@@ -1,7 +1,9 @@
 import * as pty from 'node-pty'
 import { BrowserWindow } from 'electron'
 import * as logger from '../utils/logger'
+import { killProcessTree } from '../utils/process-tree'
 import type { AIToolType } from '../store/ai-coding.store'
+import { resolveLocalTerminalShell } from './terminal-detect.service'
 
 // ── Active PTY sessions ──
 const ptySessions = new Map<string, pty.IPty>()
@@ -17,8 +19,21 @@ const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const outputBuffers = new Map<string, string>()
 const RING_BUFFER_MAX = 4000
 
-// ── Raw ANSI output ring-buffer for terminal replay ──
-const rawOutputBuffers = new Map<string, string>()
+/**
+ * Raw ANSI output ring-buffer for terminal replay.
+ *
+ * Stored as a chunk list rather than one accumulated string. Appending to a
+ * string meant allocating (and slicing) a fresh ~1MB buffer for every PTY
+ * chunk once the cap was reached; fullscreen TUIs repaint the viewport on each
+ * keystroke, so the GC churn stalled the main process (where `pty:write` is
+ * serviced) and surfaced as input lag. Push/shift keeps append amortised O(1);
+ * the join only happens on the rare replay read.
+ */
+interface RawBuffer {
+  chunks: string[]
+  length: number
+}
+const rawOutputBuffers = new Map<string, RawBuffer>()
 const RAW_RING_BUFFER_MAX = 1_000_000
 
 // ── Per-session line accumulator for handling \r overwrites ──
@@ -109,9 +124,33 @@ function appendPtyOutput(sessionId: string, text: string): void {
 }
 
 /**
+ * Append raw PTY bytes to the replay ring buffer, evicting whole chunks from
+ * the front while the retained length stays at or above the cap.
+ */
+function appendRawOutput(sessionId: string, data: string): void {
+  let buf = rawOutputBuffers.get(sessionId)
+  if (!buf) {
+    buf = { chunks: [], length: 0 }
+    rawOutputBuffers.set(sessionId, buf)
+  }
+  buf.chunks.push(data)
+  buf.length += data.length
+  while (buf.chunks.length > 1 && buf.length - buf.chunks[0].length >= RAW_RING_BUFFER_MAX) {
+    buf.length -= buf.chunks[0].length
+    buf.chunks.shift()
+  }
+}
+
+/**
  * Resolve the shell command + args for a given tool type.
  */
 export function getToolCommand(toolType: AIToolType): { command: string; args: string[] } {
+  // Antigravity CLI (agy) / Oh My Pi (omp). Compared as plain strings so this
+  // compiles whether or not AIToolType already includes them.
+  const extraTool: string = toolType
+  if (extraTool === 'antigravity') return { command: 'agy', args: [] }
+  // Oh My Pi is hosted as its interactive TUI only.
+  if (extraTool === 'omp') return { command: 'omp', args: [] }
   switch (toolType) {
     case 'claude':
       return { command: 'claude', args: [] }
@@ -146,10 +185,7 @@ export function getToolCommand(toolType: AIToolType): { command: string; args: s
       // Oh My Pi is hosted as its interactive TUI only
       return { command: 'omp', args: [] }
     case 'terminal':
-      return {
-        command: process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash'),
-        args: []
-      }
+      return resolveLocalTerminalShell()
     default:
       return {
         command: process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash'),
@@ -162,6 +198,10 @@ export function getToolCommand(toolType: AIToolType): { command: string; args: s
  * Get resume arguments for tools that support session resumption.
  */
 export function getResumeArgs(toolType: AIToolType, toolSessionId: string): string[] {
+  const extraTool: string = toolType
+  if (extraTool === 'antigravity') return ['--conversation', toolSessionId]
+  // Oh My Pi: -r / --resume <ID prefix | path>
+  if (extraTool === 'omp') return ['--resume', toolSessionId]
   switch (toolType) {
     case 'claude':
     case 'gemini':
@@ -250,7 +290,9 @@ export function createPtySession(
     const isShell =
       lowerCmd.endsWith('cmd.exe') ||
       lowerCmd.endsWith('powershell.exe') ||
-      lowerCmd.endsWith('pwsh.exe')
+      lowerCmd.endsWith('pwsh.exe') ||
+      lowerCmd.endsWith('bash.exe') ||
+      lowerCmd.endsWith('wsl.exe')
     const isNativeExe = lowerCmd.endsWith('.exe')
     if (!isShell && !isNativeExe) {
       spawnCommand = 'cmd.exe'
@@ -282,11 +324,7 @@ export function createPtySession(
     appendPtyOutput(sessionId, data)
 
     // Accumulate raw ANSI output for terminal replay on remount
-    const raw = rawOutputBuffers.get(sessionId) ?? ''
-    const combined = raw + data
-    rawOutputBuffers.set(sessionId, combined.length > RAW_RING_BUFFER_MAX
-      ? combined.slice(combined.length - RAW_RING_BUFFER_MAX)
-      : combined)
+    appendRawOutput(sessionId, data)
 
     // Attention: reset the "output stable" timer on every chunk (TUIs repaint
     // without completing lines, so appendPtyOutput alone misses activity)
@@ -370,6 +408,9 @@ export function killPtySession(sessionId: string): void {
   // Mark as suppressed BEFORE killing so onExit won't notify the renderer
   suppressedSessions.add(sessionId)
 
+  // Tree-kill first: IPty.kill() only reaches the process attached to the PTY,
+  // leaving the CLI's own children (MCP servers, runtimes) alive.
+  killProcessTree(ptyProcess.pid)
   try {
     ptyProcess.kill()
   } catch {
@@ -385,6 +426,22 @@ export function killPtySession(sessionId: string): void {
   pendingLines.delete(sessionId)
   exitCallbacks.delete(sessionId)
   unregisterPtyOutputCallback(sessionId)
+}
+
+/**
+ * Kill every live PTY session. Used on app shutdown — child processes are not
+ * reaped by the OS when Electron exits.
+ */
+export function killAllPtySessions(): void {
+  const ids = Array.from(ptySessions.keys())
+  for (const id of ids) {
+    try {
+      killPtySession(id)
+    } catch {
+      /* shutdown must not be blocked by one bad session */
+    }
+  }
+  if (ids.length > 0) logger.info(`[pty] Killed ${ids.length} session(s) on shutdown`)
 }
 
 /**
@@ -408,7 +465,13 @@ export function getPtySessionOutput(sessionId: string): string {
  * Get raw ANSI output for a PTY session (for terminal replay on remount).
  */
 export function getRawPtyOutput(sessionId: string): string {
-  return rawOutputBuffers.get(sessionId) ?? ''
+  const buf = rawOutputBuffers.get(sessionId)
+  if (!buf || buf.chunks.length === 0) return ''
+  // Collapse to a single chunk so repeated reads don't re-join the list.
+  if (buf.chunks.length > 1) {
+    buf.chunks = [buf.chunks.join('')]
+  }
+  return buf.chunks[0]
 }
 
 /**

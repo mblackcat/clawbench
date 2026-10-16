@@ -6,7 +6,11 @@ import { existsSync } from 'fs'
 import { join, resolve } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerAllIpcHandlers } from './ipc'
-import { handleProtocolCallback } from './services/auth.service'
+import {
+  handleProtocolUrl as routeProtocolUrl,
+  isProtocolSilent,
+  setProtocolWindowProvider
+} from './services/protocol'
 import { initAutoUpdater, checkForUpdates } from './services/updater.service'
 import {
   registerGlobalShortcuts,
@@ -31,6 +35,7 @@ import {
 import { setMainWindowGetter as setFeishuWatcherMainWindow } from './services/copiper-feishu-watcher.service'
 import { closeAllSDKSessions } from './services/sdk-session-manager.service'
 import { closeAllCodexSessions } from './services/codex-session-manager.service'
+import { killAllPtySessions } from './services/pty-manager.service'
 
 const PROTOCOL = 'clawbench'
 
@@ -50,6 +55,16 @@ const gotTheLock = app.requestSingleInstanceLock()
 
 if (!gotTheLock) {
   app.quit()
+}
+
+/** First `clawbench://` URL in an argv list (Windows/Linux pass it as an argument). */
+function extractProtocolUrl(args: string[]): string | undefined {
+  for (const raw of args) {
+    if (typeof raw !== 'string') continue
+    const clean = raw.trim().replace(/^["']|["']$/g, '').trim()
+    if (clean.startsWith(`${PROTOCOL}://`)) return clean
+  }
+  return undefined
 }
 
 function getMainWindow(): BrowserWindow | null {
@@ -108,33 +123,21 @@ function handleProtocolUrl(url: string): void {
     return
   }
 
-  if (url.startsWith(`${PROTOCOL}://auth/callback`)) {
-    const mainWindow = showMainWindow()
-    handleProtocolCallback(url, mainWindow.webContents).catch((err) => {
-      logger.error('Failed to handle protocol callback:', err)
-    })
+  // Let the renderer finish loading first so pushed events (task-started,
+  // protocol:install-app, auth results) have a listener.
+  const win = getMainWindow()
+  if (win && !win.isDestroyed() && win.webContents.isLoading()) {
+    win.webContents.once('did-finish-load', () => handleProtocolUrl(url))
+    return
   }
 
-  // Handle install protocol: clawbench://install/{appId}?name=...
-  if (url.startsWith(`${PROTOCOL}://install/`)) {
-    try {
-      const urlObj = new URL(url)
-      const pathParts = urlObj.pathname.replace(/^\/\//, '').split('/')
-      const appId = decodeURIComponent(pathParts[1] || '')
-      const appName = urlObj.searchParams.get('name') || appId
-
-      if (appId) {
-        const mainWindow = showMainWindow()
-        mainWindow.webContents.send('protocol:install-app', { appId, name: appName })
-        logger.info(`Protocol install: appId=${appId}, name=${appName}`)
-      }
-    } catch (err) {
-      logger.error('Failed to parse install protocol URL:', err)
-    }
-  }
+  // Routed through the protocol command registry (app / auth / install).
+  routeProtocolUrl(url).catch((err) => {
+    logger.error('Failed to handle protocol URL:', err)
+  })
 }
 
-function createWindow(): BrowserWindow {
+function createWindow(options?: { showOnReady?: boolean }): BrowserWindow {
   const iconPath = getResourcePath('icon.png')
   const isMac = process.platform === 'darwin'
   const isWin = process.platform === 'win32'
@@ -164,8 +167,10 @@ function createWindow(): BrowserWindow {
     }
   })
 
+  // A silent protocol launch (clawbench://...&silent=true) keeps the window hidden.
+  const showOnReady = options?.showOnReady ?? true
   mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
+    if (showOnReady) mainWindow.show()
   })
 
   mainWindow.on('close', (event) => {
@@ -234,9 +239,18 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  createWindow()
+  setProtocolWindowProvider({ getMainWindow, showMainWindow })
+
+  // Cold start launched by a protocol URL (Windows/Linux pass it in argv)
+  const coldStartProtocolUrl = extractProtocolUrl(process.argv)
+  const isColdSilent = !!coldStartProtocolUrl && isProtocolSilent(coldStartProtocolUrl)
+
+  createWindow({ showOnReady: !isColdSilent })
   createAppTray({ onQuit: quitApplication })
   registerAllIpcHandlers()
+  if (coldStartProtocolUrl) {
+    handleProtocolUrl(coldStartProtocolUrl)
+  }
   setFeishuWatcherMainWindow(() => getMainWindow())
   registerGlobalShortcuts()
   // Warm project common-apps cache so disabled builtins stay hidden for shortcuts
@@ -279,13 +293,14 @@ app.on('open-url', (event, url) => {
 
 // Windows/Linux: 第二个实例启动时，从 argv 中提取协议 URL
 app.on('second-instance', (_event, argv) => {
-  // Windows 上协议 URL 会作为最后一个参数传入
-  const protocolUrl = argv.find((arg) => arg.startsWith(`${PROTOCOL}://`))
+  // A protocol URL is routed (the router shows the window unless silent);
+  // a plain relaunch (double-click) just shows and focuses the window.
+  const protocolUrl = extractProtocolUrl(argv)
   if (protocolUrl) {
     handleProtocolUrl(protocolUrl)
+  } else {
+    showMainWindow()
   }
-
-  showMainWindow()
 })
 
 app.on('window-all-closed', () => {
@@ -298,6 +313,9 @@ app.on('before-quit', () => {
   // processes (MCP servers etc.) don't outlive the app.
   closeAllSDKSessions()
   closeAllCodexSessions()
+  // Electron does not reap child processes on exit: kill every PTY session
+  // tree (AI Coding / AI Terminal) while the event loop is still up.
+  killAllPtySessions()
 })
 
 app.on('will-quit', () => {

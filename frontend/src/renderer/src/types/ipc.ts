@@ -57,6 +57,16 @@ interface VcsExecResult {
   error?: string
 }
 
+/** A scanned Python / IDE / terminal option for the Settings path pickers. */
+export interface DetectedEnvironmentItem {
+  id: string
+  name: string
+  path: string
+  version?: string
+  description?: string
+  isDefault?: boolean
+}
+
 export interface ClawBenchAPI {
   workspace: {
     list: () => Promise<import('./workspace').Workspace[]>
@@ -183,6 +193,8 @@ export interface ClawBenchAPI {
     moveFile: (oldPath: string, newPath: string) => Promise<void>
     detectIde: () => Promise<string | null>
     detectTerminal: () => Promise<string | null>
+    getAvailableIdes: (forceRefresh?: boolean) => Promise<DetectedEnvironmentItem[]>
+    getAvailableTerminals: (forceRefresh?: boolean) => Promise<DetectedEnvironmentItem[]>
     openInIde: (appPath: string) => Promise<void>
     openFileInEditor: (filePath: string) => Promise<void>
     openSSHConfig: () => Promise<void>
@@ -475,6 +487,15 @@ export interface ClawBenchAPI {
     uninstallNpmPackage: (packageName: string) => Promise<import('./local-env').ToolInstallResult>
     getCodingToolsEnabled: () => Promise<Record<string, boolean>>
     setCodingToolEnabled: (toolId: string, enabled: boolean) => Promise<Record<string, boolean>>
+    getMirrorSource: (
+      toolId: import('./local-env').MirrorToolId,
+      pythonPath?: string
+    ) => Promise<import('./local-env').MirrorSourceResult>
+    setMirrorSource: (
+      toolId: import('./local-env').MirrorToolId,
+      enabled: boolean,
+      pythonPath?: string
+    ) => Promise<import('./local-env').MirrorSourceResult>
   }
   openclaw: {
     checkInstalled: () => Promise<import('./openclaw').OpenClawInstallCheck>
@@ -692,7 +713,7 @@ export interface ClawBenchAPI {
     writePty: (sessionId: string, data: string) => Promise<void>
     resizePty: (sessionId: string, cols: number, rows: number) => Promise<void>
     killPty: (sessionId: string) => Promise<void>
-    onPtyData: (callback: (data: { sessionId: string; data: string }) => void) => () => void
+    onPtyData: (callback: (data: { sessionId: string; data: string }) => void, sessionId?: string) => () => void
     onPtyExit: (callback: (data: { sessionId: string; exitCode: number }) => void) => () => void
     detectTools: () => Promise<any[]>
     listNativeSessions: (workingDir: string, toolType: string) => Promise<Array<{
@@ -821,9 +842,19 @@ export interface ClawBenchAPI {
     resizeTerminal: (sessionId: string, cols: number, rows: number) => Promise<void>
     getTerminalOutput: (sessionId: string) => Promise<string>
     getRawTerminalOutput: (sessionId: string) => Promise<string>
-    onPtyData: (callback: (data: { sessionId: string; data: string }) => void) => () => void
+    onPtyData: (callback: (data: { sessionId: string; data: string }) => void, sessionId?: string) => () => void
     onPtyExit: (callback: (data: { sessionId: string; exitCode: number }) => void) => () => void
     onTerminalExit: (callback: (data: { sessionId: string; exitCode: number }) => void) => () => void
+    // Terminal assistant — CLI Agent mode
+    assistantTools: () => Promise<Array<{ toolType: string; name: string; installed: boolean; version?: string }>>
+    createAssistantSession: (
+      toolType: string,
+      kind: 'shell' | 'db',
+      target: { key: string; label?: string; isLocal?: boolean },
+      contextSnapshot?: string,
+      execTarget?: { kind: 'shell' | 'db'; ptySessionId?: string; dbConnId?: string }
+    ) => Promise<{ sessionId: string; workspaceId: string; workingDir: string }>
+    disposeAssistantSession: (sessionId: string) => Promise<{ success: boolean }>
     onDBIdleDisconnected: (callback: (data: { id: string }) => void) => () => void
     getQuickCommands: () => Promise<import('./ai-terminal').QuickCommand[]>
     saveQuickCommand: (data: Partial<import('./ai-terminal').QuickCommand>) => Promise<import('./ai-terminal').QuickCommand>

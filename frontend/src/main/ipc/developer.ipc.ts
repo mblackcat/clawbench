@@ -18,73 +18,9 @@ import { getAllWorkspaces } from '../store/workspace.store'
 import { getUserAppsPath } from '../utils/paths'
 import * as logger from '../utils/logger'
 
-// ── IDE auto-detect ──────────────────────────────────────────────────────────
-
-function detectLocalIde(): string | null {
-  const platform = process.platform
-  const home = os.homedir()
-
-  const vscodePaths =
-    platform === 'darwin'
-      ? [
-          '/usr/local/bin/code',
-          '/usr/bin/code',
-          `${home}/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code`,
-          '/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code'
-        ]
-      : platform === 'win32'
-        ? [
-            `${process.env.LOCALAPPDATA}\\Programs\\Microsoft VS Code\\Code.exe`,
-            `${process.env.ProgramFiles}\\Microsoft VS Code\\Code.exe`
-          ]
-        : ['/usr/bin/code', '/usr/local/bin/code']
-
-  for (const p of vscodePaths) {
-    if (p && fs.existsSync(p)) return p
-  }
-
-  const pycharmPaths =
-    platform === 'darwin'
-      ? [
-          '/usr/local/bin/pycharm',
-          `${home}/Applications/PyCharm CE.app/Contents/MacOS/pycharm CE`,
-          `${home}/Applications/PyCharm.app/Contents/MacOS/pycharm`,
-          '/Applications/PyCharm CE.app/Contents/MacOS/pycharm CE',
-          '/Applications/PyCharm.app/Contents/MacOS/pycharm'
-        ]
-      : platform === 'win32'
-        ? []
-        : ['/usr/local/bin/pycharm', '/usr/bin/pycharm']
-
-  for (const p of pycharmPaths) {
-    if (p && fs.existsSync(p)) return p
-  }
-
-  return null
-}
-
-// ── Terminal auto-detect ──────────────────────────────────────────────────────
-
-function detectLocalTerminal(): string | null {
-  const platform = process.platform
-  const home = os.homedir()
-
-  if (platform === 'darwin') {
-    const candidates = [
-      `${home}/Applications/iTerm.app`,
-      '/Applications/iTerm.app',
-      `${home}/Applications/Warp.app`,
-      '/Applications/Warp.app',
-      `${home}/Applications/Alacritty.app`,
-      '/Applications/Alacritty.app'
-    ]
-    for (const p of candidates) {
-      if (fs.existsSync(p)) return p
-    }
-  }
-
-  return null
-}
+// IDE / terminal auto-detect live in ide-detect.service / terminal-detect.service
+import { detectLocalTerminal, detectAllTerminals } from '../services/terminal-detect.service'
+import { detectLocalIde, detectAllIdes } from '../services/ide-detect.service'
 
 export function registerDeveloperIpc(): void {
   // ── .clawbenchignore support ──────────────────────────────────────────────
@@ -362,8 +298,16 @@ export function registerDeveloperIpc(): void {
     return detectLocalIde()
   })
 
+  ipcMain.handle('developer:get-available-ides', async (_event, forceRefresh?: boolean) => {
+    return detectAllIdes({}, Boolean(forceRefresh))
+  })
+
   ipcMain.handle('developer:detect-terminal', async () => {
     return detectLocalTerminal()
+  })
+
+  ipcMain.handle('developer:get-available-terminals', async (_event, forceRefresh?: boolean) => {
+    return detectAllTerminals({}, Boolean(forceRefresh))
   })
 
   ipcMain.handle('developer:open-in-ide', async (_event, appPath: string) => {

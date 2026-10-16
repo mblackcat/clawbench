@@ -7,6 +7,8 @@ import { settingsStore } from '../store/settings.store'
 import { getDefaultUserAppsPath } from './paths'
 import * as logger from './logger'
 import fs from 'fs'
+import { detectLocalTerminal } from '../services/terminal-detect.service'
+import { detectLocalIde } from '../services/ide-detect.service'
 
 /**
  * 迁移设置
@@ -54,6 +56,30 @@ export function migrateSettings(): void {
       delete mv.aiWorkbench
       settingsStore.set('moduleVisibility', mv as any)
       logger.info('Migrated moduleVisibility key: aiWorkbench -> aiCoding')
+    }
+
+    // Auto-detect the default local terminal / IDE on first run (only when unset)
+    if (!settingsStore.get('localTerminalPath')) {
+      try {
+        const detectedTerminal = detectLocalTerminal()
+        if (detectedTerminal) {
+          settingsStore.set('localTerminalPath', detectedTerminal)
+          logger.info(`Initialized default localTerminalPath: ${detectedTerminal}`)
+        }
+      } catch (err) {
+        logger.warn('Failed to auto-detect default terminal on startup:', err)
+      }
+    }
+    if (!settingsStore.get('localIdePath')) {
+      try {
+        const detectedIde = detectLocalIde()
+        if (detectedIde) {
+          settingsStore.set('localIdePath', detectedIde)
+          logger.info(`Initialized default localIdePath: ${detectedIde}`)
+        }
+      } catch (err) {
+        logger.warn('Failed to auto-detect default IDE on startup:', err)
+      }
     }
   } catch (error) {
     logger.error('Failed to migrate settings:', error)

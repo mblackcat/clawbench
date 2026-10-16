@@ -1,5 +1,5 @@
-import React from 'react'
-import { Card, Tag, Button, Typography, Tooltip, Popconfirm, Switch } from 'antd'
+import React, { useCallback, useEffect, useState } from 'react'
+import { Card, Tag, Button, Typography, Tooltip, Popconfirm, Switch, Popover, App, Spin } from 'antd'
 import {
   DownloadOutlined,
   GlobalOutlined,
@@ -7,11 +7,14 @@ import {
   ReloadOutlined,
   DeleteOutlined,
   ArrowUpOutlined,
-  AppstoreOutlined
+  AppstoreOutlined,
+  SettingOutlined,
+  LinkOutlined
 } from '@ant-design/icons'
 import { theme } from 'antd'
-import type { ToolDetectionResult, PackageManagerInfo } from '../../types/local-env'
-import { AI_CODING_TOOL_ID_SET } from '../../types/local-env'
+import type { ToolDetectionResult, PackageManagerInfo, MirrorSourceStatus, MirrorToolId } from '../../types/local-env'
+import { AI_CODING_TOOL_ID_SET, MIRROR_TOOL_ID_SET } from '../../types/local-env'
+import { openExternalLink } from '../../utils/markdown-links'
 import { useT } from '../../i18n'
 import { ProviderIcon } from '../../components/ProviderIcons'
 import { EnvToolIcon, hasEnvToolIcon } from '../../components/ToolIcons'
@@ -49,7 +52,9 @@ const AI_TOOL_PROVIDERS: Record<string, string> = {
   'qoder-cli': 'qoder',
   'kimi-code': 'kimi',
   zcode: 'zhipu',
-  'mimo-code': 'mimo'
+  'mimo-code': 'mimo',
+  'antigravity-cli': 'antigravity',
+  omp: 'omp'
 }
 
 function renderToolIcon(toolId: string, size = 20) {
@@ -75,6 +80,35 @@ function isNewerVersion(current: string, latest: string): boolean {
 
 const NPM_TOOL_IDS = new Set(['gemini-cli', 'codex-cli', 'qoder-cli', 'kimi-code', 'mimo-code', 'opencode'])
 
+/** Official homepage per tool, shown as a link button on the card. */
+const TOOL_HOMEPAGE_URLS: Record<string, string> = {
+  python: 'https://www.python.org',
+  nodejs: 'https://nodejs.org',
+  docker: 'https://www.docker.com',
+  git: 'https://git-scm.com',
+  mysql: 'https://www.mysql.com',
+  postgresql: 'https://www.postgresql.org',
+  mongodb: 'https://www.mongodb.com',
+  redis: 'https://redis.io',
+  java: 'https://adoptium.net',
+  go: 'https://go.dev',
+  homebrew: 'https://brew.sh',
+  svn: 'https://subversion.apache.org',
+  perforce: 'https://www.perforce.com',
+  'claude-code': 'https://docs.anthropic.com/en/docs/claude-code',
+  'codex-cli': 'https://github.com/openai/codex',
+  'gemini-cli': 'https://github.com/google-gemini/gemini-cli',
+  'grok-cli': 'https://x.ai/cli',
+  opencode: 'https://opencode.ai',
+  traecli: 'https://www.trae.ai',
+  'qoder-cli': 'https://docs.qoder.com/cli/install',
+  'kimi-code': 'https://code.kimi.com',
+  zcode: 'https://zcode.z.ai/en',
+  'mimo-code': 'https://mimo.xiaomi.com/mimocode/start',
+  'antigravity-cli': 'https://antigravity.google',
+  omp: 'https://omp.sh'
+}
+
 // Tools whose uninstall is intentionally not offered from this card (no safe
 // programmatic uninstall path — e.g. removing Homebrew itself is destructive)
 const NO_UNINSTALL_IDS = new Set(['homebrew'])
@@ -97,9 +131,12 @@ const EnvCard: React.FC<EnvCardProps> = ({
   onCodingEnabledChange
 }) => {
   const { token } = theme.useToken()
+  const { message } = App.useApp()
   const t = useT()
 
   const isAiCodingTool = AI_CODING_TOOL_ID_SET.has(tool.toolId)
+  const supportsMirror = MIRROR_TOOL_ID_SET.has(tool.toolId)
+  const homepageUrl = TOOL_HOMEPAGE_URLS[tool.toolId]
   const installedVersion = tool.installations[0]?.version
   const hasUpdate = Boolean(
     latestVersion &&
@@ -109,8 +146,124 @@ const EnvCard: React.FC<EnvCardProps> = ({
     isNewerVersion(installedVersion, latestVersion)
   )
 
+  const [mirrorOpen, setMirrorOpen] = useState(false)
+  const [mirrorLoading, setMirrorLoading] = useState(false)
+  const [mirrorSaving, setMirrorSaving] = useState(false)
+  const [mirrorStatus, setMirrorStatus] = useState<MirrorSourceStatus | null>(null)
+
+  const loadMirrorStatus = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!supportsMirror || !tool.installed) return
+    if (!opts?.silent) setMirrorLoading(true)
+    try {
+      const pythonPath = tool.toolId === 'python' ? tool.installations[0]?.path : undefined
+      const result = await window.api.localEnv.getMirrorSource(tool.toolId as MirrorToolId, pythonPath)
+      if (result.success && result.status) {
+        setMirrorStatus(result.status)
+      } else if (!opts?.silent) {
+        message.error(result.error || t('localEnv.mirror.loadFailed'))
+      }
+    } catch (err: unknown) {
+      if (!opts?.silent) {
+        message.error((err instanceof Error && err.message) || t('localEnv.mirror.loadFailed'))
+      }
+    } finally {
+      if (!opts?.silent) setMirrorLoading(false)
+    }
+  }, [supportsMirror, tool.installed, tool.toolId, tool.installations, message, t])
+
+  // Quiet preload so the gear can highlight when a China mirror is already on
+  useEffect(() => {
+    if (tool.installed && supportsMirror) {
+      void loadMirrorStatus({ silent: true })
+    }
+  }, [tool.installed, supportsMirror, tool.toolId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleMirrorOpenChange = (open: boolean) => {
+    setMirrorOpen(open)
+    if (open) {
+      void loadMirrorStatus()
+    }
+  }
+
+  const handleMirrorToggle = async (checked: boolean) => {
+    setMirrorSaving(true)
+    try {
+      const pythonPath = tool.toolId === 'python' ? tool.installations[0]?.path : undefined
+      const result = await window.api.localEnv.setMirrorSource(
+        tool.toolId as MirrorToolId,
+        checked,
+        pythonPath
+      )
+      if (result.success && result.status) {
+        setMirrorStatus(result.status)
+        message.success(
+          checked ? t('localEnv.mirror.enabled') : t('localEnv.mirror.disabled')
+        )
+        if (checked && result.status.needsRestart) {
+          message.info(t('localEnv.mirror.dockerRestartHint'))
+        }
+      } else {
+        message.error(result.error || t('localEnv.mirror.setFailed'))
+      }
+    } catch (err: unknown) {
+      message.error((err instanceof Error && err.message) || t('localEnv.mirror.setFailed'))
+    } finally {
+      setMirrorSaving(false)
+    }
+  }
+
+  const mirrorPopoverContent = (
+    <div style={{ width: 280 }}>
+      {mirrorLoading && !mirrorStatus ? (
+        <div style={{ textAlign: 'center', padding: '12px 0' }}>
+          <Spin size="small" />
+        </div>
+      ) : (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <Text strong style={{ fontSize: 13 }}>{t('localEnv.mirror.useChina')}</Text>
+              <div>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {t('localEnv.mirror.useChinaDesc')}
+                </Text>
+              </div>
+            </div>
+            <Switch
+              checked={mirrorStatus?.enabled ?? false}
+              loading={mirrorSaving || mirrorLoading}
+              onChange={handleMirrorToggle}
+            />
+          </div>
+          {mirrorStatus && (
+            <div style={{ marginTop: 10 }}>
+              <Text type="secondary" style={{ fontSize: 12, wordBreak: 'break-all' }}>
+                {t('localEnv.mirror.current')}: {mirrorStatus.currentSource}
+              </Text>
+              <div>
+                <Text type="secondary" style={{ fontSize: 12, wordBreak: 'break-all' }}>
+                  {t('localEnv.mirror.china')}: {mirrorStatus.chinaSource}
+                </Text>
+              </div>
+              {mirrorStatus.needsRestart && (
+                <div style={{ marginTop: 6 }}>
+                  <Text type="warning" style={{ fontSize: 12 }}>
+                    {t('localEnv.mirror.dockerRestartHint')}
+                  </Text>
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+
   const getInstallLabel = (): { label: string; viaPkgMgr: boolean } => {
-    if (tool.toolId === 'claude-code' || tool.toolId === 'grok-cli' || tool.toolId === 'kimi-code' || tool.toolId === 'mimo-code') {
+    if (
+      tool.toolId === 'claude-code' || tool.toolId === 'grok-cli' || tool.toolId === 'kimi-code' ||
+      tool.toolId === 'mimo-code' || tool.toolId === 'antigravity-cli' || tool.toolId === 'omp'
+    ) {
       return { label: t('localEnv.oneClickInstall'), viaPkgMgr: true }
     }
     if (NPM_TOOL_IDS.has(tool.toolId)) {
@@ -168,6 +321,40 @@ const EnvCard: React.FC<EnvCardProps> = ({
                   color: token.colorSuccess,
                   padding: '0 4px'
                 }}
+              />
+            </Tooltip>
+          )}
+          {/* China mirror settings (pip / npm / docker) */}
+          {tool.installed && supportsMirror && (
+            <Popover
+              trigger="click"
+              open={mirrorOpen}
+              onOpenChange={handleMirrorOpenChange}
+              title={t('localEnv.mirror.title')}
+              content={mirrorPopoverContent}
+              placement="bottomRight"
+            >
+              <Tooltip title={t('localEnv.mirror.settingsTip')}>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<SettingOutlined />}
+                  style={{
+                    color: mirrorStatus?.enabled ? token.colorPrimary : token.colorTextTertiary,
+                    padding: '0 4px'
+                  }}
+                />
+              </Tooltip>
+            </Popover>
+          )}
+          {homepageUrl && (
+            <Tooltip title={t('localEnv.officialWebsite')}>
+              <Button
+                type="text"
+                size="small"
+                icon={<LinkOutlined />}
+                onClick={() => openExternalLink(homepageUrl)}
+                style={{ color: token.colorTextTertiary, padding: '0 4px' }}
               />
             </Tooltip>
           )}

@@ -5,6 +5,7 @@ export type ToolId =
   | 'claude-code' | 'codex-cli' | 'gemini-cli' | 'grok-cli'
   | 'opencode' | 'traecli' | 'qoder-cli'
   | 'kimi-code' | 'zcode' | 'mimo-code'
+  | 'antigravity-cli' | 'omp'
   | 'homebrew'
 
 /** AI Coding CLI tools shown in Local Env — display order */
@@ -18,7 +19,9 @@ export const AI_CODING_TOOL_IDS: ToolId[] = [
   'qoder-cli',
   'kimi-code',
   'zcode',
-  'mimo-code'
+  'mimo-code',
+  'antigravity-cli',
+  'omp'
 ]
 
 export const AI_CODING_TOOL_ID_SET = new Set<string>(AI_CODING_TOOL_IDS)
@@ -48,7 +51,9 @@ export const TOOL_ID_TO_AI_TYPE: Record<string, string> = {
   'qoder-cli': 'qoder',
   'kimi-code': 'kimi',
   zcode: 'zcode',
-  'mimo-code': 'mimo'
+  'mimo-code': 'mimo',
+  'antigravity-cli': 'antigravity',
+  omp: 'omp'
 }
 
 export interface ToolInstallation {
@@ -93,5 +98,28 @@ export interface PackageInfo {
 export interface PackageListResult {
   success: boolean
   packages?: PackageInfo[]
+  error?: string
+}
+
+/** Tools that support the China mirror toggle in Local Env cards */
+export type MirrorToolId = 'python' | 'nodejs' | 'docker'
+
+export const MIRROR_TOOL_ID_SET = new Set<string>(['python', 'nodejs', 'docker'])
+
+export interface MirrorSourceStatus {
+  toolId: MirrorToolId
+  /** Whether the China mirror is currently active (applied by us or already matching) */
+  enabled: boolean
+  /** Human-readable current source (registry URL / mirror list) */
+  currentSource: string
+  /** China mirror that will be applied when enabling */
+  chinaSource: string
+  /** Docker daemon.json changes need a Docker restart to take effect */
+  needsRestart?: boolean
+}
+
+export interface MirrorSourceResult {
+  success: boolean
+  status?: MirrorSourceStatus
   error?: string
 }

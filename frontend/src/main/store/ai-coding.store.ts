@@ -55,6 +55,16 @@ export interface AICodingSession {
   pidFile?: string
   /** Pinned to the top of its workspace session list. */
   pinned?: boolean
+  /**
+   * Runtime-only (never persisted): the live terminal/DB surface an AI Terminal
+   * assistant Claude session executes against through its in-process MCP tools
+   * (see services/terminal-exec-mcp.ts). Absent for ordinary sessions.
+   */
+  execTarget?: {
+    kind: 'shell' | 'db'
+    ptySessionId?: string
+    dbConnId?: string
+  }
 }
 
 export interface AICodingGroup {

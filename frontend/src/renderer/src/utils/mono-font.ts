@@ -14,3 +14,15 @@
  */
 export const MONO_FONT_STACK =
   "'Consolas', 'Monaco', 'Menlo', 'Courier New', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC', 'Source Han Sans SC', sans-serif"
+
+/**
+ * Font stack for xterm-hosted TUIs (AI Coding terminal view, AI Terminal).
+ *
+ * Same as MONO_FONT_STACK but led by the bundled Nerd Font symbol face
+ * (styles/terminal-font.css). Modern CLI agents paint their chrome with Nerd
+ * Font private-use glyphs (powerline separators, model / folder / context
+ * icons); system mono faces lack them, so without this they render as tofu
+ * and status-line borders drift. Leading with the symbol font is safe because
+ * it is symbols-only: ordinary Latin/CJK text falls through per character.
+ */
+export const TERMINAL_FONT_STACK = `'Symbols Nerd Font Mono', ${MONO_FONT_STACK}`
