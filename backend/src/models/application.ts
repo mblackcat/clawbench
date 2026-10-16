@@ -28,6 +28,8 @@ export interface Application {
  * 创建应用输入
  */
 export interface CreateApplicationInput {
+  /** 应用唯一标识（对应 manifest.id，如 cb.username.app-slug；未指定时回退为 uuidv4） */
+  applicationId?: string;
   name: string;
   description?: string;
   type?: ApplicationType;

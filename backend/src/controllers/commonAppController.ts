@@ -18,7 +18,13 @@ import {
   listCommonAppVersionHistory,
 } from '../repositories/commonAppRepository';
 import { commonAppToResponse } from '../models/project';
+import { storageService } from '../services/storage';
 import { logger } from '../utils/logger';
+
+/** Storage namespace for common-app archives (never collides with marketplace application_id dirs). */
+function commonAppStorageNamespace(appKey: string): string {
+  return `builtin-${appKey.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+}
 
 /**
  * 通用应用控制器
@@ -350,7 +356,13 @@ export async function deleteCommonAppHandler(req: AuthRequest, res: Response): P
       return;
     }
 
+    const existing = await getCommonApp(appKey);
     const deleted = await deleteCommonApp(appKey);
+    if (deleted && existing?.filePath) {
+      storageService.deleteFile(existing.filePath).catch((err) => {
+        logger.warn(`Failed to remove archive for deleted common app ${appKey}:`, err);
+      });
+    }
     if (!deleted) {
       res.status(500).json({
         success: false,
@@ -621,6 +633,200 @@ export async function listCommonAppEventsHandler(
     });
   } catch (error) {
     logger.error('Error listing common app events:', error);
+    res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: 'Internal server error' },
+    });
+  }
+}
+
+/**
+ * 上传/覆盖通用应用归档（仅全局 admin）
+ * POST /api/v1/common-apps/:appKey/upload
+ *
+ * multipart: file=<.clawbench-app>, version=语义化版本[, changelog]
+ * 覆盖同 appKey 的服务端归档 + 版本号，写入版本历史。客户端据此优先取服务端版本。
+ */
+export async function uploadCommonAppPackageHandler(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const { appKey } = req.params;
+
+    const app = await getCommonApp(appKey);
+    if (!app) {
+      res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Common app not found' },
+      });
+      return;
+    }
+
+    if (!req.userId) {
+      res.status(401).json({
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'Authentication required' },
+      });
+      return;
+    }
+
+    if (!req.file) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_INPUT', message: 'Application package file is required' },
+      });
+      return;
+    }
+
+    const { version, changelog } = req.body as { version?: unknown; changelog?: unknown };
+    if (typeof version !== 'string' || version.trim().length === 0) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_INPUT', message: 'Version is required and must be a non-empty string' },
+      });
+      return;
+    }
+    const versionPattern = /^\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?$/;
+    if (!versionPattern.test(version.trim())) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_INPUT',
+          message: 'Version must follow semantic versioning format (e.g., 1.0.0)',
+        },
+      });
+      return;
+    }
+    if (changelog !== undefined && typeof changelog !== 'string') {
+      res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_INPUT', message: 'Changelog must be a string' },
+      });
+      return;
+    }
+
+    try {
+      storageService.validateFile(req.file);
+    } catch (error: any) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_FILE_FORMAT', message: error?.message || 'Invalid file format' },
+      });
+      return;
+    }
+
+    const { filePath, fileSize } = await storageService.saveFile(
+      req.file,
+      commonAppStorageNamespace(appKey),
+      version.trim()
+    );
+
+    const updated = await updateCommonApp(appKey, {
+      version: version.trim(),
+      filePath,
+      fileSize,
+      changedBy: req.userId,
+    });
+    if (!updated) {
+      res.status(500).json({
+        success: false,
+        error: { code: 'INTERNAL_ERROR', message: 'Failed to persist common app package' },
+      });
+      return;
+    }
+
+    // 覆盖发布后清理旧归档（best-effort）
+    if (app.filePath && app.filePath !== filePath) {
+      storageService.deleteFile(app.filePath).catch((err) => {
+        logger.warn(`Failed to remove previous archive for common app ${appKey}:`, err);
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        commonApp: commonAppToResponse(updated),
+        version: updated.version,
+        fileSize: updated.fileSize,
+        changelog: typeof changelog === 'string' ? changelog.trim() || null : null,
+      },
+    });
+
+    logger.info(`Common app package uploaded: ${appKey} version ${updated.version} by user ${req.userId}`);
+  } catch (error) {
+    logger.error('Error uploading common app package:', error);
+    res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: 'Internal server error' },
+    });
+  }
+}
+
+/**
+ * 下载通用应用归档（登录用户）
+ * GET /api/v1/common-apps/:appKey/download
+ *
+ * 仅当 admin 已上传归档时可用；否则 404（客户端回退到自带版本）。
+ * 成功下载会累加 download_count 并记录一条 download 事件。
+ */
+export async function downloadCommonAppPackageHandler(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const { appKey } = req.params;
+
+    const app = await getCommonApp(appKey);
+    if (!app) {
+      res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Common app not found' },
+      });
+      return;
+    }
+
+    if (!app.filePath) {
+      res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'No published package for this common app' },
+      });
+      return;
+    }
+
+    let fileBuffer: Buffer;
+    try {
+      fileBuffer = await storageService.readFile(app.filePath);
+    } catch (error) {
+      logger.error(`Common app package file missing for ${appKey}:`, error);
+      res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Common app package file is missing on the server' },
+      });
+      return;
+    }
+
+    const safeName = `builtin-${appKey}-${app.version ?? 'unknown'}.clawbench-app`.replace(
+      /[^a-zA-Z0-9._-]/g,
+      '_'
+    );
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+    res.setHeader('Content-Length', fileBuffer.length);
+    res.status(200).send(fileBuffer);
+
+    incrementCommonAppDownloadCount(appKey).catch((err) => {
+      logger.error(`Failed to increment download count for common app ${appKey}:`, err);
+    });
+    if (req.userId) {
+      createCommonAppEvent({
+        appKey,
+        userId: req.userId,
+        eventType: 'download',
+        success: true,
+        version: app.version,
+      }).catch((err) => {
+        logger.error(`Failed to record download event for common app ${appKey}:`, err);
+      });
+    }
+
+    logger.info(`Common app package downloaded: ${appKey} version ${app.version}`);
+  } catch (error) {
+    logger.error('Error downloading common app package:', error);
     res.status(500).json({
       success: false,
       error: { code: 'INTERNAL_ERROR', message: 'Internal server error' },

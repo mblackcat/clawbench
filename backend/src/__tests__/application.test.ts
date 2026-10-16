@@ -194,6 +194,8 @@ describe('Application Model and Repository', () => {
         name: 'Original Name',
         description: 'Original description',
       });
+      // ensure the update lands on a later millisecond than the create
+      await new Promise((r) => setTimeout(r, 5));
 
       const updated = await updateApplication(app.applicationId, {
         name: 'Updated Name',

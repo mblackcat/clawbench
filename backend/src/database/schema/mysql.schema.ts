@@ -71,7 +71,7 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
   // 应用表
   await safeDDL(database,`
     CREATE TABLE IF NOT EXISTS applications (
-      application_id VARCHAR(36) PRIMARY KEY,
+      application_id VARCHAR(255) PRIMARY KEY,
       name VARCHAR(255) NOT NULL,
       description TEXT,
       owner_id VARCHAR(36) NOT NULL,
@@ -90,7 +90,7 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
   await safeDDL(database,`
     CREATE TABLE IF NOT EXISTS application_versions (
       version_id VARCHAR(36) PRIMARY KEY,
-      application_id VARCHAR(36) NOT NULL,
+      application_id VARCHAR(255) NOT NULL,
       version VARCHAR(50) NOT NULL,
       changelog TEXT,
       file_path VARCHAR(500) NOT NULL,
@@ -227,13 +227,52 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
     if (!executionCountExists || executionCountExists.cnt === 0) {
       await safeDDL(database,`ALTER TABLE applications ADD COLUMN execution_count INTEGER DEFAULT 0`);
     }
+    // 应用表迁移：扩容 application_id 为 VARCHAR(255)（兼容 reverse-DNS manifest id，如 cb.username.app-slug）
+    const appIdCol = await database.get<{ char_len: number }>(
+      `SELECT CHARACTER_MAXIMUM_LENGTH AS char_len FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'applications' AND COLUMN_NAME = 'application_id'`,
+      [currentDb]
+    );
+    if (appIdCol && appIdCol.char_len && Number(appIdCol.char_len) < 255) {
+      await safeDDL(database, 'SET FOREIGN_KEY_CHECKS = 0');
+      try {
+        await safeDDL(database, 'ALTER TABLE applications MODIFY COLUMN application_id VARCHAR(255)');
+        await safeDDL(database, 'ALTER TABLE application_versions MODIFY COLUMN application_id VARCHAR(255) NOT NULL');
+        // application_execution_errors 在下方创建；仅当已存在时才扩容
+        const execErrTable = await database.get<{ cnt: number }>(
+          `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.TABLES
+           WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'application_execution_errors'`,
+          [currentDb]
+        );
+        if (execErrTable && Number(execErrTable.cnt) > 0) {
+          await safeDDL(database, 'ALTER TABLE application_execution_errors MODIFY COLUMN application_id VARCHAR(255) NOT NULL');
+        }
+      } finally {
+        await safeDDL(database, 'SET FOREIGN_KEY_CHECKS = 1');
+      }
+    }
   }
+
+  // 通用列补齐 helper（check-then-add，幂等；用于已有库升级）
+  const addColumnIfMissing = async (table: string, column: string, definition: string): Promise<boolean> => {
+    if (!currentDb) return false;
+    const exists = await database.get<{ cnt: number }>(
+      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+      [currentDb, table, column]
+    );
+    if (!exists || Number(exists.cnt) === 0) {
+      await safeDDL(database, `ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+      return true;
+    }
+    return false;
+  };
 
   // 应用执行错误日志表（登录用户上报，仅管理员可见）
   await safeDDL(database,`
     CREATE TABLE IF NOT EXISTS application_execution_errors (
       error_id VARCHAR(36) PRIMARY KEY,
-      application_id VARCHAR(36) NOT NULL,
+      application_id VARCHAR(255) NOT NULL,
       user_id VARCHAR(36) NOT NULL,
       version VARCHAR(50),
       message TEXT NOT NULL,
@@ -285,6 +324,40 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
       FOREIGN KEY (project_id) REFERENCES projects(project_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+  // 迁移：已有库补 project 级 enabled
+  await addColumnIfMissing('project_app_configs', 'enabled', 'INTEGER NOT NULL DEFAULT 1');
+
+  // 项目导航栏分组表（客户端工作台收藏夹样式的文件夹）
+  await safeDDL(database,`
+    CREATE TABLE IF NOT EXISTS project_nav_groups (
+      group_id VARCHAR(36) PRIMARY KEY,
+      project_id VARCHAR(36) NOT NULL,
+      title VARCHAR(100) NOT NULL,
+      icon TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at BIGINT NOT NULL,
+      updated_at BIGINT NOT NULL,
+      FOREIGN KEY (project_id) REFERENCES projects(project_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  // 项目导航栏链接表（group_id 为 NULL 表示顶层）
+  await safeDDL(database,`
+    CREATE TABLE IF NOT EXISTS project_nav_links (
+      link_id VARCHAR(36) PRIMARY KEY,
+      project_id VARCHAR(36) NOT NULL,
+      group_id VARCHAR(36),
+      url TEXT NOT NULL,
+      title VARCHAR(100) NOT NULL,
+      icon TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      click_count INTEGER NOT NULL DEFAULT 0,
+      created_at BIGINT NOT NULL,
+      updated_at BIGINT NOT NULL,
+      FOREIGN KEY (project_id) REFERENCES projects(project_id),
+      FOREIGN KEY (group_id) REFERENCES project_nav_groups(group_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
 
   // 通用应用表（内置 / admin 登记，kill-switch + 置顶 + 全局配置）
   await safeDDL(database,`
@@ -300,10 +373,28 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
       download_count INTEGER NOT NULL DEFAULT 0,
       execution_count INTEGER NOT NULL DEFAULT 0,
       config TEXT,
+      file_path VARCHAR(500),
+      file_size BIGINT,
       created_at BIGINT NOT NULL,
       updated_at BIGINT NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+
+  // 迁移：为已有库补齐 common_apps 新增列
+  if (await addColumnIfMissing('common_apps', 'pinned', 'INTEGER NOT NULL DEFAULT 0')) {
+    for (const seed of COMMON_APP_SEEDS) {
+      if (seed.pinned) {
+        await database.run(`UPDATE common_apps SET pinned = 1 WHERE app_key = ?`, [seed.appKey]);
+      }
+    }
+  }
+  await addColumnIfMissing('common_apps', 'version', 'VARCHAR(32)');
+  await addColumnIfMissing('common_apps', 'builtin', 'INTEGER NOT NULL DEFAULT 1');
+  await addColumnIfMissing('common_apps', 'download_count', 'INTEGER NOT NULL DEFAULT 0');
+  await addColumnIfMissing('common_apps', 'execution_count', 'INTEGER NOT NULL DEFAULT 0');
+  // admin 上传的通用应用归档（为空则无服务端内容）
+  await addColumnIfMissing('common_apps', 'file_path', 'VARCHAR(500)');
+  await addColumnIfMissing('common_apps', 'file_size', 'BIGINT');
 
   // 幂等 seed 内置通用应用（ClawBench 默认空种子）
   const seedNow = Date.now();
@@ -347,6 +438,9 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
       FOREIGN KEY (user_id) REFERENCES users(user_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+
+  // 迁移：common_app_events 补 cancelled（用户主动取消记为运行事件，不计入错误）
+  await addColumnIfMissing('common_app_events', 'cancelled', 'INTEGER NOT NULL DEFAULT 0');
 
   // 通用应用版本历史表
   await safeDDL(database,`
@@ -394,6 +488,9 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
     await ensureIndex('projects', 'idx_projects_created_by', 'CREATE INDEX idx_projects_created_by ON projects(created_by)');
     await ensureIndex('project_members', 'idx_project_members_user', 'CREATE INDEX idx_project_members_user ON project_members(user_id)');
     await ensureIndex('common_apps', 'idx_common_apps_enabled_sort', 'CREATE INDEX idx_common_apps_enabled_sort ON common_apps(enabled, sort_order)');
+    await ensureIndex('project_nav_groups', 'idx_project_nav_groups_project', 'CREATE INDEX idx_project_nav_groups_project ON project_nav_groups(project_id, sort_order)');
+    await ensureIndex('project_nav_links', 'idx_project_nav_links_project', 'CREATE INDEX idx_project_nav_links_project ON project_nav_links(project_id, sort_order)');
+    await ensureIndex('project_nav_links', 'idx_project_nav_links_group', 'CREATE INDEX idx_project_nav_links_group ON project_nav_links(group_id)');
   }
 
   logger.info('MySQL schema initialized successfully');

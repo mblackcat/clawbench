@@ -228,6 +228,18 @@ const DashboardPage: React.FC = () => {
         </div>
       )}
 
+      {!statsLoading && (stats?.totalCommonApps ?? 0) > 0 && (
+        <div className="muted" style={{ fontSize: 12.5, marginTop: 10 }}>
+          Builtin apps: {formatNumber(stats?.totalCommonApps ?? 0)} · installs{' '}
+          {formatNumber(stats?.commonAppDownloads ?? 0)} · runs{' '}
+          {formatNumber(stats?.commonAppExecutions ?? 0)} · errors{' '}
+          {formatNumber(stats?.commonAppErrors ?? 0)}{' '}
+          <Button type="link" size="small" onClick={() => navigate('/admin/apps')}>
+            App Manage
+          </Button>
+        </div>
+      )}
+
       <div className="panel" style={{ overflow: 'hidden', marginTop: 20 }}>
         <div
           className="panel-body"

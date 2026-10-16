@@ -11,6 +11,7 @@ export async function cleanAllTables(): Promise<void> {
   await database.run('DELETE FROM chat_attachments');
   await database.run('DELETE FROM messages');
   await database.run('DELETE FROM conversations');
+  await database.run('DELETE FROM application_execution_errors');
   await database.run('DELETE FROM application_versions');
   await database.run('DELETE FROM applications');
   await database.run('DELETE FROM auth_tokens');
@@ -19,6 +20,8 @@ export async function cleanAllTables(): Promise<void> {
   await database.run('DELETE FROM common_app_version_history');
   await database.run('DELETE FROM common_app_events');
   await database.run('DELETE FROM common_app_execution_errors');
+  await database.run('DELETE FROM project_nav_links');
+  await database.run('DELETE FROM project_nav_groups');
   await database.run('DELETE FROM project_app_configs');
   await database.run('DELETE FROM project_members');
   await database.run('DELETE FROM common_apps');

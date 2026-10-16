@@ -40,3 +40,39 @@ Thumbs.db
 .codebase-memory
 .mcp.json
 .codex
+
+# Backend runtime data (SQLite DB, uploads, logs)
+backend/data/
+backend/logs/
+backend/uploads/
+backend/nohup.out
+backend/*.db
+backend/*.sqlite
+
+# Packaged app archives
+*.asar
+
+# Temporary files
+*.tmp
+*.temp
+
+# Python
+*.py[cod]
+*$py.class
+venv/
+.venv/
+
+# Process files
+pids
+*.pid
+*.pid.lock
+
+# OS / editors
+ehthumbs.db
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+
+# SVN
+.svn/

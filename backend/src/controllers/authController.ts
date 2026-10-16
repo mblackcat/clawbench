@@ -46,14 +46,25 @@ export async function feishuCallback(
   next: NextFunction
 ): Promise<void> {
   try {
-    const { code, state } = req.query;
+    const { code, state, error, error_description } = req.query;
+    const firstString = (v: unknown): string =>
+      typeof v === 'string' ? v : Array.isArray(v) && typeof v[0] === 'string' ? v[0] : '';
 
-    if (!code || !state) {
-      res.status(400).send(errorHtml('Missing authorization code or state parameter'));
+    // 用户在飞书授权页取消 / 拒绝授权时，飞书会带 error(+error_description) 回调
+    if (error) {
+      const errMsg = firstString(error_description) || firstString(error) || '飞书授权已取消或被拒绝';
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.status(400).send(errorHtml(`授权失败: ${errMsg}`));
       return;
     }
 
-    const loginResponse = await handleCallback(code as string, state as string);
+    if (!code || !state || typeof code !== 'string' || typeof state !== 'string') {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.status(400).send(errorHtml('缺少授权码或 state 参数，请返回客户端重试'));
+      return;
+    }
+
+    const loginResponse = await handleCallback(code, state);
 
     // 根据 source 决定重定向目标：web → admin panel，electron → custom protocol
     if (loginResponse.source === 'web') {
@@ -82,17 +93,26 @@ export async function feishuCallback(
     logger.info(`Feishu OAuth callback successful, redirecting to custom protocol`);
 
     // 返回一个 HTML 页面，先尝试 custom protocol 跳转，再显示成功信息
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.status(200).send(successHtml(redirectUrl));
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error ?? '');
     logger.error('Feishu OAuth callback error:', error);
-    res.status(400).send(errorHtml(error.message || 'Authentication failed'));
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.status(400).send(errorHtml(message || 'Authentication failed'));
   }
 }
 
 /**
  * 生成成功 HTML 页面
+ *
+ * 浏览器打开 custom protocol 时会弹出「是否打开应用」确认框。
+ * 若在用户点确认/取消前就自动关页，协议跳转会被中断导致登录失败。
+ * 因此：先尝试拉起客户端，等用户在本页点「打开应用」或「关闭页面」后，
+ * 才开始 3 秒自动关闭倒计时。
  */
 function successHtml(redirectUrl: string): string {
+  const safeUrl = JSON.stringify(redirectUrl);
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -100,19 +120,86 @@ function successHtml(redirectUrl: string): string {
   <title>登录成功</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f5f5f5; }
-    .container { text-align: center; padding: 40px; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .container { text-align: center; padding: 40px; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-width: 420px; }
     h2 { color: #52c41a; margin-bottom: 16px; }
-    p { color: #666; }
+    p { color: #666; line-height: 1.6; }
+    .hint { font-size: 13px; color: #999; margin-top: 8px; }
+    .actions { margin-top: 24px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    button { cursor: pointer; border: none; border-radius: 6px; padding: 10px 20px; font-size: 14px; line-height: 1.4; }
+    .btn-primary { background: #1677ff; color: #fff; }
+    .btn-primary:hover { background: #4096ff; }
+    .btn-default { background: #f0f0f0; color: #333; }
+    .btn-default:hover { background: #e0e0e0; }
+    #countdown { font-size: 12px; color: #999; margin-top: 16px; min-height: 18px; }
   </style>
 </head>
 <body>
   <div class="container">
     <h2>登录成功</h2>
-    <p>正在跳转到 ClawBench 应用...</p>
-    <p style="font-size: 12px; color: #999; margin-top: 16px;">如果没有自动跳转，请手动返回 ClawBench 应用</p>
+    <p>正在打开 ClawBench 应用…</p>
+    <p class="hint">若浏览器弹出「是否打开应用」提示，请先选择<strong>打开</strong>或<strong>取消</strong>。确认后再关闭本页，避免登录中断。</p>
+    <div class="actions">
+      <button type="button" class="btn-primary" id="btn-open">打开应用</button>
+      <button type="button" class="btn-default" id="btn-close">关闭页面</button>
+    </div>
+    <p id="countdown"></p>
   </div>
   <script>
-    window.location.href = ${JSON.stringify(redirectUrl)};
+    (function () {
+      var redirectUrl = ${safeUrl};
+      var closeTimer = null;
+      var countdownTimer = null;
+      var decided = false;
+      var countdownEl = document.getElementById('countdown');
+
+      function openApp() {
+        try {
+          window.location.href = redirectUrl;
+        } catch (e) {
+          console.error('Launch protocol failed:', e);
+        }
+      }
+
+      function clearTimers() {
+        if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
+        if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+      }
+
+      function startAutoClose() {
+        if (decided) return;
+        decided = true;
+        clearTimers();
+        var remaining = 3;
+        countdownEl.textContent = '本页面将在 ' + remaining + ' 秒后自动关闭，如未关闭可手动关闭';
+        countdownTimer = setInterval(function () {
+          remaining -= 1;
+          if (remaining <= 0) {
+            clearInterval(countdownTimer);
+            countdownTimer = null;
+            countdownEl.textContent = '如页面未自动关闭，请手动关闭此标签页';
+            return;
+          }
+          countdownEl.textContent = '本页面将在 ' + remaining + ' 秒后自动关闭，如未关闭可手动关闭';
+        }, 1000);
+        // Browsers block window.close() on tabs not opened by script — best-effort only.
+        closeTimer = setTimeout(function () {
+          try { window.close(); } catch (e) {}
+        }, 3000);
+      }
+
+      document.getElementById('btn-open').addEventListener('click', function () {
+        openApp();
+        startAutoClose();
+      });
+      document.getElementById('btn-close').addEventListener('click', function () {
+        startAutoClose();
+        try { window.close(); } catch (e) {}
+      });
+
+      // First attempt: open client immediately so user sees the protocol prompt.
+      // Do NOT auto-close until they click 打开应用 / 关闭页面.
+      openApp();
+    })();
   </script>
 </body>
 </html>`;

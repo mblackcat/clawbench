@@ -157,7 +157,7 @@ export async function updateProject(
 }
 
 /**
- * 删除项目（先删 project_app_configs、project_members 再删 projects）
+ * 删除项目（先删导航栏、project_app_configs、project_members 再删 projects）
  * @param projectId 项目ID
  * @returns 是否删除成功
  */
@@ -165,6 +165,9 @@ export async function deleteProject(projectId: string): Promise<boolean> {
   let deleted = false;
 
   await database.transaction(async () => {
+    // 导航链接引用分组，必须先于分组删除
+    await database.run('DELETE FROM project_nav_links WHERE project_id = ?', [projectId]);
+    await database.run('DELETE FROM project_nav_groups WHERE project_id = ?', [projectId]);
     await database.run('DELETE FROM project_app_configs WHERE project_id = ?', [projectId]);
     await database.run('DELETE FROM project_members WHERE project_id = ?', [projectId]);
     const result = await database.run('DELETE FROM projects WHERE project_id = ?', [projectId]);

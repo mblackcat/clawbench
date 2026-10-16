@@ -80,6 +80,9 @@ export interface CommonApp {
   downloadCount: number;
   /** 客户端上报的运行次数 */
   executionCount: number;
+  /** admin 上传的服务端归档相对路径（为空表示无服务端内容，客户端回退自带版本） */
+  filePath: string | null;
+  fileSize: number | null;
   config: Record<string, any>;
   createdAt: number;
   updatedAt: number;
@@ -129,6 +132,8 @@ export interface CommonAppResponse {
   pinned: boolean;
   downloadCount: number;
   executionCount: number;
+  /** 服务端是否已有 admin 上传的归档 */
+  hasArchive: boolean;
   config: Record<string, any>;
   createdAt: number;
   updatedAt: number;
@@ -177,6 +182,8 @@ export interface CommonAppRow {
   pinned: number; // 0/1
   download_count: number;
   execution_count: number;
+  file_path: string | null;
+  file_size: number | null;
   config: string | null; // JSON stored as string
   created_at: number;
   updated_at: number;
@@ -244,6 +251,8 @@ export function commonAppRowToCommonApp(row: CommonAppRow): CommonApp {
     pinned: row.pinned === 1,
     downloadCount: row.download_count ?? 0,
     executionCount: row.execution_count ?? 0,
+    filePath: row.file_path ?? null,
+    fileSize: row.file_size != null ? Number(row.file_size) : null,
     config: parseConfig(row.config),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -307,6 +316,7 @@ export function commonAppToResponse(
     pinned: app.pinned,
     downloadCount: app.downloadCount,
     executionCount: app.executionCount,
+    hasArchive: !!app.filePath,
     config: mergedConfig !== undefined ? mergedConfig : app.config,
     createdAt: app.createdAt,
     updatedAt: app.updatedAt,
