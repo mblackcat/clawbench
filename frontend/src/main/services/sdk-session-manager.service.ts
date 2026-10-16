@@ -387,7 +387,10 @@ export function launchSDKSession(
     abortController: new AbortController(),
     activeQuery: null,
     isProcessing: false,
-    permissionMode: 'bypassPermissions',  // default — matches old pipe mode behavior
+    // Default matches the old pipe mode behaviour. Sessions with terminal exec
+    // tools start in 'default' so their first command cannot run before the
+    // renderer has pushed the user's chosen mode.
+    permissionMode: execTarget ? 'default' : 'bypassPermissions',
     effort: (effort as SDKEffort) || 'high',
     pendingPermissions: new Map(),
     pendingQuestions: new Map(),
@@ -478,14 +481,30 @@ function handleAskUserQuestion(
  *   `resolveSDKPermission`. The promise resolves to the SDK `PermissionResult`
  *   (allow/deny).
  */
+/** Side-effect tools of the in-process terminal MCP that always need a prompt. */
+const EXPLICIT_APPROVAL_TOOLS = new Set([
+  `mcp__${TERMINAL_EXEC_MCP_NAME}__run_terminal_command`,
+  `mcp__${TERMINAL_EXEC_MCP_NAME}__run_sql_write`
+])
+
+/** True for tools that must be confirmed even in acceptEdits mode. */
+export function requiresExplicitApproval(toolName: string): boolean {
+  return EXPLICIT_APPROVAL_TOOLS.has(toolName)
+}
+
 function makeCanUseTool(sessionId: string, state: SDKSessionState): CanUseTool {
   return (toolName, input, { signal, suggestions, toolUseID }) => {
     if (toolName === 'AskUserQuestion') {
       return handleAskUserQuestion(state, input, toolUseID, signal)
     }
 
-    // Modes that don't require interactive confirmation resolve immediately.
-    if (state.permissionMode === 'bypassPermissions' || state.permissionMode === 'acceptEdits') {
+    // bypassPermissions: the user opted out of all prompts. acceptEdits only
+    // auto-approves ordinary tools — the AI Terminal exec tools act on the
+    // user's live (possibly remote) shell / database and always ask.
+    if (
+      state.permissionMode === 'bypassPermissions' ||
+      (state.permissionMode === 'acceptEdits' && !requiresExplicitApproval(toolName))
+    ) {
       return Promise.resolve({ behavior: 'allow', updatedInput: input } as PermissionResult)
     }
 
@@ -600,7 +619,8 @@ async function startQuery(sessionId: string, state: SDKSessionState): Promise<vo
   if (mergedInstructions) options.systemPrompt = mergedInstructions
 
   // AI Terminal assistant: in-process MCP tools acting on the live terminal / DB
-  // connection. Every tool call still goes through canUseTool.
+  // connection. Calls go through canUseTool (exec tools always prompt unless
+  // the session is in bypassPermissions mode, where the SDK skips prompts).
   if (state.execTarget) {
     const execServer = await createTerminalExecMcp(state.execTarget)
     if (execServer) options.mcpServers = { [TERMINAL_EXEC_MCP_NAME]: execServer }

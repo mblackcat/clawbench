@@ -20,6 +20,7 @@ import {
 } from './pty-manager.service'
 import { getAugmentedEnv, loadShellEnv } from './cli-detect.service'
 import * as logger from '../utils/logger'
+import { checkReadOnlySql, parseMongoReadQuery, type SqlDialect } from '../utils/sql-readonly'
 import { resolveLocalTerminalShell } from './terminal-detect.service'
 
 // ── SSH Config Parsing ──
@@ -834,6 +835,95 @@ export async function queryDB(
     }
     default:
       throw new Error(`queryDB 不支持类型: ${entry.type}`)
+  }
+}
+
+/**
+ * Read-only query used by the AI assistant's `run_sql_query` tool.
+ * Layers: static single-statement/keyword check, then the database enforces
+ * it — MySQL/PostgreSQL run inside a READ ONLY transaction that is always
+ * rolled back (PostgreSQL also uses the extended protocol, which refuses
+ * stacked statements), SQLite statements must be `readonly` readers, and
+ * MongoDB accepts only a JSON find / aggregate (no $out/$merge) / count.
+ */
+export async function queryDBReadOnly(
+  id: string,
+  input: string
+): Promise<{ columns: string[]; rows: Record<string, any>[]; executionTimeMs: number }> {
+  const entry = dbPools.get(id)
+  if (!entry) throw new Error('数据库未连接')
+  touchDBActivity(id)
+
+  const start = Date.now()
+  const assertReadOnly = (dialect: SqlDialect): void => {
+    const check = checkReadOnlySql(input, dialect)
+    if (!check.ok) throw new Error(check.reason)
+  }
+
+  switch (entry.type) {
+    case 'mysql': {
+      assertReadOnly('mysql')
+      const conn = await entry.pool.getConnection()
+      try {
+        await conn.query('START TRANSACTION READ ONLY')
+        const [rows, fields] = await conn.query(input)
+        const columns =
+          (fields as any[])?.map((f: any) => f.name) ||
+          (Array.isArray(rows) && rows.length > 0 ? Object.keys(rows[0]) : [])
+        return { columns, rows: rows as Record<string, any>[], executionTimeMs: Date.now() - start }
+      } finally {
+        await conn.query('ROLLBACK').catch(() => {})
+        conn.release()
+      }
+    }
+    case 'postgres': {
+      assertReadOnly('postgres')
+      const client = await entry.pool.connect()
+      try {
+        await client.query('BEGIN READ ONLY')
+        const result = await client.query({ text: input, queryMode: 'extended' })
+        const columns = result.fields?.map((f: any) => f.name) || []
+        return { columns, rows: result.rows, executionTimeMs: Date.now() - start }
+      } finally {
+        await client.query('ROLLBACK').catch(() => {})
+        client.release()
+      }
+    }
+    case 'sqlite': {
+      assertReadOnly('sqlite')
+      const stmt = entry.db.prepare(input)
+      if (!stmt.readonly || !stmt.reader) {
+        throw new Error('Only read-only statements that return rows are allowed')
+      }
+      const rows = stmt.all()
+      const columns = rows.length > 0 ? Object.keys(rows[0]) : []
+      return { columns, rows, executionTimeMs: Date.now() - start }
+    }
+    case 'mongodb': {
+      const q = parseMongoReadQuery(input)
+      const coll = entry.client.db(entry.database).collection(q.collection)
+      let docs: Record<string, any>[]
+      if (q.op === 'count') {
+        docs = [{ count: await coll.countDocuments(q.filter) }]
+      } else if (q.op === 'aggregate') {
+        docs = await coll.aggregate([...q.pipeline, { $limit: q.limit }]).toArray()
+      } else {
+        let cursor = coll.find(q.filter)
+        if (Object.keys(q.projection).length > 0) cursor = cursor.project(q.projection)
+        docs = await cursor.limit(q.limit).toArray()
+      }
+      const rows = docs.map((doc: any) => {
+        const row: Record<string, any> = {}
+        for (const [k, v] of Object.entries(doc)) {
+          row[k] = v && typeof v === 'object' && (v as any).constructor?.name === 'ObjectId' ? String(v) : v
+        }
+        return row
+      })
+      const columns = rows.length > 0 ? [...new Set(rows.flatMap((r) => Object.keys(r)))] : []
+      return { columns, rows, executionTimeMs: Date.now() - start }
+    }
+    default:
+      throw new Error(`queryDBReadOnly 不支持类型: ${entry.type}`)
   }
 }
 
