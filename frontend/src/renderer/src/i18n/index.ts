@@ -2301,6 +2301,17 @@ const translations: Record<Lang, Record<string, string>> = {
     'confirmRun.title': '确认执行',
     'confirmRun.contentPrefix': '确定要执行 「',
     'confirmRun.contentSuffix': '」 吗？',
+    // Login (Feishu waiting / brand)
+    'login.brandName': 'ClawBench',
+    'login.feishuIncomplete': '飞书授权未完成，请重试',
+    'login.feishuFailed': '飞书登录失败',
+    'login.feishuWaitingHint': '请在浏览器中完成飞书授权，完成后将自动返回',
+    'login.cancelFeishu': '取消登录',
+    'login.copyFeishuUrl': '复制登录链接并在浏览器中打开',
+    'login.copyFeishuUrlSuccess': '登录链接已复制到剪贴板，请在浏览器中打开完成授权',
+    'login.copyFeishuUrlFailed': '复制链接失败',
+    'login.openInModal': '在应用窗口中登录',
+    'login.openInModalFailed': '无法打开登录窗口',
   },
   'en': {
     // Sidebar menu
@@ -4685,6 +4696,17 @@ const translations: Record<Lang, Record<string, string>> = {
     'confirmRun.title': 'Confirm Run',
     'confirmRun.contentPrefix': 'Are you sure you want to run "',
     'confirmRun.contentSuffix': '"?',
+    // Login (Feishu waiting / brand)
+    'login.brandName': 'ClawBench',
+    'login.feishuIncomplete': 'Feishu authorization was not completed. Please try again.',
+    'login.feishuFailed': 'Feishu login failed',
+    'login.feishuWaitingHint': 'Complete Feishu authorization in the browser; you will return here automatically',
+    'login.cancelFeishu': 'Cancel login',
+    'login.copyFeishuUrl': 'Copy authorization link',
+    'login.copyFeishuUrlSuccess': 'Authorization link copied to clipboard. Open it in your browser.',
+    'login.copyFeishuUrlFailed': 'Failed to copy link',
+    'login.openInModal': 'Sign in via app window',
+    'login.openInModalFailed': 'Failed to open the sign-in window',
   }
 }
 
