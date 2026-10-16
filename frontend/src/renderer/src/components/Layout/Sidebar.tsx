@@ -1,9 +1,5 @@
 import React, { useEffect, useMemo } from 'react'
-import { Badge, Menu } from 'antd'
-import {
-  LaptopOutlined,
-  CodeOutlined
-} from '@ant-design/icons'
+import { Menu, theme } from 'antd'
 import Icon from '@ant-design/icons'
 import { useNavigate, useLocation } from 'react-router-dom'
 import type { MenuProps } from 'antd'
@@ -14,6 +10,8 @@ import {
   WorkbenchIcon,
   AIChatIcon,
   AICodingIcon,
+  AITerminalIcon,
+  LocalEnvIcon,
   CopiperIcon
 } from '../icons/MenuIcons'
 
@@ -35,66 +33,109 @@ const OpenClawSvg = () => (
 )
 const OpenClawIcon = (props: any) => <Icon component={OpenClawSvg} {...props} />
 
-const withMenuDot = (label: string, showDot: boolean) =>
-  showDot ? (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-      <span>{label}</span>
-      <Badge status="error" />
-    </span>
-  ) : (
-    label
-  )
+interface BadgeColors {
+  bg: string
+  fg: string
+  ring: string
+}
+
+/** Icon with a top-left badge: numeric count when > 0, else an optional dot. */
+const withTopLeftBadge = (
+  icon: React.ReactNode,
+  colors: BadgeColors,
+  showDot: boolean,
+  count = 0
+): React.ReactNode => (
+  <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+    {icon}
+    {count > 0 ? (
+      <span
+        className="cb-sidebar-badge"
+        style={{
+          position: 'absolute',
+          top: -4,
+          left: -7,
+          minWidth: 15,
+          height: 15,
+          padding: '0 3.5px',
+          borderRadius: 8,
+          background: colors.bg,
+          color: colors.fg,
+          fontSize: 10,
+          fontWeight: 600,
+          lineHeight: '15px',
+          textAlign: 'center',
+          boxShadow: `0 0 0 1px ${colors.ring}`,
+          zIndex: 10
+        }}
+      >
+        {count > 99 ? '99+' : count}
+      </span>
+    ) : showDot ? (
+      <span
+        className="cb-sidebar-badge"
+        style={{
+          position: 'absolute',
+          top: -2,
+          left: -3,
+          width: 6,
+          height: 6,
+          borderRadius: '50%',
+          background: colors.bg,
+          boxShadow: `0 0 0 1px ${colors.ring}`,
+          zIndex: 10
+        }}
+      />
+    ) : null}
+  </span>
+)
 
 const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
   const navigate = useNavigate()
   const location = useLocation()
   const { moduleVisibility } = useSettingsStore()
   const t = useT()
+  const { token } = theme.useToken()
   const attentionItems = useAttentionStore((s) => s.items)
 
-  const dots = useMemo(() => {
-    const has = (source: 'workbench' | 'ai-chat' | 'ai-coding') =>
-      attentionItems.some((i) => i.source === source)
+  const counts = useMemo(() => {
+    const count = (source: 'workbench' | 'ai-chat' | 'ai-coding'): number =>
+      attentionItems.filter((i) => i.source === source).length
     return {
-      workbench: has('workbench'),
-      aiChat: has('ai-chat'),
-      aiCoding: has('ai-coding')
+      workbench: count('workbench'),
+      aiChat: count('ai-chat'),
+      aiCoding: count('ai-coding')
     }
   }, [attentionItems])
+
+  const badgeColors: BadgeColors = {
+    bg: token.colorError,
+    fg: token.colorTextLightSolid,
+    ring: token.colorBgLayout
+  }
 
   const allItems: (NonNullable<MenuProps['items']>[number] & { moduleKey?: string })[] = [
     {
       key: '/workbench',
-      icon: (
-        <Badge dot={dots.workbench} offset={[2, 0]}>
-          <WorkbenchIcon />
-        </Badge>
-      ),
-      label: withMenuDot(t('menu.workbench'), dots.workbench && !collapsed)
+      icon: withTopLeftBadge(<WorkbenchIcon />, badgeColors, counts.workbench > 0),
+      label: t('menu.workbench')
     },
     {
       key: '/ai-chat',
-      icon: (
-        <Badge dot={dots.aiChat} offset={[2, 0]}>
-          <AIChatIcon />
-        </Badge>
-      ),
-      label: withMenuDot(t('menu.aiChat'), dots.aiChat && !collapsed),
+      icon: withTopLeftBadge(<AIChatIcon />, badgeColors, counts.aiChat > 0),
+      label: t('menu.aiChat'),
       moduleKey: 'aiChat'
     },
     {
       key: '/ai-coding',
-      icon: (
-        <Badge dot={dots.aiCoding} offset={[2, 0]}>
-          <AICodingIcon />
-        </Badge>
-      ),
-      label: withMenuDot(t('menu.aiCoding'), dots.aiCoding && !collapsed),
+      // AI Coding shows how many sessions are waiting on the user
+      icon: withTopLeftBadge(<AICodingIcon />, badgeColors, false, counts.aiCoding),
+      label: t('menu.aiCoding'),
       moduleKey: 'aiCoding'
     },
     {
       key: '/ai-terminal',
-      icon: <CodeOutlined />,
+      icon: <AITerminalIcon />,
       label: t('menu.aiTerminal'),
       moduleKey: 'aiTerminal'
     },
@@ -106,7 +147,7 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
     },
     {
       key: '/local-env',
-      icon: <LaptopOutlined />,
+      icon: <LocalEnvIcon />,
       label: t('menu.localEnv'),
       moduleKey: 'localEnv'
     },
