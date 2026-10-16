@@ -1,18 +1,18 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Modal, List, Tag, Spin, theme, Button, Tooltip } from 'antd'
-import { CheckCircleOutlined, CloseCircleOutlined, ReloadOutlined } from '@ant-design/icons'
+import { CheckCircleOutlined, ReloadOutlined, ExclamationCircleOutlined } from '@ant-design/icons'
+import { useNavigate } from 'react-router-dom'
 import { AI_TOOL_TAG_COLORS, AI_TOOL_TAG_STYLE, renderAIToolTagLabel } from './aiToolMeta'
 import { useT } from '../../i18n'
 import type { AIToolType, DetectedCLI } from '../../types/ai-coding'
+import {
+  toolsCache,
+  setToolsCache,
+  invalidateCodingToolsCache
+} from '../../utils/coding-tools-cache'
 
-// Module-level cache so tools are only detected once per app session
-// Cleared when Local Env coding-tool enablement changes (enable/disable switch)
-let toolsCache: DetectedCLI[] | null = null
+export { invalidateCodingToolsCache }
 
-/** Call after toggling coding-tool enablement so the picker reflects the new set */
-export function invalidateCodingToolsCache(): void {
-  toolsCache = null
-}
 
 interface AICodingNewSessionDialogProps {
   open: boolean
@@ -26,10 +26,10 @@ const AICodingNewSessionDialog: React.FC<AICodingNewSessionDialogProps> = ({
   onCancel
 }) => {
   const t = useT()
+  const navigate = useNavigate()
   const { token } = theme.useToken()
   const [tools, setTools] = useState<DetectedCLI[]>(toolsCache ?? [])
-  const [loading, setLoading] = useState(false)
-
+  const [loading, setLoading] = useState(toolsCache === null)
   const fetchTools = (useCache: boolean): void => {
     if (useCache && toolsCache !== null) {
       setTools(toolsCache)
@@ -41,7 +41,7 @@ const AICodingNewSessionDialog: React.FC<AICodingNewSessionDialogProps> = ({
       .then((detected) => {
         // Exclude plain terminal — users open that via the sidebar terminal icon
         const coding = detected.filter((c) => c.toolType !== 'terminal')
-        toolsCache = coding
+        setToolsCache(coding)
         setTools(coding)
       })
       .catch(() => setTools([]))
@@ -57,12 +57,23 @@ const AICodingNewSessionDialog: React.FC<AICodingNewSessionDialogProps> = ({
   const handleRefresh = (): void => {
     fetchTools(false)
   }
+  const availableTools = useMemo(
+    () => tools.filter((c) => c.installed && c.enabled !== false),
+    [tools]
+  )
+
+  const handleGoToInstall = (): void => {
+    onCancel()
+    navigate('/local-env', { state: { scrollTo: 'ai-tools' } })
+  }
+
+  const isNotice = !loading && availableTools.length === 0
 
   return (
     <Modal
       title={
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span>{t('coding.selectCodingTool')}</span>
+          <span>{isNotice ? t('coding.noticeTitle') : t('coding.selectCodingTool')}</span>
           <Tooltip title={t('coding.refreshTools')}>
             <Button
               type="text"
@@ -84,23 +95,53 @@ const AICodingNewSessionDialog: React.FC<AICodingNewSessionDialogProps> = ({
         <div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}>
           <Spin />
         </div>
+      ) : availableTools.length === 0 ? (
+        <div style={{ padding: '16px 8px 8px', textAlign: 'center' }}>
+          <ExclamationCircleOutlined
+            style={{ fontSize: 44, color: token.colorWarning, marginBottom: 16 }}
+          />
+          <div
+            style={{
+              fontSize: 15,
+              fontWeight: 600,
+              color: token.colorText,
+              marginBottom: 8
+            }}
+          >
+            {t('coding.noInstalledToolsTitle')}
+          </div>
+          <div
+            style={{
+              fontSize: 13,
+              color: token.colorTextSecondary,
+              lineHeight: 1.6,
+              marginBottom: 24,
+              padding: '0 8px'
+            }}
+          >
+            {t('coding.noInstalledToolsDesc')}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+            <Button onClick={onCancel}>{t('common.cancel')}</Button>
+            <Button type="primary" onClick={handleGoToInstall}>
+              {t('coding.goToInstall')}
+            </Button>
+          </div>
+        </div>
       ) : (
         <List
-          dataSource={tools}
+          dataSource={availableTools}
           renderItem={(cli) => (
             <List.Item
-              onClick={() => {
-                if (cli.installed) onOk(cli.toolType)
-              }}
+              onClick={() => onOk(cli.toolType)}
               style={{
-                cursor: cli.installed ? 'pointer' : 'not-allowed',
-                opacity: cli.installed ? 1 : 0.45,
+                cursor: 'pointer',
                 padding: '10px 12px',
-                borderRadius: token.borderRadius
+                borderRadius: token.borderRadius,
+                transition: 'background 0.15s ease'
               }}
               onMouseEnter={(e) => {
-                if (cli.installed)
-                  (e.currentTarget as HTMLElement).style.background = token.colorFillSecondary
+                (e.currentTarget as HTMLElement).style.background = token.colorFillSecondary
               }}
               onMouseLeave={(e) => {
                 (e.currentTarget as HTMLElement).style.background = 'transparent'
@@ -111,13 +152,9 @@ const AICodingNewSessionDialog: React.FC<AICodingNewSessionDialogProps> = ({
                   {renderAIToolTagLabel(cli.toolType, cli.name)}
                 </Tag>
                 <span style={{ flex: 1, color: token.colorTextSecondary, fontSize: 12 }}>
-                  {cli.version || (cli.installed ? '' : t('coding.notInstalled'))}
+                  {cli.version || ''}
                 </span>
-                {cli.installed ? (
-                  <CheckCircleOutlined style={{ color: token.colorSuccess }} />
-                ) : (
-                  <CloseCircleOutlined style={{ color: token.colorTextQuaternary }} />
-                )}
+                <CheckCircleOutlined style={{ color: token.colorSuccess }} />
               </div>
             </List.Item>
           )}

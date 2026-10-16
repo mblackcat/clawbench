@@ -2344,6 +2344,27 @@ const translations: Record<Lang, Record<string, string>> = {
     'coding.tabNeedsAction': '等待你的确认',
     'coding.tabCompleted': '有新的回复',
     'coding.terminalPanel': '终端',
+    // ── AI Coding: workspace landing & new session ──
+    'coding.landingQuickStart': '快捷启动',
+    'coding.landingEntries': '入口',
+    'coding.landingNoTools': '未检测到已安装的 Coding 工具',
+    'coding.landingTerminal': '终端',
+    'coding.landingTerminalDesc': '在该工作目录打开终端',
+    'coding.landingChanges': '变更 (Changes)',
+    'coding.landingChangesLoading': '正在读取变更…',
+    'coding.landingChangesClean': '没有未提交的变更',
+    'coding.landingChangesCount': '{0} 个文件有变更',
+    'coding.landingChangesNoVcs': '未检测到版本控制',
+    'coding.noInstalledToolsTitle': '未检测到可用的 Coding 工具',
+    'coding.noInstalledToolsDesc': '当前未检测到任何已安装且开启的 AI Coding 工具。请前往开发环境安装并启用后再创建会话。',
+    'coding.goToInstall': '前往安装',
+    // ── AI Coding: new session notice ──
+    'coding.noticeTitle': '提示',
+    // ── AI Coding: sidebar pin / archive / collapsed rail ──
+    'coding.archiveSession': '归档',
+    'coding.sessionArchived': '已归档，已从列表隐藏（不会删除）',
+    'coding.moreWorkspaces': '展开查看全部（共 {0} 个）',
+    'coding.untitledWorkspace': '未命名工作区',
   },
   'en': {
     // Sidebar menu
@@ -4771,6 +4792,27 @@ const translations: Record<Lang, Record<string, string>> = {
     'coding.tabNeedsAction': 'Waiting for you',
     'coding.tabCompleted': 'New reply',
     'coding.terminalPanel': 'Terminal',
+    // ── AI Coding: workspace landing & new session ──
+    'coding.landingQuickStart': 'Quick start',
+    'coding.landingEntries': 'Entries',
+    'coding.landingNoTools': 'No installed coding tools detected',
+    'coding.landingTerminal': 'Terminal',
+    'coding.landingTerminalDesc': 'Open a terminal in this working directory',
+    'coding.landingChanges': 'Changes',
+    'coding.landingChangesLoading': 'Loading changes…',
+    'coding.landingChangesClean': 'No uncommitted changes',
+    'coding.landingChangesCount': '{0} changed files',
+    'coding.landingChangesNoVcs': 'No version control detected',
+    'coding.noInstalledToolsTitle': 'No Coding Tools Available',
+    'coding.noInstalledToolsDesc': 'No installed and enabled AI coding tools were detected. Go to Local Env to install and enable tools before creating a session.',
+    'coding.goToInstall': 'Go to Install',
+    // ── AI Coding: new session notice ──
+    'coding.noticeTitle': 'Notice',
+    // ── AI Coding: sidebar pin / archive / collapsed rail ──
+    'coding.archiveSession': 'Archive',
+    'coding.sessionArchived': 'Archived — hidden from the list (not deleted)',
+    'coding.moreWorkspaces': 'Expand to see all ({0})',
+    'coding.untitledWorkspace': 'Untitled workspace',
   }
 }
 
