@@ -1,7 +1,7 @@
 import * as pty from 'node-pty'
 import { BrowserWindow } from 'electron'
 import * as logger from '../utils/logger'
-import { killProcessTree } from '../utils/process-tree'
+import { killProcessTree, killProcessTrees } from '../utils/process-tree'
 import type { AIToolType } from '../store/ai-coding.store'
 import { resolveLocalTerminalShell } from './terminal-detect.service'
 
@@ -34,6 +34,14 @@ interface RawBuffer {
   length: number
 }
 const rawOutputBuffers = new Map<string, RawBuffer>()
+
+/**
+ * Per-session monotonically increasing output offset (total UTF-16 code units
+ * emitted since the PTY was spawned). Live `pty:data` chunks carry their end
+ * offset and raw snapshots carry the offset they end at, so a remounting
+ * terminal can drop queued chunks already contained in the replayed snapshot.
+ */
+const outputOffsets = new Map<string, number>()
 const RAW_RING_BUFFER_MAX = 1_000_000
 
 // ── Per-session line accumulator for handling \r overwrites ──
@@ -229,8 +237,11 @@ function flushBuffer(sessionId: string): void {
   if (!data) return
   pendingBuffers.delete(sessionId)
 
+  // Every pending byte was appended in onData, so the chunk ends at the
+  // session's current output offset.
+  const offset = outputOffsets.get(sessionId) ?? 0
   BrowserWindow.getAllWindows().forEach((win) => {
-    win.webContents.send('pty:data', { sessionId, data })
+    win.webContents.send('pty:data', { sessionId, data, offset })
   })
 }
 
@@ -251,6 +262,7 @@ export function createPtySession(
   rawOutputBuffers.delete(sessionId)
   outputBuffers.delete(sessionId)
   pendingLines.delete(sessionId)
+  outputOffsets.set(sessionId, 0)
 
   const cols = initialSize?.cols || 80
   const rows = initialSize?.rows || 24
@@ -315,6 +327,7 @@ export function createPtySession(
 
     // Accumulate raw ANSI output for terminal replay on remount
     appendRawOutput(sessionId, data)
+    outputOffsets.set(sessionId, (outputOffsets.get(sessionId) ?? 0) + data.length)
 
     // Attention: reset the "output stable" timer on every chunk (TUIs repaint
     // without completing lines, so appendPtyOutput alone misses activity)
@@ -357,6 +370,7 @@ export function createPtySession(
       pendingTimers.delete(sessionId)
       outputBuffers.delete(sessionId)
       rawOutputBuffers.delete(sessionId)
+      outputOffsets.delete(sessionId)
       pendingLines.delete(sessionId)
       unregisterPtyOutputCallback(sessionId)
     }
@@ -387,8 +401,12 @@ export function resizePty(sessionId: string, cols: number, rows: number): void {
  * Kill and remove a PTY session.
  */
 export function killPtySession(sessionId: string): void {
+  killPtySessionInternal(sessionId, true)
+}
+
+function killPtySessionInternal(sessionId: string, killTree: boolean): number | undefined {
   const ptyProcess = ptySessions.get(sessionId)
-  if (!ptyProcess) return
+  if (!ptyProcess) return undefined
 
   const pendingTimer = pendingTimers.get(sessionId)
   if (pendingTimer) {
@@ -400,11 +418,15 @@ export function killPtySession(sessionId: string): void {
 
   // Tree-kill first: IPty.kill() only reaches the process attached to the PTY,
   // leaving the CLI's own children (MCP servers, runtimes) alive.
-  killProcessTree(ptyProcess.pid)
-  try {
-    ptyProcess.kill()
-  } catch {
-    /* already dead */
+  if (killTree) killProcessTree(ptyProcess.pid)
+  // On Windows the batched (async) taskkill in killAllPtySessions needs the root
+  // pid alive to walk the tree, so the PTY root is left to taskkill there.
+  if (killTree || process.platform !== 'win32') {
+    try {
+      ptyProcess.kill()
+    } catch {
+      /* already dead */
+    }
   }
 
   logger.info(`[pty] Session killed: ${sessionId}`)
@@ -413,24 +435,31 @@ export function killPtySession(sessionId: string): void {
   pendingTimers.delete(sessionId)
   outputBuffers.delete(sessionId)
   rawOutputBuffers.delete(sessionId)
+  outputOffsets.delete(sessionId)
   pendingLines.delete(sessionId)
   exitCallbacks.delete(sessionId)
   unregisterPtyOutputCallback(sessionId)
+  return ptyProcess.pid
 }
 
 /**
  * Kill every live PTY session. Used on app shutdown — child processes are not
- * reaped by the OS when Electron exits.
+ * reaped by the OS when Electron exits. Trees are killed in one batch
+ * (a single detached `taskkill` on Windows) so quitting never waits serially
+ * on per-session synchronous kills.
  */
 export function killAllPtySessions(): void {
   const ids = Array.from(ptySessions.keys())
+  const pids: number[] = []
   for (const id of ids) {
     try {
-      killPtySession(id)
+      const pid = killPtySessionInternal(id, false)
+      if (pid) pids.push(pid)
     } catch {
       /* shutdown must not be blocked by one bad session */
     }
   }
+  killProcessTrees(pids)
   if (ids.length > 0) logger.info(`[pty] Killed ${ids.length} session(s) on shutdown`)
 }
 
@@ -462,6 +491,14 @@ export function getRawPtyOutput(sessionId: string): string {
     buf.chunks = [buf.chunks.join('')]
   }
   return buf.chunks[0]
+}
+
+/**
+ * Raw ANSI output plus the session output offset it ends at. Live `pty:data`
+ * chunks whose end offset is <= `offset` are already contained in `data`.
+ */
+export function getRawPtyOutputSnapshot(sessionId: string): { data: string; offset: number } {
+  return { data: getRawPtyOutput(sessionId), offset: outputOffsets.get(sessionId) ?? 0 }
 }
 
 /**

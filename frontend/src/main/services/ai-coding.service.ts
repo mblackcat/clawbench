@@ -28,7 +28,7 @@ import type {
 import {
   killPtySession, hasPtySession, writeToPty,
   createPtySession, getToolCommand, getResumeArgs, getPtySessionOutput,
-  getRawPtyOutput, registerPtyOutputCallback
+  getRawPtyOutput, getRawPtyOutputSnapshot, registerPtyOutputCallback
 } from './pty-manager.service'
 import {
   launchSDKSession, writeToSDKSession, closeSDKSession, hasSDKSession,
@@ -158,6 +158,10 @@ export function getSessionOutput(sessionId: string): string {
 
 export function getRawSessionOutput(sessionId: string): string {
   return getRawPtyOutput(sessionId)
+}
+
+export function getRawSessionOutputSnapshot(sessionId: string): { data: string; offset: number } {
+  return getRawPtyOutputSnapshot(sessionId)
 }
 
 // ── SDK session event handler (for IM mode) ──

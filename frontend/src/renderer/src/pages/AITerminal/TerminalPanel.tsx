@@ -11,6 +11,7 @@ import type { Terminal } from '@xterm/xterm'
 import { useAITerminalStore } from '../../stores/useAITerminalStore'
 import { useT } from '../../i18n'
 import { useXterm, type XtermHelpers } from '../../hooks/useXterm'
+import { createPtyReplayGate } from '../../utils/pty-replay'
 import { getShellTerminalTheme } from '../../utils/terminal-theme'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import TerminalSearchBar from '../../components/TerminalSearchBar'
@@ -64,12 +65,9 @@ const TerminalPanel: React.FC<Props> = ({ sessionId }) => {
     // always tear them down.
     // Live output arriving before the history replay resolves is queued, so it
     // lands after the replay instead of being buried under it.
-    let replayed = false
-    const queued: string[] = []
-    const unsubData = window.api.aiTerminal.onPtyData(({ data }) => {
-      if (replayed) term.write(data)
-      else queued.push(data)
-    }, sessionId)
+    // Chunks carry their end offset so ones already in the snapshot are dropped.
+    const gate = createPtyReplayGate((data) => term.write(data))
+    const unsubData = window.api.aiTerminal.onPtyData(gate.push, sessionId)
     const unsubExit = window.api.aiTerminal.onTerminalExit(({ sessionId: sid }) => {
       if (sid !== sessionId) return
       disconnectedRef.current = true
@@ -81,10 +79,9 @@ const TerminalPanel: React.FC<Props> = ({ sessionId }) => {
     })
 
     // Replay the PTY ring buffer so a module switch / remount keeps history.
-    const buffered = await window.api.aiTerminal.getRawTerminalOutput(sessionId)
-    if (buffered) term.write(buffered)
-    replayed = true
-    for (const data of queued.splice(0)) term.write(data)
+    const snapshot = await window.api.aiTerminal.getRawTerminalSnapshot(sessionId)
+    if (snapshot.data) term.write(snapshot.data)
+    gate.release(snapshot.offset)
     h.fit()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])

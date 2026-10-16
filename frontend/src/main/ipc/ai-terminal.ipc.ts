@@ -76,6 +76,10 @@ export function registerAITerminalIpc(): void {
     return aiTerminalService.getRawTerminalOutput(sessionId)
   })
 
+  ipcMain.handle('ai-terminal:get-raw-terminal-snapshot', (_event, sessionId: string) => {
+    return aiTerminalService.getRawTerminalOutputSnapshot(sessionId)
+  })
+
   // ── Quick Commands ──
 
   ipcMain.handle('ai-terminal:get-quick-commands', () => {

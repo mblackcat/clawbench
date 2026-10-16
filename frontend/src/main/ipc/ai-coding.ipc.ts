@@ -17,6 +17,7 @@ import {
   writeToSession,
   readImageBase64,
   getSessionOutput,
+  getRawSessionOutputSnapshot,
   getRawSessionOutput,
   interruptSession,
   executeSessionSlashCommand,
@@ -305,6 +306,10 @@ export function registerAICodingIpc(): void {
 
   ipcMain.handle('ai-coding:get-raw-session-output', async (_event, sessionId: string) => {
     return getRawSessionOutput(sessionId)
+  })
+
+  ipcMain.handle('ai-coding:get-raw-session-snapshot', async (_event, sessionId: string) => {
+    return getRawSessionOutputSnapshot(sessionId)
   })
 
   // ── Groups ──
