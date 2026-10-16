@@ -2334,6 +2334,12 @@ const translations: Record<Lang, Record<string, string>> = {
     'topbar.updateClient': '更新客户端',
     'topbar.taskFailed': '{0}：执行失败',
     'topbar.taskError': '任务执行出错',
+    // Settings: project selection card
+    'settings.project': '项目组',
+    'settings.projectPlaceholder': '选择项目组',
+    'settings.projectDesc': '决定可用的内置应用及其配置，也可在顶栏切换',
+    'settings.projectChanged': '已切换项目组',
+    'settings.projectChangeFailed': '切换项目组失败',
   },
   'en': {
     // Sidebar menu
@@ -4751,6 +4757,12 @@ const translations: Record<Lang, Record<string, string>> = {
     'topbar.updateClient': 'Update Client',
     'topbar.taskFailed': '{0}: execution failed',
     'topbar.taskError': 'A task failed',
+    // Settings: project selection card
+    'settings.project': 'Project',
+    'settings.projectPlaceholder': 'Select a project',
+    'settings.projectDesc': 'Determines available built-in apps and their configuration; can also be switched from the top bar',
+    'settings.projectChanged': 'Project switched',
+    'settings.projectChangeFailed': 'Failed to switch project',
   }
 }
 

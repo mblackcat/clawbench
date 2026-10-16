@@ -29,6 +29,8 @@ import AIModelSettings from './AIModelSettings'
 import MCPServerSettings from './MCPServerSettings'
 import AIToolsSettings from './AIToolsSettings'
 import AIAssistantSettings from './AIAssistantSettings'
+import ProjectSelectCard from './ProjectSelectCard'
+import { generalModeFallbackPath } from '../../constants/app-mode'
 import { useT } from '../../i18n'
 
 const { Title, Text } = Typography
@@ -246,13 +248,17 @@ const SettingsPage: React.FC = () => {
     }
   }
 
-  // 关闭设置页：优先返回上一页，无历史时回到工作台
+  // 关闭设置页：从头像菜单打开时（router state 记录了来源页）回退到来源页；
+  // 其它入口有应用内历史时同样回退；深链/首屏直达 /settings 时回到默认首页
+  // （不用 localStorage lastRoute —— 设置页打开期间它可能已被侧栏改写）。
   const handleClose = (): void => {
-    if (window.history.length > 1) {
+    const from = (location.state as { from?: string } | null)?.from
+    const historyIdx = (window.history.state as { idx?: number } | null)?.idx ?? 0
+    if ((from && !from.startsWith('/settings')) || historyIdx > 0) {
       navigate(-1)
-    } else {
-      navigate('/workbench/installed')
+      return
     }
+    navigate(generalModeFallbackPath())
   }
 
   return (
@@ -317,6 +323,8 @@ const SettingsPage: React.FC = () => {
             label: t('settings.tabGeneral'),
             children: (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {/* Server project selection (hidden in local mode) */}
+                <ProjectSelectCard />
                 {/* Card 1: User App Dir + App Shortcuts */}
                 <Card
                   size="small"
