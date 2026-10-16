@@ -50,7 +50,7 @@ export function registerSettingsIpc(): void {
   ipcMain.handle('settings:get-env-config', async () => {
     return {
       enableAccountLogin: import.meta.env.VITE_ENABLE_ACCOUNT_LOGIN !== 'false',
-      enableLocalMode: import.meta.env.VITE_ENABLE_LOCAL_MODE === 'true'
+      enableLocalMode: import.meta.env.VITE_ENABLE_LOCAL_MODE !== 'false'
     }
   })
 
