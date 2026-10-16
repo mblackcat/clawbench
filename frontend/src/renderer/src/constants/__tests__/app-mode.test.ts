@@ -8,7 +8,8 @@ import {
   shouldShowLeftSider,
   isGeneralModePath,
   generalModeFallbackPath,
-  resolveDefaultRoute
+  resolveDefaultRoute,
+  withProModulesEnabled
 } from '../app-mode'
 
 describe('app-mode', () => {
@@ -80,5 +81,17 @@ describe('app-mode', () => {
     expect(APP_MODE_LABELS.pro.zh).toBe('研发')
     expect(APP_MODE_LABELS.general.en).toBe('General')
     expect(APP_MODE_LABELS.pro.en).toBe('Dev')
+  })
+
+  it('switching to pro enables AI Coding + Local Env only', () => {
+    const vis = { aiChat: false, aiCoding: false, aiTerminal: false, aiAgents: true, localEnv: false, copiper: true }
+    expect(withProModulesEnabled(vis)).toEqual({ ...vis, aiCoding: true, localEnv: true })
+    // input not mutated
+    expect(vis.aiCoding).toBe(false)
+  })
+
+  it('returns the same object when pro modules are already enabled', () => {
+    const vis = { aiChat: false, aiCoding: true, aiTerminal: false, aiAgents: false, localEnv: true, copiper: false }
+    expect(withProModulesEnabled(vis)).toBe(vis)
   })
 })
