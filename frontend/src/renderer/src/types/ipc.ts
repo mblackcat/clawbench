@@ -65,6 +65,8 @@ export interface ClawBenchAPI {
     delete: (id: string) => Promise<void>
     setActive: (id: string) => Promise<void>
     getActive: () => Promise<import('./workspace').Workspace | null>
+    /** Ensure the default user-apps path exists and return it (general-mode setup). */
+    ensureDefaultGeneralPath: () => Promise<string>
   }
   subapp: {
     list: () => Promise<Array<{
@@ -82,7 +84,7 @@ export interface ClawBenchAPI {
     execute: (
       appId: string,
       params?: Record<string, unknown>
-    ) => Promise<string> // returns taskId
+    ) => Promise<import('./subapp').SubAppExecuteResult>
     cancel: (taskId: string) => Promise<void>
     sendUiEvent: (taskId: string, uiEvent: Record<string, unknown>) => Promise<boolean>
     uninstall: (appId: string) => Promise<{ success: boolean; error?: string }>
@@ -109,6 +111,12 @@ export interface ClawBenchAPI {
       },
       token?: string
     ) => Promise<{ success: boolean; installedTo: string[]; error?: string }>
+    resetBuiltin: (appId: string) => Promise<{ success: boolean; error?: string; version?: string }>
+    getBundledBuiltinVersion: (appId: string) => Promise<string | null>
+    installRequirements: (
+      appId: string,
+      force?: boolean
+    ) => Promise<{ success: boolean; installed?: boolean; cached?: boolean; error?: string }>
     onOutput: (callback: (data: import('./subapp').SubAppOutput) => void) => () => void
     onProgress: (callback: (data: import('./subapp').SubAppOutput) => void) => () => void
     onTaskStatus: (
@@ -116,6 +124,7 @@ export interface ClawBenchAPI {
         taskId: string
         status: string
         success?: boolean
+        cancelled?: boolean
         summary?: string
         summaryI18nKey?: string
         summaryI18nArgs?: string[]

@@ -40,6 +40,7 @@ import EmbeddedCodingPanel from '../../components/EmbeddedCodingPanel'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { useT } from '../../i18n'
 import { MONO_FONT_STACK } from '../../utils/mono-font'
+import { normalizeExecuteResult, describeEarlyTerminal } from '../../utils/subapp-execute'
 
 const { Sider, Content } = Layout
 const { Title, Text } = Typography
@@ -358,11 +359,19 @@ const CodeEditor: React.FC = () => {
     addOutputLine('info', '─'.repeat(50))
 
     try {
-      const taskId = await window.api.subapp.execute(appId, {})
-      currentTaskIdRef.current = taskId as string
-      setCurrentTaskId(taskId as string)
+      const { taskId, earlyTerminal } = normalizeExecuteResult(
+        await window.api.subapp.execute(appId, {})
+      )
       runPendingRef.current = false
-      addOutputLine('info', t('codeEditor.taskId', taskId as string))
+      if (earlyTerminal) {
+        // Run ended before the process started (disabled / no Python)
+        addOutputLine('error', describeEarlyTerminal(earlyTerminal, t))
+        setIsRunning(false)
+        return
+      }
+      currentTaskIdRef.current = taskId
+      setCurrentTaskId(taskId)
+      addOutputLine('info', t('codeEditor.taskId', taskId))
     } catch (err) {
       addOutputLine('error', t('codeEditor.execFailed', String(err)))
       setIsRunning(false)

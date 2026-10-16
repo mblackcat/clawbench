@@ -20,10 +20,10 @@ import { useSubAppStore } from '../../stores/useSubAppStore';
 import { useAuthStore } from '../../stores/useAuthStore';
 import type { SubAppManifest } from '../../types/subapp';
 import { resolveAppPublished } from '../../types/subapp';
-import { useTaskStore } from '../../stores/useTaskStore';
 import { openExternalLink } from '../../utils/markdown-links';
 import SkillsManager, { type SelfSkill } from '../../components/SkillsManager';
 import { useT } from '../../i18n';
+import { seedTaskFromExecuteResult, describeEarlyTerminal } from '../../utils/subapp-execute';
 
 const { Title, Text } = Typography;
 
@@ -119,8 +119,6 @@ const MyContributionsPage: React.FC = () => {
   const appInfos = useSubAppStore((state) => state.appInfos);
   const user = useAuthStore((state) => state.user);
   const isLocalMode = useAuthStore((state) => state.isLocalMode);
-  const startTask = useTaskStore((state) => state.startTask);
-  const setActiveTask = useTaskStore((state) => state.setActiveTask);
 
   useEffect(() => {
     loadApps();
@@ -263,9 +261,15 @@ const MyContributionsPage: React.FC = () => {
 
   const handleRun = async (appId: string, appName: string) => {
     try {
-      const taskId = await window.api.subapp.execute(appId, {});
-      startTask(taskId, appId, appName);
-      setActiveTask(taskId);
+      const result = seedTaskFromExecuteResult(
+        await window.api.subapp.execute(appId, {}),
+        appId,
+        appName
+      );
+      if (result.earlyTerminal) {
+        message.error(describeEarlyTerminal(result.earlyTerminal, t));
+        return;
+      }
       message.success(t('mine.appStarted', appName));
     } catch (error) {
       console.error('Failed to run app:', error);

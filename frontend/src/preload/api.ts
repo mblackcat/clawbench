@@ -11,7 +11,10 @@ export const api = {
       ipcRenderer.invoke('workspace:update', id, updates),
     delete: (id: string) => ipcRenderer.invoke('workspace:delete', id),
     setActive: (id: string) => ipcRenderer.invoke('workspace:set-active', id),
-    getActive: () => ipcRenderer.invoke('workspace:get-active')
+    getActive: () => ipcRenderer.invoke('workspace:get-active'),
+    /** Ensure the default user-apps path exists and return it (general-mode setup). */
+    ensureDefaultGeneralPath: () =>
+      ipcRenderer.invoke('workspace:ensure-default-general-path') as Promise<string>
   },
 
   subapp: {
@@ -35,6 +38,11 @@ export const api = {
       opts: { mode: string; tools: string[]; workspacePath?: string },
       token?: string
     ) => ipcRenderer.invoke('subapp:install-skill-from-market', appId, downloadUrl, opts, token),
+    resetBuiltin: (appId: string) => ipcRenderer.invoke('subapp:reset-builtin', appId),
+    getBundledBuiltinVersion: (appId: string) =>
+      ipcRenderer.invoke('subapp:get-bundled-builtin-version', appId),
+    installRequirements: (appId: string, force?: boolean) =>
+      ipcRenderer.invoke('subapp:install-requirements', appId, force),
     onOutput: (callback: (data: unknown) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data)
       ipcRenderer.on('subapp:output', handler)

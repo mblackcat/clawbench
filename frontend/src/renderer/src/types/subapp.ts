@@ -72,7 +72,18 @@ export interface SubAppOutput {
   timestamp?: number
 }
 
-export type TaskStatus = 'idle' | 'running' | 'completed' | 'failed' | 'cancelled'
+export type TaskStatus = 'idle' | 'running' | 'completed' | 'failed' | 'cancelled' | 'disabled'
+
+/** Result of `subapp:execute` — always has taskId; earlyTerminal when the run ended before starting. */
+export interface SubAppExecuteResult {
+  taskId: string
+  earlyTerminal?: {
+    status: 'failed' | 'disabled'
+    summary: string
+    summaryI18nKey?: string
+    summaryI18nArgs?: string[]
+  }
+}
 
 export interface TaskInfo {
   taskId: string

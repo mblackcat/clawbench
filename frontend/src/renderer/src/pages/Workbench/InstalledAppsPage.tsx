@@ -48,7 +48,6 @@ import type { SubAppManifest } from '../../types/subapp';
 import { resolveAppPublished } from '../../types/subapp';
 import { useSubAppStore } from '../../stores/useSubAppStore';
 import { useAuthStore } from '../../stores/useAuthStore';
-import { useTaskStore } from '../../stores/useTaskStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore';
 import { useChatStore } from '../../stores/useChatStore';
@@ -69,6 +68,7 @@ import { openExternalLink } from '../../utils/markdown-links';
 import { buildInitialAppParams, saveAppParams } from '../../utils/subapp-params';
 import { useT } from '../../i18n';
 import { applicationManager } from '../../services/applicationManager';
+import { seedTaskFromExecuteResult, describeEarlyTerminal } from '../../utils/subapp-execute';
 
 const { Title, Text } = Typography;
 
@@ -666,8 +666,6 @@ const InstalledAppsPage: React.FC = () => {
   const updateMap = useSubAppStore((state) => state.updateMap);
   const checkForUpdates = useSubAppStore((state) => state.checkForUpdates);
   const user = useAuthStore((state) => state.user);
-  const startTask = useTaskStore((state) => state.startTask);
-  const setActiveTask = useTaskStore((state) => state.setActiveTask);
   const appShortcutEnabled = useSettingsStore((state) => state.appShortcutEnabled);
   const appShortcutModifier = useSettingsStore((state) => state.appShortcutModifier);
   const appOrder = useSettingsStore((state) => state.appOrder);
@@ -953,9 +951,15 @@ const InstalledAppsPage: React.FC = () => {
         return;
       }
 
-      const taskId = await window.api.subapp.execute(appId, params);
-      startTask(taskId, appId, appName);
-      setActiveTask(taskId);
+      const result = seedTaskFromExecuteResult(
+        await window.api.subapp.execute(appId, params),
+        appId,
+        appName
+      );
+      if (result.earlyTerminal) {
+        message.error(describeEarlyTerminal(result.earlyTerminal, t));
+        return;
+      }
       message.success(t('workbench.appStarted', appName));
     } catch (error) {
       console.error('Failed to run app:', error);

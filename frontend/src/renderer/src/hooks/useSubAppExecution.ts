@@ -3,6 +3,9 @@ import { useTaskStore } from '../stores/useTaskStore'
 import { useSubAppStore } from '../stores/useSubAppStore'
 import { raiseWorkbenchCompletion } from '../stores/useAttentionStore'
 import type { SubAppOutput, TaskStatus } from '../types/subapp'
+import { seedTaskFromExecuteResult } from '../utils/subapp-execute'
+
+export { normalizeExecuteResult } from '../utils/subapp-execute'
 
 interface UseSubAppExecutionReturn {
   executeApp: (appId: string, params?: Record<string, unknown>) => Promise<string>
@@ -15,7 +18,6 @@ export function useSubAppExecution(): UseSubAppExecutionReturn {
   const updateProgress = useTaskStore((state) => state.updateProgress)
   const updateStatus = useTaskStore((state) => state.updateStatus)
   const setActiveTask = useTaskStore((state) => state.setActiveTask)
-  const getTask = useTaskStore((state) => state.getTask)
   const apps = useSubAppStore((state) => state.apps)
 
   // Set up IPC event listeners for subapp output, progress, and task status
@@ -35,17 +37,30 @@ export function useSubAppExecution(): UseSubAppExecutionReturn {
         taskId: string
         status: string
         success?: boolean
+        cancelled?: boolean
         summary?: string
         summaryI18nKey?: string
         summaryI18nArgs?: string[]
       }) => {
-        const status = data.status as TaskStatus
+        // Prefer the explicit cancelled flag from main; never treat a cancel as failed.
+        const status: TaskStatus =
+          data.cancelled || data.status === 'cancelled'
+            ? 'cancelled'
+            : (data.status as TaskStatus)
         const result =
-          data.summary !== undefined
+          data.summary !== undefined || status === 'cancelled' || status === 'disabled'
             ? {
-                success: data.success ?? status === 'completed',
-                summary: data.summary,
-                summaryI18nKey: data.summaryI18nKey,
+                success: status === 'cancelled' || status === 'disabled'
+                  ? false
+                  : data.success ?? status === 'completed',
+                summary: data.summary ?? '',
+                summaryI18nKey:
+                  data.summaryI18nKey ??
+                  (status === 'cancelled'
+                    ? 'subapp.executionCancelled'
+                    : status === 'disabled'
+                      ? 'subapp.appDisabled'
+                      : undefined),
                 summaryI18nArgs: data.summaryI18nArgs
               }
             : undefined
@@ -89,16 +104,13 @@ export function useSubAppExecution(): UseSubAppExecutionReturn {
 
   const executeApp = useCallback(
     async (appId: string, params?: Record<string, unknown>): Promise<string> => {
-      const taskId = await window.api.subapp.execute(appId, params)
+      const raw = await window.api.subapp.execute(appId, params)
       const app = apps.find((a) => a.id === appId)
       const appName = app?.name ?? appId
-      if (!getTask(taskId)) {
-        startTask(taskId, appId, appName)
-      }
-      setActiveTask(taskId)
+      const { taskId } = seedTaskFromExecuteResult(raw, appId, appName)
       return taskId
     },
-    [apps, getTask, startTask, setActiveTask]
+    [apps]
   )
 
   const cancelTask = useCallback(async (taskId: string): Promise<void> => {

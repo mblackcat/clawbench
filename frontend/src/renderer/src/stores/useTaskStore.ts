@@ -13,7 +13,7 @@ interface TaskState {
   systemLogs: SystemLogEntry[]
   /** True while there are task errors the user hasn't viewed in the app-log tab */
   hasUnseenErrors: boolean
-  startTask: (taskId: string, appId: string, appName: string, opts?: { scheduled?: boolean }) => void
+  startTask: (taskId: string, appId: string, appName: string, opts?: StartTaskOptions) => void
   updateOutput: (taskId: string, output: SubAppOutput) => void
   updateProgress: (taskId: string, percent: number) => void
   updateStatus: (
@@ -29,26 +29,51 @@ interface TaskState {
   markErrorsSeen: () => void
 }
 
+export interface StartTaskOptions {
+  scheduled?: boolean
+  /** Create the task already in a terminal state (e.g. disabled before process start). */
+  status?: TaskStatus
+  result?: { success: boolean; summary: string; summaryI18nKey?: string; summaryI18nArgs?: string[] }
+  initialOutput?: SubAppOutput
+}
+
+export function isTerminalTaskStatus(status: TaskStatus): boolean {
+  return (
+    status === 'completed' || status === 'failed' || status === 'cancelled' || status === 'disabled'
+  )
+}
+
 export const useTaskStore = create<TaskState>((set, get) => ({
   tasks: {},
   activeTaskId: null,
   systemLogs: [],
   hasUnseenErrors: false,
 
-  startTask: (taskId: string, appId: string, appName: string, opts?: { scheduled?: boolean }) => {
-    const task: TaskInfo = {
-      taskId,
-      appId,
-      appName,
-      status: 'running',
-      progress: 0,
-      outputs: [],
-      startedAt: Date.now(),
-      scheduled: opts?.scheduled
-    }
-    set((state) => ({
-      tasks: { ...state.tasks, [taskId]: task }
-    }))
+  startTask: (taskId: string, appId: string, appName: string, opts?: StartTaskOptions) => {
+    // Idempotent: never reset an existing task (early failure / dual callers
+    // must not wipe logs that were already written).
+    set((state) => {
+      if (state.tasks[taskId]) return state
+      const status = opts?.status ?? 'running'
+      const task: TaskInfo = {
+        taskId,
+        appId,
+        appName,
+        status,
+        progress: 0,
+        outputs: opts?.initialOutput ? [opts.initialOutput] : [],
+        startedAt: Date.now(),
+        completedAt: isTerminalTaskStatus(status) ? Date.now() : undefined,
+        result: opts?.result,
+        scheduled: opts?.scheduled
+      }
+      const isError =
+        status === 'failed' || status === 'disabled' || opts?.initialOutput?.type === 'error'
+      return {
+        tasks: { ...state.tasks, [taskId]: task },
+        hasUnseenErrors: isError ? true : state.hasUnseenErrors
+      }
+    })
   },
 
   updateOutput: (taskId: string, output: SubAppOutput) => {
@@ -97,12 +122,13 @@ export const useTaskStore = create<TaskState>((set, get) => ({
             status,
             result,
             completedAt:
-              status === 'completed' || status === 'failed' || status === 'cancelled'
+              isTerminalTaskStatus(status)
                 ? Date.now()
                 : task.completedAt
           }
         },
-        hasUnseenErrors: status === 'failed' ? true : state.hasUnseenErrors
+        hasUnseenErrors:
+          status === 'failed' || status === 'disabled' ? true : state.hasUnseenErrors
       }
     })
   },
@@ -119,7 +145,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     set((state) => {
       const tasks: Record<string, TaskInfo> = {}
       for (const [id, task] of Object.entries(state.tasks)) {
-        if (task.status !== 'completed' && task.status !== 'failed' && task.status !== 'cancelled') {
+        if (!isTerminalTaskStatus(task.status)) {
           tasks[id] = task
         }
       }

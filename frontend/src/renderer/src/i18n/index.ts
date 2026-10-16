@@ -2301,6 +2301,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'confirmRun.title': '确认执行',
     'confirmRun.contentPrefix': '确定要执行 「',
     'confirmRun.contentSuffix': '」 吗？',
+    // ── V2 workbench port (zh) ──
+    'logs.disabled': '已禁用',
+    'subapp.executionCancelled': '已取消',
   },
   'en': {
     // Sidebar menu
@@ -4685,6 +4688,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'confirmRun.title': 'Confirm Run',
     'confirmRun.contentPrefix': 'Are you sure you want to run "',
     'confirmRun.contentSuffix': '"?',
+    // ── V2 workbench port (en) ──
+    'logs.disabled': 'Disabled',
+    'subapp.executionCancelled': 'Cancelled',
   }
 }
 
