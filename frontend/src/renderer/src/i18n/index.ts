@@ -2323,6 +2323,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'pythonCheck.content': '工作台应用需要 Python 才能运行。是否现在一键安装？也可以稍后在「本地环境」页面安装。',
     'pythonCheck.install': '立即安装',
     'pythonCheck.later': '稍后',
+    'mine.deleteRemoteSuccess': '已删除云端应用',
+    'mine.deleteRemoteFailed': '删除云端应用失败',
+    'mine.loading': '加载中…',
   },
   'en': {
     // Sidebar menu
@@ -4729,6 +4732,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'pythonCheck.content': 'Workbench apps need Python to run. Install it now with one click? You can also install it later from the Local Env page.',
     'pythonCheck.install': 'Install now',
     'pythonCheck.later': 'Later',
+    'mine.deleteRemoteSuccess': 'Cloud app deleted',
+    'mine.deleteRemoteFailed': 'Failed to delete the cloud app',
+    'mine.loading': 'Loading…',
   }
 }
 
