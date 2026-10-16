@@ -24,7 +24,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         window.api.workspace.list(),
         window.api.workspace.getActive()
       ])
-      set({ workspaces, activeWorkspace })
+      set({ workspaces, activeWorkspace: activeWorkspace ?? null })
     } finally {
       set({ loading: false })
     }
@@ -32,7 +32,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
   createWorkspace: async (name: string, path: string, vcsType?: string) => {
     const workspace = await window.api.workspace.create(name, path, vcsType)
-    const shouldActivate = useWorkspaceStore.getState().activeWorkspace === null
+    const shouldActivate = useWorkspaceStore.getState().activeWorkspace == null
     if (shouldActivate) {
       await window.api.workspace.setActive(workspace.id)
       set((state) => ({
