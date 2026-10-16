@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import * as logger from '../utils/logger'
 import { detectOne } from '../services/local-env.service'
+import { scanAvailablePythons } from '../services/python-detect.service'
 import {
   getSettings,
   setSetting,
@@ -45,6 +46,12 @@ export function registerSettingsIpc(): void {
       return result.installations[0].path
     }
     return null
+  })
+
+  // V4 (B15) — scanned Python list for the Settings picker. V2 adds the same
+  // channel; keep a single registration when merging.
+  ipcMain.handle('settings:get-available-pythons', async (_event, forceRefresh?: boolean) => {
+    return scanAvailablePythons({}, Boolean(forceRefresh))
   })
 
   ipcMain.handle('settings:get-env-config', async () => {

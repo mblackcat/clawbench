@@ -57,6 +57,16 @@ interface VcsExecResult {
   error?: string
 }
 
+/** A scanned Python / IDE / terminal option for the Settings path pickers. */
+export interface DetectedEnvironmentItem {
+  id: string
+  name: string
+  path: string
+  version?: string
+  description?: string
+  isDefault?: boolean
+}
+
 export interface ClawBenchAPI {
   workspace: {
     list: () => Promise<import('./workspace').Workspace[]>
@@ -168,6 +178,8 @@ export interface ClawBenchAPI {
     moveFile: (oldPath: string, newPath: string) => Promise<void>
     detectIde: () => Promise<string | null>
     detectTerminal: () => Promise<string | null>
+    getAvailableIdes: (forceRefresh?: boolean) => Promise<DetectedEnvironmentItem[]>
+    getAvailableTerminals: (forceRefresh?: boolean) => Promise<DetectedEnvironmentItem[]>
     openInIde: (appPath: string) => Promise<void>
     openFileInEditor: (filePath: string) => Promise<void>
     openSSHConfig: () => Promise<void>
@@ -246,6 +258,7 @@ export interface ClawBenchAPI {
     set: (key: string, value: unknown) => Promise<void>
     validatePython: (pythonPath: string) => Promise<{ valid: boolean; version: string }>
     detectPython: () => Promise<string | null>
+    getAvailablePythons: (forceRefresh?: boolean) => Promise<DetectedEnvironmentItem[]>
     getEnvConfig: () => Promise<{ enableAccountLogin: boolean; enableLocalMode: boolean }>
     getAiModels: () => Promise<AIModelConfig[]>
     saveAiModel: (config: Partial<AIModelConfig>) => Promise<AIModelConfig>

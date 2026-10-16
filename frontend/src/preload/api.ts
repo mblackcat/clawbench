@@ -144,6 +144,10 @@ export const api = {
       ipcRenderer.invoke('developer:move-file', oldPath, newPath),
     detectIde: () => ipcRenderer.invoke('developer:detect-ide'),
     detectTerminal: () => ipcRenderer.invoke('developer:detect-terminal'),
+    getAvailableIdes: (forceRefresh?: boolean) =>
+      ipcRenderer.invoke('developer:get-available-ides', forceRefresh),
+    getAvailableTerminals: (forceRefresh?: boolean) =>
+      ipcRenderer.invoke('developer:get-available-terminals', forceRefresh),
     openInIde: (appPath: string) => ipcRenderer.invoke('developer:open-in-ide', appPath),
     openFileInEditor: (filePath: string) => ipcRenderer.invoke('developer:open-file-in-editor', filePath),
     openSSHConfig: () => ipcRenderer.invoke('developer:open-ssh-config'),
@@ -170,6 +174,8 @@ export const api = {
     validatePython: (pythonPath: string) =>
       ipcRenderer.invoke('settings:validate-python', pythonPath),
     detectPython: () => ipcRenderer.invoke('settings:detect-python') as Promise<string | null>,
+    getAvailablePythons: (forceRefresh?: boolean) =>
+      ipcRenderer.invoke('settings:get-available-pythons', forceRefresh),
     getEnvConfig: () => ipcRenderer.invoke('settings:get-env-config'),
     getAiModels: () => ipcRenderer.invoke('settings:get-ai-models'),
     saveAiModel: (config: Record<string, unknown>) =>

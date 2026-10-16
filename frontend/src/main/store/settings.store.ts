@@ -142,6 +142,7 @@ interface PublicSettings {
   appOrder: string[]
   pinnedApps: string[]
   activeProject: Partial<ActiveProjectInfo>
+  pipIndexUrl: string
 }
 
 export const settingsStore = new Store<SettingsSchema>({
@@ -441,7 +442,8 @@ export function getSettings(): PublicSettings {
     appShortcutModifier: settingsStore.get('appShortcutModifier') ?? 'Control+Shift',
     appOrder: settingsStore.get('appOrder') ?? [],
     pinnedApps: settingsStore.get('pinnedApps') ?? DEFAULT_PINNED_APP_IDS,
-    activeProject: settingsStore.get('activeProject') ?? {}
+    activeProject: settingsStore.get('activeProject') ?? {},
+    pipIndexUrl: settingsStore.get('pipIndexUrl') ?? ''
   }
 }
 

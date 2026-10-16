@@ -2320,6 +2320,20 @@ const translations: Record<Lang, Record<string, string>> = {
     'localEnv.mirror.loadFailed': '读取源配置失败',
     'localEnv.mirror.setFailed': '切换源失败',
     'localEnv.mirror.dockerRestartHint': 'Docker 镜像源修改后需重启 Docker 才能生效',
+    // ── settings path pickers (V4) ──
+    'settings.pathSettingsTitle': '环境与工具路径',
+    'settings.pathSettingsDesc': '配置 Python、代码编辑器 (IDE) 与命令行终端工具路径',
+    'settings.refreshScan': '重新扫描',
+    'settings.browseCustom': '浏览选择',
+    'settings.scanSuccess': '已重新扫描可用工具',
+    'settings.default': '默认',
+    'settings.customPath': '自定义',
+    'settings.terminalSelectPlaceholder': '请选择终端程序',
+    'settings.ideSelectPlaceholder': '请选择代码编辑器',
+    'settings.pythonSelectPlaceholder': '留空自动检测（优先使用工作台虚拟环境）',
+    'settings.pythonPathDesc': '本地 Python 解释器路径，用于运行 Python 小程序，留空则自动检测',
+    'settings.pipIndexUrl': 'pip 镜像地址（可选）',
+    'settings.pipIndexUrlDesc': '创建工作台 Python 虚拟环境、安装依赖时使用的 pip index-url；留空则使用 pip 自身配置 / 官方 PyPI',
   },
   'en': {
     // Sidebar menu
@@ -4723,6 +4737,20 @@ const translations: Record<Lang, Record<string, string>> = {
     'localEnv.mirror.loadFailed': 'Failed to read registry config',
     'localEnv.mirror.setFailed': 'Failed to switch registry',
     'localEnv.mirror.dockerRestartHint': 'Restart Docker for registry mirror changes to take effect',
+    // ── settings path pickers (V4) ──
+    'settings.pathSettingsTitle': 'Environment & Tool Paths',
+    'settings.pathSettingsDesc': 'Configure paths for Python, Code IDE, and Terminal applications',
+    'settings.refreshScan': 'Rescan',
+    'settings.browseCustom': 'Browse',
+    'settings.scanSuccess': 'Available tools rescanned',
+    'settings.default': 'Default',
+    'settings.customPath': 'Custom',
+    'settings.terminalSelectPlaceholder': 'Select a terminal application',
+    'settings.ideSelectPlaceholder': 'Select a Code IDE',
+    'settings.pythonSelectPlaceholder': 'Leave empty to auto-detect (workbench venv preferred)',
+    'settings.pythonPathDesc': 'Python interpreter used to run sub-apps. Leave empty for auto-detection.',
+    'settings.pipIndexUrl': 'pip index URL (optional)',
+    'settings.pipIndexUrlDesc': "pip index-url used when creating the workbench Python venv and installing requirements. Leave empty to use pip's own config / PyPI.",
   }
 }
 
