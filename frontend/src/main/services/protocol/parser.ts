@@ -17,7 +17,16 @@ export function safeDecode(value: string): string {
 }
 
 /** Query keys whose values must never reach the logs (OAuth / session secrets). */
-const SENSITIVE_KEYS = ['token', 'code', 'state', 'uat', 'urt', 'access_token', 'refresh_token']
+const SENSITIVE_KEYS = [
+  'token',
+  'code',
+  'state',
+  'client_state',
+  'uat',
+  'urt',
+  'access_token',
+  'refresh_token'
+]
 const SENSITIVE_QUERY_RE = new RegExp(`([?&](?:${SENSITIVE_KEYS.join('|')})=)[^&#]*`, 'gi')
 
 /** Masks sensitive query values (token, code, state, uat, urt, …) in a URL for logging. */
