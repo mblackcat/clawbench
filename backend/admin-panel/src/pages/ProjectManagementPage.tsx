@@ -28,10 +28,12 @@ import {
   UndoOutlined,
   UserAddOutlined,
   SaveOutlined,
+  CompassOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useApi } from '../hooks/useApi';
 import SearchBar from '../components/SearchBar';
+import ProjectNavDrawer from '../components/ProjectNavDrawer';
 import type { Project, ProjectMember, CommonApp, VcsType, ProjectStatus } from '../types';
 import { formatDate } from '../utils/cover';
 
@@ -52,12 +54,12 @@ interface ProjectFormValues {
 }
 
 /** Feishu bitable feedback config keys we expose as plain form fields */
-const FEEDBACK_STRING_FIELDS: { key: string; label: string }[] = [
-  { key: 'appId', label: 'App ID' },
-  { key: 'appSecret', label: 'App Secret' },
-  { key: 'appToken', label: 'App Token' },
-  { key: 'tableId', label: 'Table ID' },
-  { key: 'bitableUrl', label: 'Bitable URL' },
+const FEEDBACK_STRING_FIELDS: { key: string; label: string; placeholder?: string }[] = [
+  { key: 'appId', label: 'App ID', placeholder: 'Feishu app ID (cli_xxx)' },
+  { key: 'appSecret', label: 'App Secret', placeholder: 'Feishu app secret' },
+  { key: 'appToken', label: 'App Token', placeholder: 'Bitable app token (optional when Bitable URL is set)' },
+  { key: 'tableId', label: 'Table ID', placeholder: 'Bitable table ID (tblxxx)' },
+  { key: 'bitableUrl', label: 'Bitable URL', placeholder: 'Bitable link (/base/ or wiki /wiki/ URL)' },
 ];
 
 const ProjectManagementPage: React.FC = () => {
@@ -80,6 +82,9 @@ const ProjectManagementPage: React.FC = () => {
   const [newMemberName, setNewMemberName] = useState('');
   const [newMemberRole, setNewMemberRole] = useState<'admin' | 'member'>('member');
   const [addingMember, setAddingMember] = useState(false);
+
+  // Navigation drawer (project bookmark bar shown on the client workbench)
+  const [navProject, setNavProject] = useState<Project | null>(null);
 
   // App-config drawer
   const [configProject, setConfigProject] = useState<Project | null>(null);
@@ -439,7 +444,7 @@ const ProjectManagementPage: React.FC = () => {
     {
       title: 'Actions',
       key: 'actions',
-      width: 210,
+      width: 250,
       render: (_: unknown, record) => (
         <Space size={0}>
           <Button
@@ -453,6 +458,12 @@ const ProjectManagementPage: React.FC = () => {
             icon={<TeamOutlined />}
             title="Members"
             onClick={() => openMembers(record)}
+          />
+          <Button
+            type="text"
+            icon={<CompassOutlined />}
+            title="Navigation"
+            onClick={() => setNavProject(record)}
           />
           <Button
             type="text"
@@ -576,7 +587,7 @@ const ProjectManagementPage: React.FC = () => {
 
         {isFeedback && parsed && (
           <div style={{ marginBottom: 12 }}>
-            {FEEDBACK_STRING_FIELDS.map(({ key, label }) => (
+            {FEEDBACK_STRING_FIELDS.map(({ key, label, placeholder }) => (
               <div
                 key={key}
                 style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}
@@ -591,7 +602,7 @@ const ProjectManagementPage: React.FC = () => {
                   size="small"
                   value={typeof parsed[key] === 'string' ? (parsed[key] as string) : ''}
                   onChange={(e) => updateFeedbackField(app.appKey, key, e.target.value)}
-                  placeholder={label}
+                  placeholder={placeholder || label}
                 />
               </div>
             ))}
@@ -761,6 +772,9 @@ const ProjectManagementPage: React.FC = () => {
           }}
         />
       </Drawer>
+
+      {/* Navigation drawer */}
+      <ProjectNavDrawer project={navProject} onClose={() => setNavProject(null)} />
 
       {/* App configs drawer */}
       <Drawer

@@ -83,6 +83,14 @@ export interface DashboardStats {
   executionsByType: Record<string, number>;
   /** Total marketplace execution-error count */
   totalErrors: number;
+  /** Number of registered common/builtin apps */
+  totalCommonApps?: number;
+  /** Client-reported install/download total across all common apps */
+  commonAppDownloads?: number;
+  /** Client-reported run total across all common apps */
+  commonAppExecutions?: number;
+  /** Total reported run errors across all common apps */
+  commonAppErrors?: number;
 }
 
 export interface ReleaseFile {
@@ -158,6 +166,32 @@ export interface ProjectMember {
   joinedAt: number;
 }
 
+/** Project navigation group — rendered as a folder in the client workbench */
+export interface NavGroup {
+  groupId: string;
+  projectId: string;
+  title: string;
+  icon?: string | null;
+  sortOrder: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** Project navigation link — `groupId` null means top level */
+export interface NavLink {
+  linkId: string;
+  projectId: string;
+  groupId?: string | null;
+  url: string;
+  title: string;
+  icon?: string | null;
+  sortOrder: number;
+  /** Client-reported click count */
+  clickCount: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
 // ── Common / builtin apps ──────────────────────────────────
 
 export interface CommonApp {
@@ -176,6 +210,8 @@ export interface CommonApp {
   downloadCount: number;
   /** Client-reported run count */
   executionCount: number;
+  /** True once an admin uploaded a server-side archive for this app */
+  hasArchive?: boolean;
   config: Record<string, unknown>;
   createdAt: number;
   updatedAt: number;
