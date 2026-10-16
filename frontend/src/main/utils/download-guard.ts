@@ -10,6 +10,7 @@
 
 export const MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024
 export const DOWNLOAD_TIMEOUT_MS = 30_000
+const MAX_REDIRECTS = 5
 
 const PRIVATE_HOST_PATTERNS: RegExp[] = [
   /^localhost$/,
@@ -93,7 +94,24 @@ export async function fetchPackageArchive(
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    const resp = await fetch(downloadUrl, { headers, signal: controller.signal })
+    // Follow redirects manually so every hop is re-validated (no redirecting
+    // into private hosts), and never forward the bearer token off-origin.
+    let currentUrl = downloadUrl
+    let resp: Response | undefined
+    for (let hop = 0; ; hop++) {
+      const sameOrigin = new URL(currentUrl).origin === new URL(downloadUrl).origin
+      resp = await fetch(currentUrl, {
+        headers: sameOrigin ? headers : {},
+        signal: controller.signal,
+        redirect: 'manual'
+      })
+      if (resp.status < 300 || resp.status >= 400) break
+      const location = resp.headers.get('location')
+      if (!location) break
+      if (hop >= MAX_REDIRECTS) throw new Error('Too many redirects')
+      currentUrl = new URL(location, currentUrl).toString()
+      validateDownloadUrl(currentUrl)
+    }
     if (!resp.ok) {
       throw new Error(`下载失败: HTTP ${resp.status}`)
     }

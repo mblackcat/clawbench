@@ -86,4 +86,25 @@ describe('fetchPackageArchive', () => {
     const buf = await fetchPackageArchive('http://localhost/a.zip')
     expect([...buf]).toEqual([1, 2, 3])
   })
+  it('re-validates redirect targets and refuses private hosts', async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(null, { status: 302, headers: { location: 'http://192.168.1.10/evil.zip' } })
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(fetchPackageArchive('https://cdn.example.com/a.zip', 'tok')).rejects.toThrow(/Private|IP/)
+  })
+
+  it('follows a public redirect without forwarding the token off-origin', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(null, { status: 302, headers: { location: 'https://files.example.org/a.zip' } })
+      )
+      .mockResolvedValueOnce(new Response(new Uint8Array([7])))
+    vi.stubGlobal('fetch', fetchMock)
+    const buf = await fetchPackageArchive('https://cdn.example.com/a.zip', 'tok')
+    expect([...buf]).toEqual([7])
+    const second = fetchMock.mock.calls[1][1] as { headers: Record<string, string> }
+    expect(second.headers.Authorization).toBeUndefined()
+  })
 })
