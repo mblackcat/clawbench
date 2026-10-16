@@ -102,6 +102,14 @@ export interface DashboardStats {
   downloadsByType: Record<string, number>;
   executionsByType: Record<string, number>;
   totalErrors: number;
+  /** Number of registered common/builtin apps */
+  totalCommonApps: number;
+  /** Client-reported install/download total across all common apps */
+  commonAppDownloads: number;
+  /** Client-reported run total across all common apps */
+  commonAppExecutions: number;
+  /** Total reported run errors across all common apps */
+  commonAppErrors: number;
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
@@ -114,6 +122,10 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     downloadByTypeRows,
     executionByTypeRows,
     errorRow,
+    commonAppRow,
+    commonDownloadRow,
+    commonExecRow,
+    commonErrorRow,
   ] = await Promise.all([
     database.get<{ cnt: number }>(`SELECT COUNT(*) AS cnt FROM users`),
     database.get<{ cnt: number }>(`SELECT COUNT(*) AS cnt FROM applications`),
@@ -134,6 +146,16 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     ),
     database.get<{ cnt: number }>(
       `SELECT COUNT(*) AS cnt FROM application_execution_errors`
+    ),
+    database.get<{ cnt: number }>(`SELECT COUNT(*) AS cnt FROM common_apps`),
+    database.get<{ cnt: number }>(
+      `SELECT COALESCE(SUM(download_count), 0) AS cnt FROM common_apps`
+    ),
+    database.get<{ cnt: number }>(
+      `SELECT COALESCE(SUM(execution_count), 0) AS cnt FROM common_apps`
+    ),
+    database.get<{ cnt: number }>(
+      `SELECT COUNT(*) AS cnt FROM common_app_execution_errors`
     ),
   ]);
 
@@ -161,6 +183,10 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     downloadsByType,
     executionsByType,
     totalErrors: errorRow?.cnt ?? 0,
+    totalCommonApps: Number(commonAppRow?.cnt ?? 0),
+    commonAppDownloads: Number(commonDownloadRow?.cnt ?? 0),
+    commonAppExecutions: Number(commonExecRow?.cnt ?? 0),
+    commonAppErrors: Number(commonErrorRow?.cnt ?? 0),
   };
 }
 
