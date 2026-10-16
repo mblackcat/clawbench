@@ -67,3 +67,11 @@ A21–A29（登录跳转、飞书登录加固 renderer 部分 + LoginPage 等待
 - **SettingsPage.tsx**：V4 只改 Python/IDE/终端路径区（B15）；V5 改其余。
 - 共享文件（`preload/api.ts`、`renderer/src/types/ipc.ts`、`i18n/index.ts`、`main/index.ts`、`main/ipc/index.ts`、`package.json`、`settings.store.ts`）：**只做局部追加**，不重排、不格式化无关代码；i18n 新 key 按功能成块追加到 zh-CN 和 en 各自末尾附近，便于合并。
 - Phase 0 已提供的模块（直接 import，勿重复实现）：`main/utils/{windows-env,process-tree,ipc-validation,paths}`、`main/services/{python-detect,python-venv,terminal-detect,ide-detect}.service`、renderer `utils/{unified-diff,terminal-theme,app-identity,coding-tools-cache}`。`ipc-validation` 的 `validateToolType` 用 `satisfies Record<AIToolType,true>`，扩展 `AIToolType`（V3 加 agy/omp）时须同步。
+
+## 状态（2026-10-16 集成完成）
+
+- [x] Phase 0 基础模块、V1 后端 + 管理面板、V2 工作台/运行时/Python、V3 AI Coding/VCS/提醒托盘、V4 终端/Local Env/Setup/协议、V5 外壳/UI/主题/登录 —— 均已合入 `feat/vb-port`。
+- [x] 集成收尾：`ai-coding:open-terminal` 改用 `openExternalTerminal`（保留 ipc-validation）；编码工具缓存统一到 `utils/coding-tools-cache.ts`（含 AICodeButton）；admin 判定统一为 `useIsAdmin()` + `isAdminUser()`；`useTaskStore` 创建即失败/禁用触发错误提醒、新运行清除提醒、状态转入失败只触发一次；pty-manager 去掉 agy/omp 重复分支（`touchPtyActivity` 仍在 onData 中）；补缺失 i18n key；CLAUDE.md 更新。
+- [x] 核对无问题：agy/omp 工具 ID 全链路一致（新工具与 gemini 等一样默认关闭，OSS 默认仅 claude/codex 开启）；`CodingTerminalView` 输入时已 `dismissCodingTarget`；SetupWizard 研发模式完成后进入 `/ai-chat`（与 OSS 一致），通用模式进入 `/workbench/installed`；无 `=== 'dark'` 残留；无重复 IPC 通道 / preload key。
+- 验证：frontend typecheck 通过，vitest 330 通过 / 3 跳过，`npm run build` 通过，lint 0 error；backend jest 407 通过。
+- 遗留（非本分支引入）：en 有约 100 个 `hermes.*` / `settings.aiTools.*` key 在 zh-CN 中缺失（master 即如此，运行时回退）；LoginPage 品牌区沿用 OSS 的 `#fff` 标题色；`useXterm` 搜索高亮色与 ProviderIcons 品牌色为固定 hex（xterm/品牌要求）。
