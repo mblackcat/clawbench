@@ -123,6 +123,38 @@ async function fetchGlobalCommonApps(): Promise<CommonAppsFetchResult> {
 }
 
 /**
+ * Synchronous allow-list of effectively-enabled builtin appKeys from cache.
+ * Used by shortcuts / UI ordering so digits match the favorites grid.
+ * Returns null when unknown (no project / no cache) → caller should not hide.
+ */
+export function getCachedEnabledBuiltinKeys(): Set<string> | null {
+  const project = getActiveProject()
+  if (!project) return null
+  const cached = getCommonAppConfigCache(project.projectId)
+  if (!Array.isArray(cached)) return null
+  const keys = new Set<string>()
+  for (const entry of cached) {
+    if (entry && typeof entry === 'object' && typeof (entry as { appKey?: unknown }).appKey === 'string') {
+      const appKey = (entry as { appKey: string }).appKey
+      const enabled = (entry as { enabled?: unknown }).enabled
+      // Project list is already effective-enabled; still honor explicit false if present.
+      if (enabled === false) continue
+      keys.add(appKey)
+    }
+  }
+  return keys
+}
+
+/**
+ * Prefetch project common-apps into cache (best-effort). Call on project switch / startup.
+ */
+export async function warmProjectCommonAppsCache(projectId?: string): Promise<void> {
+  const id = projectId ?? getActiveProject()?.projectId
+  if (!id) return
+  await fetchProjectCommonApps(id)
+}
+
+/**
  * Enriches params for a builtin app run with reserved keys consumed by the
  * Python side: `__project`, `__app_config`.
  *

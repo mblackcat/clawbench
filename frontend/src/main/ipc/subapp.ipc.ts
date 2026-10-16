@@ -3,6 +3,7 @@ import fs from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
 import { listSubApps, getManifest, getSubAppPath, uninstallApp, installApp } from '../services/subapp.service'
+import { resetBuiltinApp, getBundledBuiltinVersion } from '../services/builtin-apps.service'
 import {
   executeSubApp,
   cancelTask,
@@ -18,10 +19,24 @@ import {
   enrichBuiltinAppParams
 } from '../services/project.service'
 import { installSkill, InstallMode, SkillTool } from '../services/skill-install.service'
+import { getUser } from '../store/auth.store'
 import { getPythonSdkPath, getTempDir } from '../utils/paths'
 import { unzipArchive } from '../utils/zip'
 import { recordDownloadEvent } from '../services/usage-tracking.service'
+import { installAppRequirements } from '../services/python-venv.service'
+import { fetchPackageArchive } from '../utils/download-guard'
 import * as logger from '../utils/logger'
+
+/** Best-effort requirements install for an installed app (sha256-cached). */
+async function ensureAppRequirements(appId: string): Promise<void> {
+  const installedAppPath = getSubAppPath(appId)
+  if (!installedAppPath) return
+  try {
+    await installAppRequirements(installedAppPath)
+  } catch (reqErr) {
+    logger.warn(`Failed to install requirements for ${appId}:`, reqErr)
+  }
+}
 
 /**
  * Shared helper: download a marketplace package, unzip it, and locate the
@@ -34,23 +49,14 @@ async function downloadAndExtractMarketPackage(
   token: string | undefined,
   filePrefix: string
 ): Promise<{ sourceDir: string; cleanup: () => void }> {
-  const headers: Record<string, string> = {}
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
-  }
-
-  const resp = await fetch(downloadUrl, { headers })
-  if (!resp.ok) {
-    throw new Error(`下载失败: HTTP ${resp.status}`)
-  }
-
-  const buffer = await resp.arrayBuffer()
+  // Validated URL, 30s timeout, 100MB cap
+  const buffer = await fetchPackageArchive(downloadUrl, token)
   const tmpDir = getTempDir()
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true })
 
   const safeId = appId.replace(/[^a-zA-Z0-9._-]/g, '_')
   const zipPath = join(tmpDir, `${filePrefix}-${safeId}.zip`)
-  fs.writeFileSync(zipPath, Buffer.from(buffer))
+  fs.writeFileSync(zipPath, buffer)
 
   const extractDir = join(tmpDir, `${filePrefix}-extract-${Date.now()}`)
   fs.mkdirSync(extractDir, { recursive: true })
@@ -73,6 +79,17 @@ async function downloadAndExtractMarketPackage(
         fs.rmSync(extractDir, { recursive: true, force: true })
       } catch { /* ignore cleanup errors */ }
     }
+  }
+}
+
+export interface SubAppExecuteResult {
+  taskId: string
+  /** Set when the run ended before the process started (disabled / no Python / gate error). */
+  earlyTerminal?: {
+    status: 'failed' | 'disabled'
+    summary: string
+    summaryI18nKey?: string
+    summaryI18nArgs?: string[]
   }
 }
 
@@ -109,7 +126,7 @@ export function registerSubAppIpc(): void {
         throw new Error('No active workspace selected')
       }
 
-      const python = await resolvePythonCommand()
+      const python = await resolvePythonCommand(appPath)
       return resolveSubAppSlot({
         appPath,
         entryFile: manifest.entry,
@@ -125,7 +142,7 @@ export function registerSubAppIpc(): void {
 
   ipcMain.handle(
     'subapp:execute',
-    async (event, appId: string, params?: Record<string, unknown>) => {
+    async (event, appId: string, params?: Record<string, unknown>): Promise<SubAppExecuteResult> => {
       const taskId = randomUUID()
       const manifest = getManifest(appId)
       if (!manifest) {
@@ -150,44 +167,53 @@ export function registerSubAppIpc(): void {
         throw new Error('Cannot find browser window')
       }
 
-      // Builtin enable gate (admin kill-switch) + config injection before
-      // announcing the task, so disabled apps surface immediately with the
-      // disabled reason rather than flashing as "running". Surfaced via the
-      // existing task-started/task-status channels (status 'failed' carries
-      // the disabled i18n message) so no renderer contract change is needed.
+      /**
+       * Early terminal result returned via the invoke response only (no
+       * task-started / task-status events). The renderer seeds the bottom log
+       * panel + toast from `earlyTerminal`, so disabled apps never flash as
+       * "running".
+       */
+      const finishEarly = (
+        status: 'failed' | 'disabled',
+        message: string,
+        i18nKey?: string,
+        i18nArgs?: string[]
+      ): SubAppExecuteResult => ({
+        taskId,
+        earlyTerminal: {
+          status,
+          summary: message,
+          summaryI18nKey: i18nKey,
+          summaryI18nArgs: i18nArgs
+        }
+      })
+
+      // Builtin enable gate (admin kill-switch) + config/user injection.
       let effectiveParams: Record<string, unknown> = params || {}
       if (appId.startsWith(BUILTIN_APP_ID_PREFIX)) {
         try {
           effectiveParams = await enrichBuiltinAppParams(appId, manifest.name, effectiveParams)
+          const user = getUser()
+          if (user) {
+            effectiveParams.__user = {
+              userId: user.id,
+              username: user.name,
+              email: user.email || '',
+              feishuId: user.feishuId || ''
+            }
+          }
         } catch (err) {
-          const isDisabled = err instanceof AppDisabledError
+          if (err instanceof AppDisabledError) {
+            return finishEarly('disabled', err.message, err.i18nKey, err.i18nArgs)
+          }
           const message = err instanceof Error ? err.message : String(err)
-          webContents.send('subapp:task-started', {
-            taskId,
-            appId,
-            appName: manifest.name
-          })
-          webContents.send('subapp:task-status', {
-            taskId,
-            status: 'failed',
-            success: false,
-            summary: message,
-            summaryI18nKey: isDisabled ? err.i18nKey : undefined,
-            summaryI18nArgs: isDisabled ? err.i18nArgs : undefined
-          })
-          return taskId
+          return finishEarly('failed', message)
         }
       }
 
-      webContents.send('subapp:task-started', {
-        taskId,
-        appId,
-        appName: manifest.name
-      })
-
       let pythonPath: string
       try {
-        const python = await resolvePythonCommand()
+        const python = await resolvePythonCommand(appPath)
         pythonPath = python.path
         logger.info(
           `Using ${python.source} Python for sub-app ${appId}: ${python.path} (${python.version})`
@@ -196,21 +222,21 @@ export function registerSubAppIpc(): void {
         const message = err instanceof Error ? err.message : String(err)
         const i18nPayload = getI18nPayload(err)
         logger.error(`Failed to resolve Python for sub-app ${appId}:`, message)
-        webContents.send('subapp:output', {
-          taskId,
-          type: 'error',
-          message,
-          ...i18nPayload
-        })
-        webContents.send('subapp:task-status', {
-          taskId,
-          status: 'failed',
-          summary: message,
-          summaryI18nKey: i18nPayload.i18nKey,
-          summaryI18nArgs: i18nPayload.i18nArgs
-        })
-        return taskId
+        return finishEarly('failed', message, i18nPayload.i18nKey, i18nPayload.i18nArgs)
       }
+
+      // Install / verify requirements.txt (no-op when the sha256 is unchanged)
+      try {
+        await installAppRequirements(appPath)
+      } catch (reqErr) {
+        logger.warn(`Failed to verify requirements for ${appId}:`, reqErr)
+      }
+
+      webContents.send('subapp:task-started', {
+        taskId,
+        appId,
+        appName: manifest.name
+      })
 
       executeSubApp(
         taskId,
@@ -226,7 +252,8 @@ export function registerSubAppIpc(): void {
         webContents
       )
 
-      return taskId
+      const result: SubAppExecuteResult = { taskId }
+      return result
     }
   )
 
@@ -266,6 +293,8 @@ export function registerSubAppIpc(): void {
         throw new Error(result.error || '安装失败')
       }
 
+      await ensureAppRequirements(appId)
+
       logger.info(`[Marketplace] Installed: ${result.manifest?.name} (${appId})`)
       recordDownloadEvent(appId, result.manifest?.version)
       return { success: true, manifest: result.manifest }
@@ -304,6 +333,8 @@ export function registerSubAppIpc(): void {
         throw new Error(result.error || (force ? '重置失败' : '更新失败'))
       }
 
+      await ensureAppRequirements(appId)
+
       logger.info(`[Marketplace] ${force ? 'Reset' : 'Updated'}: ${result.manifest?.name} (${appId})`)
       recordDownloadEvent(appId, result.manifest?.version)
       return { success: true, manifest: result.manifest }
@@ -330,21 +361,13 @@ export function registerSubAppIpc(): void {
     ) => {
       logger.info(`[Marketplace] Installing skill from market: ${appId} (${opts.mode})`)
 
-      const headers: Record<string, string> = {}
-      if (token) headers['Authorization'] = `Bearer ${token}`
-
-      const resp = await fetch(downloadUrl, { headers })
-      if (!resp.ok) {
-        throw new Error(`下载失败: HTTP ${resp.status}`)
-      }
-
-      const buffer = await resp.arrayBuffer()
+      const buffer = await fetchPackageArchive(downloadUrl, token)
       const tmpDir = getTempDir()
       if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true })
 
       const safeId = appId.replace(/[^a-zA-Z0-9._-]/g, '_')
       const zipPath = join(tmpDir, `market-skill-${safeId}.zip`)
-      fs.writeFileSync(zipPath, Buffer.from(buffer))
+      fs.writeFileSync(zipPath, buffer)
 
       const extractDir = join(tmpDir, `market-skill-extract-${Date.now()}`)
       fs.mkdirSync(extractDir, { recursive: true })
@@ -386,4 +409,20 @@ export function registerSubAppIpc(): void {
       return { success: true, installedTo: result.installedTo }
     }
   )
+
+  ipcMain.handle('subapp:reset-builtin', async (_event, appId: string) => {
+    return resetBuiltinApp(appId)
+  })
+
+  ipcMain.handle('subapp:get-bundled-builtin-version', async (_event, appId: string) => {
+    return getBundledBuiltinVersion(appId)
+  })
+
+  ipcMain.handle('subapp:install-requirements', async (_event, appId: string, force?: boolean) => {
+    const appPath = getSubAppPath(appId)
+    if (!appPath) {
+      return { success: false, error: `App not found: ${appId}` }
+    }
+    return installAppRequirements(appPath, { force: Boolean(force) })
+  })
 }

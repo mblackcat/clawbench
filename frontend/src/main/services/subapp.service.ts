@@ -102,7 +102,7 @@ export function getSubAppPath(appId: string): string | undefined {
 export function installApp(
   sourcePath: string,
   opts: { preserveLocal?: boolean } = {}
-): { success: boolean; manifest?: SubAppManifest; error?: string } {
+): { success: boolean; manifest?: SubAppManifest; error?: string; targetDir?: string } {
   try {
     if (!fs.existsSync(sourcePath)) {
       return { success: false, error: `Source path does not exist: ${sourcePath}` }
@@ -133,7 +133,7 @@ export function installApp(
       logger.info(`App installed: ${manifest.name} (${manifest.id}) to ${targetDir}`)
     }
 
-    return { success: true, manifest }
+    return { success: true, manifest, targetDir }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     logger.error('Failed to install app:', message)
