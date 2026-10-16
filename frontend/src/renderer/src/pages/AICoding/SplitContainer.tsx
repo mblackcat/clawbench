@@ -19,18 +19,40 @@ interface SplitContainerProps {
   path?: number[]
 }
 
+/**
+ * Sizes are only usable when they line up with the pane count. Scale them to
+ * the container's current extent — persisted pixel sizes from another window
+ * width (or a pruned pane) would otherwise leave a blank strip until resize.
+ */
+function fitSizes(
+  sizes: number[] | undefined,
+  paneCount: number,
+  containerSize: number
+): number[] | undefined {
+  if (!sizes || sizes.length !== paneCount) return undefined
+  const total = sizes.reduce((a, b) => a + b, 0)
+  if (!(total > 0) || !(containerSize > 0)) return undefined
+  return sizes.map(s => (s / total) * containerSize)
+}
+
 /** After mount / route re-entry, re-apply sizes once the flex parent has a real box. */
 function useAllotmentRemeasure(
   allotmentRef: React.RefObject<AllotmentHandle | null>,
+  containerRef: React.RefObject<HTMLDivElement | null>,
   sizesRef: React.RefObject<number[] | undefined>,
+  paneCount: number,
+  vertical: boolean,
   remountKey: string
 ): void {
   useEffect(() => {
     const remeasure = (): void => {
       const handle = allotmentRef.current
-      if (!handle) return
-      const sizes = sizesRef.current
-      if (sizes && sizes.length > 0) {
+      const el = containerRef.current
+      if (!handle || !el) return
+      const extent = vertical ? el.clientHeight : el.clientWidth
+      if (extent <= 0) return
+      const sizes = fitSizes(sizesRef.current ?? undefined, paneCount, extent)
+      if (sizes) {
         try {
           handle.resize(sizes)
           return
@@ -56,7 +78,7 @@ function useAllotmentRemeasure(
     }
     // Only re-run on mount / structural change — not when onChange writes sizes
     // back into the store (that would loop resize → onChange → resize).
-  }, [allotmentRef, sizesRef, remountKey])
+  }, [allotmentRef, containerRef, sizesRef, paneCount, vertical, remountKey])
 }
 
 const SplitContainer: React.FC<SplitContainerProps> = ({
@@ -69,6 +91,7 @@ const SplitContainer: React.FC<SplitContainerProps> = ({
 
   const dragRef = useRef<{ sessionId: string; fromPaneId: string } | null>(null)
   const allotmentRef = useRef<AllotmentHandle>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
 
   const handleTabDragStart = useCallback((sessionId: string, paneId: string) => {
     dragRef.current = { sessionId, fromPaneId: paneId }
@@ -100,7 +123,9 @@ const SplitContainer: React.FC<SplitContainerProps> = ({
   const structKey = useMemo(() => layoutFingerprint(layout), [layout])
   const layoutSizesRef = useRef<number[] | undefined>(undefined)
   layoutSizesRef.current = layout.type === 'split' ? layout.sizes : undefined
-  useAllotmentRemeasure(allotmentRef, layoutSizesRef, structKey)
+  const paneCount = layout.type === 'split' ? layout.children.length : 0
+  const vertical = layout.type === 'split' && layout.direction === 'vertical'
+  useAllotmentRemeasure(allotmentRef, containerRef, layoutSizesRef, paneCount, vertical, structKey)
 
   if (layout.type === 'leaf') {
     return (
@@ -121,12 +146,12 @@ const SplitContainer: React.FC<SplitContainerProps> = ({
   }
 
   return (
-    <div style={{ height: '100%', width: '100%', minHeight: 0, minWidth: 0 }}>
+    <div ref={containerRef} style={{ height: '100%', width: '100%', minHeight: 0, minWidth: 0 }}>
       <Allotment
         ref={allotmentRef}
         key={structKey}
         vertical={layout.direction === 'vertical'}
-        defaultSizes={layout.sizes}
+        defaultSizes={layout.sizes?.length === layout.children.length ? layout.sizes : undefined}
         onChange={handleSizeChange}
       >
         {layout.children.map((child, idx) => (
