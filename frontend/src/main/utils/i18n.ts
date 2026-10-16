@@ -17,7 +17,13 @@ const translations: Record<Lang, Record<string, string>> = {
     'subapp.executionFailed': '执行失败',
     'subapp.executionCompleted': '执行完成',
     'subapp.appDisabled': '当前应用已禁用',
-    'subapp.appDisabledNamed': '「{0}」已被管理员禁用'
+    'subapp.appDisabledNamed': '「{0}」已被管理员禁用',
+    'python.workbenchVenv': '工作台虚拟环境',
+    'pythonVenv.noHostPython': '未在系统中检测到可用的 Python 环境，无法创建工作台专用虚拟环境',
+    'pythonVenv.createFailed': '创建 Python 虚拟环境失败',
+    'pythonVenv.notReady': 'Python 虚拟环境未就绪',
+    'pythonVenv.pipInstallFailed': 'pip 安装依赖失败，退出码：{0}',
+    'terminal.cmdName': '命令提示符 (cmd.exe)'
   },
   en: {
     'subapp.pythonConfiguredPathUnavailable':
@@ -33,13 +39,24 @@ const translations: Record<Lang, Record<string, string>> = {
     'subapp.executionFailed': 'Execution failed',
     'subapp.executionCompleted': 'Execution completed',
     'subapp.appDisabled': 'This app is disabled',
-    'subapp.appDisabledNamed': '"{0}" has been disabled by an administrator'
+    'subapp.appDisabledNamed': '"{0}" has been disabled by an administrator',
+    'python.workbenchVenv': 'Workbench venv',
+    'pythonVenv.noHostPython': 'No usable Python was found on this system, so the workbench virtual environment cannot be created',
+    'pythonVenv.createFailed': 'Failed to create the Python virtual environment',
+    'pythonVenv.notReady': 'The Python virtual environment is not ready',
+    'pythonVenv.pipInstallFailed': 'pip install failed with exit code {0}',
+    'terminal.cmdName': 'Command Prompt (cmd.exe)'
   }
 }
 
 function getLanguage(): Lang {
-  const language = settingsStore.get('language')
-  return language === 'en' ? 'en' : 'zh-CN'
+  try {
+    const language = settingsStore.get('language')
+    return language === 'en' ? 'en' : 'zh-CN'
+  } catch {
+    // settings store unavailable (e.g. unit tests outside Electron)
+    return 'zh-CN'
+  }
 }
 
 export function mainT(key: string, ...args: Array<string | number | null | undefined>): string {
