@@ -99,15 +99,9 @@ function tick(): void {
         ...(task.repeatRule === 'none' ? { enabled: false } : {})
       })
 
-      runningTaskIds.add(task.id)
-
-      runTask(task)
-        .finally(() => {
-          runningTaskIds.delete(task.id)
-        })
-        .catch((err: unknown) => {
-          logger.error(`[Scheduler] Task "${task.name}" execution failed:`, err)
-        })
+      void runTracked(task).catch((err: unknown) => {
+        logger.error(`[Scheduler] Task "${task.name}" execution failed:`, err)
+      })
     }
   }
 }
@@ -120,8 +114,16 @@ export async function executeTask(task: ScheduledTask): Promise<void> {
   if (runningTaskIds.has(task.id)) {
     throw new Error(`Task "${task.name}" is already running`)
   }
-  runningTaskIds.add(task.id)
   updateScheduledTask(task.id, { lastRunAt: Date.now() })
+  await runTracked(task)
+}
+
+/**
+ * Run a task while holding its re-entrancy slot. The slot is always released in
+ * `finally` (completeChat itself is bounded by a timeout, so this can't hang).
+ */
+async function runTracked(task: ScheduledTask): Promise<void> {
+  runningTaskIds.add(task.id)
   try {
     await runTask(task)
   } finally {
