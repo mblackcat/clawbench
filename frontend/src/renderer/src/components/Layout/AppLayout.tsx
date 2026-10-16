@@ -10,6 +10,7 @@ import OutputPanel from '../OutputPanel'
 import SubAppDialog from '../SubAppDialog'
 import WeatherEffect, { useWeatherEffect } from '../WeatherEffect'
 import AttentionManager from '../AttentionManager'
+import PythonEnvCheck from '../PythonEnvCheck'
 import { useTaskStore } from '../../stores/useTaskStore'
 import { useSubAppExecution } from '../../hooks/useSubAppExecution'
 import { useAICodingStore } from '../../stores/useAICodingStore'
@@ -179,6 +180,7 @@ const AppLayout: React.FC = () => {
       <ErrorLogDrawer open={errorLogOpen} onClose={() => setErrorLogOpen(false)} />
       <SubAppDialog />
       <AttentionManager />
+      <PythonEnvCheck />
     </Layout>
   )
 }
