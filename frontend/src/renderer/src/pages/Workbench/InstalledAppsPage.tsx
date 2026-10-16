@@ -77,6 +77,7 @@ import { buildInitialAppParams, saveAppParams } from '../../utils/subapp-params'
 import { useT } from '../../i18n';
 import { applicationManager } from '../../services/applicationManager';
 import { mergeAdminPins, readLastAdminPins, writeLastAdminPins } from '../../utils/builtin-pins';
+import { typedNameKey } from '../../utils/app-match';
 import { apiClient } from '../../services/apiClient';
 import { isAuthoredByCurrentUser } from '../../utils/app-identity';
 import { seedTaskFromExecuteResult, describeEarlyTerminal } from '../../utils/subapp-execute';
@@ -743,7 +744,13 @@ const InstalledAppsPage: React.FC = () => {
       const publishedNames = new Set(published.map((a) => a.name));
       setPublishedAppNames(publishedNames);
       setMarketById(new Map(published.map((a) => [a.applicationId, a])));
-      setMarketByName(new Map(published.map((a) => [a.name, a])));
+      // Name fallback index is type-scoped (see utils/app-match); first wins on collisions
+      const byTypedName = new Map<string, Application>();
+      for (const a of published) {
+        const key = typedNameKey(a.name, a.type);
+        if (!byTypedName.has(key)) byTypedName.set(key, a);
+      }
+      setMarketByName(byTypedName);
       // 治愈：以服务端为准回写本地 manifest 的 published，修复旧版未回写的脏数据。
       const healed = await applicationManager.reconcilePublishedFlags(
         useSubAppStore.getState().appInfos,
@@ -859,10 +866,13 @@ const InstalledAppsPage: React.FC = () => {
    *
    * 发布状态以服务端为准（见 resolveAppPublished）。作者判定用
    * isAuthoredByCurrentUser。远端版本：内置 → common_apps / 自带版本；其他 →
-   * 市场应用（先按 manifest.id 再按名称匹配），兜底 checkForUpdates 结果。
+   * 市场应用（先按 manifest.id；无 id 匹配时才按同类型名称兜底），兜底 checkForUpdates 结果。
    * 被当前项目禁用的内置应用隐藏（启用态未知时不隐藏）。
    */
   const classifyApps = () => {
+    // Market ids that some local app already matches exactly — a name fallback
+    // must never attach another local app to them.
+    const localIds = new Set(appInfos.map((i) => i.id));
     const classified: AppWithType[] = appInfos
       .filter(info => info.source === 'user')
       .filter((info) => {
@@ -888,7 +898,11 @@ const InstalledAppsPage: React.FC = () => {
         if (builtin) {
           remoteVersion = builtinRemoteVersion.get(info.id);
         } else {
-          const market = marketById.get(info.id) || marketByName.get(manifest.name);
+          let market = marketById.get(info.id);
+          if (!market) {
+            const byName = marketByName.get(typedNameKey(manifest.name, manifest.type));
+            if (byName && !localIds.has(byName.applicationId)) market = byName;
+          }
           if (market) {
             remoteVersion = market.version;
             applicationId = market.applicationId;
