@@ -1,6 +1,7 @@
 export type AIToolType =
   | 'claude'
   | 'codex'
+  | 'antigravity'
   | 'gemini'
   | 'grok'
   | 'opencode'
@@ -9,6 +10,7 @@ export type AIToolType =
   | 'kimi'
   | 'zcode'
   | 'mimo'
+  | 'omp'
   | 'terminal'
   /** @deprecated removed from marketplace; kept for legacy sessions */
   | 'qwen'
@@ -59,6 +61,10 @@ export interface AICodingWorkspace {
   groupId: string
   createdAt: number
   updatedAt: number
+  /** Manual sort order within the group (lower = higher). Undefined falls back to createdAt. */
+  order?: number
+  /** Pinned to the top of its group. */
+  pinned?: boolean
 }
 
 export interface AICodingSession {
@@ -76,6 +82,8 @@ export interface AICodingSession {
   createdAt: number
   updatedAt: number
   pidFile?: string
+  /** Pinned to the top of its workspace session list. */
+  pinned?: boolean
 }
 
 // ── AI Coding Chat Message Types ──
@@ -169,4 +177,6 @@ export interface DetectedCLI {
   name: string
   installed: boolean
   version?: string
+  /** False when the user disabled this tool on its Local Env card. */
+  enabled?: boolean
 }

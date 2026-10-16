@@ -5,6 +5,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { Button, Tooltip, Spin, Typography, theme } from 'antd'
 import { CloseOutlined, CodeOutlined, PauseCircleOutlined, StopOutlined } from '@ant-design/icons'
+import { useShallow } from 'zustand/react/shallow'
 import { useAICodingStore } from '../stores/useAICodingStore'
 import CodingChatPanel from '../pages/AICoding/CodingChatPanel'
 import { renderAIToolTagLabel, AI_TOOL_SHORT_NAMES, AI_TOOL_NAMES } from '../pages/AICoding/aiToolMeta'
@@ -36,19 +37,28 @@ const EmbeddedCodingPanel: React.FC<EmbeddedCodingPanelProps> = ({
   const t = useT()
   const { token } = theme.useToken()
 
-  const {
-    sessionMessages, sessionStreaming,
-    fetchAll, createSession,
-    hydrateSessionTranscript, setActiveSession,
-    interruptSession, stopSession,
-  } = useAICodingStore()
-
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [tools, setTools] = useState<DetectedCLI[]>([])
   const [loading, setLoading] = useState(false)
   const [initializing, setInitializing] = useState(true)
 
-  const isStreaming = sessionId ? (sessionStreaming[sessionId] || false) : false
+  // Scoped to this panel's own session: a full-store subscription re-rendered
+  // the panel for every other session's streaming tokens too.
+  const sessionMessages = useAICodingStore((s) => s.sessionMessages)
+  const isStreaming = useAICodingStore((s) => (sessionId ? s.sessionStreaming[sessionId] ?? false : false))
+  // Actions are stable references, so this bag never triggers a re-render.
+  const {
+    fetchAll, createSession,
+    hydrateSessionTranscript, setActiveSession,
+    interruptSession, stopSession,
+  } = useAICodingStore(useShallow((s) => ({
+    fetchAll: s.fetchAll,
+    createSession: s.createSession,
+    hydrateSessionTranscript: s.hydrateSessionTranscript,
+    setActiveSession: s.setActiveSession,
+    interruptSession: s.interruptSession,
+    stopSession: s.stopSession,
+  })))
 
   /** Select a session: load its transcript and mark it active so its history shows. */
   const selectSession = useCallback((id: string) => {
@@ -68,7 +78,7 @@ const EmbeddedCodingPanel: React.FC<EmbeddedCodingPanelProps> = ({
 
         // Detect available tools
         const detected = await window.api.aiCoding.detectTools()
-        const coding = detected.filter((c: DetectedCLI) => c.toolType !== 'terminal' && c.installed)
+        const coding = detected.filter((c: DetectedCLI) => c.toolType !== 'terminal' && c.installed && c.enabled !== false)
         if (!cancelled) setTools(coding)
 
         // Check if there's already a workspace + sessions for this app path
@@ -256,7 +266,7 @@ const EmbeddedCodingPanel: React.FC<EmbeddedCodingPanelProps> = ({
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
           <CodeOutlined style={{ color: token.colorPrimary, fontSize: 12, flexShrink: 0 }} />
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>AI Coding</span>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t('coding.title')}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
           {isStreaming && (

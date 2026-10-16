@@ -16,6 +16,7 @@ import type { AIToolType } from '../store/ai-coding.store'
 const TOOL_TYPES = {
   claude: true,
   codex: true,
+  antigravity: true,
   gemini: true,
   grok: true,
   opencode: true,
@@ -24,6 +25,7 @@ const TOOL_TYPES = {
   kimi: true,
   zcode: true,
   mimo: true,
+  omp: true,
   terminal: true,
   qwen: true
 } satisfies Record<AIToolType, true>

@@ -1,4 +1,5 @@
 import React, { useMemo, useCallback, useEffect, useRef, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { Allotment } from 'allotment'
 import type { AllotmentHandle } from 'allotment'
 import { App, Button, Tooltip, Typography, theme } from 'antd'
@@ -36,12 +37,31 @@ const TabGroup: React.FC<TabGroupProps> = ({
   const t = useT()
   const { modal } = App.useApp()
   const { token } = theme.useToken()
+  // Explicit slices instead of subscribing to the whole store: streaming tokens
+  // land in sessionStreamingBlocks, which this component does not read, and a
+  // full-store subscription made every one of them re-render the tab bar, the
+  // git panel and both terminal panes.
+  const sessions = useAICodingStore((s) => s.sessions)
+  const workspaces = useAICodingStore((s) => s.workspaces)
+  const claudeViewModes = useAICodingStore((s) => s.claudeViewModes)
+  // Actions are stable references, so this bag never triggers a re-render.
   const {
-    sessions, workspaces,
-    claudeViewModes, setClaudeViewMode,
+    setClaudeViewMode,
     setPaneActiveTab, removeTabFromPane, addTabToPane,
-    createSession, updateSession, deleteSession, setFocusedPane, fetchAll, setActiveSession,
-  } = useAICodingStore()
+    createSession, updateSession, deleteSession, stopSession, setFocusedPane, fetchAll, setActiveSession,
+  } = useAICodingStore(useShallow((s) => ({
+    setClaudeViewMode: s.setClaudeViewMode,
+    setPaneActiveTab: s.setPaneActiveTab,
+    removeTabFromPane: s.removeTabFromPane,
+    addTabToPane: s.addTabToPane,
+    createSession: s.createSession,
+    updateSession: s.updateSession,
+    deleteSession: s.deleteSession,
+    stopSession: s.stopSession,
+    setFocusedPane: s.setFocusedPane,
+    fetchAll: s.fetchAll,
+    setActiveSession: s.setActiveSession,
+  })))
 
   const tabs = useMemo(
     () => tabIds.map(id => sessions.find(s => s.id === id)).filter(Boolean) as typeof sessions,
@@ -96,7 +116,16 @@ const TabGroup: React.FC<TabGroupProps> = ({
 
   const handleCloseTab = useCallback(async (sessionId: string) => {
     removeTabFromPane(paneId, sessionId)
-  }, [paneId, removeTabFromPane])
+    // Closing the tab is the only way a user retires a session, and nothing
+    // else ever stops it. Leaving the process running means the CLI and its
+    // whole tree (MCP servers, runtimes) stay alive with no UI to reach them.
+    // stopSession (not deleteSession) keeps the record so the tab can resume.
+    try {
+      await stopSession(sessionId)
+    } catch {
+      /* already stopped */
+    }
+  }, [paneId, removeTabFromPane, stopSession])
 
   const handleNewSession = useCallback(async () => {
     // Use the active tab's workspace + tool type for the new session

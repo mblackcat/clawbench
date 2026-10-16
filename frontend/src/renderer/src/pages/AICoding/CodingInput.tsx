@@ -637,4 +637,10 @@ const CodingInput: React.FC<CodingInputProps> = ({
   )
 }
 
-export default CodingInput
+/**
+ * Memoized: the parent re-renders on every streaming token to grow the message
+ * list, and this subtree (mode capsule, effort menu, slash autocomplete, file
+ * chips) has no reason to reconcile along with it. Without this, typing while a
+ * reply streamed in dropped frames on every keystroke.
+ */
+export default React.memo(CodingInput)

@@ -75,12 +75,22 @@ export function removeLeaf(root: LayoutNode, paneId: string): LayoutNode | null 
   if (root.type === 'leaf') {
     return root.id === paneId ? null : root
   }
-  const newChildren = root.children
-    .map(child => removeLeaf(child, paneId))
-    .filter((c): c is LayoutNode => c !== null)
+  const mapped = root.children.map(child => removeLeaf(child, paneId))
+  const keep = mapped.map(c => c !== null)
+  const newChildren = mapped.filter((c): c is LayoutNode => c !== null)
   if (newChildren.length === 0) return null
   if (newChildren.length === 1) return newChildren[0]
-  return { ...root, children: newChildren }
+  return { ...root, children: newChildren, sizes: filterSizes(root.sizes, keep) }
+}
+
+/**
+ * Keep `sizes` aligned with the surviving children. A stale sizes array (more
+ * entries than panes) makes Allotment leave a blank strip until the window is
+ * resized, so drop it entirely if it can't be aligned.
+ */
+function filterSizes(sizes: number[] | undefined, keep: boolean[]): number[] | undefined {
+  if (!sizes || sizes.length !== keep.length) return undefined
+  return sizes.filter((_, i) => keep[i])
 }
 
 /**
@@ -116,4 +126,35 @@ export function updateSplitSizes(node: LayoutNode, path: number[], sizes: number
     }
   }
   return node
+}
+
+/**
+ * Prune a split tree: remove leaves that have 0 tabs, collapsing splits.
+ * If the resulting tree has no tabs at all, returns a single default leaf.
+ * Returns the same reference when nothing was pruned.
+ */
+export function pruneEmptyLeaves(root: LayoutNode): LayoutNode {
+  if (root.type === 'leaf') return root
+  const pruned = pruneSplit(root)
+  return pruned ?? createDefaultLayout([])
+}
+
+function pruneSplit(node: SplitNode): LayoutNode | null {
+  let changed = false
+  const mapped = node.children.map(child => {
+    if (child.type === 'leaf') {
+      if (child.tabIds.length > 0) return child
+      changed = true
+      return null
+    }
+    const next = pruneSplit(child)
+    if (next !== child) changed = true
+    return next
+  })
+  if (!changed) return node
+  const keep = mapped.map(c => c !== null)
+  const children = mapped.filter((c): c is LayoutNode => c !== null)
+  if (children.length === 0) return null
+  if (children.length === 1) return children[0]
+  return { ...node, children, sizes: filterSizes(node.sizes, keep) }
 }

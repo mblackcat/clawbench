@@ -8,18 +8,32 @@ import type {
 import type { LayoutNode, LeafNode, SplitDirection } from '../types/split-layout'
 import {
   genPaneId, createDefaultLayout, findLeaf, findLeafBySessionId,
-  collectLeaves, replaceNode, removeLeaf, updateLeaf, updateSplitSizes
+  collectLeaves, replaceNode, removeLeaf, updateLeaf, updateSplitSizes,
+  pruneEmptyLeaves
 } from '../types/split-layout'
 import {
   raiseCodingCompletion,
   raiseCodingAction,
-  dismissCodingTarget
+  dismissCodingTarget,
+  useAttentionStore,
+  type CodingAttentionMeta
 } from './useAttentionStore'
 import { getT } from '../i18n'
 
 let msgCounter = 0
 function genMsgId(): string { return `wm-${Date.now()}-${++msgCounter}` }
 const transcriptHydrationInFlight = new Set<string>()
+
+/** Workspace / session labels attached to attention items (tray menu, sidebar dots). */
+function getSessionMeta(
+  state: { sessions: AICodingSession[]; workspaces: AICodingWorkspace[] },
+  sessionId: string
+): CodingAttentionMeta {
+  const session = state.sessions.find((s) => s.id === sessionId)
+  const workspace = session ? state.workspaces.find((w) => w.id === session.workspaceId) : undefined
+  const wsName = workspace?.title || (workspace?.workingDir ? workspace.workingDir.split(/[\\/]/).pop() : undefined)
+  return { workspaceId: workspace?.id, workspaceName: wsName, sessionTitle: session?.title }
+}
 
 // Text deltas can arrive far faster than the renderer can cheaply re-parse
 // markdown, so we buffer them per session and flush on a short timer. This
@@ -213,6 +227,7 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
         window.api.aiCoding.getWorkspaces(), window.api.aiCoding.getSessions(),
         window.api.aiCoding.getGroups(), window.api.aiCoding.getIMConfig(), window.api.aiCoding.imGetStatus()])
       set({ workspaces: nextWorkspaces, sessions: nextSessions, groups: nextGroups, imConfig, imStatus, loading: false })
+      _dropStaleTabs()
     } catch (e) { console.error('fetch all:', e); set({ loading: false }) }
   },
   createWorkspace: async (wd, gid) => { const w = await window.api.aiCoding.createWorkspace(wd, gid); set({ workspaces: await window.api.aiCoding.getWorkspaces() }); return w },
@@ -222,6 +237,7 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
     await window.api.aiCoding.deleteWorkspace(id)
     const [workspaces, ss] = await Promise.all([window.api.aiCoding.getWorkspaces(), window.api.aiCoding.getSessions()])
     set({ workspaces, sessions: ss, activeSessionId: activeSessionId && wsIds.has(activeSessionId) ? null : activeSessionId })
+    _dropStaleTabs()
   },
   createSession: async (wid, tt, src = 'local') => {
     const session = await window.api.aiCoding.createSession(wid, tt, src)
@@ -246,6 +262,8 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
     await window.api.aiCoding.deleteSession(id); const sessions = await window.api.aiCoding.getSessions()
     const nm = { ...sm }; const ns = { ...ss }; const nb = { ...sb }; const nmo = { ...smo }; const ncu = { ...scu }; delete nm[id]; delete ns[id]; delete nb[id]; delete nmo[id]; delete ncu[id]
     set({ sessions, activeSessionId: aid === id ? null : aid, sessionMessages: nm, sessionStreaming: ns, sessionStreamingBlocks: nb, sessionModes: nmo, sessionContextUsage: ncu })
+    dismissCodingTarget(id)
+    _dropStaleTabs()
   },
   stopSession: async (id) => { await window.api.aiCoding.stopSession(id); const sessions = await window.api.aiCoding.getSessions(); set(s => ({ sessions, sessionStreaming: { ...s.sessionStreaming, [id]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [id]: [] } })) },
   launchSession: async (id, opts) => {
@@ -320,7 +338,7 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
         else set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionPendingQuestions: { ...s.sessionPendingQuestions, [sessionId]: null } }))
         if (et === 'pipe_exit' || et === 'slash_command_done') {
           const sess = get().sessions.find((s) => s.id === sessionId)
-          raiseCodingCompletion(sessionId, sess?.title)
+          raiseCodingCompletion(sessionId, sess?.title, getSessionMeta(get(), sessionId))
         }
         return
       }
@@ -333,21 +351,43 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
           raiseCodingAction(
             sessionId,
             undefined,
-            act === 'auth_request' ? getT()('attention.codingAuth') : getT()('attention.codingWaitingInput')
+            act === 'auth_request' ? getT()('attention.codingAuth') : getT()('attention.codingWaitingInput'),
+            getSessionMeta(get(), sessionId)
           )
         }
         return
       }
+      if (et === 'turn_start' || et === 'turn_started') {
+        // Mark streaming, but do NOT clear blocks: an agentic turn has many
+        // assistant messages (text → tool → text → tool …) and we want all of
+        // them to accumulate. Block ids are unique per message, so no collisions.
+        // Finalization + clear happens on `result`.
+        set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: true } }))
+        // A new turn means the user answered whatever the session was waiting on
+        // (PTY tools report Enter as turn_start).
+        dismissCodingTarget(sessionId)
+        return
+      }
+      if (et === 'action') {
+        // PTY tools (main-side output-stable detector): waiting for the user
+        set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: false } }))
+        const msg = (event as { message?: unknown }).message
+        raiseCodingAction(
+          sessionId,
+          undefined,
+          typeof msg === 'string' && msg ? msg : getT()('attention.codingActionBody'),
+          getSessionMeta(get(), sessionId)
+        )
+        return
+      }
+      if (et === 'result' && session.toolType !== 'claude' && session.toolType !== 'codex') {
+        // PTY tools: output went quiet after a turn, or the CLI exited cleanly
+        set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: false } }))
+        raiseCodingCompletion(sessionId, session.title, getSessionMeta(get(), sessionId))
+        return
+      }
       if (session.toolType === 'claude' || session.toolType === 'codex') {
         // ── Streaming accumulation for Claude (long-lived query) and Codex ──
-        if (et === 'turn_start' || et === 'turn_started') {
-          // Mark streaming, but do NOT clear blocks: an agentic turn has many
-          // assistant messages (text → tool → text → tool …) and we want all of
-          // them to accumulate. Block ids are unique per message, so no collisions.
-          // Finalization + clear happens on `result`.
-          set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: true } }))
-          return
-        }
         // Streaming text is coalesced into deltaBuffer and flushed on a timer
         // (scheduleDeltaFlush) to bound re-render frequency. Other event types
         // flush any buffered text first via flushPendingDelta() below.
@@ -449,7 +489,7 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
             sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] },
             sessionPendingQuestions: { ...s.sessionPendingQuestions, [sessionId]: { id: (event as any).id || '', questions: (event as any).questions || [] } }
           }))
-          raiseCodingAction(sessionId, undefined, getT()('attention.codingQuestion'))
+          raiseCodingAction(sessionId, undefined, getT()('attention.codingQuestion'), getSessionMeta(get(), sessionId))
           return
         }
         // Handle permission_request dedicated event — the SDK's canUseTool
@@ -476,7 +516,7 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
             sessionPendingPermissions: { ...s.sessionPendingPermissions, [sessionId]: { id: (event as any).id || '', toolName: (event as any).toolName || '', input: (event as any).input || {} } }
           }))
           const toolName = (event as any).toolName || 'tool'
-          raiseCodingAction(sessionId, undefined, getT()('attention.codingPermission', toolName))
+          raiseCodingAction(sessionId, undefined, getT()('attention.codingPermission', toolName), getSessionMeta(get(), sessionId))
           return
         }
         // Handle TodoWrite / TaskCreate / TaskUpdate dedicated event.
@@ -530,7 +570,7 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
             set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } }))
           }
           const sess = get().sessions.find((s) => s.id === sessionId)
-          raiseCodingCompletion(sessionId, sess?.title)
+          raiseCodingCompletion(sessionId, sess?.title, getSessionMeta(get(), sessionId))
           return
         }
         if (et === 'error') {
@@ -549,7 +589,11 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
   },
 
   setActiveSession: (sid) => {
-    if (sid) dismissCodingTarget(sid)
+    // Completions clear on view; action alerts persist until answered
+    // (question / permission resolved, message sent, or a new PTY turn).
+    if (sid && useAttentionStore.getState().getSessionAttentionKind(sid) !== 'action') {
+      dismissCodingTarget(sid)
+    }
     set({ activeSessionId: sid })
     if (sid) void get().hydrateSessionTranscript(sid)
   },
@@ -603,6 +647,7 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
 
   sendUserMessage: async (sessionId, text, images) => {
     const { sessions } = get(); const session = sessions.find(s => s.id === sessionId); if (!session) return
+    dismissCodingTarget(sessionId)
     const userBlocks: CodingContentBlock[] = []
     if (images && images.length > 0) {
       for (const img of images) userBlocks.push({ type: 'text', text: `📎 ${img.mediaType} image (${Math.round(img.data.length * 0.75 / 1024)} KB)` })
@@ -713,12 +758,17 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
   // ── Global split layout actions ──
 
   getOrCreateLayout: () => {
+    // Called during render (AICodingPage useMemo): the in-memory tree is kept
+    // free of empty panes by the mutators, so only the persisted tree (possibly
+    // written by an older build) needs pruning — once, on first load.
     const { globalLayout } = get()
     if (globalLayout) return globalLayout
     const persisted = _loadPersistedLayout()
     if (persisted) {
-      set({ globalLayout: persisted })
-      return persisted
+      const pruned = pruneEmptyLeaves(persisted)
+      set({ globalLayout: pruned })
+      if (pruned !== persisted) _persistLayout(pruned)
+      return pruned
     }
     const layout = createDefaultLayout([])
     set({ globalLayout: layout })
@@ -726,10 +776,26 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
   },
 
   splitPane: (paneId, direction, sessionId) => {
-    const root = get().globalLayout
+    let root = get().globalLayout
     if (!root) return
     const leaf = findLeaf(root, paneId)
     if (!leaf) return
+    // Splitting a pane's only tab out would leave an empty pane behind.
+    if (sessionId && leaf.tabIds.length === 1 && leaf.tabIds[0] === sessionId) return
+    // Edge-drop from another pane: move the tab, don't duplicate it.
+    if (sessionId && !leaf.tabIds.includes(sessionId)) {
+      const src = findLeafBySessionId(root, sessionId)
+      if (src) {
+        const srcTabs = src.tabIds.filter(id => id !== sessionId)
+        root = srcTabs.length === 0
+          ? (removeLeaf(root, src.id) || createDefaultLayout([]))
+          : updateLeaf(root, src.id, l => ({
+              ...l,
+              tabIds: srcTabs,
+              activeTabId: l.activeTabId === sessionId ? srcTabs[0] : l.activeTabId,
+            }))
+      }
+    }
 
     const newLeaf: LeafNode = {
       type: 'leaf',
@@ -871,6 +937,37 @@ function _persistLayout(layout: LayoutNode): void {
   try {
     localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(layout))
   } catch { /* storage full */ }
+}
+
+/**
+ * Remove tabs whose session no longer exists (deleted here, or elsewhere while
+ * the layout sat in localStorage), then collapse panes left empty.
+ */
+function _dropStaleTabs(): void {
+  const state = useAICodingStore.getState()
+  const { sessions, focusedPaneId } = state
+  // Before the page first renders, the layout still only exists on disk.
+  const globalLayout = state.globalLayout ?? _loadPersistedLayout()
+  if (!globalLayout) return
+  const ids = new Set(sessions.map(s => s.id))
+  let changed = false
+  let root: LayoutNode = globalLayout
+  for (const leaf of collectLeaves(globalLayout)) {
+    const tabIds = leaf.tabIds.filter(id => ids.has(id))
+    if (tabIds.length === leaf.tabIds.length) continue
+    changed = true
+    root = updateLeaf(root, leaf.id, l => ({
+      ...l,
+      tabIds,
+      activeTabId: l.activeTabId && tabIds.includes(l.activeTabId) ? l.activeTabId : tabIds[0] ?? null,
+    }))
+  }
+  if (!changed) return
+  root = pruneEmptyLeaves(root)
+  const leaves = collectLeaves(root)
+  const focused = focusedPaneId && leaves.some(l => l.id === focusedPaneId) ? focusedPaneId : leaves[0]?.id ?? null
+  useAICodingStore.setState({ globalLayout: root, focusedPaneId: focused })
+  _persistLayout(root)
 }
 
 function _loadPersistedLayout(): LayoutNode | null {

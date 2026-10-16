@@ -24,6 +24,7 @@ import {
 } from '@ant-design/icons'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useSettingsStore } from '../../stores/useSettingsStore'
+import AttentionNotificationSetting from '../../components/AttentionNotificationSetting'
 import { SETTINGS_MODULE_CARDS } from '../../constants/module-visibility'
 import AIModelSettings from './AIModelSettings'
 import MCPServerSettings from './MCPServerSettings'
@@ -381,6 +382,7 @@ const SettingsPage: React.FC = () => {
                         </Text>
                       )}
                     </Form.Item>
+                    <AttentionNotificationSetting />
                   </Form>
                 </Card>
 

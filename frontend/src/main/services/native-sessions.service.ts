@@ -10,6 +10,8 @@
  * - Qoder:   ~/.qoderworkcn/projects/<hash>/*.jsonl  (Claude-like)
  * - ZCode:   ~/.zclaude/projects/<hash>/*.jsonl  (Claude-like)
  * - Kimi:    ~/.kimi/sessions/<workdir-hash>/<session-id>/
+ * - Antigravity: ~/.gemini/antigravity-cli/conversation_summaries.db + history.jsonl
+ * - omp:     ~/.omp/agent/sessions/<cwd-slug>/<timestamp>_<session-id>.jsonl
  * - Trae/MiMo: best-effort (empty when no known local store)
  *
  * This service provides a unified interface for listing sessions per tool type.
@@ -168,6 +170,27 @@ function resolveClaudeProjectDirs(workingDir: string): string[] {
   ])
 }
 
+interface ClaudeFileCacheEntry {
+  mtime: number
+  title: string
+  slug?: string
+}
+/** Per-file parse cache: a session file is only re-read when its mtime changes. */
+const claudeFileCache = new Map<string, ClaudeFileCacheEntry>()
+
+async function parseClaudeSessionCached(
+  filePath: string,
+  mtime: number
+): Promise<{ title: string; slug?: string }> {
+  const cached = claudeFileCache.get(filePath)
+  if (cached && cached.mtime === mtime) {
+    return { title: cached.title, slug: cached.slug }
+  }
+  const result = await parseClaudeSession(filePath)
+  claudeFileCache.set(filePath, { mtime, title: result.title, slug: result.slug })
+  return result
+}
+
 /** List sessions from Claude-style project dirs (*.jsonl next to optional subdirs). */
 async function listClaudeStyleSessions(projectDirs: string[]): Promise<NativeSession[]> {
   if (projectDirs.length === 0) return []
@@ -195,7 +218,7 @@ async function listClaudeStyleSessions(projectDirs: string[]): Promise<NativeSes
       const sessionId = info.name.replace('.jsonl', '')
       if (seenSessionIds.has(sessionId)) return null
       seenSessionIds.add(sessionId)
-      const { title, slug } = await parseClaudeSession(info.path)
+      const { title, slug } = await parseClaudeSessionCached(info.path, info.mtime)
       const displayTitle = title || slug || `Session ${sessionId.slice(0, 8)}`
       if (!isValidSessionTitle(displayTitle)) return null
       return {
@@ -227,6 +250,10 @@ function isClaudeSyntheticUserText(text: string, data?: { isMeta?: boolean }): b
   if (trimmed.startsWith('<ide_')) return true
   // Slash-command / bash payload wrappers (not real prompts)
   if (/^<(?:command-name|command-message|command-args|bash-input|bash-stdout|bash-stderr)\b/i.test(trimmed)) {
+    return true
+  }
+  // Hook output, system reminders and local-command output are tool-injected too
+  if (/^<(?:system-reminder|user-prompt-submit-hook|session-start-hook|local-command-stdout|local-command-stderr)\b/i.test(trimmed)) {
     return true
   }
   // Pure local-command caveat (with or without tags after sanitize)
@@ -395,7 +422,8 @@ function readClaudeTranscript(workingDir: string, sessionId: string): NativeTran
         continue
       }
       const text = extractTextFromContent(content)
-      if (text.trim().startsWith('<ide_')) continue
+      // IDE context, slash-command bookkeeping, hook output, isMeta caveats
+      if (isClaudeSyntheticUserText(text, data)) continue
       pushTranscriptMessage(messages, 'user', [{ type: 'text', text }], ts)
       continue
     }
@@ -484,14 +512,29 @@ function isSyntheticCodexText(text: string): boolean {
   if (lower.startsWith('<environment_context') || lower.startsWith('<enviroment_context')) return true
   if (lower.startsWith('# agents.md instructions')) return true
   if (lower.startsWith('<instructions>') || lower.startsWith('<developer_context')) return true
-  return false
+  // Claude-style wrappers also show up in Codex user turns (hooks, IDE context)
+  return isClaudeSyntheticUserText(trimmed)
 }
 
 function titleFromCodexText(text: string): string {
   return isSyntheticCodexText(text) ? '' : truncateTitle(text)
 }
 
-function parseCodexSessionFile(filePath: string): { meta: any | null; fallbackTitle: string } {
+interface CodexFileCacheEntry {
+  mtime: number
+  meta: any | null
+  fallbackTitle: string
+}
+/** Per-file parse cache keyed by path; reused while mtime is unchanged. */
+const codexFileCache = new Map<string, CodexFileCacheEntry>()
+
+function parseCodexSessionFile(filePath: string, mtime?: number): { meta: any | null; fallbackTitle: string } {
+  if (mtime !== undefined) {
+    const cached = codexFileCache.get(filePath)
+    if (cached && cached.mtime === mtime) {
+      return { meta: cached.meta, fallbackTitle: cached.fallbackTitle }
+    }
+  }
   const fd = fs.openSync(filePath, 'r')
   try {
     const buf = Buffer.alloc(1_000_000)
@@ -507,6 +550,9 @@ function parseCodexSessionFile(filePath: string): { meta: any | null; fallbackTi
         if (!fallbackTitle) fallbackTitle = extractCodexUserText(data)
         if (meta && fallbackTitle) break
       } catch { /* skip */ }
+    }
+    if (mtime !== undefined) {
+      codexFileCache.set(filePath, { mtime, meta, fallbackTitle })
     }
     return { meta, fallbackTitle }
   } finally {
@@ -645,6 +691,9 @@ function readCodexTranscript(workingDir: string, sessionId: string): NativeTrans
   return messages
 }
 
+let cachedCodexHistory: { mtime: number; size: number; titleMap: Map<string, { ts: number; text: string }> } | null = null
+let cachedCodexIndex: { mtime: number; size: number; indexMap: Map<string, { threadName?: string; updatedAt?: number }> } | null = null
+
 const codexProvider: NativeSessionProvider = {
   async listSessions(workingDir: string): Promise<NativeSession[]> {
     const codexDir = path.join(os.homedir(), '.codex')
@@ -654,41 +703,53 @@ const codexProvider: NativeSessionProvider = {
 
     if (!fs.existsSync(sessionsDir) && !fs.existsSync(archivedSessionsDir)) return []
 
-    // Build title lookup from history.jsonl (first message per session)
-    const titleMap = new Map<string, { ts: number; text: string }>()
+    // Build title lookup from history.jsonl (first message per session; cached by mtime+size)
+    let titleMap = new Map<string, { ts: number; text: string }>()
     if (fs.existsSync(historyFile)) {
       try {
-        const content = fs.readFileSync(historyFile, 'utf-8')
-        for (const line of content.split('\n')) {
-          if (!line.trim()) continue
-          try {
-            const entry = JSON.parse(line) as { session_id: string; ts: number; text: string }
-            const title = titleFromCodexText(entry.text || '')
-            if (!title) continue
-            // Keep only the first entry per session (earliest message = title)
-            if (!titleMap.has(entry.session_id)) {
-              titleMap.set(entry.session_id, { ts: entry.ts * 1000, text: title })
-            }
-          } catch { /* skip */ }
+        const stat = fs.statSync(historyFile)
+        if (cachedCodexHistory && cachedCodexHistory.mtime === stat.mtimeMs && cachedCodexHistory.size === stat.size) {
+          titleMap = cachedCodexHistory.titleMap
+        } else {
+          const content = fs.readFileSync(historyFile, 'utf-8')
+          for (const line of content.split('\n')) {
+            if (!line.trim()) continue
+            try {
+              const entry = JSON.parse(line) as { session_id: string; ts: number; text: string }
+              const title = titleFromCodexText(entry.text || '')
+              if (!title) continue
+              // Keep only the first entry per session (earliest message = title)
+              if (!titleMap.has(entry.session_id)) {
+                titleMap.set(entry.session_id, { ts: entry.ts * 1000, text: title })
+              }
+            } catch { /* skip */ }
+          }
+          cachedCodexHistory = { mtime: stat.mtimeMs, size: stat.size, titleMap }
         }
       } catch { /* skip */ }
     }
 
-    // Also check session_index.jsonl for thread_name (better title)
+    // Also check session_index.jsonl for thread_name (better title; cached by mtime+size)
     const indexFile = path.join(codexDir, 'session_index.jsonl')
-    const indexMap = new Map<string, { threadName?: string; updatedAt?: number }>()
+    let indexMap = new Map<string, { threadName?: string; updatedAt?: number }>()
     if (fs.existsSync(indexFile)) {
       try {
-        const content = fs.readFileSync(indexFile, 'utf-8')
-        for (const line of content.split('\n')) {
-          if (!line.trim()) continue
-          try {
-            const entry = JSON.parse(line) as { id: string; thread_name?: string; updated_at?: string }
-            indexMap.set(entry.id, {
-              threadName: entry.thread_name,
-              updatedAt: entry.updated_at ? new Date(entry.updated_at).getTime() : undefined
-            })
-          } catch { /* skip */ }
+        const stat = fs.statSync(indexFile)
+        if (cachedCodexIndex && cachedCodexIndex.mtime === stat.mtimeMs && cachedCodexIndex.size === stat.size) {
+          indexMap = cachedCodexIndex.indexMap
+        } else {
+          const content = fs.readFileSync(indexFile, 'utf-8')
+          for (const line of content.split('\n')) {
+            if (!line.trim()) continue
+            try {
+              const entry = JSON.parse(line) as { id: string; thread_name?: string; updated_at?: string }
+              indexMap.set(entry.id, {
+                threadName: entry.thread_name,
+                updatedAt: entry.updated_at ? new Date(entry.updated_at).getTime() : undefined
+              })
+            } catch { /* skip */ }
+          }
+          cachedCodexIndex = { mtime: stat.mtimeMs, size: stat.size, indexMap }
         }
       } catch { /* skip */ }
     }
@@ -719,7 +780,7 @@ const codexProvider: NativeSessionProvider = {
 
     for (const info of fileInfos) {
       try {
-        const { meta, fallbackTitle } = parseCodexSessionFile(info.path)
+        const { meta, fallbackTitle } = parseCodexSessionFile(info.path, info.mtime)
         if (!meta) continue
 
         const sessionCwd = meta.payload?.cwd
@@ -824,14 +885,20 @@ function parseGeminiSessionFile(filePath: string): { sessionId: string; title: s
 }
 
 function resolveGeminiChatsDirs(workingDir: string): string[] {
-  const geminiTmpDir = path.join(os.homedir(), '.gemini', 'tmp')
-  if (!fs.existsSync(geminiTmpDir)) return []
+  // Antigravity CLI (Gemini-based) may keep the same layout under ~/.antigravity/tmp
+  const tmpDirs = [
+    path.join(os.homedir(), '.gemini', 'tmp'),
+    path.join(os.homedir(), '.antigravity', 'tmp')
+  ].filter((d) => fs.existsSync(d))
+  if (tmpDirs.length === 0) return []
 
   const chatsDirs = new Set<string>()
   const addChatsDir = (dirName: string): void => {
     if (!dirName) return
-    const chatsDir = path.join(geminiTmpDir, dirName, 'chats')
-    if (fs.existsSync(chatsDir)) chatsDirs.add(chatsDir)
+    for (const tmpDir of tmpDirs) {
+      const chatsDir = path.join(tmpDir, dirName, 'chats')
+      if (fs.existsSync(chatsDir)) chatsDirs.add(chatsDir)
+    }
   }
 
   addChatsDir(geminiProjectHash(workingDir))
@@ -848,17 +915,19 @@ function resolveGeminiChatsDirs(workingDir: string): string[] {
     } catch { /* skip */ }
   }
 
-  try {
-    for (const entry of fs.readdirSync(geminiTmpDir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue
-      const projectRootFile = path.join(geminiTmpDir, entry.name, '.project_root')
-      if (!fs.existsSync(projectRootFile)) continue
-      try {
-        const projectRoot = fs.readFileSync(projectRootFile, 'utf-8').trim()
-        if (isSameOrChildPath(projectRoot, workingDir)) addChatsDir(entry.name)
-      } catch { /* skip */ }
-    }
-  } catch { /* skip */ }
+  for (const tmpDir of tmpDirs) {
+    try {
+      for (const entry of fs.readdirSync(tmpDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue
+        const projectRootFile = path.join(tmpDir, entry.name, '.project_root')
+        if (!fs.existsSync(projectRootFile)) continue
+        try {
+          const projectRoot = fs.readFileSync(projectRootFile, 'utf-8').trim()
+          if (isSameOrChildPath(projectRoot, workingDir)) addChatsDir(entry.name)
+        } catch { /* skip */ }
+      }
+    } catch { /* skip */ }
+  }
 
   return [...chatsDirs]
 }
@@ -900,6 +969,197 @@ const geminiProvider: NativeSessionProvider = {
           sizeBytes: info.size
         })
       } catch { /* skip */ }
+    }
+
+    sessions.sort((a, b) => b.modifiedAt - a.modifiedAt)
+    return sessions
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// Antigravity (agy) provider
+// ~/.gemini/antigravity-cli/conversation_summaries.db
+// ~/.gemini/antigravity-cli/conversations/<id>.db
+// ~/.gemini/antigravity-cli/history.jsonl
+// ════════════════════════════════════════════════════════════════
+
+function fileUriToPath(uri: string): string {
+  try {
+    const url = new URL(uri)
+    let p = decodeURIComponent(url.pathname)
+    if (process.platform === 'win32' && /^\/[a-zA-Z]:/i.test(p)) {
+      p = p.slice(1)
+    }
+    return p
+  } catch {
+    return uri.replace(/^file:\/\/\/?([a-zA-Z]:)/i, '$1').replace(/^file:\/\//, '')
+  }
+}
+
+function resolveAntigravityBaseDirs(): string[] {
+  const candidates = [
+    path.join(os.homedir(), '.gemini', 'antigravity-cli'),
+    path.join(os.homedir(), '.antigravity', 'antigravity-cli'),
+    path.join(os.homedir(), '.antigravity'),
+    path.join(os.homedir(), '.agy')
+  ]
+  return candidates.filter((d) => fs.existsSync(d))
+}
+
+interface SqliteStatement {
+  all: () => unknown[]
+}
+
+interface SqliteDatabase {
+  prepare: (sql: string) => SqliteStatement
+  close: () => void
+}
+
+type BetterSqliteConstructor = new (path: string, options?: { readonly?: boolean; fileMustExist?: boolean }) => SqliteDatabase
+
+interface AntigravitySummaryRow {
+  conversation_id: string
+  title?: string
+  preview?: string
+  last_modified_time?: string
+  workspace_uris?: string
+  last_user_input_time?: string
+}
+
+interface AntigravityHistoryEntry {
+  display?: unknown
+  timestamp?: unknown
+  workspace?: unknown
+  cwd?: unknown
+  conversationId?: unknown
+  conversation_id?: unknown
+}
+
+const antigravityProvider: NativeSessionProvider = {
+  async listSessions(workingDir: string): Promise<NativeSession[]> {
+    const baseDirs = resolveAntigravityBaseDirs()
+    const sessions: NativeSession[] = []
+    const seenSessionIds = new Set<string>()
+
+    let DatabaseConstructor: BetterSqliteConstructor | null = null
+    try {
+      DatabaseConstructor = require('better-sqlite3') as unknown as BetterSqliteConstructor
+    } catch {
+      // outside Electron or native binding unavailable
+    }
+
+    for (const baseDir of baseDirs) {
+      const dbPath = path.join(baseDir, 'conversation_summaries.db')
+      const convDir = path.join(baseDir, 'conversations')
+      const historyFile = path.join(baseDir, 'history.jsonl')
+
+      // 1. Try reading SQLite conversation_summaries.db
+      if (DatabaseConstructor && fs.existsSync(dbPath)) {
+        let db: SqliteDatabase | null = null
+        try {
+          db = new DatabaseConstructor(dbPath, { readonly: true, fileMustExist: true })
+          const rows = db.prepare(
+            'SELECT conversation_id, title, preview, last_modified_time, workspace_uris, last_user_input_time FROM conversation_summaries'
+          ).all() as AntigravitySummaryRow[]
+          for (const row of rows) {
+            let uris: string[] = []
+            if (row.workspace_uris) {
+              try {
+                const parsed = JSON.parse(row.workspace_uris)
+                if (Array.isArray(parsed)) uris = parsed.filter((u): u is string => typeof u === 'string')
+              } catch {
+                if (typeof row.workspace_uris === 'string') uris = [row.workspace_uris]
+              }
+            }
+
+            const matches = uris.length === 0 || uris.some((u) => {
+              const p = fileUriToPath(u)
+              return isSameOrChildPath(p, workingDir) || isSameOrChildPath(workingDir, p)
+            })
+            if (!matches) continue
+
+            seenSessionIds.add(row.conversation_id)
+            const rawTitle = (row.title || '').trim() || (row.preview || '').trim()
+            const title = rawTitle ? truncateTitle(rawTitle) : `Session ${row.conversation_id.slice(0, 8)}`
+
+            let modifiedAt = 0
+            if (row.last_modified_time && !row.last_modified_time.startsWith('0001-')) {
+              const parsed = new Date(row.last_modified_time).getTime()
+              if (Number.isFinite(parsed) && parsed > 0) modifiedAt = parsed
+            }
+            if (!modifiedAt && row.last_user_input_time && !row.last_user_input_time.startsWith('0001-')) {
+              const parsed = new Date(row.last_user_input_time).getTime()
+              if (Number.isFinite(parsed) && parsed > 0) modifiedAt = parsed
+            }
+
+            let sizeBytes: number | undefined
+            if (fs.existsSync(convDir)) {
+              try {
+                const stat = fs.statSync(path.join(convDir, `${row.conversation_id}.db`))
+                if (!modifiedAt) modifiedAt = stat.mtimeMs
+                sizeBytes = stat.size
+              } catch { /* skip */ }
+            }
+
+            sessions.push({
+              sessionId: row.conversation_id,
+              title,
+              modifiedAt: modifiedAt || Date.now(),
+              sizeBytes
+            })
+          }
+        } catch {
+          // ignore db read errors
+        } finally {
+          try { db?.close() } catch { /* ignore */ }
+        }
+      }
+
+      // 2. Also check history.jsonl (captures prompts or works when DB is locked/unavailable)
+      if (fs.existsSync(historyFile)) {
+        try {
+          const content = fs.readFileSync(historyFile, 'utf-8')
+          for (const line of content.split('\n')) {
+            if (!line.trim()) continue
+            try {
+              const entry = JSON.parse(line) as AntigravityHistoryEntry
+              const ws = typeof entry.workspace === 'string' ? entry.workspace : typeof entry.cwd === 'string' ? entry.cwd : ''
+              if (!ws || (!isSameOrChildPath(ws, workingDir) && !isSameOrChildPath(workingDir, ws))) continue
+
+              const rawConvId = entry.conversationId || entry.conversation_id
+              const convId = typeof rawConvId === 'string' ? rawConvId : ''
+              if (!convId) continue
+
+              if (seenSessionIds.has(convId)) {
+                // If existing session from DB has generic title, enrich it with history display prompt
+                const existing = sessions.find((s) => s.sessionId === convId)
+                if (existing && (/^Session\s+[0-9a-f]{8}/i.test(existing.title) || !existing.title)) {
+                  if (typeof entry.display === 'string' && !entry.display.startsWith('/')) {
+                    existing.title = truncateTitle(entry.display)
+                  }
+                }
+                continue
+              }
+
+              seenSessionIds.add(convId)
+              const title = typeof entry.display === 'string' && entry.display
+                ? truncateTitle(entry.display)
+                : `Session ${convId.slice(0, 8)}`
+              const timestamp = typeof entry.timestamp === 'number' ? entry.timestamp : Date.now()
+              sessions.push({
+                sessionId: convId,
+                title,
+                modifiedAt: timestamp
+              })
+            } catch { /* skip line */ }
+          }
+        } catch { /* skip history */ }
+      }
+    }
+
+    // 3. Fallback to Gemini tmp directory if no sessions found (legacy compatibility)
+    if (sessions.length === 0) {
+      return geminiProvider.listSessions(workingDir)
     }
 
     sessions.sort((a, b) => b.modifiedAt - a.modifiedAt)
@@ -1289,6 +1549,140 @@ const kimiProvider: NativeSessionProvider = {
 }
 
 // ════════════════════════════════════════════════════════════════
+// Oh My Pi provider (~/.omp/agent/sessions/<cwd-slug>/<ts>_<id>.jsonl)
+// ════════════════════════════════════════════════════════════════
+
+/**
+ * Leading records of an omp session file. omp keeps a rewritable `title` record
+ * (padded with spaces) as line 1 and the `session` header as line 2, so the auto
+ * generated title is available without walking the whole transcript.
+ */
+interface OmpSessionHead {
+  sessionId?: string
+  cwd?: string
+  title?: string
+  firstUserText?: string
+}
+
+function readOmpSessionHead(filePath: string, maxBytes = 65536): OmpSessionHead {
+  const head: OmpSessionHead = {}
+  let raw = ''
+  try {
+    const fd = fs.openSync(filePath, 'r')
+    try {
+      const size = fs.fstatSync(fd).size
+      const buf = Buffer.alloc(Math.min(maxBytes, size))
+      fs.readSync(fd, buf, 0, buf.length, 0)
+      raw = buf.toString('utf-8')
+    } finally {
+      fs.closeSync(fd)
+    }
+  } catch {
+    return head
+  }
+
+  // The final line of a truncated read may be partial — safeJsonParseObject drops it.
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue
+    const data = safeJsonParseObject(line)
+    if (data.type === 'title') {
+      const title = typeof data.title === 'string' ? data.title.trim() : ''
+      if (title) head.title = truncateTitle(title)
+    } else if (data.type === 'session') {
+      if (typeof data.id === 'string') head.sessionId = data.id
+      if (typeof data.cwd === 'string') head.cwd = data.cwd
+    } else if (data.type === 'message' && !head.firstUserText) {
+      const message = data.message as { role?: string; content?: unknown } | undefined
+      if (message?.role !== 'user') continue
+      const text = extractTextFromContent(message.content)
+      if (text && !isClaudeSyntheticUserText(text)) head.firstUserText = truncateTitle(text)
+    }
+  }
+  return head
+}
+
+/**
+ * omp slugifies the cwd one character at a time (every non-alphanumeric becomes
+ * "-") and wraps the result in separator dashes:
+ * `D:\repos\my-app` → `--D--repos-my-app--`.
+ */
+function ompSlugCandidates(dirPath: string): string[] {
+  const slug = path.resolve(dirPath).replace(/[^a-zA-Z0-9]/g, '-')
+  return [`--${slug}--`, `-${slug}-`, slug]
+}
+
+export function resolveOmpSessionDirs(workingDir: string): string[] {
+  const sessionsRoot = path.join(os.homedir(), '.omp', 'agent', 'sessions')
+  if (!fs.existsSync(sessionsRoot)) return []
+
+  const dirs: string[] = []
+  for (const name of ompSlugCandidates(workingDir)) {
+    const candidate = path.join(sessionsRoot, name)
+    if (fs.existsSync(candidate) && !dirs.includes(candidate)) dirs.push(candidate)
+  }
+  if (dirs.length > 0) return dirs
+
+  // Unknown slug scheme (or sessions started in a subdirectory): match on the
+  // `cwd` recorded inside the first session file of each folder.
+  try {
+    for (const entry of fs.readdirSync(sessionsRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      const dir = path.join(sessionsRoot, entry.name)
+      let firstFile: string | undefined
+      try {
+        firstFile = fs
+          .readdirSync(dir, { withFileTypes: true })
+          .find((child) => child.isFile() && child.name.endsWith('.jsonl'))?.name
+      } catch { /* skip */ }
+      if (!firstFile) continue
+      const { cwd } = readOmpSessionHead(path.join(dir, firstFile), 8192)
+      if (cwd && isSameOrChildPath(cwd, workingDir)) dirs.push(dir)
+    }
+  } catch { /* skip */ }
+
+  return dirs
+}
+
+const ompProvider: NativeSessionProvider = {
+  async listSessions(workingDir: string): Promise<NativeSession[]> {
+    const sessionDirs = resolveOmpSessionDirs(workingDir)
+    if (sessionDirs.length === 0) return []
+
+    const sessions: NativeSession[] = []
+    const seen = new Set<string>()
+
+    for (const dir of sessionDirs) {
+      let entries: fs.Dirent[]
+      try { entries = fs.readdirSync(dir, { withFileTypes: true }) }
+      catch { continue }
+
+      for (const entry of entries) {
+        // Sibling folders named after a session hold its scratch data, not history.
+        if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue
+        try {
+          const filePath = path.join(dir, entry.name)
+          const stat = fs.statSync(filePath)
+          const head = readOmpSessionHead(filePath)
+          // Filenames are `<iso-timestamp>_<session-id>.jsonl`.
+          const sessionId = head.sessionId || entry.name.replace(/\.jsonl$/, '').replace(/^[^_]*_/, '')
+          if (!sessionId || seen.has(sessionId)) continue
+          seen.add(sessionId)
+          sessions.push({
+            sessionId,
+            title: head.title || head.firstUserText || `Session ${sessionId.slice(0, 8)}`,
+            modifiedAt: stat.mtimeMs,
+            sizeBytes: stat.size
+          })
+        } catch { /* skip */ }
+      }
+    }
+
+    sessions.sort((a, b) => b.modifiedAt - a.modifiedAt)
+    return sessions
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
 // Trae / MiMo — no stable public local session layout yet
 // ════════════════════════════════════════════════════════════════
 
@@ -1312,7 +1706,9 @@ const providers: Partial<Record<AIToolType, NativeSessionProvider>> = {
   zcode: zcodeProvider,
   kimi: kimiProvider,
   trae: emptyProvider,
-  mimo: emptyProvider
+  mimo: emptyProvider,
+  antigravity: antigravityProvider,
+  omp: ompProvider
 }
 
 /** Tool types that have a native session list provider (used by sidebar / tab history). */
@@ -1320,9 +1716,15 @@ export const NATIVE_SESSION_TOOL_TYPES: AIToolType[] = (
   Object.keys(providers) as AIToolType[]
 ).filter((t) => t !== 'terminal' && t !== 'qwen')
 
+const sessionListCache = new Map<string, { timestamp: number; data: NativeSession[] }>()
+const inFlightListRequests = new Map<string, Promise<NativeSession[]>>()
+const LIST_CACHE_TTL_MS = 3_000
+
 /**
  * List native CLI tool sessions for a given workspace and tool type.
  * Returns sessions sorted by modification time (newest first).
+ * Cached with a 3-second TTL and in-flight de-duplication so overlapping
+ * sidebar polls don't re-scan the same directories and stall the main process.
  */
 export async function listNativeSessions(
   workingDir: string,
@@ -1331,11 +1733,46 @@ export async function listNativeSessions(
   const provider = providers[toolType]
   if (!provider) return []
 
-  try {
-    return await provider.listSessions(workingDir)
-  } catch (err) {
-    console.error(`[NativeSessions] Failed to list ${toolType} sessions:`, err)
-    return []
+  const cacheKey = `${normalizeSessionPath(workingDir)}:${toolType}`
+  const cached = sessionListCache.get(cacheKey)
+  if (cached && Date.now() - cached.timestamp < LIST_CACHE_TTL_MS) {
+    return cached.data
+  }
+
+  const existingInFlight = inFlightListRequests.get(cacheKey)
+  if (existingInFlight) return existingInFlight
+
+  const task = (async (): Promise<NativeSession[]> => {
+    try {
+      const result = await provider.listSessions(workingDir)
+      sessionListCache.set(cacheKey, { timestamp: Date.now(), data: result })
+      return result
+    } catch (err) {
+      console.error(`[NativeSessions] Failed to list ${toolType} sessions:`, err)
+      return []
+    } finally {
+      inFlightListRequests.delete(cacheKey)
+    }
+  })()
+
+  inFlightListRequests.set(cacheKey, task)
+  return task
+}
+
+/**
+ * Drop cached native session listings — all of them, every tool for one
+ * workspace dir, or a single (dir, tool) pair.
+ */
+export function invalidateNativeSessionCache(workingDir?: string, toolType?: AIToolType): void {
+  if (!workingDir) {
+    sessionListCache.clear()
+    return
+  }
+  const norm = normalizeSessionPath(workingDir)
+  for (const key of [...sessionListCache.keys()]) {
+    if (toolType ? key === `${norm}:${toolType}` : key.startsWith(`${norm}:`)) {
+      sessionListCache.delete(key)
+    }
   }
 }
 

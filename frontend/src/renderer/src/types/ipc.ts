@@ -41,7 +41,7 @@ export interface AiToolsConfig {
   toolBehavior: { maxToolSteps: number; maxSearchRounds: number; toolTimeoutMs: number; enableThinking?: boolean }
 }
 
-type VcsType = 'git' | 'svn' | 'none'
+export type VcsType = 'git' | 'svn' | 'perforce' | 'none'
 
 interface VcsChangedFile {
   path: string
@@ -242,19 +242,27 @@ export interface ClawBenchAPI {
   }
   vcs: {
     detect: (workspacePath: string) => Promise<VcsType>
-    diffStat: (workspacePath: string) => Promise<{
+    detectAll: (workspacePath: string) => Promise<VcsType[]>
+    diffStat: (workspacePath: string, vcsType?: string) => Promise<{
       type: VcsType
       additions: number
       deletions: number
     }>
-    changedFiles: (workspacePath: string) => Promise<{
+    changedFiles: (workspacePath: string, vcsType?: string) => Promise<{
       type: VcsType
       files: VcsChangedFile[]
     }>
-    commit: (workspacePath: string, message: string) => Promise<VcsExecResult>
-    push: (workspacePath: string) => Promise<VcsExecResult>
-    pull: (workspacePath: string) => Promise<VcsExecResult>
-    discardFile: (workspacePath: string, filePath: string, isUntracked: boolean) => Promise<VcsExecResult>
+    fileDiff: (workspacePath: string, filePath: string, vcsType?: string) => Promise<{
+      type: VcsType
+      path: string
+      diff: string
+      truncated?: boolean
+      error?: string
+    }>
+    commit: (workspacePath: string, message: string, vcsType?: string) => Promise<VcsExecResult>
+    push: (workspacePath: string, vcsType?: string) => Promise<VcsExecResult>
+    pull: (workspacePath: string, vcsType?: string) => Promise<VcsExecResult>
+    discardFile: (workspacePath: string, filePath: string, isUntracked: boolean, vcsType?: string) => Promise<VcsExecResult>
   }
   settings: {
     get: () => Promise<Record<string, unknown>>
@@ -430,8 +438,26 @@ export interface ClawBenchAPI {
     ) => () => void
   }
   attention: {
-    setTrayState: (state: { flash: boolean; hasDot: boolean }) => Promise<void>
+    setTrayState: (state: {
+      flash: boolean
+      hasDot: boolean
+      items?: Array<{
+        id: string
+        kind: 'completion' | 'action'
+        source: 'workbench' | 'ai-chat' | 'ai-coding'
+        targetId?: string
+        workspaceId?: string
+        workspaceName?: string
+        sessionTitle?: string
+        title: string
+        body?: string
+      }>
+      balloon?: { title: string; content: string }
+    }) => Promise<void>
     onActivateFirst: (callback: () => void) => () => void
+    onNavigateTo: (
+      callback: (target: { source: string; targetId?: string; workspaceId?: string }) => void
+    ) => () => void
   }
   localEnv: {
     detectAll: () => Promise<import('./local-env').LocalEnvDetectionResult>

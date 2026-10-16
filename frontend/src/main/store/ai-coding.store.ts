@@ -10,6 +10,7 @@ migrateStoreFile('ai-workbench', 'ai-coding')
 export type AIToolType =
   | 'claude'
   | 'codex'
+  | 'antigravity'
   | 'gemini'
   | 'grok'
   | 'opencode'
@@ -18,6 +19,7 @@ export type AIToolType =
   | 'kimi'
   | 'zcode'
   | 'mimo'
+  | 'omp'
   | 'terminal'
   /** @deprecated removed from marketplace; kept for legacy sessions */
   | 'qwen'
@@ -29,6 +31,10 @@ export interface AICodingWorkspace {
   groupId: string
   createdAt: number
   updatedAt: number
+  /** Manual sort order within the group (lower = higher). Undefined falls back to createdAt. */
+  order?: number
+  /** Pinned to the top of its group. */
+  pinned?: boolean
 }
 
 export interface AICodingSession {
@@ -47,6 +53,8 @@ export interface AICodingSession {
   updatedAt: number
   // Runtime fields persisted so AI Coding can re-attach after a restart
   pidFile?: string
+  /** Pinned to the top of its workspace session list. */
+  pinned?: boolean
 }
 
 export interface AICodingGroup {
@@ -111,7 +119,9 @@ export const aiCodingStore = new Store<AICodingSchema>({
           workingDir: { type: 'string' },
           groupId: { type: 'string' },
           createdAt: { type: 'number' },
-          updatedAt: { type: 'number' }
+          updatedAt: { type: 'number' },
+          order: { type: 'number' },
+          pinned: { type: 'boolean' }
         }
       }
     },
@@ -134,7 +144,8 @@ export const aiCodingStore = new Store<AICodingSchema>({
           title: { type: 'string' },
           createdAt: { type: 'number' },
           updatedAt: { type: 'number' },
-          pidFile: { type: 'string' }
+          pidFile: { type: 'string' },
+          pinned: { type: 'boolean' }
         }
       }
     },

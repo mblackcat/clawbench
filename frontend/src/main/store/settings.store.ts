@@ -105,6 +105,8 @@ interface SettingsSchema {
    * Empty (default) = leave pip's own configuration / PyPI untouched.
    */
   pipIndexUrl: string
+  /** AI Coding / workbench attention: also show an OS notification per alert. Default true. */
+  attentionSystemNotification: boolean
 }
 
 interface PublicSettings {
@@ -124,6 +126,7 @@ interface PublicSettings {
   appOrder: string[]
   pinnedApps: string[]
   activeProject: Partial<ActiveProjectInfo>
+  attentionSystemNotification: boolean
 }
 
 export const settingsStore = new Store<SettingsSchema>({
@@ -344,6 +347,10 @@ export const settingsStore = new Store<SettingsSchema>({
     pipIndexUrl: {
       type: 'string',
       default: ''
+    },
+    attentionSystemNotification: {
+      type: 'boolean',
+      default: true
     }
   }
 })
@@ -405,8 +412,14 @@ export function getSettings(): PublicSettings {
     appShortcutModifier: settingsStore.get('appShortcutModifier') ?? 'Control+Shift',
     appOrder: settingsStore.get('appOrder') ?? [],
     pinnedApps: settingsStore.get('pinnedApps') ?? DEFAULT_PINNED_APP_IDS,
-    activeProject: settingsStore.get('activeProject') ?? {}
+    activeProject: settingsStore.get('activeProject') ?? {},
+    attentionSystemNotification: isAttentionSystemNotificationEnabled()
   }
+}
+
+/** Whether attention alerts should also raise an OS notification (default on). */
+export function isAttentionSystemNotificationEnabled(): boolean {
+  return settingsStore.get('attentionSystemNotification') !== false
 }
 
 /** Returns the selected server project, or null when none has been chosen. */

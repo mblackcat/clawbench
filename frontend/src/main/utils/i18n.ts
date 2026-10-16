@@ -29,7 +29,15 @@ const translations: Record<Lang, Record<string, string>> = {
     'auth.openBrowserFailedWin':
       '无法调用系统默认浏览器打开授权链接（错误码 0x800401F5），请在系统设置中设置默认浏览器，或复制链接在浏览器中打开：{0}',
     'auth.openBrowserFailed': '无法打开系统默认浏览器，请在浏览器中手动打开链接：{0}',
-    'auth.openLoginWindowFailed': '无法启动系统默认浏览器或登录窗口，请在浏览器中手动打开：{0}'
+    'auth.openLoginWindowFailed': '无法启动系统默认浏览器或登录窗口，请在浏览器中手动打开：{0}',
+    'attention.ptyQuestion': '需要回答问题或确认选项',
+    'attention.ptyConfirm': '等待确认或选择',
+    'tray.open': '打开界面',
+    'tray.quit': '退出',
+    'tray.tooltipAction': '需要确认',
+    'tray.tooltipDot': '有新提醒',
+    'tray.notifyDefaultBody': '有新的待处理事项',
+    'tray.itemAction': '[待确认] {0}'
   },
   en: {
     'subapp.pythonConfiguredPathUnavailable':
@@ -57,7 +65,15 @@ const translations: Record<Lang, Record<string, string>> = {
     'auth.openBrowserFailedWin':
       'Could not launch the default browser to open the sign-in link (error 0x800401F5). Set a default browser in system settings, or copy the link into a browser: {0}',
     'auth.openBrowserFailed': 'Could not open the default browser. Please open this link manually: {0}',
-    'auth.openLoginWindowFailed': 'Could not launch a browser or the sign-in window. Please open this link manually: {0}'
+    'auth.openLoginWindowFailed': 'Could not launch a browser or the sign-in window. Please open this link manually: {0}',
+    'attention.ptyQuestion': 'Needs an answer or a choice',
+    'attention.ptyConfirm': 'Waiting for confirmation or a choice',
+    'tray.open': 'Open',
+    'tray.quit': 'Quit',
+    'tray.tooltipAction': 'Needs your confirmation',
+    'tray.tooltipDot': 'New alerts',
+    'tray.notifyDefaultBody': 'You have new items to review',
+    'tray.itemAction': '[Needs action] {0}'
   }
 }
 

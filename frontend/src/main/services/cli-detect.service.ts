@@ -5,6 +5,11 @@ import * as path from 'path'
 import * as fs from 'fs'
 import * as logger from '../utils/logger'
 import { isCodingToolEnabled } from '../store/settings.store'
+import {
+  getWindowsRegistryPath,
+  getToolCandidatePaths,
+  reorderWindowsPathString
+} from '../utils/windows-env'
 
 const execFileAsync = promisify(execFile)
 
@@ -12,6 +17,7 @@ export interface DetectedCLI {
   toolType:
     | 'claude'
     | 'codex'
+    | 'antigravity'
     | 'gemini'
     | 'grok'
     | 'opencode'
@@ -20,17 +26,21 @@ export interface DetectedCLI {
     | 'kimi'
     | 'zcode'
     | 'mimo'
+    | 'omp'
     | 'terminal'
     | 'qwen'
   name: string
   installed: boolean
   version?: string
+  /** False when the user disabled the tool on its Local Env card. */
+  enabled?: boolean
 }
 
 /** AI toolType → Local Env toolId (for enablement filtering) */
 const AI_TYPE_TO_TOOL_ID: Partial<Record<DetectedCLI['toolType'], string>> = {
   claude: 'claude-code',
   codex: 'codex-cli',
+  antigravity: 'antigravity-cli',
   gemini: 'gemini-cli',
   grok: 'grok-cli',
   opencode: 'opencode',
@@ -38,7 +48,8 @@ const AI_TYPE_TO_TOOL_ID: Partial<Record<DetectedCLI['toolType'], string>> = {
   qoder: 'qoder-cli',
   kimi: 'kimi-code',
   zcode: 'zcode',
-  mimo: 'mimo-code'
+  mimo: 'mimo-code',
+  omp: 'omp'
 }
 
 /**
@@ -120,21 +131,34 @@ export function getAugmentedEnv(): NodeJS.ProcessEnv {
     // After spreading process.env the key may be `Path`, leaving `env.PATH` undefined —
     // read and write to whichever key already exists so we don't clobber the system PATH.
     const pathKey = 'PATH' in env ? 'PATH' : 'Path' in env ? 'Path' : 'PATH'
-    const current = (env[pathKey] as string | undefined) || ''
+    let current = (env[pathKey] as string | undefined) || ''
     const parts = current.split(';')
-    const appData = process.env.APPDATA
-    if (appData) {
-      const npmGlobal = path.join(appData, 'npm')
-      if (!parts.some((x) => x.toLowerCase() === npmGlobal.toLowerCase())) {
-        env[pathKey] = current ? `${current};${npmGlobal}` : npmGlobal
+    const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local')
+    const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming')
+    // npm global, omp native installer, ~/.local/bin, bun global and pnpm global
+    const extras = [
+      path.join(appData, 'npm'),
+      path.join(localAppData, 'omp'),
+      path.join(localAppData, 'Programs', 'omp'),
+      path.join(home, '.local', 'bin'),
+      path.join(home, '.bun', 'bin'),
+      path.join(localAppData, 'pnpm')
+    ]
+    for (const ep of extras) {
+      if (ep && !parts.some((x) => x.toLowerCase() === ep.toLowerCase())) {
+        current = current ? `${current};${ep}` : ep
+        parts.push(ep)
       }
     }
+    // Keep real interpreters ahead of WindowsApps stubs etc.
+    env[pathKey] = reorderWindowsPathString(current).newPath
   } else {
     let p = env.PATH || ''
     const extras = [
       '/usr/local/bin',
-      path.join(home, '.local', 'bin'), // Official Claude Code native installer location
+      path.join(home, '.local', 'bin'), // Official Claude Code / omp native installer location
       path.join(home, '.npm-global', 'bin'),
+      path.join(home, '.bun', 'bin'), // bun global installs (omp)
       '/opt/homebrew/bin'
     ]
 
@@ -180,6 +204,11 @@ async function resolveBinaryPath(
   binary: string,
   env: NodeJS.ProcessEnv
 ): Promise<string | null> {
+  // Known installer locations first — they may be missing from a GUI-launched PATH
+  // (Windows especially, where the registry PATH isn't inherited until re-login).
+  for (const cand of getToolCandidatePaths(binary)) {
+    if (fs.existsSync(cand)) return cand
+  }
   try {
     const whichCmd = process.platform === 'win32' ? 'where' : 'which'
     const { stdout } = await execFileAsync(whichCmd, [binary], { timeout: 5000, env })
@@ -262,11 +291,11 @@ async function detectTool(
 async function detectClaudeCLI(env: NodeJS.ProcessEnv): Promise<DetectedCLI> {
   const result: DetectedCLI = { toolType: 'claude', name: 'Claude Code', installed: false }
 
-  // 1. Check official native installer path first (POSIX only — install.sh is Unix-only)
-  if (process.platform !== 'win32') {
-    const nativePath = path.join(os.homedir(), '.local', 'bin', 'claude')
+  // 1. Check known installer locations first (~/.local/bin on POSIX; on Windows
+  //    %USERPROFILE%\.local\bin\claude.exe, npm/pnpm/bun shims, ...)
+  for (const nativePath of getToolCandidatePaths('claude')) {
     const nativeExists = await fs.promises
-      .access(nativePath, fs.constants.X_OK)
+      .access(nativePath, process.platform === 'win32' ? fs.constants.F_OK : fs.constants.X_OK)
       .then(() => true)
       .catch(() => false)
 
@@ -289,11 +318,27 @@ async function detectClaudeCLI(env: NodeJS.ProcessEnv): Promise<DetectedCLI> {
 
 /**
  * Detect all supported AI coding CLI tools and the terminal fallback.
- * Order matches Local Env: Claude → Codex → Gemini → Grok → OpenCode → Trae → Qoder → Kimi → ZCode → MiMo.
+ * Order matches Local Env: Claude → Codex → Gemini → Grok → OpenCode → Trae → Qoder → Kimi → ZCode → MiMo → Antigravity → omp.
  * All detection runs in parallel.
  */
 export async function detectAvailableCLIs(): Promise<DetectedCLI[]> {
   const env = getAugmentedEnv()
+  if (process.platform === 'win32') {
+    // A tool installed after launch updates the registry PATH, not ours — merge it in.
+    const registryPath = await getWindowsRegistryPath()
+    if (registryPath) {
+      const pathKey = 'PATH' in env ? 'PATH' : 'Path' in env ? 'Path' : 'PATH'
+      let current = (env[pathKey] as string | undefined) || ''
+      const parts = current.split(';')
+      for (const rp of registryPath.split(';')) {
+        if (rp && !parts.some((x) => x.toLowerCase() === rp.toLowerCase())) {
+          current = current ? `${current};${rp}` : rp
+          parts.push(rp)
+        }
+      }
+      env[pathKey] = current
+    }
+  }
 
   const tools: Array<{ binary: string; toolType: DetectedCLI['toolType']; name: string }> = [
     { binary: 'codex', toolType: 'codex', name: 'Codex CLI' },
@@ -304,7 +349,9 @@ export async function detectAvailableCLIs(): Promise<DetectedCLI[]> {
     { binary: 'qodercli', toolType: 'qoder', name: 'Qoder CLI' },
     { binary: 'kimi', toolType: 'kimi', name: 'Kimi Code' },
     { binary: 'zcode', toolType: 'zcode', name: 'ZCode' },
-    { binary: 'mimo', toolType: 'mimo', name: 'MiMo Code' }
+    { binary: 'mimo', toolType: 'mimo', name: 'MiMo Code' },
+    { binary: 'agy', toolType: 'antigravity', name: 'Antigravity CLI' },
+    { binary: 'omp', toolType: 'omp', name: 'Oh My Pi' }
   ]
 
   const [claudeResult, ...otherResults] = await Promise.all([
@@ -318,21 +365,30 @@ export async function detectAvailableCLIs(): Promise<DetectedCLI[]> {
   if (qoderIdx >= 0 && !results[qoderIdx]?.installed) {
     results[qoderIdx] = await detectTool('qoder', 'qoder', 'Qoder CLI', env)
   }
+  // If `agy` not found, try the long `antigravity` binary name
+  const agyIdx = tools.findIndex((t) => t.toolType === 'antigravity')
+  if (agyIdx >= 0 && !results[agyIdx]?.installed) {
+    const fallback = await detectTool('antigravity', 'antigravity', 'Antigravity CLI', env)
+    if (fallback.installed) results[agyIdx] = fallback
+  }
 
   const detected = [claudeResult, ...results]
 
   // Hide tools the user disabled on Local Env coding cards (terminal always stays)
-  const enabled = detected.filter((cli) => {
-    const toolId = AI_TYPE_TO_TOOL_ID[cli.toolType]
-    if (!toolId) return true
-    return isCodingToolEnabled(toolId)
-  })
+  const enabled: DetectedCLI[] = detected
+    .filter((cli) => {
+      const toolId = AI_TYPE_TO_TOOL_ID[cli.toolType]
+      if (!toolId) return true
+      return isCodingToolEnabled(toolId)
+    })
+    .map((cli) => ({ ...cli, enabled: true }))
 
   // Terminal is always available
   enabled.push({
     toolType: 'terminal',
     name: 'Terminal',
-    installed: true
+    installed: true,
+    enabled: true
   })
 
   return enabled

@@ -1,5 +1,4 @@
 import * as path from 'path'
-import * as os from 'os'
 import * as fs from 'fs'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
@@ -42,6 +41,10 @@ import {
 } from './codex-session-manager.service'
 import { detectAvailableCLIs, getAugmentedEnv, loadShellEnv } from './cli-detect.service'
 import { settingsStore } from '../store/settings.store'
+import { resolveOmpSessionDirs, invalidateNativeSessionCache } from './native-sessions.service'
+import { getToolCandidatePaths } from '../utils/windows-env'
+import { mainT } from '../utils/i18n'
+import { looksLikePtyPrompt } from '../utils/pty-prompt'
 
 /**
  * Resolve a binary name to its absolute path using the provided env's PATH.
@@ -50,6 +53,16 @@ import { settingsStore } from '../store/settings.store'
  * Falls back to the bare binary name if resolution fails.
  */
 async function resolveCommandPath(binary: string, env: Record<string, string>): Promise<string> {
+  // Known installer locations first (native installers, bun / npm / pnpm
+  // globals). On POSIX ~/.local/bin is listed first, so the native installer
+  // still wins over a Homebrew copy even if Homebrew comes first in PATH.
+  for (const cand of getToolCandidatePaths(binary)) {
+    try {
+      await fs.promises.access(cand, process.platform === 'win32' ? fs.constants.F_OK : fs.constants.X_OK)
+      return cand
+    } catch { /* not installed there */ }
+  }
+
   if (process.platform === 'win32') {
     try {
       const { stdout } = await execFileAsync('where', [binary], { timeout: 3000, env })
@@ -67,15 +80,6 @@ async function resolveCommandPath(binary: string, env: Record<string, string>): 
     }
     return binary
   }
-
-  // Check the native installer location first (~/.local/bin) so it wins over
-  // a Homebrew copy of the same binary even if Homebrew appears first in PATH.
-  // Mirrors the priority used by detectClaudeCLI().
-  const nativePath = path.join(os.homedir(), '.local', 'bin', binary)
-  try {
-    await fs.promises.access(nativePath, fs.constants.X_OK)
-    return nativePath
-  } catch { /* not installed there */ }
 
   try {
     const { stdout } = await execFileAsync('which', [binary], { timeout: 3000, env })
@@ -101,7 +105,8 @@ function buildToolEnv(toolType: AIToolType): Record<string, string> {
     enabled: boolean
   }>
 
-  if (toolType === 'gemini' && !env.GEMINI_API_KEY) {
+  // Antigravity CLI is Gemini-based and reads the same key
+  if ((toolType === 'gemini' || toolType === 'antigravity') && !env.GEMINI_API_KEY) {
     const googleConfig = aiModelConfigs.find((c) => c.provider === 'google' && c.apiKey)
     if (googleConfig?.apiKey) env.GEMINI_API_KEY = googleConfig.apiKey
   }
@@ -246,18 +251,137 @@ function handlePtyExit(sessionId: string, exitCode: number): void {
     const status = exitCode === 0 ? 'completed' : 'error'
     updateSession(sessionId, { status, lastActivity: 'none' })
     notifyDataChanged()
+    // Attention: a coding CLI exiting on its own is worth surfacing
+    // (plain terminal sessions are not — the user drives those).
+    if (session.toolType !== 'terminal') {
+      broadcastPipeEvent(sessionId, {
+        type: exitCode === 0 ? 'result' : 'pipe_exit',
+        toolType: session.toolType
+      })
+    }
   }
+}
+
+function broadcastPipeEvent(sessionId: string, event: Record<string, unknown>): void {
+  BrowserWindow.getAllWindows().forEach((win) => {
+    if (!win.webContents.isDestroyed()) {
+      win.webContents.send('ai-coding:pipe-event', { sessionId, event })
+    }
+  })
+}
+
+type PtyAttention = { kind: 'action' | 'completion'; message?: string }
+
+/**
+ * Inspect the newest omp session file for this workspace to tell whether the
+ * last assistant turn finished or is waiting on the user (`ask` tool / pending
+ * tool use). Returns null when nothing conclusive is found.
+ */
+function checkOmpLastTurnStatus(workingDir: string): PtyAttention | null {
+  const dirs = resolveOmpSessionDirs(workingDir)
+  if (dirs.length === 0) return null
+
+  let newestFile: string | null = null
+  let newestMtime = 0
+  for (const dir of dirs) {
+    try {
+      for (const file of fs.readdirSync(dir)) {
+        if (!file.endsWith('.jsonl')) continue
+        const full = path.join(dir, file)
+        const stat = fs.statSync(full)
+        if (stat.mtimeMs > newestMtime) {
+          newestMtime = stat.mtimeMs
+          newestFile = full
+        }
+      }
+    } catch { /* skip unreadable dir */ }
+  }
+  if (!newestFile) return null
+
+  try {
+    const stat = fs.statSync(newestFile)
+    const readSize = Math.min(65536, stat.size)
+    const buf = Buffer.alloc(readSize)
+    const fd = fs.openSync(newestFile, 'r')
+    try {
+      fs.readSync(fd, buf, 0, readSize, stat.size - readSize)
+    } finally {
+      fs.closeSync(fd)
+    }
+    const lines = buf.toString('utf-8').split('\n').filter((l) => l.trim().length > 0)
+    for (let i = lines.length - 1; i >= 0; i--) {
+      let record: { type?: string; message?: { role?: string; content?: unknown; stopReason?: string } }
+      try { record = JSON.parse(lines[i]) } catch { continue /* partial first line */ }
+      if (record.type !== 'message' || record.message?.role !== 'assistant') continue
+      const content = record.message.content
+      if (Array.isArray(content)) {
+        const hasAsk = content.some((c) =>
+          Boolean(c && typeof c === 'object' && (c as { type?: string }).type === 'toolCall' && (c as { name?: string }).name === 'ask')
+        )
+        if (hasAsk) return { kind: 'action', message: mainT('attention.ptyQuestion') }
+      }
+      if (record.message.stopReason === 'stop') return { kind: 'completion' }
+      if (record.message.stopReason === 'toolUse') return { kind: 'action', message: mainT('attention.ptyConfirm') }
+      return null
+    }
+  } catch (err) {
+    logger.warn('[AICoding] Failed to check omp turn status:', err)
+  }
+  return null
+}
+
+/** Decide whether a PTY session that just went quiet finished a turn or awaits input. */
+function detectPtyAttentionKind(session: AICodingSession): PtyAttention {
+  if (session.toolType === 'omp') {
+    try {
+      const workspace = getAICodingConfig().workspaces.find((w) => w.id === session.workspaceId)
+      if (workspace?.workingDir) {
+        const ompStatus = checkOmpLastTurnStatus(workspace.workingDir)
+        if (ompStatus) return ompStatus
+      }
+    } catch (err) {
+      logger.warn('[AICoding] Error detecting omp turn status:', err)
+    }
+  }
+  if (looksLikePtyPrompt(getPtySessionOutput(session.id))) {
+    return { kind: 'action', message: mainT('attention.ptyConfirm') }
+  }
+  return { kind: 'completion' }
 }
 
 /**
  * PTY output stabilized handler — called when no new output has arrived for 2 seconds.
- * Transitions the session from 'running' back to 'idle' so the card reflects readiness.
+ * Transitions the session from 'running' back to 'idle' so the card reflects readiness,
+ * and (for coding CLIs) tells the renderer whether the turn completed or needs action.
  */
 function handlePtyOutputStabilized(sessionId: string): void {
   const session = getSessionById(sessionId)
   if (session && session.status === 'running') {
     updateSession(sessionId, { status: 'idle', lastActivity: 'none' })
     notifyDataChanged()
+    if (session.toolType === 'terminal') return
+    const attention = detectPtyAttentionKind(session)
+    broadcastPipeEvent(sessionId, {
+      type: attention.kind === 'action' ? 'action' : 'result',
+      toolType: session.toolType,
+      message: attention.message
+    })
+  }
+}
+
+/**
+ * Called for every renderer keystroke batch written to a PTY session. Enter
+ * marks the start of a turn so the output-stable detector can later report
+ * completion (only 'running' sessions are reported).
+ */
+export function onPtyInput(sessionId: string, data: string): void {
+  if (!data.includes('\r') && !data.includes('\n')) return
+  const session = getSessionById(sessionId)
+  if (!session || session.status === 'running') return
+  updateSession(sessionId, { status: 'running', lastActivity: 'thinking' })
+  notifyDataChanged()
+  if (session.toolType !== 'terminal') {
+    broadcastPipeEvent(sessionId, { type: 'turn_start', toolType: session.toolType })
   }
 }
 
@@ -330,6 +454,10 @@ export async function writeToSession(
     writeToPty(sessionId, text + '\r')
     updateSession(sessionId, { status: 'running', lastActivity: 'thinking' })
     notifyDataChanged()
+    const session = getSessionById(sessionId)
+    if (session && session.toolType !== 'terminal') {
+      broadcastPipeEvent(sessionId, { type: 'turn_start', toolType: session.toolType })
+    }
     return { success: true }
   }
 
@@ -349,15 +477,20 @@ export function createWorkspace(
 ): AICodingWorkspace {
   const lastDir = path.basename(workingDir) || workingDir
   const now = Date.now()
+  const { workspaces } = getAICodingConfig()
+  // Seed order so the new workspace sorts after existing ones in its group.
+  const maxOrder = workspaces
+    .filter((w) => w.groupId === groupId)
+    .reduce((max, w) => Math.max(max, typeof w.order === 'number' ? w.order : 0), 0)
   const workspace: AICodingWorkspace = {
     id: randomUUID(),
     title: lastDir,
     workingDir,
     groupId,
     createdAt: now,
-    updatedAt: now
+    updatedAt: now,
+    order: maxOrder + 1
   }
-  const { workspaces } = getAICodingConfig()
   workspaces.push(workspace)
   setAICodingWorkspaces(workspaces)
   logger.info(`[AICoding] Workspace created: ${workspace.id} dir=${workingDir}`)
@@ -423,11 +556,14 @@ export async function deleteWorkspace(id: string): Promise<void> {
   for (const session of [...childSessions, ...runtimeChildSessions]) {
     killPtySession(session.id)
     closeSDKSession(session.id)
+    closeCodexSession(session.id)
   }
   for (const session of runtimeChildSessions) runtimeSessions.delete(session.id)
   setAICodingSessions(sessions.filter((s) => s.workspaceId !== id))
 
   const { workspaces } = getAICodingConfig()
+  const removed = workspaces.find((w) => w.id === id)
+  if (removed) invalidateNativeSessionCache(removed.workingDir)
   setAICodingWorkspaces(workspaces.filter((w) => w.id !== id))
   logger.info(`[AICoding] Workspace deleted: ${id}, closed ${childSessions.length + runtimeChildSessions.length} sessions`)
 }

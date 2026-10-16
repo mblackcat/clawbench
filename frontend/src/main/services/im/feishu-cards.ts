@@ -21,7 +21,8 @@ import type { Workspace } from '../../store/workspace.store'
 export const TOOL_LABELS: Record<string, string> = {
   claude: 'Claude Code',
   codex: 'Codex CLI',
-  gemini: 'Gemini CLI'
+  gemini: 'Gemini CLI',
+  antigravity: 'Antigravity CLI'
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -127,7 +128,7 @@ export function buildHelpCard(
         },
         {
           tag: 'markdown',
-          content: '命令按照代码格式：\n`/work` `/w` — 查看 AI 工作区列表\n`/work <n>` `/w <n>` — 选择第 n 个工作区\n`/session` `/ss` — 查看当前工作区会话列表\n`/ss <n>` — 切换到第 n 个会话\n`/new <工具名>` — 创建新会话（claude/codex/gemini）\n`/exit` — 退出当前活跃会话\n`/status` `/st` — 查看整体状态汇总\n\n_选定工作区/会话后，直接发送文本将转发到终端_',
+          content: '命令按照代码格式：\n`/work` `/w` — 查看 AI 工作区列表\n`/work <n>` `/w <n>` — 选择第 n 个工作区\n`/session` `/ss` — 查看当前工作区会话列表\n`/ss <n>` — 切换到第 n 个会话\n`/new <工具名>` — 创建新会话（claude/codex/gemini/antigravity）\n`/exit` — 退出当前活跃会话\n`/status` `/st` — 查看整体状态汇总\n\n_选定工作区/会话后，直接发送文本将转发到终端_',
           text_align: 'left',
           text_size: 'normal_v2'
         }
@@ -172,7 +173,7 @@ export function buildHelpCard(
       vertical_align: 'top',
       elements: [{
         tag: 'markdown',
-        content: "**<font color='purple'>💬 AI 助手</font>**\n直接发消息即可多轮对话（人设/记忆/工具）\n`/chat <内容>` — 显式助手对话\n`/new` — 新开助手会话（超 1h 静默自动切断）\n`/new claude|codex|gemini` — 创建 Coding 会话\n可控制：应用运行/安装、终端命令、DB、Coding",
+        content: "**<font color='purple'>💬 AI 助手</font>**\n直接发消息即可多轮对话（人设/记忆/工具）\n`/chat <内容>` — 显式助手对话\n`/new` — 新开助手会话（超 1h 静默自动切断）\n`/new claude|codex|gemini|antigravity` — 创建 Coding 会话\n可控制：应用运行/安装、终端命令、DB、Coding",
         text_align: 'left',
         text_size: 'normal_v2'
       }]

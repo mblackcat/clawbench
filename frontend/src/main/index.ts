@@ -29,6 +29,8 @@ import {
   getIsQuitting
 } from './services/tray-attention.service'
 import { setMainWindowGetter as setFeishuWatcherMainWindow } from './services/copiper-feishu-watcher.service'
+import { closeAllSDKSessions } from './services/sdk-session-manager.service'
+import { closeAllCodexSessions } from './services/codex-session-manager.service'
 
 const PROTOCOL = 'clawbench'
 
@@ -292,6 +294,10 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   setIsQuitting(true)
+  // AI Coding: close Claude SDK / Codex app-server sessions so their child
+  // processes (MCP servers etc.) don't outlive the app.
+  closeAllSDKSessions()
+  closeAllCodexSessions()
 })
 
 app.on('will-quit', () => {

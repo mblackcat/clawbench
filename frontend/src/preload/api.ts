@@ -211,18 +211,24 @@ export const api = {
   vcs: {
     detect: (workspacePath: string) =>
       ipcRenderer.invoke('vcs:detect', workspacePath),
-    diffStat: (workspacePath: string) =>
-      ipcRenderer.invoke('vcs:diff-stat', workspacePath),
-    changedFiles: (workspacePath: string) =>
-      ipcRenderer.invoke('vcs:changed-files', workspacePath),
-    commit: (workspacePath: string, message: string) =>
-      ipcRenderer.invoke('vcs:commit', workspacePath, message),
-    push: (workspacePath: string) =>
-      ipcRenderer.invoke('vcs:push', workspacePath),
-    pull: (workspacePath: string) =>
-      ipcRenderer.invoke('vcs:pull', workspacePath),
-    discardFile: (workspacePath: string, filePath: string, isUntracked: boolean) =>
-      ipcRenderer.invoke('vcs:discard-file', workspacePath, filePath, isUntracked)
+    /** All VCS detected in the working directory (priority git > svn > perforce). */
+    detectAll: (workspacePath: string) =>
+      ipcRenderer.invoke('vcs:detect-types', workspacePath),
+    diffStat: (workspacePath: string, vcsType?: string) =>
+      ipcRenderer.invoke('vcs:diff-stat', workspacePath, vcsType),
+    changedFiles: (workspacePath: string, vcsType?: string) =>
+      ipcRenderer.invoke('vcs:changed-files', workspacePath, vcsType),
+    /** Unified diff for one changed path; `filePath` may be a directory. */
+    fileDiff: (workspacePath: string, filePath: string, vcsType?: string) =>
+      ipcRenderer.invoke('vcs:file-diff', workspacePath, filePath, vcsType),
+    commit: (workspacePath: string, message: string, vcsType?: string) =>
+      ipcRenderer.invoke('vcs:commit', workspacePath, message, vcsType),
+    push: (workspacePath: string, vcsType?: string) =>
+      ipcRenderer.invoke('vcs:push', workspacePath, vcsType),
+    pull: (workspacePath: string, vcsType?: string) =>
+      ipcRenderer.invoke('vcs:pull', workspacePath, vcsType),
+    discardFile: (workspacePath: string, filePath: string, isUntracked: boolean, vcsType?: string) =>
+      ipcRenderer.invoke('vcs:discard-file', workspacePath, filePath, isUntracked, vcsType)
   },
 
   dialog: {
@@ -374,12 +380,37 @@ export const api = {
   },
 
   attention: {
-    setTrayState: (state: { flash: boolean; hasDot: boolean }) =>
-      ipcRenderer.invoke('attention:set-tray-state', state),
+    setTrayState: (state: {
+      flash: boolean
+      hasDot: boolean
+      items?: Array<{
+        id: string
+        kind: 'completion' | 'action'
+        source: 'workbench' | 'ai-chat' | 'ai-coding'
+        targetId?: string
+        workspaceId?: string
+        workspaceName?: string
+        sessionTitle?: string
+        title: string
+        body?: string
+      }>
+      balloon?: { title: string; content: string }
+    }) => ipcRenderer.invoke('attention:set-tray-state', state),
     onActivateFirst: (callback: () => void) => {
       const handler = () => callback()
       ipcRenderer.on('attention:activate-first', handler)
       return () => ipcRenderer.removeListener('attention:activate-first', handler)
+    },
+    /** Tray context menu → open a specific pending alert's target. */
+    onNavigateTo: (
+      callback: (target: { source: string; targetId?: string; workspaceId?: string }) => void
+    ) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        target: { source: string; targetId?: string; workspaceId?: string }
+      ) => callback(target)
+      ipcRenderer.on('attention:navigate-to', handler)
+      return () => ipcRenderer.removeListener('attention:navigate-to', handler)
     }
   },
 
