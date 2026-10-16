@@ -33,13 +33,20 @@ export const SETTINGS_MODULE_CARDS: ModuleCardConfig[] = [
 
 export function normalizeModuleVisibility(value: unknown): ModuleVisibility {
   if (!value || typeof value !== 'object') {
-    return DEFAULT_MODULE_VISIBILITY
+    return { ...DEFAULT_MODULE_VISIBILITY }
   }
 
-  return {
-    ...DEFAULT_MODULE_VISIBILITY,
-    ...(value as Partial<ModuleVisibility>)
+  // Only accept boolean values for known keys; anything else (null, strings,
+  // unknown keys from older/newer builds) falls back to the default.
+  const raw = value as Record<string, unknown>
+  const result: ModuleVisibility = { ...DEFAULT_MODULE_VISIBILITY }
+  for (const key of Object.keys(DEFAULT_MODULE_VISIBILITY) as Array<keyof ModuleVisibility>) {
+    const v = raw[key]
+    if (typeof v === 'boolean') {
+      result[key] = v
+    }
   }
+  return result
 }
 
 /** Role-based module visibility templates for the setup wizard */
