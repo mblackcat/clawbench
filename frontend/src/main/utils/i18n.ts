@@ -30,7 +30,27 @@ const translations: Record<Lang, Record<string, string>> = {
     'localEnv.installWingetFailed': '{0} 安装失败（winget 退出码 {1}）{2}',
     'localEnv.svnCliMissing': 'TortoiseSVN 已安装，但未找到 svn 命令行工具。请在安装向导中勾选 "command line client tools" 后重装。',
     'localEnv.svnVersionFailed': '已安装 {0}，但执行 svn --version 失败，请重启后重试。',
-    'localEnv.windowsManualUninstall': 'Windows 上请手动卸载 {0}'
+    'localEnv.windowsManualUninstall': 'Windows 上请手动卸载 {0}',
+    // ── protocol router (V4) ──
+    'protocol.parseFailed': '协议地址解析失败：{0}',
+    'protocol.unknownCommand': '未知或不支持的协议命令："{0}"',
+    'protocol.executionError': '协议执行异常（{0}）：{1}',
+    'protocol.authCallbackFailed': '登录回调处理失败：{0}',
+    'protocol.missingAppId': '缺少应用 ID 参数（id / appId）',
+    'protocol.installRequested': '收到应用安装请求：{0}',
+    'protocol.appNotInstalled': '应用未安装：{0}',
+    'protocol.confirmInstallTitle': '安装并运行应用',
+    'protocol.confirmInstallMessage': '外部链接请求从应用市场安装并运行「{0}」，是否继续？',
+    'protocol.confirmInstallDetail': '该请求来自工作台之外（例如网页链接）。如果你不认识这个应用或链接来源，请选择取消。',
+    'protocol.confirmInstallOk': '安装并运行',
+    'protocol.confirmCancel': '取消',
+    'protocol.installing': '正在从应用市场安装：{0}...',
+    'protocol.autoInstallFailed': '应用自动安装失败：{0}',
+    'protocol.appMissingAfterInstall': '应用安装后未在本地找到：{0}',
+    'protocol.notRunnable': '「{0}」不是可运行的应用',
+    'protocol.pythonUnavailable': 'Python 环境不可用：{0}',
+    'protocol.runningInBackground': '正在后台运行：{0}',
+    'protocol.launchFailed': '应用启动异常：{0}'
   },
   en: {
     'subapp.pythonConfiguredPathUnavailable':
@@ -59,7 +79,27 @@ const translations: Record<Lang, Record<string, string>> = {
     'localEnv.installWingetFailed': '{0} install failed (winget exit code {1}){2}',
     'localEnv.svnCliMissing': 'TortoiseSVN is installed but the svn command-line tools were not found. Reinstall with "command line client tools" selected.',
     'localEnv.svnVersionFailed': '{0} is installed but "svn --version" failed. Restart and try again.',
-    'localEnv.windowsManualUninstall': 'Please uninstall {0} manually on Windows'
+    'localEnv.windowsManualUninstall': 'Please uninstall {0} manually on Windows',
+    // ── protocol router (V4) ──
+    'protocol.parseFailed': 'Failed to parse protocol URL: {0}',
+    'protocol.unknownCommand': 'Unknown or unsupported protocol command: "{0}"',
+    'protocol.executionError': 'Protocol command failed ({0}): {1}',
+    'protocol.authCallbackFailed': 'Failed to handle login callback: {0}',
+    'protocol.missingAppId': 'Missing app id parameter (id / appId)',
+    'protocol.installRequested': 'App install requested: {0}',
+    'protocol.appNotInstalled': 'App is not installed: {0}',
+    'protocol.confirmInstallTitle': 'Install and run app',
+    'protocol.confirmInstallMessage': 'An external link asks to install "{0}" from the marketplace and run it. Continue?',
+    'protocol.confirmInstallDetail': 'This request came from outside the app (for example a web link). Cancel if you do not recognize the app or where the link came from.',
+    'protocol.confirmInstallOk': 'Install and run',
+    'protocol.confirmCancel': 'Cancel',
+    'protocol.installing': 'Installing from the marketplace: {0}...',
+    'protocol.autoInstallFailed': 'Automatic install failed: {0}',
+    'protocol.appMissingAfterInstall': 'App not found locally after install: {0}',
+    'protocol.notRunnable': '"{0}" is not a runnable app',
+    'protocol.pythonUnavailable': 'Python is unavailable: {0}',
+    'protocol.runningInBackground': 'Running in background: {0}',
+    'protocol.launchFailed': 'Failed to launch app: {0}'
   }
 }
 

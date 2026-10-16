@@ -93,6 +93,14 @@
   "build": {
     "appId": "com.lizhistudio.clawbench",
     "productName": "ClawBench",
+    "protocols": [
+      {
+        "name": "ClawBench",
+        "schemes": [
+          "clawbench"
+        ]
+      }
+    ],
     "afterPack": "./scripts/after-pack.mjs",
     "asarUnpack": [
       "**/node_modules/node-pty/**",
