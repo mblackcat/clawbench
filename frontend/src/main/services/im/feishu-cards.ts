@@ -122,7 +122,7 @@ export function buildHelpCard(
       elements: [
         {
           tag: 'markdown',
-          content: "**<font color='blue'>🤖 AI Coding 远程</font>**",
+          content: "**<font color='blue'>🤖 AI Work 远程</font>**",
           text_align: 'left',
           text_size: 'normal_v2'
         },
@@ -1077,7 +1077,7 @@ export function buildSessionCardV2(
     config: { update_multi: true },
     header: {
       title: { tag: 'plain_text', content: headerTitle },
-      subtitle: { tag: 'plain_text', content: 'ClawBench - AI Coding' },
+      subtitle: { tag: 'plain_text', content: 'ClawBench - AI Work' },
       template: 'blue',
       text_tag_list: [{
         tag: 'text_tag',

@@ -69,7 +69,7 @@ backend/src/
 | Developer | `/developer/*` | App editor (3-step), SkillEditor (3-step), PromptEditor, LinkEditor, Monaco code editor, publisher |
 | AI Chat | `/ai-chat` | Multi-model chat (OpenAI/Claude/Gemini), streaming, tool calling, MCP, welcome view |
 | AI Agents | `/ai-agents` | AI agent management hub; OpenClaw at `/ai-agents/openclaw`; Hermes Agent at `/ai-agents/hermes` |
-| AI Coding | `/ai-coding` | AI coding sessions (Claude Code/Codex/Gemini/Grok/…/Antigravity `agy`/Oh My Pi `omp`), workspace landing, split view, sidebar pin/sort/archive, VCS changes (git/svn/perforce, diff viewer), Feishu IM control |
+| AI Coding（界面名 AI Work / AI 工作台） | `/ai-coding` | AI coding sessions (Claude Code/Codex/Gemini/Grok/…/Antigravity `agy`/Oh My Pi `omp`), workspace landing, split view, sidebar pin/sort/archive, VCS changes (git/svn/perforce, diff viewer), Feishu IM control |
 | AI Terminal | `/ai-terminal` | Terminal + DB dual mode: local/SSH terminals, multi-DB GUI (MySQL/PG/Mongo/SQLite), AI assistant (model chat **or** CLI Agent mode) |
 | Local Env | `/local-env` | Dev tool detection & install (Python/Node/Git/SVN/Perforce/Docker + AI CLIs incl. agy/omp), winget/Homebrew, pip/npm/docker China mirrors toggle |
 | Settings | `/settings` | General, modules, AI models, MCP servers, image generation |

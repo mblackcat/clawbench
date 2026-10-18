@@ -342,7 +342,7 @@ class CodingToolProvider implements InternalToolProvider {
     if (toolName === 'list_coding_workspaces') {
       try {
         const workspaces = getWorkspaces()
-        if (!workspaces.length) return { content: 'No coding workspaces. Create one in AI Coding UI.', isError: false }
+        if (!workspaces.length) return { content: 'No coding workspaces. Create one in AI Work UI.', isError: false }
         const lines = workspaces.map((w) => `- [${w.id}] ${w.title} → ${w.workingDir}`)
         return { content: lines.join('\n'), isError: false }
       } catch (err: any) {
