@@ -42,3 +42,34 @@ describe('attention: AI Coding landing panel + window focus', () => {
     expect(useAttentionStore.getState().hasSessionAttention('s1')).toBe(false)
   })
 })
+
+describe('attention: dismiss is a no-op when nothing matches', () => {
+  beforeEach(() => {
+    useAttentionStore.setState({
+      items: [],
+      context: { pathname: '/ai-coding', activeChatId: null, activeCodingId: null }
+    })
+  })
+
+  it('keeps the items reference (no re-render) when the target has no attention', async () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(false)
+    raiseCodingCompletion('s1', 'done')
+    await flush()
+    const before = useAttentionStore.getState().items
+    const listener = vi.fn()
+    const unsub = useAttentionStore.subscribe(listener)
+    useAttentionStore.getState().dismissByTarget('ai-coding', 'other')
+    useAttentionStore.getState().dismissBySource('ai-chat')
+    unsub()
+    expect(listener).not.toHaveBeenCalled()
+    expect(useAttentionStore.getState().items).toBe(before)
+  })
+
+  it('still removes a matching item', async () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(false)
+    raiseCodingCompletion('s1', 'done')
+    await flush()
+    useAttentionStore.getState().dismissByTarget('ai-coding', 's1')
+    expect(useAttentionStore.getState().hasSessionAttention('s1')).toBe(false)
+  })
+})

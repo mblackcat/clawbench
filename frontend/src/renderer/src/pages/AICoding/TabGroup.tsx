@@ -10,6 +10,7 @@ import CodingTerminalView from './CodingTerminalView'
 import { useAICodingStore } from '../../stores/useAICodingStore'
 import { useT } from '../../i18n'
 import type { AIToolType, ClaudeViewMode } from '../../types/ai-coding'
+import { EMPTY_KEEP_ALIVE, nextKeepAlive } from '../../utils/terminal-keep-alive'
 
 const { Text } = Typography
 
@@ -305,32 +306,73 @@ const TabGroup: React.FC<TabGroupProps> = ({
     }
   }, [activeTerminalSessionByWorkspace, activeWorkspaceId, deleteSession, terminalSessionIdsByWorkspace])
 
-  const activeContent = activeTabId && activeSession ? (
-    CHAT_VIEW_TOOLS.has(activeSession.toolType) && claudeViewMode === 'chat' ? (
-      <CodingChatPanel
-        sessionId={activeTabId}
-        onNewSession={handleNewSession}
-        onCloseSession={handleCloseTab}
-      />
-    ) : (
-      <CodingTerminalView
-        key={activeTabId}
-        sessionId={activeTabId}
-        onNewSession={handleNewSession}
-        onCloseSession={handleCloseTab}
-        claudeViewMode={CHAT_VIEW_TOOLS.has(activeSession.toolType) ? claudeViewMode : undefined}
-        onClaudeViewModeChange={CHAT_VIEW_TOOLS.has(activeSession.toolType) ? handleClaudeViewModeChange : undefined}
-      />
-    )
-  ) : (
-    <div style={{
-      flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-      flexDirection: 'column', gap: 12, color: token.colorTextQuaternary, height: '100%',
-    }}>
-      <MessageOutlined style={{ fontSize: 36 }} />
-      <Text style={{ color: token.colorTextQuaternary, fontSize: 13 }}>
-        {t('coding.emptyPlaceholder')}
-      </Text>
+  // Terminal tabs stay mounted (hidden) after you leave them, so switching
+  // back is instant instead of rebuilding xterm and replaying the PTY buffer.
+  // Tabs that were closed, flipped to chat view or whose process ended drop
+  // out and remount on return — which is what relaunches them.
+  const defaultViewMode = (localStorage.getItem('cb-claude-view-mode') as ClaudeViewMode) || 'chat'
+  const isKeptTerminal = (id: string): boolean => {
+    if (!tabIds.includes(id)) return false
+    const session = sessions.find(s => s.id === id)
+    if (!session) return false
+    if (CHAT_VIEW_TOOLS.has(session.toolType) && (claudeViewModes[id] || defaultViewMode) === 'chat') return false
+    if (id === activeTabId) return true
+    return session.status !== 'closed' && session.status !== 'completed' && session.status !== 'error'
+  }
+  const keepAliveRef = useRef(EMPTY_KEEP_ALIVE)
+  keepAliveRef.current = nextKeepAlive(keepAliveRef.current, activeTabId, isKeptTerminal)
+  const keptTerminalIds = keepAliveRef.current.ids
+
+  const activeIsChat = !!activeSession && CHAT_VIEW_TOOLS.has(activeSession.toolType) && claudeViewMode === 'chat'
+
+  const activeContent = (
+    <div style={{ position: 'relative', height: '100%', width: '100%', overflow: 'hidden' }}>
+      {activeTabId && activeSession ? (
+        activeIsChat && (
+          <CodingChatPanel
+            sessionId={activeTabId}
+            onNewSession={handleNewSession}
+            onCloseSession={handleCloseTab}
+          />
+        )
+      ) : (
+        <div style={{
+          flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexDirection: 'column', gap: 12, color: token.colorTextQuaternary, height: '100%',
+        }}>
+          <MessageOutlined style={{ fontSize: 36 }} />
+          <Text style={{ color: token.colorTextQuaternary, fontSize: 13 }}>
+            {t('coding.emptyPlaceholder')}
+          </Text>
+        </div>
+      )}
+      {keptTerminalIds.map((id) => {
+        const visible = id === activeTabId
+        const hasViewModes = CHAT_VIEW_TOOLS.has(tabs.find(s => s.id === id)?.toolType as AIToolType)
+        return (
+          <div
+            key={id}
+            aria-hidden={!visible}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              // Hidden layers keep their real size (no 2-column refit pushed to
+              // the PTY) but sit outside the clipped pane, so xterm pauses
+              // rendering them and re-fits when they scroll back into view.
+              ...(visible ? {} : { visibility: 'hidden', pointerEvents: 'none', transform: 'translateX(-200%)' }),
+            }}
+          >
+            <CodingTerminalView
+              sessionId={id}
+              active={visible}
+              onNewSession={handleNewSession}
+              onCloseSession={handleCloseTab}
+              claudeViewMode={hasViewModes && visible ? claudeViewMode : undefined}
+              onClaudeViewModeChange={hasViewModes && visible ? handleClaudeViewModeChange : undefined}
+            />
+          </div>
+        )
+      })}
     </div>
   )
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { App, Dropdown, type MenuProps } from 'antd'
 import { CopyOutlined, SnippetsOutlined, SelectOutlined, SearchOutlined } from '@ant-design/icons'
 import type { Terminal } from '@xterm/xterm'
@@ -19,6 +19,12 @@ interface CodingTerminalViewProps {
   claudeViewMode?: ClaudeViewMode
   onClaudeViewModeChange?: (mode: ClaudeViewMode) => void
   compact?: boolean
+  /**
+   * False while the tab is kept mounted but hidden (see TabGroup). The view
+   * gives up focus so keystrokes can't land in an invisible terminal, and
+   * takes it back when its tab is selected again.
+   */
+  active?: boolean
 }
 
 /** Tools whose sessions may have been started in SDK (chat) mode and need migrating to a PTY. */
@@ -31,7 +37,7 @@ const FORCED_PTY_TOOLS = new Set(['claude', 'codex'])
  * addons and all the IME/TUI workarounds live in `useXterm`; what remains here
  * is session lifecycle — deciding whether to launch, migrate or re-attach.
  */
-const CodingTerminalView: React.FC<CodingTerminalViewProps> = ({ sessionId }) => {
+const CodingTerminalView: React.FC<CodingTerminalViewProps> = ({ sessionId, active = true }) => {
   // Selector-scoped: this view only cares that the session exists. Subscribing
   // to the whole store re-rendered it on every streaming token of every session.
   const sessionExists = useAICodingStore((s) => s.sessions.some((x) => x.id === sessionId))
@@ -149,6 +155,23 @@ const CodingTerminalView: React.FC<CodingTerminalViewProps> = ({ sessionId }) =>
     onSearchResults: setSearchResults,
     onPasteResult: handlePasteResult
   })
+
+  const { focus: focusTerminal, termRef } = xterm
+  const wasActiveRef = useRef(active)
+  useEffect(() => {
+    const wasActive = wasActiveRef.current
+    wasActiveRef.current = active
+    if (!active) {
+      termRef.current?.blur()
+      setMenuOpen(false)
+      return
+    }
+    // Only on re-activation: a first mount keeps the old behaviour of not
+    // stealing focus from wherever the user is.
+    if (wasActive) return
+    const raf = requestAnimationFrame(() => focusTerminal())
+    return () => cancelAnimationFrame(raf)
+  }, [active, focusTerminal, termRef])
 
   const handlePaste = useCallback(async () => {
     handlePasteResult(await xterm.paste())

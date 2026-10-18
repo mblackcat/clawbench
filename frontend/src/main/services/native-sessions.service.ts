@@ -175,7 +175,11 @@ interface ClaudeFileCacheEntry {
   title: string
   slug?: string
 }
-/** Per-file parse cache: a session file is only re-read when its mtime changes. */
+/**
+ * Per-file parse cache. The title is the first real user prompt, which never
+ * changes once written, so a file with a title is not re-read even though the
+ * live session keeps bumping its mtime; untitled files are re-read on change.
+ */
 const claudeFileCache = new Map<string, ClaudeFileCacheEntry>()
 
 async function parseClaudeSessionCached(
@@ -183,7 +187,7 @@ async function parseClaudeSessionCached(
   mtime: number
 ): Promise<{ title: string; slug?: string }> {
   const cached = claudeFileCache.get(filePath)
-  if (cached && cached.mtime === mtime) {
+  if (cached && (cached.mtime === mtime || cached.title)) {
     return { title: cached.title, slug: cached.slug }
   }
   const result = await parseClaudeSession(filePath)
@@ -307,7 +311,10 @@ async function parseClaudeSession(
     })
 
     rl.on('line', (line) => {
-      if (foundTitle && slug) { rl.close(); stream.destroy(); return }
+      // The title wins over the slug (see displayTitle), so stop as soon as we
+      // have one. Waiting for a slug as well read whole transcripts — tens of
+      // MB — on every poll, because current Claude Code files carry no slug.
+      if (foundTitle) { rl.close(); stream.destroy(); return }
       try {
         const data = JSON.parse(line)
         if (!slug && data.slug) slug = data.slug
@@ -531,7 +538,9 @@ const codexFileCache = new Map<string, CodexFileCacheEntry>()
 function parseCodexSessionFile(filePath: string, mtime?: number): { meta: any | null; fallbackTitle: string } {
   if (mtime !== undefined) {
     const cached = codexFileCache.get(filePath)
-    if (cached && cached.mtime === mtime) {
+    // session_meta and the first prompt sit at the head of the file and never
+    // change, so a complete entry survives the live session's mtime bumps.
+    if (cached && (cached.mtime === mtime || (cached.meta && cached.fallbackTitle))) {
       return { meta: cached.meta, fallbackTitle: cached.fallbackTitle }
     }
   }
@@ -754,26 +763,31 @@ const codexProvider: NativeSessionProvider = {
       } catch { /* skip */ }
     }
 
-    // Find all session files and filter by cwd
+    // Find all session files and filter by cwd. Codex keeps every project's
+    // sessions in one tree that only grows, and the sidebar polls this every
+    // few seconds — walk and stat it asynchronously so the main process (PTY
+    // input/output, IPC) is not blocked for the length of the scan.
     const sessionFiles: string[] = []
-    function walkDir(dir: string): void {
-      try {
-        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-          if (entry.isDirectory()) walkDir(path.join(dir, entry.name))
-          else if (entry.name.endsWith('.jsonl')) sessionFiles.push(path.join(dir, entry.name))
-        }
-      } catch { /* skip */ }
+    const walkDir = async (dir: string): Promise<void> => {
+      let entries: fs.Dirent[]
+      try { entries = await fs.promises.readdir(dir, { withFileTypes: true }) }
+      catch { return }
+      const subdirs: Promise<void>[] = []
+      for (const entry of entries) {
+        if (entry.isDirectory()) subdirs.push(walkDir(path.join(dir, entry.name)))
+        else if (entry.name.endsWith('.jsonl')) sessionFiles.push(path.join(dir, entry.name))
+      }
+      await Promise.all(subdirs)
     }
-    if (fs.existsSync(sessionsDir)) walkDir(sessionsDir)
-    if (fs.existsSync(archivedSessionsDir)) walkDir(archivedSessionsDir)
+    await Promise.all([walkDir(sessionsDir), walkDir(archivedSessionsDir)])
 
     // Sort by mtime newest first. UI pagination decides how many are shown.
-    const fileInfos = sessionFiles.map((f) => {
+    const fileInfos = (await Promise.all(sessionFiles.map(async (f) => {
       try {
-        const stat = fs.statSync(f)
+        const stat = await fs.promises.stat(f)
         return { path: f, mtime: stat.mtimeMs, size: stat.size }
       } catch { return null }
-    }).filter(Boolean) as Array<{ path: string; mtime: number; size: number }>
+    }))).filter(Boolean) as Array<{ path: string; mtime: number; size: number }>
     fileInfos.sort((a, b) => b.mtime - a.mtime)
 
     const sessions: NativeSession[] = []

@@ -240,22 +240,24 @@ export const useAttentionStore = create<AttentionState>((set, get) => ({
     })
   },
 
+  // Both dismissers are hot paths (the coding terminal dismisses on every
+  // keystroke). Bail out when nothing matches: a fresh `items` array would
+  // re-render every subscriber (the whole AI Coding sidebar) and resend the
+  // tray state for each character typed.
   dismissByTarget: (source, targetId) => {
-    set((s) => {
-      const items = s.items.filter(
-        (i) => !(i.source === source && (i.targetId || '') === targetId)
-      )
-      queueMicrotask(() => syncTray(get().items, get().context))
-      return { items }
-    })
+    const { items } = get()
+    const next = items.filter((i) => !(i.source === source && (i.targetId || '') === targetId))
+    if (next.length === items.length) return
+    set({ items: next })
+    queueMicrotask(() => syncTray(get().items, get().context))
   },
 
   dismissBySource: (source) => {
-    set((s) => {
-      const items = s.items.filter((i) => i.source !== source)
-      queueMicrotask(() => syncTray(get().items, get().context))
-      return { items }
-    })
+    const { items } = get()
+    const next = items.filter((i) => i.source !== source)
+    if (next.length === items.length) return
+    set({ items: next })
+    queueMicrotask(() => syncTray(get().items, get().context))
   },
 
   clearViewed: () => {
