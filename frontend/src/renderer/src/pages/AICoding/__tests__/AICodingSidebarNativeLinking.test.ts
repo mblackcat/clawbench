@@ -275,4 +275,52 @@ describe('AICodingSidebar native session linking', () => {
     expect(links[0].toolSessionId).toBe('78d2ee3e-e697-4a10-bd73-a33b99fe931e')
     expect(links[0].title).toBe('了解项目架构与代码库')
   })
+  it('does not let a new session claim the native history of a session that was just closed', () => {
+    const t0 = 10_000
+
+    // Old session: already bound to its native history, closed (tab closed) after the new one started
+    const closedOld: AICodingSession = {
+      id: 'sess-old',
+      workspaceId: 'ws-1',
+      toolType: 'claude',
+      source: 'local',
+      status: 'closed',
+      lastActivity: 'none',
+      toolSessionId: 'nat-old',
+      title: 'Refactor auth flow',
+      startedAt: t0 - 60_000,
+      createdAt: t0 - 60_000,
+      updatedAt: t0 + 1_000
+    }
+
+    // New session: running, its own native id not reported yet
+    const fresh: AICodingSession = {
+      id: 'sess-new',
+      workspaceId: 'ws-1',
+      toolType: 'claude',
+      source: 'local',
+      status: 'running',
+      lastActivity: 'none',
+      startedAt: t0,
+      createdAt: t0,
+      updatedAt: t0
+    }
+
+    // The old native file was touched when the old session was closed
+    const nativeSessions: SidebarNativeSession[] = [
+      { sessionId: 'nat-old', toolType: 'claude', title: 'Refactor auth flow', modifiedAt: t0 + 1_000 }
+    ]
+
+    // The sidebar only links active sessions, but every session claims its own native id
+    const links = resolveNativeSessionLinks([fresh], nativeSessions, [closedOld, fresh])
+    expect(links).toHaveLength(0)
+
+    // Once the new session's own native history shows up it links to that one instead
+    const withOwn = [
+      ...nativeSessions,
+      { sessionId: 'nat-new', toolType: 'claude' as const, title: 'Add unit tests', modifiedAt: t0 + 3_000 }
+    ]
+    const later = resolveNativeSessionLinks([fresh], withOwn, [closedOld, fresh])
+    expect(later).toEqual([{ sessionId: 'sess-new', toolSessionId: 'nat-new', title: 'Add unit tests' }])
+  })
 })

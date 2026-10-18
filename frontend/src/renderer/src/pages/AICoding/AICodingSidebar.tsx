@@ -306,13 +306,19 @@ const SortableWorkspaceItem: React.FC<{ id: string; children: React.ReactNode }>
  * CLI sessions of the same tool. PTY tools (Grok/Gemini/etc.) never emit a
  * session_id event, so without this the sidebar shows both "Grok session" and
  * the real native history entry for the same conversation.
+ *
+ * `claimingSessions` (default: `workspaceSessions`) must include closed
+ * sessions: a closed tab keeps its toolSessionId, and if it stopped claiming
+ * it, a freshly opened session would adopt the closed one's native history
+ * (wrong title) while its own history later showed up as a duplicate row.
  */
 export function resolveNativeSessionLinks(
   workspaceSessions: AICodingSession[],
-  nativeSessions: SidebarNativeSession[]
+  nativeSessions: SidebarNativeSession[],
+  claimingSessions: AICodingSession[] = workspaceSessions
 ): NativeSessionLink[] {
   const claimedNativeKeys = new Set(
-    workspaceSessions
+    claimingSessions
       .filter((session) => session.toolSessionId)
       .map((session) => `${session.toolType}:${session.toolSessionId}`)
   )
@@ -499,12 +505,13 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
   /** Bind toolSessionId for PTY sessions + pull native titles onto opened rows. Only targets active (non-closed) sessions. */
   const syncOpenedSessionsWithNative = useCallback(async (wsId: string, nativeSessions: SidebarNativeSession[]) => {
     const currentSessions = useAICodingStore.getState().sessions
-    const workspaceSessions = currentSessions.filter(
-      (session) => session.workspaceId === wsId && session.toolType !== 'terminal' && session.status !== 'closed'
+    const allWorkspaceSessions = currentSessions.filter(
+      (session) => session.workspaceId === wsId && session.toolType !== 'terminal'
     )
+    const workspaceSessions = allWorkspaceSessions.filter((session) => session.status !== 'closed')
     if (workspaceSessions.length === 0) return
 
-    const links = resolveNativeSessionLinks(workspaceSessions, nativeSessions)
+    const links = resolveNativeSessionLinks(workspaceSessions, nativeSessions, allWorkspaceSessions)
     const linkedIds = new Set(links.map((link) => link.sessionId))
     const nativeByKey = new Map(nativeSessions.map((ns) => [`${ns.toolType}:${ns.sessionId}`, ns]))
 
