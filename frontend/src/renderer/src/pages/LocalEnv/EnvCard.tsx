@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Card, Tag, Button, Typography, Tooltip, Popconfirm, Switch, Popover, App, Spin } from 'antd'
+import { Tag, Button, Typography, Tooltip, Popconfirm, Switch, Popover, App, Spin } from 'antd'
 import {
   DownloadOutlined,
   GlobalOutlined,
@@ -9,7 +9,8 @@ import {
   ArrowUpOutlined,
   AppstoreOutlined,
   SettingOutlined,
-  LinkOutlined
+  PoweroffOutlined,
+  LoadingOutlined
 } from '@ant-design/icons'
 import { theme } from 'antd'
 import type { ToolDetectionResult, PackageManagerInfo, MirrorSourceStatus, MirrorToolId } from '../../types/local-env'
@@ -18,6 +19,7 @@ import { openExternalLink } from '../../utils/markdown-links'
 import { useT } from '../../i18n'
 import { ProviderIcon } from '../../components/ProviderIcons'
 import { EnvToolIcon, hasEnvToolIcon } from '../../components/ToolIcons'
+import { FolderCard } from '../../components/FolderCard'
 
 const { Text } = Typography
 
@@ -282,147 +284,98 @@ const EnvCard: React.FC<EnvCardProps> = ({
   }
 
   const { label: installLabel, viaPkgMgr } = getInstallLabel()
+  const isActiveCoding = tool.installed && isAiCodingTool && codingEnabled
+  const variant = !tool.installed ? 'draft' : isActiveCoding ? 'builtin' : 'regular'
+  const tagStyle: React.CSSProperties = { margin: 0, fontSize: 10, lineHeight: '16px', height: 18, padding: '0 5px' }
+  const formatVersion = (version: string): string =>
+    version === 'app' || version === 'installed' ? t('localEnv.installed') : `v${version}`
+
+  const notchActions = (
+    <>
+      {homepageUrl && (
+        <Tooltip title={t('localEnv.officialWebsite')}>
+          <button type="button" className="cb-notch-btn" onClick={() => openExternalLink(homepageUrl)}>
+            <GlobalOutlined style={{ fontSize: 13 }} />
+          </button>
+        </Tooltip>
+      )}
+      <Tooltip title={t('localEnv.refreshDetect')}>
+        <button type="button" className="cb-notch-btn" onClick={() => onRefresh(tool.toolId)}>
+          <ReloadOutlined spin={refreshing} style={{ fontSize: 13 }} />
+        </button>
+      </Tooltip>
+    </>
+  )
 
   return (
-    <Card
-      className="cb-glass-card"
-      style={{ height: '100%' }}
-      styles={{
-        body: { padding: 16, display: 'flex', flexDirection: 'column', height: '100%' }
-      }}
+    <FolderCard
+      variant={variant}
+      notchActions={notchActions}
+      className={isActiveCoding ? 'cb-card-active-coding' : undefined}
     >
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        {renderToolIcon(tool.toolId)}
-        <Text strong style={{ fontSize: 16 }}>{tool.name}</Text>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
-          {/* AI Coding enable switch — only when installed */}
-          {tool.installed && isAiCodingTool && onCodingEnabledChange && (
-            <Tooltip title={t('localEnv.codingEnabledTip')}>
-              <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                <Switch
-                  size="small"
-                  checked={codingEnabled}
-                  onChange={(checked) => onCodingEnabledChange(tool.toolId, checked)}
-                />
-              </span>
-            </Tooltip>
-          )}
-          {/* Only show upgrade when a newer version is known */}
-          {tool.installed && isAiCodingTool && hasUpdate && onUpgrade && (
-            <Tooltip title={t('localEnv.updateAvailable', latestVersion as string)}>
-              <Button
-                type="text"
-                size="small"
-                icon={<ArrowUpOutlined spin={upgrading} />}
-                loading={upgrading}
-                onClick={() => onUpgrade(tool.toolId)}
-                style={{
-                  color: token.colorSuccess,
-                  padding: '0 4px'
-                }}
-              />
-            </Tooltip>
-          )}
-          {/* China mirror settings (pip / npm / docker) */}
-          {tool.installed && supportsMirror && (
-            <Popover
-              trigger="click"
-              open={mirrorOpen}
-              onOpenChange={handleMirrorOpenChange}
-              title={t('localEnv.mirror.title')}
-              content={mirrorPopoverContent}
-              placement="bottomRight"
-            >
-              <Tooltip title={t('localEnv.mirror.settingsTip')}>
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<SettingOutlined />}
-                  style={{
-                    color: mirrorStatus?.enabled ? token.colorPrimary : token.colorTextTertiary,
-                    padding: '0 4px'
-                  }}
-                />
-              </Tooltip>
-            </Popover>
-          )}
-          {homepageUrl && (
-            <Tooltip title={t('localEnv.officialWebsite')}>
-              <Button
-                type="text"
-                size="small"
-                icon={<LinkOutlined />}
-                onClick={() => openExternalLink(homepageUrl)}
-                style={{ color: token.colorTextTertiary, padding: '0 4px' }}
-              />
-            </Tooltip>
-          )}
-          <Tooltip title={t('localEnv.refreshDetect')}>
-            <Button
-              type="text"
-              size="small"
-              icon={<ReloadOutlined spin={refreshing} />}
-              onClick={() => onRefresh(tool.toolId)}
-              style={{ color: token.colorTextTertiary, padding: '0 4px' }}
-            />
-          </Tooltip>
-          {tool.installed && !NO_UNINSTALL_IDS.has(tool.toolId) && onUninstall && (
-            <Popconfirm
-              title={t('localEnv.uninstallConfirm', tool.name)}
-              onConfirm={() => onUninstall(tool.toolId)}
-              okText={t('common.confirm')}
-              cancelText={t('common.cancel')}
-            >
-              <Tooltip title={t('localEnv.uninstall')}>
-                <Button
-                  type="text"
-                  danger
-                  size="small"
-                  icon={<DeleteOutlined />}
-                  loading={uninstalling}
-                  style={{ padding: '0 4px' }}
-                />
-              </Tooltip>
-            </Popconfirm>
-          )}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          height: 32,
+          width: 'calc(100% - 74px)'
+        }}
+      >
+        <div
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: token.colorFillSecondary,
+            flexShrink: 0
+          }}
+        >
+          {renderToolIcon(tool.toolId, 18)}
         </div>
+        <Text strong ellipsis style={{ fontSize: 13, lineHeight: '20px' }}>
+          {tool.name}
+        </Text>
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1 }}>
+      <div style={{ flex: 1, margin: '6px 0 8px 0', minHeight: 44, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
         {tool.installed ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {tool.installations.map((inst, idx) => (
               <div
                 key={idx}
                 style={{
-                  padding: 8,
+                  padding: '6px 10px',
                   borderRadius: token.borderRadius,
-                  background: token.colorFillAlter
+                  background: token.colorFillAlter,
+                  fontSize: 12
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-                  <Tag color="blue">
-                    {inst.version === 'app' || inst.version === 'installed'
-                      ? t('localEnv.installed')
-                      : `v${inst.version}`}
-                  </Tag>
-                  {inst.managedBy && (
-                    <Tag color="purple">{inst.managedBy}</Tag>
+                  {/* The primary version sits in the bottom row; list it per row only when there are several */}
+                  {tool.installations.length > 1 && (
+                    <Tag color="blue" style={tagStyle}>{formatVersion(inst.version)}</Tag>
                   )}
-                  {inst.extras && Object.entries(inst.extras).map(([key, val]) => (
-                    <Tag key={key} color="default">{key} {val}</Tag>
-                  ))}
+                  {inst.managedBy && (
+                    <Tag color="purple" style={tagStyle}>{inst.managedBy}</Tag>
+                  )}
                   {idx === 0 && hasUpdate && (
-                    <Tag color="success">
+                    <Tag color="success" style={tagStyle}>
                       {t('localEnv.updateAvailable', latestVersion as string)}
                     </Tag>
                   )}
+                  {inst.extras && Object.entries(inst.extras).map(([key, val]) => (
+                    <Tag key={key} style={tagStyle}>{key} {val}</Tag>
+                  ))}
                 </div>
                 <Tooltip title={inst.path}>
                   <Text
-                    type="secondary"
+                    className="cb-card-path"
                     style={{
                       fontSize: 12,
                       marginTop: 4,
@@ -441,7 +394,7 @@ const EnvCard: React.FC<EnvCardProps> = ({
                     type="link"
                     size="small"
                     icon={<AppstoreOutlined />}
-                    style={{ padding: '4px 0', height: 'auto' }}
+                    style={{ padding: '2px 0', height: 'auto', fontSize: 12 }}
                     onClick={() => onOpenPackages('pip', inst.path)}
                   >
                     {t('localEnv.pkg.viewPip')}
@@ -454,7 +407,7 @@ const EnvCard: React.FC<EnvCardProps> = ({
                 type="link"
                 size="small"
                 icon={<AppstoreOutlined />}
-                style={{ padding: '4px 0', height: 'auto', alignSelf: 'flex-start' }}
+                style={{ padding: '2px 0', height: 'auto', fontSize: 12, alignSelf: 'flex-start' }}
                 onClick={() => onOpenPackages('npm')}
               >
                 {t('localEnv.pkg.viewNpm')}
@@ -462,27 +415,126 @@ const EnvCard: React.FC<EnvCardProps> = ({
             )}
           </div>
         ) : (
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '16px 0',
-            gap: 12
-          }}>
-            <Text type="secondary">{t('localEnv.notDetected', tool.name)}</Text>
-            <Button
-              type="primary"
-              icon={viaPkgMgr ? <DownloadOutlined /> : <GlobalOutlined />}
-              loading={installing}
-              onClick={() => onInstall(tool.toolId)}
-            >
-              {installLabel}
-            </Button>
+          <div style={{ padding: '6px 0' }}>
+            <Text className="cb-card-desc" style={{ fontSize: 13 }}>
+              {t('localEnv.notDetected', tool.name)}
+            </Text>
           </div>
         )}
       </div>
-    </Card>
+
+      {/* Bottom row: version on the left, round actions on the right */}
+      <div
+        style={{
+          marginTop: 'auto',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingTop: 8
+        }}
+      >
+        <div>
+          {tool.installed ? (
+            <Tag color="blue" style={tagStyle}>
+              {installedVersion ? formatVersion(installedVersion) : t('localEnv.installed')}
+            </Tag>
+          ) : (
+            <Tag style={tagStyle}>{t('localEnv.notInstalled')}</Tag>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {/* AI Work enablement toggle — only when installed */}
+          {tool.installed && isAiCodingTool && onCodingEnabledChange && (
+            <Tooltip title={codingEnabled ? t('localEnv.codingEnabledOn') : t('localEnv.codingEnabledOff')}>
+              <button
+                type="button"
+                aria-pressed={codingEnabled}
+                className={`cb-round-action-btn cb-round-action-toggle ${codingEnabled ? 'active' : 'inactive'}`}
+                onClick={() => onCodingEnabledChange(tool.toolId, !codingEnabled)}
+              >
+                <PoweroffOutlined style={{ fontSize: 13 }} />
+              </button>
+            </Tooltip>
+          )}
+
+          {/* China mirror settings (pip / npm / docker) */}
+          {tool.installed && supportsMirror && (
+            <Popover
+              trigger="click"
+              open={mirrorOpen}
+              onOpenChange={handleMirrorOpenChange}
+              title={t('localEnv.mirror.title')}
+              content={mirrorPopoverContent}
+              placement="bottomRight"
+            >
+              <Tooltip title={t('localEnv.mirror.settingsTip')}>
+                <button
+                  type="button"
+                  className="cb-round-action-btn cb-round-action-neutral"
+                  style={{ color: mirrorStatus?.enabled ? token.colorPrimary : undefined }}
+                >
+                  <SettingOutlined style={{ fontSize: 13 }} />
+                </button>
+              </Tooltip>
+            </Popover>
+          )}
+
+          {/* Only show upgrade when a newer version is known */}
+          {tool.installed && isAiCodingTool && hasUpdate && onUpgrade && (
+            <Tooltip title={t('localEnv.updateAvailable', latestVersion as string)}>
+              <button
+                type="button"
+                className={`cb-round-action-btn cb-round-action-neutral${upgrading ? ' is-loading' : ''}`}
+                disabled={upgrading}
+                onClick={() => onUpgrade(tool.toolId)}
+              >
+                <ArrowUpOutlined spin={upgrading} style={{ fontSize: 13, color: token.colorSuccess }} />
+              </button>
+            </Tooltip>
+          )}
+
+          {tool.installed && !NO_UNINSTALL_IDS.has(tool.toolId) && onUninstall && (
+            <Popconfirm
+              title={t('localEnv.uninstallConfirm', tool.name)}
+              onConfirm={() => onUninstall(tool.toolId)}
+              okText={t('common.confirm')}
+              cancelText={t('common.cancel')}
+              disabled={uninstalling}
+            >
+              <Tooltip title={t('localEnv.uninstall')}>
+                <button
+                  type="button"
+                  className={`cb-round-action-btn cb-round-action-danger${uninstalling ? ' is-loading' : ''}`}
+                  disabled={uninstalling}
+                >
+                  {uninstalling ? <LoadingOutlined spin style={{ fontSize: 13 }} /> : <DeleteOutlined style={{ fontSize: 13 }} />}
+                </button>
+              </Tooltip>
+            </Popconfirm>
+          )}
+
+          {!tool.installed && (
+            <Tooltip title={installing ? t('localEnv.installing') : installLabel}>
+              <button
+                type="button"
+                className={`cb-round-action-btn cb-round-action-primary${installing ? ' is-loading' : ''}`}
+                disabled={installing}
+                onClick={() => onInstall(tool.toolId)}
+              >
+                {installing ? (
+                  <LoadingOutlined spin style={{ fontSize: 14 }} />
+                ) : viaPkgMgr ? (
+                  <DownloadOutlined style={{ fontSize: 14 }} />
+                ) : (
+                  <GlobalOutlined style={{ fontSize: 14 }} />
+                )}
+              </button>
+            </Tooltip>
+          )}
+        </div>
+      </div>
+    </FolderCard>
   )
 }
 

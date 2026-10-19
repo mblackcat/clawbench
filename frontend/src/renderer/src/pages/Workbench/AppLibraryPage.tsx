@@ -481,7 +481,7 @@ const AppLibraryPage: React.FC = () => {
           <Tooltip title={t('appStatus.updateAction')}>
             <button
               type="button"
-              className={`cb-round-action-btn cb-round-action-primary${isProcessing ? ' is-loading' : ''}`}
+              className={`cb-round-action-btn cb-round-action-neutral${isProcessing ? ' is-loading' : ''}`}
               disabled={isProcessing}
               onClick={stop(() => confirmUpdate(app))}
             >

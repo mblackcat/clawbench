@@ -1,10 +1,129 @@
 /*
  * Workbench card UI: folder-shaped app cards + round action buttons.
  *
- * Colors come from CSS variables only. FolderCard sets the --cb-wc-* variables
- * from antd theme tokens (so light/dark and every palette follow the theme);
- * the --cb-card-* / --cb-text* fallbacks come from theme-overhaul.css.
+ * Each palette sets the --cb-wc-* variables per card variant below; the
+ * structural rules only read those variables. Light palettes other than
+ * light-meadow fall back to the lagoon colors, dark palettes other than
+ * dark-ocean to the gunmetal colors (legacy "light"/"dark" included).
  */
+
+/* --- Palette variables --- */
+
+/* Light base (light-meadow regular card) */
+[data-theme="light"] .cb-folder-card {
+  --cb-wc-bg: #FFFFFF;
+  --cb-wc-title: #191B21;
+  --cb-wc-desc: #6B717E;
+  --cb-wc-ver: #191B21;
+  --cb-wc-shadow: drop-shadow(0 3px 12px rgba(0, 0, 0, 0.1));
+  --cb-wc-shadow-hover: drop-shadow(0 8px 22px rgba(0, 0, 0, 0.16));
+}
+
+[data-theme="light"] .cb-folder-card.cb-card-pinned {
+  --cb-wc-shadow: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.16));
+}
+
+/* Light palette 1: Mint Lagoon (default light) */
+[data-theme="light"]:not([data-palette="light-meadow"]) .cb-folder-card {
+  --cb-wc-bg: #C7EEEF;
+  --cb-wc-title: #173836;
+  --cb-wc-desc: #4A6E6B;
+  --cb-wc-ver: #173836;
+  --cb-wc-tag-bg: #FAFAFA;
+  --cb-wc-tag-border: 1px solid rgba(23, 56, 54, 0.12);
+}
+
+[data-theme="light"]:not([data-palette="light-meadow"]) .cb-folder-card.cb-card-builtin,
+[data-theme="light"]:not([data-palette="light-meadow"]) .cb-folder-card.cb-card-active-coding {
+  --cb-wc-bg: #FFFFFF;
+  --cb-wc-title: #191B21;
+  --cb-wc-desc: #6B717E;
+  --cb-wc-ver: #191B21;
+  --cb-wc-tag-bg: #F4F6F9;
+  --cb-wc-tag-border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+/* Light palette 2: Soft Meadow */
+[data-palette="light-meadow"] .cb-folder-card.cb-card-builtin,
+[data-palette="light-meadow"] .cb-folder-card.cb-card-active-coding {
+  --cb-wc-bg: #1E373A;
+  --cb-wc-title: #FFFFFF;
+  --cb-wc-desc: rgba(255, 255, 255, 0.85);
+  --cb-wc-ver: #191B21;
+}
+
+/* Draft card, both light palettes */
+[data-theme="light"] .cb-folder-card.cb-card-draft {
+  --cb-wc-bg: #D8F2ED;
+  --cb-wc-title: #123633;
+  --cb-wc-desc: #38615E;
+  --cb-wc-ver: #123633;
+  --cb-wc-tag-bg: #FFFFFF;
+  --cb-wc-tag-border: 1px solid rgba(18, 54, 51, 0.12);
+}
+
+/* Dark palette 1: Gunmetal & Saffron (default dark) */
+[data-theme="dark"] .cb-folder-card {
+  --cb-wc-shadow: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.35));
+}
+
+[data-theme="dark"] .cb-folder-card.cb-card-pinned {
+  --cb-wc-shadow: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.5));
+}
+
+[data-theme="dark"]:not([data-palette="dark-ocean"]) .cb-folder-card {
+  --cb-wc-bg: #20373B;
+  --cb-wc-title: #FFFFFF;
+  --cb-wc-desc: #B5D2D6;
+  --cb-wc-ver: #E2F1F3;
+}
+
+[data-theme="dark"]:not([data-palette="dark-ocean"]) .cb-folder-card.cb-card-builtin,
+[data-theme="dark"]:not([data-palette="dark-ocean"]) .cb-folder-card.cb-card-active-coding {
+  --cb-wc-bg: #C3E7F1;
+  --cb-wc-title: #0E1C1E;
+  --cb-wc-desc: #244145;
+  --cb-wc-ver: #0E1C1E;
+}
+
+[data-theme="dark"]:not([data-palette="dark-ocean"]) .cb-folder-card.cb-card-draft {
+  --cb-wc-bg: #17282B;
+  --cb-wc-title: #F0F4F5;
+  --cb-wc-desc: #8CA6AA;
+  --cb-wc-ver: #8CA6AA;
+}
+
+/* Dark palette 2: Deep Ocean & Amber */
+[data-palette="dark-ocean"] .cb-folder-card {
+  --cb-wc-bg: #053F5C;
+  --cb-wc-title: #FFFFFF;
+  --cb-wc-desc: #A9D9E8;
+  --cb-wc-ver: #D8F0F7;
+  --cb-wc-shadow: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.4));
+}
+
+[data-palette="dark-ocean"] .cb-folder-card.cb-card-builtin,
+[data-palette="dark-ocean"] .cb-folder-card.cb-card-active-coding {
+  --cb-wc-bg: #0A4E70;
+  --cb-wc-title: #FFFFFF;
+  --cb-wc-desc: #BBE3F0;
+  --cb-wc-ver: #FFFFFF;
+  --cb-wc-tag-bg: rgba(255, 255, 255, 0.15);
+  --cb-wc-tag-border: none;
+}
+
+[data-palette="dark-ocean"] .cb-folder-card.cb-card-draft {
+  --cb-wc-bg: #032A3E;
+  --cb-wc-title: #EFF7FA;
+  --cb-wc-desc: #81A8B8;
+  --cb-wc-ver: #81A8B8;
+}
+
+[data-palette="dark-ocean"] .cb-folder-card.cb-card-pinned {
+  --cb-wc-shadow: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.5));
+}
+
+/* --- Folder card structure --- */
 
 .cb-folder-card {
   position: relative;
@@ -12,21 +131,21 @@
   flex-direction: column;
   box-sizing: border-box;
   border: none;
-  color: var(--cb-wc-text, var(--cb-text));
-  filter: drop-shadow(0 3px 10px var(--cb-wc-shadow, rgba(0, 0, 0, 0.08)));
+  color: var(--cb-wc-title);
+  filter: var(--cb-wc-shadow);
   transition:
-    transform 160ms cubic-bezier(0.2, 0, 0, 1),
-    filter 160ms cubic-bezier(0.2, 0, 0, 1);
+    transform var(--dur-2, 160ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+    filter var(--dur-2, 160ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1));
 }
 
 .cb-folder-card:hover {
   transform: translateY(-2px);
-  filter: drop-shadow(0 8px 20px var(--cb-wc-shadow, rgba(0, 0, 0, 0.14)));
+  filter: var(--cb-wc-shadow-hover, var(--cb-wc-shadow));
 }
 
 .cb-folder-card:active {
   transform: translateY(0);
-  transition-duration: 100ms;
+  transition-duration: var(--dur-1, 100ms);
 }
 
 /* Folder silhouette: a tab (top-left), the body, and a concave fillet joining them */
@@ -44,7 +163,7 @@
   width: calc(100% - 72px);
   height: 42px;
   border-radius: 14px 14px 0 0;
-  background: var(--cb-wc-bg, var(--cb-card-bg));
+  background: var(--cb-wc-bg);
 }
 
 .cb-folder-card-bg-body {
@@ -53,7 +172,7 @@
   right: 0;
   bottom: 0;
   border-radius: 0 14px 14px 14px;
-  background: var(--cb-wc-bg, var(--cb-card-bg));
+  background: var(--cb-wc-bg);
 }
 
 .cb-folder-card-bg-fillet {
@@ -61,11 +180,7 @@
   right: calc(72px - 14px);
   width: 14px;
   height: 14px;
-  background: radial-gradient(
-    circle at top right,
-    transparent 14px,
-    var(--cb-wc-bg, var(--cb-card-bg)) 14.5px
-  );
+  background: radial-gradient(circle at top right, transparent 14px, var(--cb-wc-bg) 14.5px);
 }
 
 .cb-folder-card-content {
@@ -76,19 +191,53 @@
   flex-direction: column;
   height: 100%;
   box-sizing: border-box;
-  color: var(--cb-wc-text-secondary, var(--cb-text-secondary));
+  color: var(--cb-wc-desc);
 }
 
 .cb-folder-card-content .ant-typography {
-  color: var(--cb-wc-text, var(--cb-text));
+  color: var(--cb-wc-title) !important;
 }
 
 .cb-folder-card .cb-card-desc,
+.cb-folder-card .cb-card-path,
+.cb-folder-card .ant-typography.cb-card-path,
 .cb-folder-card .ant-typography-secondary {
-  color: var(--cb-wc-text-secondary, var(--cb-text-secondary));
+  color: var(--cb-wc-desc) !important;
 }
 
-/* Floating actions sitting in the notch next to the tab */
+/* Version pill + tags inherit the card's text color */
+.cb-folder-card .card-ver,
+.cb-folder-card .ant-tag {
+  color: var(--cb-wc-ver) !important;
+}
+
+/* Palettes that also repaint tag backgrounds (light cards, ocean builtin) */
+[data-theme="light"]:not([data-palette="light-meadow"]) .cb-folder-card .card-ver,
+[data-theme="light"]:not([data-palette="light-meadow"]) .cb-folder-card .ant-tag,
+[data-theme="light"] .cb-folder-card.cb-card-draft .card-ver,
+[data-theme="light"] .cb-folder-card.cb-card-draft .ant-tag,
+[data-palette="dark-ocean"] .cb-folder-card.cb-card-builtin .card-ver,
+[data-palette="dark-ocean"] .cb-folder-card.cb-card-builtin .ant-tag,
+[data-palette="dark-ocean"] .cb-folder-card.cb-card-active-coding .card-ver,
+[data-palette="dark-ocean"] .cb-folder-card.cb-card-active-coding .ant-tag {
+  background: var(--cb-wc-tag-bg) !important;
+  border: var(--cb-wc-tag-border) !important;
+}
+
+/* Soft Meadow builtin: solid white pill with dark text on the dark teal card */
+[data-palette="light-meadow"] .cb-folder-card.cb-card-builtin .card-ver,
+[data-palette="light-meadow"] .cb-folder-card.cb-card-builtin .ant-tag:not([class*="ant-tag-"]),
+[data-palette="light-meadow"] .cb-folder-card.cb-card-builtin .ant-tag.ant-tag-default,
+[data-palette="light-meadow"] .cb-folder-card.cb-card-active-coding .card-ver,
+[data-palette="light-meadow"] .cb-folder-card.cb-card-active-coding .ant-tag:not([class*="ant-tag-"]),
+[data-palette="light-meadow"] .cb-folder-card.cb-card-active-coding .ant-tag.ant-tag-default {
+  background: #FFFFFF !important;
+  color: #191B21 !important;
+  border: none !important;
+}
+
+/* --- Notch actions (floating in the notch next to the tab) --- */
+
 .cb-folder-notch-actions {
   position: absolute;
   top: -1px;
@@ -105,68 +254,78 @@
   width: 26px;
   height: 26px;
   min-width: 26px;
-  padding: 0;
   border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  cursor: pointer;
-  background: var(--cb-wc-fill, rgba(0, 0, 0, 0.05));
-  color: var(--cb-wc-text-secondary, var(--cb-text-secondary));
 }
 
-.cb-notch-btn:hover {
-  background: var(--cb-wc-fill-hover, rgba(0, 0, 0, 0.1));
-  color: var(--cb-wc-text, var(--cb-text));
+[data-theme="light"] .cb-notch-btn {
+  background: rgba(0, 0, 0, 0.05);
+  color: #555555;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
-/* Variants: tinted with the theme's primary background */
-.cb-folder-card.cb-card-builtin {
-  --cb-wc-bg: var(--cb-wc-builtin-bg);
+[data-theme="light"] .cb-notch-btn:hover {
+  background: rgba(0, 0, 0, 0.1);
+  color: #111111;
 }
 
-.cb-folder-card.cb-card-draft .cb-folder-card-bg-tab,
-.cb-folder-card.cb-card-draft .cb-folder-card-bg-body {
-  outline: 1px dashed var(--cb-wc-border, transparent);
-  outline-offset: -1px;
+[data-theme="dark"] .cb-notch-btn {
+  background: rgba(255, 255, 255, 0.08);
+  color: #BBBBBB;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
 }
 
-.cb-folder-card.cb-card-pinned {
-  --cb-wc-shadow: var(--cb-wc-accent-shadow, rgba(0, 0, 0, 0.12));
+[data-theme="dark"] .cb-notch-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #FFFFFF;
 }
 
 /* --- Round action buttons (32px) --- */
-.cb-round-action-btn {
+
+.cb-round-action-btn,
+.cb-notch-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  min-width: 32px;
-  padding: 0;
   line-height: 1;
+  text-align: center;
+  vertical-align: middle;
+  padding: 0;
   border: none;
-  border-radius: 50%;
   cursor: pointer;
   box-sizing: border-box;
-  background: var(--cb-wc-fill, rgba(0, 0, 0, 0.05));
-  color: var(--cb-wc-text, var(--cb-text));
-  box-shadow: 0 2px 6px var(--cb-wc-shadow, rgba(0, 0, 0, 0.12));
-  transition:
-    filter 120ms ease,
-    background-color 120ms ease;
 }
 
-.cb-round-action-btn .anticon {
+/* Keep icons optically centered (no baseline offset) */
+.cb-round-action-btn .anticon,
+.cb-notch-btn .anticon {
   display: flex;
   align-items: center;
   justify-content: center;
+  vertical-align: 0;
   line-height: 1;
+  margin: 0;
 }
 
+.cb-round-action-btn .anticon svg,
+.cb-notch-btn .anticon svg {
+  display: block;
+  margin: auto;
+}
+
+.cb-round-action-btn {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  border-radius: 50%;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.16);
+  transition:
+    filter var(--dur-1, 120ms) ease,
+    background-color var(--dur-1, 120ms) ease;
+}
+
+/* No scale on hover: it would displace the icon */
 .cb-round-action-btn:hover {
-  filter: brightness(1.08);
+  filter: brightness(1.1);
 }
 
 .cb-round-action-btn:disabled,
@@ -176,18 +335,58 @@
   filter: none;
 }
 
-.cb-round-action-btn.cb-round-action-primary {
-  background: var(--cb-wc-accent);
-  color: var(--cb-wc-on-accent);
+/* Primary (run / install / download) */
+[data-theme="light"] .cb-round-action-btn.cb-round-action-primary {
+  background: #546DF5;
+  color: #FFFFFF;
 }
 
+[data-theme="dark"] .cb-round-action-btn.cb-round-action-primary {
+  background: #FFFFFF;
+  color: #191B21;
+}
+
+/* Danger (delete / uninstall) */
 .cb-round-action-btn.cb-round-action-danger {
-  background: var(--cb-wc-danger);
-  color: var(--cb-wc-on-accent);
+  background: #FF4D4F;
+  color: #FFFFFF;
 }
 
+.cb-round-action-btn.cb-round-action-danger:hover {
+  background: #FF7875;
+}
+
+/* Neutral (upgrade / edit / secondary actions): white icon button */
 .cb-round-action-btn.cb-round-action-neutral {
-  background: var(--cb-wc-fill);
-  color: var(--cb-wc-text);
+  background: #FFFFFF;
+  color: #191B21;
+}
+
+[data-theme="light"] .cb-round-action-btn.cb-round-action-neutral {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+}
+
+/* Toggle (e.g. AI Work enablement on Local Env cards) */
+.cb-round-action-btn.cb-round-action-toggle.active {
+  background: #FFFFFF;
+  color: #546DF5;
+}
+
+[data-theme="light"] .cb-round-action-btn.cb-round-action-toggle.active {
+  box-shadow: 0 2px 8px rgba(84, 109, 245, 0.25);
+}
+
+.cb-round-action-btn.cb-round-action-toggle.inactive {
+  background: transparent;
   box-shadow: none;
+}
+
+[data-theme="light"] .cb-round-action-btn.cb-round-action-toggle.inactive {
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  color: rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .cb-round-action-btn.cb-round-action-toggle.inactive {
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: rgba(255, 255, 255, 0.45);
 }

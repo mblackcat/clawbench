@@ -1,5 +1,4 @@
-import React, { useMemo } from 'react'
-import { theme } from 'antd'
+import React from 'react'
 import '../styles/workbench-cards.css'
 
 export interface FolderCardProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -8,33 +7,6 @@ export interface FolderCardProps extends React.HTMLAttributes<HTMLDivElement> {
   /** Small floating buttons rendered in the notch beside the folder tab. */
   notchActions?: React.ReactNode
   children: React.ReactNode
-}
-
-/**
- * CSS variables consumed by styles/workbench-cards.css, derived from antd
- * tokens so cards follow light/dark and palette changes. Spread onto any
- * container that renders `.cb-round-action-btn` outside a FolderCard.
- */
-export function useWorkbenchCardVars(): React.CSSProperties {
-  const { token } = theme.useToken()
-  return useMemo(
-    () =>
-      ({
-        '--cb-wc-bg': token.colorBgContainer,
-        '--cb-wc-builtin-bg': token.colorPrimaryBg,
-        '--cb-wc-text': token.colorText,
-        '--cb-wc-text-secondary': token.colorTextSecondary,
-        '--cb-wc-fill': token.colorFillSecondary,
-        '--cb-wc-fill-hover': token.colorFill,
-        '--cb-wc-border': token.colorBorder,
-        '--cb-wc-accent': token.colorPrimary,
-        '--cb-wc-accent-shadow': token.colorPrimaryBorder,
-        '--cb-wc-danger': token.colorError,
-        '--cb-wc-on-accent': token.colorTextLightSolid,
-        '--cb-wc-shadow': token.colorFillSecondary
-      }) as React.CSSProperties,
-    [token]
-  )
 }
 
 export const FolderCard: React.FC<FolderCardProps> = ({
@@ -46,7 +18,6 @@ export const FolderCard: React.FC<FolderCardProps> = ({
   style,
   ...restProps
 }) => {
-  const cardVars = useWorkbenchCardVars()
   const variantClass =
     variant === 'builtin'
       ? 'cb-card-builtin'
@@ -67,7 +38,6 @@ export const FolderCard: React.FC<FolderCardProps> = ({
         height: '100%',
         minHeight: 140,
         boxSizing: 'border-box',
-        ...cardVars,
         ...style
       }}
       {...restProps}

@@ -199,7 +199,7 @@ const LocalEnvPage: React.FC = () => {
       <Text strong style={{ fontSize: 14, color: token.colorTextSecondary }}>
         {title}
       </Text>
-      <Row gutter={[16, 16]} style={{ marginTop: 12 }}>
+      <Row gutter={[12, 12]} style={{ marginTop: 10 }}>
         {groupTools.map((tool) => (
           <Col key={tool.toolId} xs={24} sm={12} md={12} lg={6}>
             <EnvCard
