@@ -61,6 +61,8 @@ export interface ToolInstallation {
   version: string
   extras?: Record<string, string>
   managedBy?: string
+  /** A bare command in the user's terminal runs this copy, not installations[0] (what ClawBench launches) */
+  terminalDefault?: boolean
 }
 
 export interface ToolDetectionResult {

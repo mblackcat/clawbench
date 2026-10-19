@@ -22,6 +22,8 @@ import {
   isWindowsAppsPath
 } from '../utils/windows-env'
 import { getWorkbenchVenvPythonPath } from '../utils/paths'
+import { brewArgs, brewOwnerOf, type BrewOwner } from '../utils/brew-owner'
+import { loadShellEnv } from './cli-detect.service'
 
 const execFileAsync = promisify(execFile)
 const execAsync = promisify(exec)
@@ -41,6 +43,8 @@ interface ToolInstallation {
   version: string
   extras?: Record<string, string>
   managedBy?: string
+  /** A bare `<bin>` in the user's terminal runs this copy instead of the first one (which ClawBench launches) */
+  terminalDefault?: boolean
 }
 
 interface ToolDetectionResult {
@@ -775,8 +779,8 @@ async function detectKimiCode(env: NodeJS.ProcessEnv): Promise<ToolDetectionResu
   // Official: npm @moonshot-ai/kimi-code or native install script → binary `kimi`
   const result: ToolDetectionResult = { toolId: 'kimi-code', name: 'Kimi Code', installed: false, installations: [] }
   const candidates: string[] = []
-  if (process.platform !== 'win32') {
-    candidates.push(path.join(os.homedir(), '.local', 'bin', 'kimi'))
+  for (const cand of getToolCandidatePaths('kimi')) {
+    if (fs.existsSync(cand) && !candidates.includes(cand)) candidates.push(cand)
   }
   for (const p of await whichAll('kimi', env)) {
     if (!candidates.includes(p)) candidates.push(p)
@@ -846,8 +850,8 @@ async function detectMimoCode(env: NodeJS.ProcessEnv): Promise<ToolDetectionResu
   // Xiaomi MiMo Code: npm @mimo-ai/cli or curl install script → binary `mimo`
   const result: ToolDetectionResult = { toolId: 'mimo-code', name: 'MiMo Code', installed: false, installations: [] }
   const candidates: string[] = []
-  if (process.platform !== 'win32') {
-    candidates.push(path.join(os.homedir(), '.local', 'bin', 'mimo'))
+  for (const cand of getToolCandidatePaths('mimo')) {
+    if (fs.existsSync(cand) && !candidates.includes(cand)) candidates.push(cand)
   }
   for (const p of await whichAll('mimo', env)) {
     if (!candidates.includes(p)) candidates.push(p)
@@ -914,6 +918,76 @@ async function detectOmp(env: NodeJS.ProcessEnv): Promise<ToolDetectionResult> {
     }
   }
   result.installed = result.installations.length > 0
+  return result
+}
+
+// ── AI CLI installation sources ──
+
+/** Binaries each AI CLI ships under (first = the one ClawBench launches) */
+const CLI_BINARIES: Partial<Record<ToolId, string[]>> = {
+  'claude-code': ['claude'],
+  'codex-cli': ['codex'],
+  'gemini-cli': ['gemini'],
+  'grok-cli': ['grok'],
+  opencode: ['opencode'],
+  traecli: ['trae'],
+  'qoder-cli': ['qodercli', 'qoder'],
+  'kimi-code': ['kimi'],
+  'mimo-code': ['mimo'],
+  'antigravity-cli': ['agy', 'antigravity'],
+  omp: ['omp']
+}
+
+/**
+ * Never drive these through brew: Claude's cask is the desktop app (its CLI
+ * is a bundled extra), ZCode is a desktop app too.
+ */
+const BREW_MANAGED_EXCLUDED = new Set<ToolId>(['claude-code', 'zcode'])
+
+function cliBrewOwner(id: ToolId, binPath: string): BrewOwner | null {
+  const bins = CLI_BINARIES[id]
+  if (!bins || BREW_MANAGED_EXCLUDED.has(id)) return null
+  return brewOwnerOf(binPath, bins)
+}
+
+function realpathOrSelf(p: string): string {
+  try {
+    return fs.realpathSync(p)
+  } catch {
+    return p
+  }
+}
+
+/** First match for `bin` on the login-shell PATH, i.e. what a terminal runs. */
+async function resolveTerminalBinary(bins: string[]): Promise<string | null> {
+  const shellEnv = await loadShellEnv().catch(() => process.env as Record<string, string>)
+  for (const bin of bins) {
+    const found = (await whichAll(bin, shellEnv))[0]
+    if (found) return found
+  }
+  return null
+}
+
+/**
+ * Label Homebrew-owned copies and flag the copy a terminal would pick when it
+ * isn't the one ClawBench launches (installations[0] mirrors the launcher's
+ * known-locations-first resolution). Without this, an old brew copy shadowing
+ * a fresh installer-script copy on PATH looks like a failed upgrade.
+ */
+async function annotateCliInstallations(result: ToolDetectionResult): Promise<ToolDetectionResult> {
+  const bins = CLI_BINARIES[result.toolId]
+  if (!bins || result.installations.length === 0) return result
+  for (const inst of result.installations) {
+    if (!inst.managedBy && cliBrewOwner(result.toolId, inst.path)) inst.managedBy = 'Homebrew'
+  }
+  if (result.installations.length > 1) {
+    const terminalBin = await resolveTerminalBinary(bins)
+    if (terminalBin) {
+      const target = realpathOrSelf(terminalBin)
+      const idx = result.installations.findIndex((inst) => realpathOrSelf(inst.path) === target)
+      if (idx > 0) result.installations[idx].terminalDefault = true
+    }
+  }
   return result
 }
 
@@ -1006,6 +1080,7 @@ export async function detectAll(): Promise<LocalEnvDetectionResult> {
     openCode, traeCli, qoderCli, kimiCode, zcode, mimoCode,
     antigravityCli, omp
   ]
+  await Promise.all(tools.map((tool) => annotateCliInstallations(tool)))
 
   // Include Homebrew only on macOS
   if (process.platform === 'darwin') {
@@ -1053,7 +1128,7 @@ export async function detectOne(toolId: string): Promise<ToolDetectionResult> {
   if (!fn) {
     return { toolId: toolId as ToolId, name: toolId, installed: false, installations: [] }
   }
-  return fn(env)
+  return annotateCliInstallations(await fn(env))
 }
 
 const DOWNLOAD_URLS: Partial<Record<ToolId, string>> = {
@@ -1770,10 +1845,47 @@ export async function installTool(toolId: string): Promise<ToolInstallResult> {
 
 // ── Uninstall ──
 
+/**
+ * `brew uninstall` every brew-owned copy of an AI CLI. Returns a final result
+ * when that settles it (failure, or nothing left installed), otherwise null so
+ * the caller goes on to remove the non-brew copies.
+ */
+async function uninstallBrewCopies(id: ToolId, env: NodeJS.ProcessEnv): Promise<ToolInstallResult | null> {
+  const detect = DETECT_FN_MAP[id]
+  if (!detect || !CLI_BINARIES[id] || BREW_MANAGED_EXCLUDED.has(id)) return null
+  const owners = new Map<string, BrewOwner>()
+  for (const inst of (await detect(env)).installations) {
+    const owner = cliBrewOwner(id, inst.path)
+    if (owner) owners.set(`${owner.kind}:${owner.name}`, owner)
+  }
+  if (owners.size === 0) return null
+  for (const owner of owners.values()) {
+    try {
+      await execFileAsync('brew', brewArgs('uninstall', owner), { timeout: 300000, env })
+      logger.info(`[local-env] Removed brew ${owner.kind} ${owner.name} for ${id}`)
+    } catch (err: any) {
+      logger.error(`Failed to brew uninstall ${owner.name} for ${id}:`, err)
+      return { success: false, error: err.stderr || err.message }
+    }
+  }
+  if (!(await detect(env)).installed) {
+    logger.info(`[local-env] Tool uninstalled: ${id}`)
+    return { success: true }
+  }
+  return null
+}
+
 export async function uninstallTool(toolId: string): Promise<ToolInstallResult> {
   const id = toolId as ToolId
   const env = await getAugmentedEnv()
   logger.info(`[local-env] Uninstalling tool: ${id}`)
+
+  // Remove Homebrew copies first; the per-tool steps below only know their own
+  // installer's location and would leave a brew copy behind on PATH
+  if (process.platform !== 'win32') {
+    const brewResult = await uninstallBrewCopies(id, env)
+    if (brewResult) return brewResult
+  }
 
   // Claude Code — native installer, no package manager involved
   if (id === 'claude-code') {
@@ -1939,6 +2051,23 @@ export async function upgradeTool(toolId: string): Promise<ToolInstallResult> {
   const id = toolId as ToolId
   const env = await getAugmentedEnv()
   logger.info(`[local-env] Upgrading tool: ${id}`)
+
+  // When the copy ClawBench launches is brew-owned, upgrade it through brew —
+  // npm / the installer script would only add a second, separate copy
+  if (process.platform !== 'win32') {
+    const primary = (await DETECT_FN_MAP[id]?.(env))?.installations[0]
+    const owner = primary ? cliBrewOwner(id, primary.path) : null
+    if (owner) {
+      try {
+        await execFileAsync('brew', brewArgs('upgrade', owner), { timeout: 600000, env })
+        logger.info(`[local-env] Tool upgraded via brew ${owner.kind} ${owner.name}: ${id}`)
+        return { success: true }
+      } catch (err: any) {
+        logger.error(`Failed to upgrade ${id} via brew:`, err)
+        return { success: false, error: err.stderr || err.message }
+      }
+    }
+  }
 
   // Claude Code ships its own self-update command
   if (id === 'claude-code') {

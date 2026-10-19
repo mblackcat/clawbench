@@ -364,6 +364,11 @@ const EnvCard: React.FC<EnvCardProps> = ({
                   {inst.managedBy && (
                     <Tag color="purple" style={tagStyle}>{inst.managedBy}</Tag>
                   )}
+                  {inst.terminalDefault && (
+                    <Tooltip title={t('localEnv.terminalDefaultTip')}>
+                      <Tag color="warning" style={tagStyle}>{t('localEnv.terminalDefault')}</Tag>
+                    </Tooltip>
+                  )}
                   {idx === 0 && hasUpdate && (
                     <Tag color="success" style={tagStyle}>
                       {t('localEnv.updateAvailable', latestVersion as string)}
