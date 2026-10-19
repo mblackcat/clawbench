@@ -11,7 +11,6 @@ import {
   BgColorsOutlined,
   SettingOutlined,
   InfoCircleOutlined,
-  CheckOutlined,
   CompassOutlined,
   CloudDownloadOutlined,
   ThunderboltOutlined,
@@ -48,7 +47,6 @@ import {
   type CapsuleStyle
 } from '../../theme'
 import type { TaskInfo } from '../../types/subapp'
-import verifiedBadge from '../../assets/claude-fable-5-verified.png'
 import brandLogo from '../../../../../resources/icon.svg'
 
 const { Text } = Typography
@@ -672,17 +670,6 @@ const TopBar: React.FC<TopBarProps> = ({ showLogsEntry = false, onToggleLogs }) 
         <InfoCircleOutlined style={menuIconStyle} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <ClientUpdatePanel />
-        </div>
-      </div>
-      <div style={menuRowBase}>
-        <CheckOutlined style={menuIconStyle} />
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', justifyContent: 'center' }}>
-          <img
-            src={verifiedBadge}
-            alt="Claude Fable 5 verified"
-            draggable={false}
-            style={{ display: 'block', maxWidth: '100%', borderRadius: 4 }}
-          />
         </div>
       </div>
 
