@@ -39,29 +39,22 @@ const AIChatSvg = () => (
   </svg>
 )
 
-// ── AI Coding: code brackets </> ──
+// ── AI Work (formerly AI Coding): workspace with sessions & AI spark ──
 const AICodingSvg = () => (
   <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" xmlns="http://www.w3.org/2000/svg">
+    {/* Workspace window frame */}
+    <rect x="2.5" y="3.25" width="19" height="17.5" rx="2.75" stroke="currentColor" strokeWidth="1.75" />
+    {/* Left sidebar divider */}
+    <path d="M8.25 3.25v17.5" stroke="currentColor" strokeWidth="1.75" />
+    {/* Session indicators on sidebar */}
+    <circle cx="5.35" cy="7.75" r="1.1" fill="currentColor" />
+    <path d="M4.25 11.75h2.2M4.25 15.25h2.2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    {/* AI sparkle in primary workspace */}
     <path
-      d="M8.5 6.5L3.75 12 8.5 17.5"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
+      d="M15 6.5c.35 2.65 2.2 4.5 4.85 4.85-2.65.35-4.5 2.2-4.85 4.85-.35-2.65-2.2-4.5-4.85-4.85 2.65-.35 4.5-2.2 4.85-4.85z"
+      fill="currentColor"
     />
-    <path
-      d="M15.5 6.5L20.25 12 15.5 17.5"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <path
-      d="M13.4 5.5L10.6 18.5"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-    />
+    <circle cx="11.25" cy="7.25" r="0.8" fill="currentColor" />
   </svg>
 )
 
