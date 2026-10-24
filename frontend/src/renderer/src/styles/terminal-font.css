@@ -41,3 +41,27 @@
   font-style: normal;
   font-display: block;
 }
+
+/* --- Bundled terminal face (macOS only) ---
+   JetBrainsMono Nerd Font Mono v3.4.0 (OFL 1.1 — see
+   assets/fonts/JetBrainsMono-OFL.txt), converted from the release TTF to WOFF2
+   unmodified. Matches the Ghostty setup the macOS terminals are tuned against.
+   Only TERMINAL_FONT_STACK references it, and only on darwin, so the files are
+   never fetched on Windows. Private family name so a locally installed copy of
+   a different version can't change the cell metrics. Its vertical box is
+   1020/-300 per 1000 em (1.32em), so it — not the symbols face below it in the
+   stack — sets the cell height on macOS. */
+@font-face {
+  font-family: 'ClawBench Terminal Mono';
+  src: url('../assets/fonts/JetBrainsMonoNerdFontMono-Regular.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'ClawBench Terminal Mono';
+  src: url('../assets/fonts/JetBrainsMonoNerdFontMono-Bold.woff2') format('woff2');
+  font-weight: bold;
+  font-style: normal;
+  font-display: block;
+}

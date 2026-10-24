@@ -7,7 +7,7 @@ import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { SearchAddon, type ISearchOptions } from '@xterm/addon-search'
 import { ClipboardAddon } from '@xterm/addon-clipboard'
 import '@xterm/xterm/css/xterm.css'
-import { TERMINAL_FONT_STACK } from '../utils/mono-font'
+import { TERMINAL_FONT_STACK, TERMINAL_MAC_FACE } from '../utils/mono-font'
 import { TERMINAL_FONT_SIZE, TERMINAL_LINE_HEIGHT } from '../utils/terminal-theme'
 
 /**
@@ -365,9 +365,21 @@ export function useXterm(options: UseXtermOptions): UseXtermResult {
     // browser finishes loading a face — so a late-resolving Nerd Font leaves a
     // cached cell width that no longer matches the painted glyphs, throwing off
     // click-to-column math for drag-selection.
-    document.fonts.ready.then(() => {
+    const macFaceLoaded = TERMINAL_FONT_STACK.includes(TERMINAL_MAC_FACE)
+      ? document.fonts.check(`${TERMINAL_FONT_SIZE}px '${TERMINAL_MAC_FACE}'`)
+      : true
+    const macFaceLoad = macFaceLoaded
+      ? Promise.resolve()
+      : document.fonts.load(`${TERMINAL_FONT_SIZE}px '${TERMINAL_MAC_FACE}'`).then(() => undefined, () => undefined)
+    Promise.all([document.fonts.ready, macFaceLoad]).then(() => {
       if (termRef.current !== term) return
       try {
+        // The bundled macOS face sets the cell box; if it arrived after the
+        // terminal measured a fallback, nudge fontFamily so xterm re-measures.
+        if (!macFaceLoaded) {
+          term.options.fontFamily = `${TERMINAL_FONT_STACK}, monospace`
+          term.options.fontFamily = TERMINAL_FONT_STACK
+        }
         forceFit()
         term.refresh(0, term.rows - 1)
       } catch { /* ignore */ }

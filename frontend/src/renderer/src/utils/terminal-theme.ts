@@ -8,8 +8,15 @@ import type { ITheme } from '@xterm/xterm'
  * as cramped once Nerd Font chrome landed. One value keeps the two surfaces
  * visually consistent and gives the glyphs room to breathe.
  */
-export const TERMINAL_FONT_SIZE = 13
-export const TERMINAL_LINE_HEIGHT = 1.35
+const IS_MAC = typeof window !== 'undefined' && window.api?.platform === 'darwin'
+
+/**
+ * macOS mirrors a Ghostty setup (JetBrainsMono Nerd Font 12, adjust-cell-height
+ * 2): the face's 1.32em box is ~16px at 12px, +2px → 1.15. Windows keeps the
+ * Consolas-era geometry.
+ */
+export const TERMINAL_FONT_SIZE = IS_MAC ? 12 : 13
+export const TERMINAL_LINE_HEIGHT = IS_MAC ? 1.15 : 1.35
 
 /**
  * Dark palette aligned with Windows Terminal / VS Code Dark+.

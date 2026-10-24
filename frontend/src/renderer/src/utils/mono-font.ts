@@ -25,4 +25,16 @@ export const MONO_FONT_STACK =
  * and status-line borders drift. Leading with the symbol font is safe because
  * it is symbols-only: ordinary Latin/CJK text falls through per character.
  */
-export const TERMINAL_FONT_STACK = `'Symbols Nerd Font Mono', ${MONO_FONT_STACK}`
+const IS_MAC = typeof window !== 'undefined' && window.api?.platform === 'darwin'
+
+/** Bundled JetBrainsMono Nerd Font Mono (styles/terminal-font.css), macOS only. */
+export const TERMINAL_MAC_FACE = 'ClawBench Terminal Mono'
+
+/**
+ * On macOS the stack is led by the bundled JetBrainsMono Nerd Font Mono, which
+ * carries the Nerd glyphs itself; the symbols face stays as a fallback. Windows
+ * keeps the Consolas-based stack unchanged.
+ */
+export const TERMINAL_FONT_STACK = IS_MAC
+  ? `'${TERMINAL_MAC_FACE}', 'Symbols Nerd Font Mono', ${MONO_FONT_STACK}`
+  : `'Symbols Nerd Font Mono', ${MONO_FONT_STACK}`
