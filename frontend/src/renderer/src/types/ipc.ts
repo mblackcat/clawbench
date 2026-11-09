@@ -197,7 +197,7 @@ export interface ClawBenchAPI {
     detectTerminal: () => Promise<string | null>
     getAvailableIdes: (forceRefresh?: boolean) => Promise<DetectedEnvironmentItem[]>
     getAvailableTerminals: (forceRefresh?: boolean) => Promise<DetectedEnvironmentItem[]>
-    openInIde: (appPath: string) => Promise<void>
+    openInIde: (appPath: string, idePath?: string) => Promise<boolean>
     openFileInEditor: (filePath: string) => Promise<void>
     openSSHConfig: () => Promise<void>
     openAppDirectory: (appPath: string) => Promise<void>

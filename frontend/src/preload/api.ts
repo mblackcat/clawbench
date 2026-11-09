@@ -167,7 +167,8 @@ export const api = {
       ipcRenderer.invoke('developer:get-available-ides', forceRefresh),
     getAvailableTerminals: (forceRefresh?: boolean) =>
       ipcRenderer.invoke('developer:get-available-terminals', forceRefresh),
-    openInIde: (appPath: string) => ipcRenderer.invoke('developer:open-in-ide', appPath),
+    openInIde: (appPath: string, idePath?: string) =>
+      ipcRenderer.invoke('developer:open-in-ide', appPath, idePath),
     openFileInEditor: (filePath: string) => ipcRenderer.invoke('developer:open-file-in-editor', filePath),
     openSSHConfig: () => ipcRenderer.invoke('developer:open-ssh-config'),
     openAppDirectory: (appPath: string) =>

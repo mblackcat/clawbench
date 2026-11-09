@@ -7,11 +7,12 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Spin, Tag, Tooltip, theme, Typography, Button } from 'antd'
-import { CodeOutlined, FolderOpenOutlined, PlusOutlined, DiffOutlined } from '@ant-design/icons'
+import { CodeOutlined, FolderOpenOutlined, PlusOutlined, DiffOutlined, ExportOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { AI_TOOL_NAMES, AI_TOOL_TAG_COLORS, AI_TOOL_TAG_STYLE, renderAIToolTagLabel } from './aiToolMeta'
 import { useT } from '../../i18n'
 import { useVcsSelectionStore } from '../../stores/useVcsSelectionStore'
+import { useWorkspaceOpener } from '../../hooks/useWorkspaceOpener'
 import { MONO_FONT_STACK } from '../../utils/mono-font'
 import type { AICodingWorkspace, AIToolType, DetectedCLI } from '../../types/ai-coding'
 import type { VcsType } from '../../types/ipc'
@@ -38,6 +39,8 @@ interface WorkspaceLandingPanelProps {
   /** Toggle the right-side Changes panel. */
   onToggleChanges: () => void
   changesOpen: boolean
+  /** Override for the "open in VS Code / file manager" entry (defaults to useWorkspaceOpener). */
+  onOpenWorkspace?: () => void
 }
 
 const WorkspaceLandingPanel: React.FC<WorkspaceLandingPanelProps> = ({
@@ -46,11 +49,13 @@ const WorkspaceLandingPanel: React.FC<WorkspaceLandingPanelProps> = ({
   onNewSession,
   onOpenTerminal,
   onToggleChanges,
-  changesOpen
+  changesOpen,
+  onOpenWorkspace
 }) => {
   const t = useT()
   const navigate = useNavigate()
   const { token } = theme.useToken()
+  const { isVsCode, openWorkspace } = useWorkspaceOpener()
   const [tools, setTools] = useState<DetectedCLI[]>(landingToolsCache ?? [])
   const [toolsLoading, setToolsLoading] = useState(landingToolsCache === null)
   const [changedCount, setChangedCount] = useState<number | null>(null)
@@ -274,6 +279,26 @@ const WorkspaceLandingPanel: React.FC<WorkspaceLandingPanelProps> = ({
                 <Text style={{ fontSize: 13 }}>{t('coding.landingTerminal')}</Text>
                 <Text style={{ fontSize: 11, color: token.colorTextQuaternary }}>
                   {t('coding.landingTerminalDesc')}
+                </Text>
+              </div>
+            </div>
+
+            <div
+              role="button"
+              onClick={() => (onOpenWorkspace ? onOpenWorkspace() : void openWorkspace(workspace.workingDir))}
+              onMouseEnter={hoverIn}
+              onMouseLeave={(e) => hoverOut(e)}
+              style={cardBase}
+            >
+              {isVsCode
+                ? <ExportOutlined style={{ fontSize: 16, color: token.colorTextSecondary }} />
+                : <FolderOpenOutlined style={{ fontSize: 16, color: token.colorTextSecondary }} />}
+              <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                <Text style={{ fontSize: 13 }}>
+                  {isVsCode ? t('coding.landingVsCode') : t('coding.landingFileExplorer')}
+                </Text>
+                <Text style={{ fontSize: 11, color: token.colorTextQuaternary }}>
+                  {isVsCode ? t('coding.landingVsCodeDesc') : t('coding.landingFileExplorerDesc')}
                 </Text>
               </div>
             </div>

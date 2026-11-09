@@ -2,12 +2,13 @@ import React, { useState, useMemo, useCallback } from 'react'
 import { Button, Dropdown, Spin, Tooltip, Typography, theme } from 'antd'
 import {
   PlusOutlined, CodeOutlined, HistoryOutlined, CloseOutlined,
-  DollarOutlined, BranchesOutlined, MessageOutlined
+  DollarOutlined, BranchesOutlined, MessageOutlined, ExportOutlined, FolderOpenOutlined
 } from '@ant-design/icons'
 import { getAIToolIcon, TOOLS_WITH_NATIVE_SESSIONS as NATIVE_SESSION_TOOLS } from './aiToolMeta'
 import { useT, getT } from '../../i18n'
 import { useVcsSelectionStore } from '../../stores/useVcsSelectionStore'
 import { useAttentionStore } from '../../stores/useAttentionStore'
+import { useWorkspaceOpener } from '../../hooks/useWorkspaceOpener'
 import { EnvToolIcon, hasEnvToolIcon } from '../../components/ToolIcons'
 import type { AIToolType, AICodingSession, ClaudeViewMode } from '../../types/ai-coding'
 
@@ -61,6 +62,8 @@ interface PaneTabBarProps {
   onToggleGitPanel?: () => void
   isFocused?: boolean
   onClose?: () => void
+  /** Override for the "open in VS Code / file manager" button (defaults to useWorkspaceOpener). */
+  onOpenWorkspace?: (workingDir: string) => void
 }
 
 const PaneTabBar: React.FC<PaneTabBarProps> = ({
@@ -72,10 +75,12 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
   terminalPanelOpen, onToggleTerminalPanel,
   gitPanelOpen, onToggleGitPanel,
   isFocused,
-  onClose
+  onClose,
+  onOpenWorkspace
 }) => {
   const t = useT()
   const { token } = theme.useToken()
+  const { isVsCode, openWorkspace } = useWorkspaceOpener()
   // Pending AI Coding attention per session: action (needs the user) wins over completion
   const attentionItems = useAttentionStore((s) => s.items)
   const attentionMap = useMemo(() => {
@@ -363,6 +368,18 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
                 color: terminalPanelOpen ? token.colorPrimary : token.colorTextSecondary,
                 background: terminalPanelOpen ? token.colorPrimaryBg : undefined,
               }}
+            />
+          </Tooltip>
+        )}
+
+        {workingDir && (
+          <Tooltip title={isVsCode ? t('coding.openInVsCode') : t('coding.openInFileExplorer')}>
+            <Button
+              type="text" size="small"
+              icon={isVsCode ? <ExportOutlined /> : <FolderOpenOutlined />}
+              onClick={() => (onOpenWorkspace ? onOpenWorkspace(workingDir) : void openWorkspace(workingDir))}
+              style={{ color: token.colorTextSecondary }}
+              aria-label={isVsCode ? t('coding.openInVsCode') : t('coding.openInFileExplorer')}
             />
           </Tooltip>
         )}
