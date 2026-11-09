@@ -67,6 +67,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'protocol.pythonUnavailable': 'Python 环境不可用：{0}',
     'protocol.runningInBackground': '正在后台运行：{0}',
     'protocol.launchFailed': '应用启动异常：{0}',
+    'protocol.invalidAppId': '分享链接中的应用 ID 无效',
     // ── sub-app run preparation / protocol run confirmation ──
     'pythonVenv.creating': '首次运行：正在创建工作台 Python 环境，可能需要一两分钟…',
     'pythonVenv.installingRequirements': '正在安装依赖：{0}',
@@ -145,6 +146,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'protocol.pythonUnavailable': 'Python is unavailable: {0}',
     'protocol.runningInBackground': 'Running in background: {0}',
     'protocol.launchFailed': 'Failed to launch app: {0}',
+    'protocol.invalidAppId': 'The app id in the share link is invalid',
     // ── sub-app run preparation / protocol run confirmation ──
     'pythonVenv.creating': 'First run: creating the workbench Python environment, this may take a minute...',
     'pythonVenv.installingRequirements': 'Installing dependencies: {0}',
