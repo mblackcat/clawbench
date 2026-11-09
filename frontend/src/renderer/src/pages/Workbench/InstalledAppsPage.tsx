@@ -28,7 +28,8 @@ import {
   FileTextOutlined,
   CloudDownloadOutlined,
   PushpinOutlined,
-  PushpinFilled
+  PushpinFilled,
+  ShareAltOutlined
 } from '@ant-design/icons';
 import {
   DndContext,
@@ -44,7 +45,7 @@ import {
   useSortable
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import type { SubAppManifest } from '../../types/subapp';
 import { resolveAppPublished } from '../../types/subapp';
 import { useSubAppStore } from '../../stores/useSubAppStore';
@@ -59,6 +60,8 @@ import type { ScannedSkill } from '../../types/skill';
 import type { Application } from '../../types/api';
 import dayjs from 'dayjs';
 import ParamDrawer from '../../components/ParamDrawer';
+import AppShareModal from '../../components/AppShareModal';
+import type { AppPreviewLocationState } from '../../hooks/useProtocolOpenApp';
 import CreateTypeModal from '../../components/CreateTypeModal';
 import NavBookmarkBar from '../../components/NavBookmarkBar';
 import { FolderCard } from '../../components/FolderCard';
@@ -163,6 +166,8 @@ interface SortableCardProps {
   onTogglePin?: (id: string) => void
   /** 该内置应用由管理员置顶（只读展示） */
   adminPinned?: boolean
+  /** Passed when the app can be shared (published / market-installed / builtin, not local mode) */
+  onShare?: (app: AppWithType) => void
 }
 
 const SortableAppCard: React.FC<SortableCardProps> = ({
@@ -184,7 +189,8 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
   scheduleNextRunAt,
   pinned,
   onTogglePin,
-  adminPinned
+  adminPinned,
+  onShare
 }) => {
   const { id, manifest, status, origin } = appWithType;
   const app = manifest;
@@ -248,6 +254,20 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
           </Tooltip>
         )
       )}
+      {onShare && (
+        <Tooltip title={t('share.action')}>
+          <button
+            type="button"
+            className="cb-notch-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onShare(appWithType);
+            }}
+          >
+            <ShareAltOutlined style={{ fontSize: 13 }} />
+          </button>
+        </Tooltip>
+      )}
       <Tooltip title={t('workbench.dragSortTip')}>
         <div
           {...attributes}
@@ -300,7 +320,7 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
           ];
 
   return (
-    <div ref={setNodeRef} style={style}>
+    <div ref={setNodeRef} style={style} data-app-id={id}>
       <FolderCard
         variant={variant}
         pinned={pinned}
@@ -312,7 +332,7 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
         }}
       >
         {/* Header: icon + single-line title (leaves room for the notch actions) */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 32, width: 'calc(100% - 74px)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 32, width: onShare ? 'calc(100% - 104px)' : 'calc(100% - 74px)' }}>
           <AppIcon icon={manifest.icon} name={app.name} category={manifest.category} size={28} />
           <Tooltip
             title={
@@ -596,6 +616,9 @@ const InstalledAppsPage: React.FC = () => {
   const [drawerAppId, setDrawerAppId] = useState<string>('');
   const [drawerInitialValues, setDrawerInitialValues] = useState<Record<string, unknown>>({});
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [shareTarget, setShareTarget] = useState<{ appId: string; name: string } | null>(null);
+  const location = useLocation();
+  const previewAppId = (location.state as AppPreviewLocationState | null)?.previewAppId;
 
   // View mode (平铺 / tab 页签), persisted across sessions.
   const [viewMode, setViewMode] = useState<ViewMode>(() =>
@@ -1097,6 +1120,40 @@ const InstalledAppsPage: React.FC = () => {
     setDrawerOpen(true);
   }, []);
 
+  // Share link launch (useProtocolOpenApp): locate the card and open its
+  // parameter drawer — running still needs the user's click. The state is
+  // cleared afterwards so going back does not re-trigger it.
+  useEffect(() => {
+    if (!previewAppId) return;
+    const target =
+      apps.find((a) => a.id === previewAppId) ||
+      useSubAppStore.getState().appInfos.find((i) => i.id === previewAppId);
+    if (!target) return; // list not loaded yet: retried when `apps` updates
+    if (activeTab !== 'app') setActiveTab('app');
+    handleShowDetail(target.id, target.manifest);
+    requestAnimationFrame(() => {
+      document
+        .querySelector(`[data-app-id="${window.CSS.escape(target.id)}"]`)
+        ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+    navigate(location.pathname, { replace: true, state: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- activeTab only read to switch tabs
+  }, [previewAppId, location.key, location.pathname, apps, handleShowDetail, navigate]);
+
+  const handleShare = useCallback((app: AppWithType) => {
+    const shareId = isBuiltinAppId(app.id) ? app.id : app.applicationId || app.id;
+    setShareTarget({ appId: shareId, name: app.manifest.name });
+  }, []);
+
+  /** Only apps a recipient can install: builtins, own published apps, market installs (never local mode). */
+  const isAppShareable = (app: AppWithType): boolean => {
+    if (isLocalMode) return false;
+    if (app.manifest.type && app.manifest.type !== 'app') return false;
+    if (app.origin === 'builtin') return true;
+    if (app.origin === 'own') return app.status !== 'draft';
+    return !!app.applicationId;
+  };
+
   const handleDrawerSubmit = async (params: Record<string, unknown>) => {
     setDrawerOpen(false);
     if (drawerAppId && drawerManifest) {
@@ -1375,6 +1432,7 @@ const InstalledAppsPage: React.FC = () => {
         pinned={pinnedSet.has(app.id)}
         onTogglePin={togglePinnedApp}
         adminPinned={app.origin === 'builtin' && adminPinnedIds.has(app.id)}
+        onShare={isAppShareable(app) ? handleShare : undefined}
       />
     );
   };
@@ -1576,6 +1634,13 @@ const InstalledAppsPage: React.FC = () => {
         initialValues={drawerInitialValues}
         resolveSlot={window.api.subapp.resolveSlot}
         onSubmit={handleDrawerSubmit}
+      />
+
+      <AppShareModal
+        open={!!shareTarget}
+        appId={shareTarget?.appId ?? ''}
+        appName={shareTarget?.name ?? ''}
+        onClose={() => setShareTarget(null)}
       />
 
       <CreateTypeModal

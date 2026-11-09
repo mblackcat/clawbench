@@ -266,6 +266,22 @@ export interface ListCommonAppsResponse {
   commonApps: CommonAppInfo[];
 }
 
+// ============ App sharing ============
+
+export interface AppShareInfo {
+  app: {
+    appId: string;
+    name: string;
+    description: string | null;
+    version: string | null;
+    kind: 'market' | 'builtin';
+  };
+  /** Public landing page URL (paste into any browser / IM) */
+  landingUrl: string;
+  /** Desktop client URL (`<scheme>://open-app?id=...`) */
+  protocolUrl: string;
+}
+
 export interface ListProjectsResponse {
   projects: Project[];
 }
