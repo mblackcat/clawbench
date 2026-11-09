@@ -2,6 +2,7 @@ import type { ProtocolCommandConfig } from './types'
 import { appCommand } from './commands/app.command'
 import { authCommand } from './commands/auth.command'
 import { installCommand } from './commands/install.command'
+import { openAppCommand } from './commands/open-app.command'
 
 /**
  * Protocol command registry.
@@ -14,7 +15,8 @@ import { installCommand } from './commands/install.command'
 export const DEFAULT_PROTOCOL_COMMANDS: ProtocolCommandConfig[] = [
   appCommand,
   authCommand,
-  installCommand
+  installCommand,
+  openAppCommand
 ]
 
 class ProtocolCommandRegistry {

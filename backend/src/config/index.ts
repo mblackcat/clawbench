@@ -48,6 +48,29 @@ export function parseTrustProxy(raw: string | undefined): boolean | number | str
   return value;
 }
 
+/**
+ * PUBLIC_BASE_URL → 分享中转页对外地址（如 https://clawbench.example.com，可带子路径）。
+ * 仅接受 http(s) 绝对地址，去掉结尾斜杠；未设置或非法时返回 ''（按请求 Host 推断）。
+ */
+export function parsePublicBaseUrl(raw: string | undefined): string {
+  const value = (raw ?? '').trim();
+  if (!value) return '';
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return '';
+    if (url.username || url.password || url.search || url.hash) return '';
+    return `${url.origin}${url.pathname}`.replace(/\/+$/, '');
+  } catch {
+    return '';
+  }
+}
+
+/** SHARE_CLIENT_SCHEME → 桌面端自定义协议名（需与客户端 package.json 注册的 scheme 一致） */
+export function parseClientScheme(raw: string | undefined): string {
+  const value = (raw ?? '').trim().toLowerCase();
+  return /^[a-z][a-z0-9+.-]{1,31}$/.test(value) ? value : 'clawbench';
+}
+
 /** 读取正整数环境变量，非法值回退默认值 */
 function envInt(name: string, fallback: number): number {
   const parsed = parseInt(process.env[name] ?? '', 10);
@@ -133,5 +156,13 @@ export const config = {
     appId: process.env.FEISHU_APP_ID || '',
     appSecret: process.env.FEISHU_APP_SECRET || '',
     redirectUri: process.env.FEISHU_REDIRECT_URI || 'http://localhost:3001/api/v1/auth/feishu/callback',
+  },
+
+  // 应用分享：分享链接 → 公开中转页 /open/app/:appId → <scheme>://open-app 唤起桌面端
+  share: {
+    // 中转页对外地址；未设置时按（反代后的）请求协议与 Host 推断
+    publicBaseUrl: parsePublicBaseUrl(process.env.PUBLIC_BASE_URL),
+    // 桌面端协议名（默认 clawbench）
+    clientScheme: parseClientScheme(process.env.SHARE_CLIENT_SCHEME),
   },
 };

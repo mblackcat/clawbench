@@ -125,6 +125,18 @@ const translations: Record<Lang, Record<string, string>> = {
     'discover.category': '分类',
     'discover.version': '版本',
     'discover.supportedEnv': '支持环境',
+    // ── app sharing (share link → landing page → clawbench://open-app) ──
+    'share.action': '分享',
+    'share.title': '分享应用：{0}',
+    'share.desc': '把链接发给同事（浏览器、飞书 / Slack 等 IM 均可）：已安装客户端会打开工作台并定位到该应用（运行前仍需确认），未安装则提示下载。',
+    'share.copyLink': '复制链接',
+    'share.linkLabel': '分享链接：',
+    'share.linkCopied': '链接已复制',
+    'share.copyFailed': '复制失败',
+    'share.loadFailed': '获取分享信息失败',
+    'share.notShareable': '该应用尚未发布或已下线，暂不能分享',
+    'share.appNotFound': '分享的应用不存在或已下线',
+    'share.localModeUnavailable': '本地模式下无法浏览应用市场，请登录后重试',
 
     // LocalEnv 页面
     'localEnv.title': '开发环境',
@@ -2641,6 +2653,18 @@ const translations: Record<Lang, Record<string, string>> = {
     'discover.category': 'Category',
     'discover.version': 'Version',
     'discover.supportedEnv': 'Supported Environment',
+    // ── app sharing (share link → landing page → clawbench://open-app) ──
+    'share.action': 'Share',
+    'share.title': 'Share app: {0}',
+    'share.desc': 'Send the link to colleagues (any browser or IM such as Feishu / Slack): with the client installed it opens the workbench on this app (running still asks first); otherwise it offers the download.',
+    'share.copyLink': 'Copy link',
+    'share.linkLabel': 'Share link: ',
+    'share.linkCopied': 'Link copied',
+    'share.copyFailed': 'Copy failed',
+    'share.loadFailed': 'Failed to load share info',
+    'share.notShareable': 'This app is not published or has been taken down, so it cannot be shared',
+    'share.appNotFound': 'The shared app does not exist or has been taken down',
+    'share.localModeUnavailable': 'The marketplace is unavailable in local mode. Please sign in and try again',
 
     // LocalEnv page
     'localEnv.title': 'DevEnv Setup',

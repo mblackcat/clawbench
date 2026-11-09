@@ -10,6 +10,7 @@ import type {
   ProjectMember,
   ListProjectsResponse,
   ListCommonAppsResponse,
+  AppShareInfo,
   ProjectNavResponse,
   UploadCommonAppResponse,
   RegisterRequest,
@@ -637,6 +638,16 @@ class ApiClient {
   /** 获取全局通用 app 列表（含 disabled 与置顶标记） */
   async listCommonApps(): Promise<ListCommonAppsResponse> {
     return this.httpClient.get<ListCommonAppsResponse>('/common-apps', true);
+  }
+
+  // ============ App sharing ============
+
+  /**
+   * Share info for an app (public landing page URL + client protocol URL).
+   * 404 APP_NOT_SHAREABLE when the app is not published / enabled on the server.
+   */
+  async getAppShareInfo(appId: string): Promise<AppShareInfo> {
+    return this.httpClient.get<AppShareInfo>(`/share/apps/${encodeURIComponent(appId)}`, true);
   }
 
   // ============ 应用 API ============

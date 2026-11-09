@@ -1052,7 +1052,18 @@ export const api = {
       const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
       ipcRenderer.on('protocol:install-app', handler)
       return () => ipcRenderer.removeListener('protocol:install-app', handler)
-    }
+    },
+    // App sharing (clawbench://open-app): nudge event + pull the stored request
+    onOpenApp: (callback: (data: { appId: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
+      ipcRenderer.on('protocol:open-app', handler)
+      return () => ipcRenderer.removeListener('protocol:open-app', handler)
+    },
+    takePendingOpenApp: () =>
+      ipcRenderer.invoke('protocol:take-pending-open-app') as Promise<{
+        appId: string
+        requestedAt: number
+      } | null>
   },
 
   platform: process.platform

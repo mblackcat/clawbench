@@ -18,7 +18,8 @@ import {
   SyncOutlined,
   CrownOutlined,
   CloudDownloadOutlined,
-  MoreOutlined
+  MoreOutlined,
+  ShareAltOutlined
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { applicationManager } from '../../services/applicationManager';
@@ -33,6 +34,8 @@ import SkillInstallModal from '../../components/SkillInstallModal';
 import { AppVersionTag } from '../../components/AppStatusTag';
 import { AppIcon } from '../../components/AppIcon';
 import { FolderCard } from '../../components/FolderCard';
+import AppShareModal from '../../components/AppShareModal';
+import type { AppPreviewLocationState } from '../../hooks/useProtocolOpenApp';
 import {
   resolveDiscoverStatus,
   discoverStatusLabelKey,
@@ -65,7 +68,10 @@ const AppLibraryPage: React.FC = () => {
   const t = useT();
   // Back button target. Default to 收藏栏 so direct URL entry into 发现
   // doesn't strand the user with navigate(-1) → blank page.
-  const backTarget = (location.state as { from?: string } | null)?.from || '/workbench/installed';
+  const locationState = location.state as AppPreviewLocationState | null;
+  const backTarget = locationState?.from || '/workbench/installed';
+  // Share link launch (useProtocolOpenApp, app not installed locally)
+  const previewAppId = locationState?.previewAppId;
   const [loading, setLoading] = useState(true);
   const [allApps, setAllApps] = useState<Application[]>([]);
   const [filteredApps, setFilteredApps] = useState<Application[]>([]);
@@ -84,6 +90,7 @@ const AppLibraryPage: React.FC = () => {
   const [drawerApp, setDrawerApp] = useState<Application | null>(null);
   const [drawerDetail, setDrawerDetail] = useState<ApplicationDetail | null>(null);
   const [drawerLoading, setDrawerLoading] = useState(false);
+  const [shareTarget, setShareTarget] = useState<{ appId: string; name: string } | null>(null);
 
   // AI-skill install: choose placement (4 modes) before download
   const [skillInstallOpen, setSkillInstallOpen] = useState(false);
@@ -252,6 +259,38 @@ const AppLibraryPage: React.FC = () => {
       setDrawerLoading(false);
     }
   };
+
+  // Share link launch: once the list is loaded, open the app's detail drawer
+  // (installing still needs the user's click), then clear the state so going
+  // back does not re-trigger it.
+  useEffect(() => {
+    if (loading || !previewAppId) return;
+    navigate(location.pathname, { replace: true, state: { from: locationState?.from } });
+    if (isLocalMode) {
+      message.warning(t('share.localModeUnavailable'));
+      return;
+    }
+    if (activeTab !== 'app') setActiveTab('app');
+    const target = activeTab === 'app' ? allApps.find((a) => a.applicationId === previewAppId) : undefined;
+    if (target) {
+      setSearchText('');
+      void openDrawer(target);
+      return;
+    }
+    // Not in the loaded list: fetch by id (only published apps are returned to non-owners).
+    applicationManager
+      .fetchApplicationDetail(previewAppId)
+      .then((detail) => {
+        if (detail.type && detail.type !== 'app') throw new Error('not an app');
+        void openDrawer(detail);
+      })
+      .catch(() => message.warning(t('share.appNotFound')));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once per preview request after load
+  }, [loading, previewAppId, location.key]);
+
+  /** Only published apps (type `app`) can be shared; local mode has no server. */
+  const isShareable = (app: Application): boolean =>
+    !isLocalMode && !!app.published && (!app.type || app.type === 'app');
 
   const handleInstall = async (appId: string) => {
     // AI skills require the user to choose a placement (4 modes).
@@ -448,6 +487,17 @@ const AppLibraryPage: React.FC = () => {
             {installing.has(drawerApp.applicationId) ? t('discover.installing') : t('discover.install')}
           </Button>
         )}
+
+        {isShareable(drawerApp) && (
+          <Button
+            block
+            icon={<ShareAltOutlined />}
+            style={{ marginTop: 12 }}
+            onClick={() => setShareTarget({ appId: drawerApp.applicationId, name: drawerApp.name })}
+          >
+            {t('share.action')}
+          </Button>
+        )}
       </div>
     );
   };
@@ -540,18 +590,34 @@ const AppLibraryPage: React.FC = () => {
         style={{ cursor: 'pointer' }}
         onClick={() => openDrawer(app)}
         notchActions={
-          <Tooltip title={t('agents.viewDetail')}>
-            <button
-              type="button"
-              className="cb-notch-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                openDrawer(app);
-              }}
-            >
-              <MoreOutlined style={{ fontSize: 13 }} />
-            </button>
-          </Tooltip>
+          <>
+            {isShareable(app) && (
+              <Tooltip title={t('share.action')}>
+                <button
+                  type="button"
+                  className="cb-notch-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShareTarget({ appId: app.applicationId, name: app.name });
+                  }}
+                >
+                  <ShareAltOutlined style={{ fontSize: 13 }} />
+                </button>
+              </Tooltip>
+            )}
+            <Tooltip title={t('agents.viewDetail')}>
+              <button
+                type="button"
+                className="cb-notch-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openDrawer(app);
+                }}
+              >
+                <MoreOutlined style={{ fontSize: 13 }} />
+              </button>
+            </Tooltip>
+          </>
         }
       >
         {/* Icon + title */}
@@ -727,6 +793,13 @@ const AppLibraryPage: React.FC = () => {
       >
         {renderDrawerContent()}
       </Drawer>
+
+      <AppShareModal
+        open={!!shareTarget}
+        appId={shareTarget?.appId ?? ''}
+        appName={shareTarget?.name ?? ''}
+        onClose={() => setShareTarget(null)}
+      />
 
       <CreateTypeModal
         open={createModalOpen}

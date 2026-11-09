@@ -14,6 +14,7 @@ import PythonEnvCheck from '../PythonEnvCheck'
 import { useTaskStore } from '../../stores/useTaskStore'
 import { useAutoWeather } from '../../stores/useWeatherStore'
 import { useSubAppExecution } from '../../hooks/useSubAppExecution'
+import { useProtocolOpenApp } from '../../hooks/useProtocolOpenApp'
 import { useAICodingStore } from '../../stores/useAICodingStore'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { localStorageManager } from '../../services/localStorageManager'
@@ -58,6 +59,9 @@ const AppLayout: React.FC = () => {
 
   // 初始化 subapp 执行监听
   useSubAppExecution()
+
+  // Share links / landing page (clawbench://open-app): locate and preview the app
+  useProtocolOpenApp()
 
   // Hourly auto weather (50% chance, 5–15 min) — scheduled once for the shell
   useAutoWeather()

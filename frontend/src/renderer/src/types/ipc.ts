@@ -1049,6 +1049,13 @@ export interface ClawBenchAPI {
     getLocalIp: () => Promise<string>
     onLog: (callback: (data: { level: string; message: string; timestamp: number }) => void) => () => void
   }
+  protocol: {
+    onInstallApp: (callback: (data: { appId: string; name: string }) => void) => () => void
+    /** App sharing: nudge when clawbench://open-app arrives (cold start may miss it — use takePendingOpenApp) */
+    onOpenApp: (callback: (data: { appId: string }) => void) => () => void
+    /** Pull and consume the open-app request stored by the main process */
+    takePendingOpenApp: () => Promise<{ appId: string; requestedAt: number } | null>
+  }
   platform: string
 }
 
