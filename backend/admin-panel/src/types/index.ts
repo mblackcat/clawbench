@@ -10,6 +10,8 @@ export interface UserResponse {
   avatarUrl?: string;
   authProvider?: string;
   role: 'admin' | 'user';
+  /** Last server-observed client IP (only present in the admin user list) */
+  lastLoginIp?: string;
   createdAt: number;
   updatedAt: number;
 }

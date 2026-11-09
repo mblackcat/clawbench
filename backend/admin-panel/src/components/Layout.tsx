@@ -10,6 +10,8 @@ import {
   HomeOutlined,
   SunOutlined,
   MoonOutlined,
+  ApiOutlined,
+  BarChartOutlined,
 } from '@ant-design/icons';
 import { useApi } from '../hooks/useApi';
 import { useTheme } from '../hooks/useTheme';
@@ -74,6 +76,8 @@ const Layout: React.FC<Props> = ({ admin, children }) => {
           { key: '/admin/apps', icon: <AppstoreOutlined />, label: 'App Manage' },
           { key: '/admin/projects', icon: <ProjectOutlined />, label: 'Projects' },
           { key: '/admin/users', icon: <UserOutlined />, label: 'Users' },
+          { key: '/admin/ai-models', icon: <ApiOutlined />, label: 'AI Models' },
+          { key: '/admin/ai-usage', icon: <BarChartOutlined />, label: 'AI Usage' },
         ]
       : []),
   ];
