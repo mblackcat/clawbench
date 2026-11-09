@@ -18,7 +18,8 @@ import {
   SyncOutlined,
   CrownOutlined,
   CloudDownloadOutlined,
-  MoreOutlined
+  MoreOutlined,
+  CaretRightOutlined
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { applicationManager } from '../../services/applicationManager';
@@ -42,6 +43,7 @@ import {
 import type { SkillInstallMode, SkillTool } from '../../types/skill';
 import { useT } from '../../i18n';
 import { normalizeAppType } from '../../utils/app-match';
+import { useRunInstalledApp, resolveInstalledSubApp } from '../../hooks/useRunInstalledApp';
 
 const { Title, Text } = Typography;
 const { Search } = Input;
@@ -216,6 +218,29 @@ const AppLibraryPage: React.FC = () => {
     },
     [getDiscoverStatus, isOwner]
   );
+
+  // Installed apps (type app only — skills/prompts have no run) can be run right from Discover
+  const { runApp, paramDrawer } = useRunInstalledApp();
+  const isRunnable = (app: Application, status: AppStatus): boolean =>
+    normalizeAppType(app.type) === 'app' &&
+    (status === 'installed' || status === 'pending_update' || status === 'reset_online');
+
+  const handleRunApp = async (app: Application) => {
+    const local =
+      appInfos.find(
+        (info) =>
+          info.source === 'user' &&
+          (info.id === app.applicationId || info.manifest?.id === app.applicationId)
+      ) ||
+      findLocalByName(app) ||
+      (await resolveInstalledSubApp(app.applicationId));
+    if (!local) {
+      message.error(t('workbench.runFailed'));
+      return;
+    }
+    setDrawerOpen(false);
+    await runApp(local.id || local.manifest.id, app.name || local.manifest.name, local.manifest);
+  };
 
   const confirmUpdate = (app: Application) => {
     modal.confirm({
@@ -412,9 +437,21 @@ const AppLibraryPage: React.FC = () => {
           </div>
         )}
 
-        {status === 'pending_update' && (
+        {isRunnable(drawerApp, status) && (
           <Button
             type="primary"
+            block
+            icon={<CaretRightOutlined />}
+            style={{ marginBottom: status === 'installed' ? 0 : 12 }}
+            onClick={() => void handleRunApp(drawerApp)}
+          >
+            {t('workbench.run')}
+          </Button>
+        )}
+
+        {status === 'pending_update' && (
+          <Button
+            type={isRunnable(drawerApp, status) ? 'default' : 'primary'}
             block
             icon={<SyncOutlined />}
             loading={installing.has(drawerApp.applicationId)}
@@ -426,7 +463,7 @@ const AppLibraryPage: React.FC = () => {
 
         {status === 'reset_online' && (
           <Button
-            type="primary"
+            type={isRunnable(drawerApp, status) ? 'default' : 'primary'}
             danger
             block
             icon={<SyncOutlined />}
@@ -452,8 +489,36 @@ const AppLibraryPage: React.FC = () => {
     );
   };
 
-  /** Round action on the card's bottom-right, by status. */
+  /** Round actions on the card's bottom-right: Run for installed apps + the status action. */
   const renderCardAction = (app: Application, status: AppStatus) => {
+    if (!isRunnable(app, status)) return renderStatusAction(app, status);
+    const runButton = (
+      <Tooltip title={t('workbench.run')}>
+        <button
+          type="button"
+          className="cb-round-action-btn cb-round-action-primary"
+          aria-label={t('workbench.run')}
+          onClick={(e) => {
+            e.stopPropagation();
+            void handleRunApp(app);
+          }}
+        >
+          <CaretRightOutlined style={{ fontSize: 14, marginLeft: 2 }} />
+        </button>
+      </Tooltip>
+    );
+    // "installed" has no other action; update / reset sit next to Run
+    if (status === 'installed') return runButton;
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        {renderStatusAction(app, status)}
+        {runButton}
+      </div>
+    );
+  };
+
+  /** Status action (install / update / reset / owner / installed) by status. */
+  const renderStatusAction = (app: Application, status: AppStatus) => {
     const stop = (fn: () => void) => (e: React.MouseEvent) => {
       e.stopPropagation();
       fn();
@@ -535,6 +600,7 @@ const AppLibraryPage: React.FC = () => {
     return (
       <FolderCard
         key={app.applicationId}
+        data-app-id={app.applicationId}
         variant={variant}
         pinned={isPinned}
         style={{ cursor: 'pointer' }}
@@ -727,6 +793,8 @@ const AppLibraryPage: React.FC = () => {
       >
         {renderDrawerContent()}
       </Drawer>
+
+      {paramDrawer}
 
       <CreateTypeModal
         open={createModalOpen}

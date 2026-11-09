@@ -37,6 +37,14 @@ export interface SubAppManifest {
   published?: boolean // 是否已发布到服务端
 }
 
+/** An installed sub-app as listed by `subapp:list` (manifest + install dir). */
+export interface SubAppInfo {
+  id: string
+  manifest: SubAppManifest
+  path: string
+  source: 'user'
+}
+
 /**
  * 判定本地 app 是否已发布。
  *

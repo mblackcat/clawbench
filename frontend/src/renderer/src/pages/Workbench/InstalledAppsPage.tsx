@@ -45,7 +45,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useNavigate } from 'react-router-dom';
-import type { SubAppManifest } from '../../types/subapp';
+import type { SubAppManifest, SubAppInfo } from '../../types/subapp';
 import { resolveAppPublished } from '../../types/subapp';
 import { useSubAppStore } from '../../stores/useSubAppStore';
 import { useRunAfterInstallStore } from '../../stores/useRunAfterInstallStore';
@@ -88,12 +88,6 @@ const { Title, Text } = Typography;
 type ViewMode = 'tiled' | 'tabbed';
 const VIEW_MODE_STORAGE_KEY = 'workbench.viewMode';
 
-interface SubAppInfo {
-  id: string
-  manifest: SubAppManifest
-  path: string
-  source: 'user'
-}
 
 // Publication status. Renamed from 'installed' (which was misleading — every
 // card here is favorited) to 'published' so the tag actually conveys useful
