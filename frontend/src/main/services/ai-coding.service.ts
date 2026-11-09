@@ -455,7 +455,12 @@ export async function writeToSession(
   }
 
   if (hasPtySession(sessionId)) {
-    writeToPty(sessionId, text + '\r')
+    if (text.includes('\n') || text.includes('\r')) {
+      const normalized = text.replace(/\r?\n/g, '\r')
+      writeToPty(sessionId, `\x1b[200~${normalized}\x1b[201~\r`)
+    } else {
+      writeToPty(sessionId, text + '\r')
+    }
     updateSession(sessionId, { status: 'running', lastActivity: 'thinking' })
     notifyDataChanged()
     const session = getSessionById(sessionId)
