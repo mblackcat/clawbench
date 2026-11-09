@@ -138,12 +138,19 @@ export function getAugmentedEnv(): NodeJS.ProcessEnv {
     // npm global, omp native installer, ~/.local/bin, bun global and pnpm global
     const extras = [
       path.join(appData, 'npm'),
+      path.join(home, '.opencode', 'bin'),
       path.join(localAppData, 'omp'),
       path.join(localAppData, 'Programs', 'omp'),
       path.join(home, '.local', 'bin'),
       path.join(home, '.bun', 'bin'),
       path.join(localAppData, 'pnpm')
     ]
+    // nvm-windows symlink and the official Node.js dir hold npm global shims
+    // when npm's prefix is the node install dir
+    if (process.env.NVM_SYMLINK) extras.push(process.env.NVM_SYMLINK)
+    for (const prog of [process.env.ProgramFiles, process.env['ProgramFiles(x86)']].filter(Boolean) as string[]) {
+      extras.push(path.join(prog, 'nodejs'))
+    }
     for (const ep of extras) {
       if (ep && !parts.some((x) => x.toLowerCase() === ep.toLowerCase())) {
         current = current ? `${current};${ep}` : ep
@@ -157,6 +164,7 @@ export function getAugmentedEnv(): NodeJS.ProcessEnv {
     const extras = [
       '/usr/local/bin',
       path.join(home, '.local', 'bin'), // Official Claude Code / omp native installer location
+      path.join(home, '.opencode', 'bin'), // Official OpenCode native installer location
       path.join(home, '.npm-global', 'bin'),
       path.join(home, '.bun', 'bin'), // bun global installs (omp)
       '/opt/homebrew/bin'

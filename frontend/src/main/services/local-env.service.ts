@@ -22,6 +22,7 @@ import {
   isWindowsAppsPath
 } from '../utils/windows-env'
 import { getWorkbenchVenvPythonPath } from '../utils/paths'
+import { scanAvailablePythons } from './python-detect.service'
 import { brewArgs, brewOwnerOf, type BrewOwner } from '../utils/brew-owner'
 import { loadShellEnv } from './cli-detect.service'
 
@@ -119,7 +120,9 @@ async function getAugmentedEnv(): Promise<NodeJS.ProcessEnv> {
       '/opt/homebrew/bin',
       '/opt/homebrew/sbin',
       '/usr/local/bin',
-      '/usr/local/sbin'
+      '/usr/local/sbin',
+      // Official OpenCode native installer location
+      path.join(os.homedir(), '.opencode', 'bin')
     ]
     const parts = p.split(':')
     for (const ep of extras) {
@@ -167,9 +170,17 @@ async function getAugmentedEnv(): Promise<NodeJS.ProcessEnv> {
       }
     }
 
-    const extras: string[] = []
+    const extras: string[] = [path.join(os.homedir(), '.opencode', 'bin')]
     if (process.env.APPDATA) {
       extras.push(path.join(process.env.APPDATA, 'npm'))
+    }
+    // nvm-windows symlink and the official Node.js installer dir — where npm
+    // global shims land when the user's npm prefix is the node install dir.
+    if (process.env.NVM_SYMLINK) {
+      extras.push(process.env.NVM_SYMLINK)
+    }
+    for (const prog of [process.env.ProgramFiles, process.env['ProgramFiles(x86)']].filter(Boolean) as string[]) {
+      extras.push(path.join(prog, 'nodejs'))
     }
     for (const ep of extras) {
       if (ep && !parts.some((x) => x.toLowerCase() === ep.toLowerCase())) {
@@ -761,7 +772,103 @@ async function detectGrokCli(env: NodeJS.ProcessEnv): Promise<ToolDetectionResul
 }
 
 async function detectOpenCode(env: NodeJS.ProcessEnv): Promise<ToolDetectionResult> {
-  return detectNpmGlobalTool('opencode', 'OpenCode', 'opencode', /(\d+\.\d+\.\d+)/, env)
+  const result = await detectNpmGlobalTool('opencode', 'OpenCode', 'opencode', /(\d+\.\d+\.\d+)/, env)
+  // Auto-heal: a shim exists but does not run, so the npm package's binary may
+  // still be the install stub. Skipped when there is no trace of opencode at all.
+  if (result.installed) return result
+  const hasShim =
+    getToolCandidatePaths('opencode').some((p) => fs.existsSync(p)) || (await whichAll('opencode', env)).length > 0
+  if (hasShim && (await ensureOpenCodeBinaryReady(env))) {
+    return detectNpmGlobalTool('opencode', 'OpenCode', 'opencode', /(\d+\.\d+\.\d+)/, env)
+  }
+  return result
+}
+
+/** Global node_modules dir of an npm package, or null when not installed globally. */
+async function getGlobalNpmPackageDir(packageName: string, env: NodeJS.ProcessEnv): Promise<string | null> {
+  try {
+    const npmCmd = await resolveNpmCmdPath(env)
+    const { stdout } = await execBinary(npmCmd, ['root', '-g'], { timeout: 15000, env })
+    const cand = path.join(stdout.trim(), packageName)
+    if (stdout.trim() && fs.existsSync(cand)) return cand
+  } catch { /* fall back to well-known roots */ }
+
+  const candidates: string[] = []
+  if (process.platform === 'win32') {
+    if (process.env.NVM_SYMLINK) candidates.push(path.join(process.env.NVM_SYMLINK, 'node_modules', packageName))
+    if (process.env.APPDATA) candidates.push(path.join(process.env.APPDATA, 'npm', 'node_modules', packageName))
+    if (process.env.LOCALAPPDATA) candidates.push(path.join(process.env.LOCALAPPDATA, 'npm', 'node_modules', packageName))
+    for (const prog of [process.env.ProgramFiles, process.env['ProgramFiles(x86)']].filter(Boolean) as string[]) {
+      candidates.push(path.join(prog, 'nodejs', 'node_modules', packageName))
+    }
+  } else {
+    candidates.push(
+      path.join('/usr/local/lib/node_modules', packageName),
+      path.join('/opt/homebrew/lib/node_modules', packageName),
+      path.join(os.homedir(), '.npm-global', 'lib', 'node_modules', packageName)
+    )
+  }
+  return candidates.find((c) => fs.existsSync(c)) ?? null
+}
+
+/** A real OpenCode binary is tens of MB; the placeholder npm ships is a few hundred bytes. */
+const OPENCODE_MIN_BINARY_BYTES = 100 * 1024
+
+function isRealBinary(file: string): boolean {
+  try {
+    return fs.statSync(file).size > OPENCODE_MIN_BINARY_BYTES
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Make sure the globally installed `opencode-ai` package has its real binary.
+ * Newer npm versions may skip the package's `postinstall.mjs` on global
+ * installs, leaving a tiny stub at `bin/opencode(.exe)` that cannot run.
+ * Re-runs the postinstall, then falls back to copying the platform binary out
+ * of the matching optional dependency (e.g. `opencode-windows-x64`).
+ * Returns true when a usable binary is in place.
+ */
+async function ensureOpenCodeBinaryReady(env: NodeJS.ProcessEnv): Promise<boolean> {
+  const pkgDir = await getGlobalNpmPackageDir('opencode-ai', env)
+  if (!pkgDir) return false
+
+  const binName = process.platform === 'win32' ? 'opencode.exe' : 'opencode'
+  const targetBinary = path.join(pkgDir, 'bin', binName)
+  if (isRealBinary(targetBinary)) return true
+
+  const postinstall = path.join(pkgDir, 'postinstall.mjs')
+  if (fs.existsSync(postinstall)) {
+    try {
+      const nodeBin = (await whichAll('node', env))[0] || 'node'
+      await execBinary(nodeBin, [postinstall], { cwd: pkgDir, timeout: 60000, env })
+      logger.info(`[local-env] Ran opencode-ai postinstall at ${pkgDir}`)
+    } catch (err) {
+      logger.warn('[local-env] opencode-ai postinstall failed, falling back to copying the binary:', err)
+    }
+    if (isRealBinary(targetBinary)) return true
+  }
+
+  const plat = process.platform === 'win32' ? 'windows' : process.platform
+  const subPackages = [`opencode-${plat}-${process.arch}`, `opencode-${plat}-${process.arch}-baseline`]
+  for (const root of [path.join(pkgDir, 'node_modules'), path.dirname(pkgDir)]) {
+    for (const sub of subPackages) {
+      const source = path.join(root, sub, 'bin', binName)
+      if (!fs.existsSync(source)) continue
+      try {
+        fs.mkdirSync(path.dirname(targetBinary), { recursive: true })
+        if (fs.existsSync(targetBinary)) fs.unlinkSync(targetBinary)
+        fs.copyFileSync(source, targetBinary)
+        fs.chmodSync(targetBinary, 0o755)
+        logger.info(`[local-env] Copied ${source} -> ${targetBinary}`)
+        return true
+      } catch (err) {
+        logger.error(`[local-env] Failed to copy ${source} -> ${targetBinary}:`, err)
+      }
+    }
+  }
+  return false
 }
 
 async function detectTraeCli(env: NodeJS.ProcessEnv): Promise<ToolDetectionResult> {
@@ -1747,8 +1854,11 @@ export async function installTool(toolId: string): Promise<ToolInstallResult> {
   const npmPkg = NPM_PACKAGES[id]
   if (npmPkg) {
     try {
-      const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-      await execFileAsync(npmCmd, ['install', '-g', npmPkg], { timeout: 600000, env })
+      // execFile can't run npm.cmd directly on Windows (CVE-2024-27980 fix) —
+      // resolve npm's real path and go through execBinary.
+      const npmCmd = await resolveNpmCmdPath(env)
+      await execBinary(npmCmd, ['install', '-g', npmPkg], { timeout: 600000, env })
+      if (id === 'opencode') await ensureOpenCodeBinaryReady(env)
       invalidateWindowsRegistryPathCache()
       logger.info(`[local-env] Tool installed: ${id}`)
       return { success: true }
@@ -1875,6 +1985,29 @@ async function uninstallBrewCopies(id: ToolId, env: NodeJS.ProcessEnv): Promise<
   return null
 }
 
+/**
+ * Windows: delete the `.exe` a native installer script placed for `binary`
+ * (%LOCALAPPDATA%\<bin>, Programs\<bin>, ~/.<bin>/bin, ~/.local/bin). Package-manager
+ * shims (npm / pnpm / bun / scoop / winget links) are left to their managers.
+ * Returns the paths removed.
+ */
+function removeWindowsNativeBinaries(binary: string): string[] {
+  const managed = /[\\/](npm|pnpm|\.bun|scoop|WinGet|nodejs)[\\/]/i
+  const nvmSymlink = process.env.NVM_SYMLINK?.toLowerCase()
+  const removed: string[] = []
+  for (const cand of getToolCandidatePaths(binary)) {
+    if (!cand.toLowerCase().endsWith('.exe') || managed.test(cand) || !fs.existsSync(cand)) continue
+    if (nvmSymlink && cand.toLowerCase().startsWith(nvmSymlink)) continue
+    try {
+      fs.unlinkSync(cand)
+      removed.push(cand)
+    } catch (err) {
+      logger.warn(`[local-env] Failed to remove ${cand}:`, err)
+    }
+  }
+  return removed
+}
+
 export async function uninstallTool(toolId: string): Promise<ToolInstallResult> {
   const id = toolId as ToolId
   const env = await getAugmentedEnv()
@@ -1889,14 +2022,16 @@ export async function uninstallTool(toolId: string): Promise<ToolInstallResult> 
 
   // Claude Code — native installer, no package manager involved
   if (id === 'claude-code') {
-    if (process.platform === 'win32') {
-      return { success: false, error: 'Windows 上请通过控制面板卸载 Claude Code' }
-    }
     try {
-      const claudePath = path.join(os.homedir(), '.local', 'bin', 'claude')
-      if (fs.existsSync(claudePath)) {
-        fs.unlinkSync(claudePath)
+      if (process.platform === 'win32') {
+        removeWindowsNativeBinaries('claude')
+      } else {
+        const claudePath = path.join(os.homedir(), '.local', 'bin', 'claude')
+        if (fs.existsSync(claudePath)) {
+          fs.unlinkSync(claudePath)
+        }
       }
+      invalidateWindowsRegistryPathCache()
       logger.info(`[local-env] Tool uninstalled: ${id}`)
       return { success: true }
     } catch (err: any) {
@@ -1907,17 +2042,23 @@ export async function uninstallTool(toolId: string): Promise<ToolInstallResult> 
 
   // Grok CLI — native installer; remove the binaries it placed in ~/.local/bin
   if (id === 'grok-cli') {
-    if (process.platform === 'win32') {
-      return { success: false, error: 'Windows 上请手动卸载 Grok CLI' }
-    }
     try {
-      // The installer ships `grok` plus an `agent` helper binary
-      for (const bin of ['grok', 'agent']) {
-        const binPath = path.join(os.homedir(), '.local', 'bin', bin)
-        if (fs.existsSync(binPath)) {
-          fs.unlinkSync(binPath)
+      if (process.platform === 'win32') {
+        removeWindowsNativeBinaries('grok')
+        // The `agent` helper only ever lives next to grok in ~/.local/bin — never
+        // sweep the generic candidate dirs for a binary with such a common name.
+        const agentPath = path.join(os.homedir(), '.local', 'bin', 'agent.exe')
+        if (fs.existsSync(agentPath)) fs.unlinkSync(agentPath)
+      } else {
+        // The installer ships `grok` plus an `agent` helper binary
+        for (const bin of ['grok', 'agent']) {
+          const binPath = path.join(os.homedir(), '.local', 'bin', bin)
+          if (fs.existsSync(binPath)) {
+            fs.unlinkSync(binPath)
+          }
         }
       }
+      invalidateWindowsRegistryPathCache()
       logger.info(`[local-env] Tool uninstalled: ${id}`)
       return { success: true }
     } catch (err: any) {
@@ -1926,14 +2067,16 @@ export async function uninstallTool(toolId: string): Promise<ToolInstallResult> 
     }
   }
 
-  // Oh My Pi — installer script drops the binary in ~/.local/bin
+  // Oh My Pi — installer script drops the binary in ~/.local/bin (POSIX) or %LOCALAPPDATA%\omp (Windows)
   if (id === 'omp') {
-    if (process.platform === 'win32') {
-      return { success: false, error: mainT('localEnv.windowsManualUninstall', 'Oh My Pi') }
-    }
     try {
-      const binPath = path.join(os.homedir(), '.local', 'bin', 'omp')
-      if (fs.existsSync(binPath)) fs.unlinkSync(binPath)
+      if (process.platform === 'win32') {
+        removeWindowsNativeBinaries('omp')
+      } else {
+        const binPath = path.join(os.homedir(), '.local', 'bin', 'omp')
+        if (fs.existsSync(binPath)) fs.unlinkSync(binPath)
+      }
+      invalidateWindowsRegistryPathCache()
       logger.info(`[local-env] Tool uninstalled: ${id}`)
       return { success: true }
     } catch (err: unknown) {
@@ -2001,8 +2144,9 @@ export async function uninstallTool(toolId: string): Promise<ToolInstallResult> 
   const npmPkg = NPM_PACKAGES[id]
   if (npmPkg) {
     try {
-      const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-      await execFileAsync(npmCmd, ['uninstall', '-g', npmPkg], { timeout: 300000, env })
+      const npmCmd = await resolveNpmCmdPath(env)
+      await execBinary(npmCmd, ['uninstall', '-g', npmPkg], { timeout: 300000, env })
+      invalidateWindowsRegistryPathCache()
       logger.info(`[local-env] Tool uninstalled: ${id}`)
       return { success: true }
     } catch (err: any) {
@@ -2152,8 +2296,10 @@ export async function upgradeTool(toolId: string): Promise<ToolInstallResult> {
   const npmPkg = NPM_PACKAGES[id]
   if (npmPkg) {
     try {
-      const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-      await execFileAsync(npmCmd, ['install', '-g', `${npmPkg}@latest`], { timeout: 600000, env })
+      const npmCmd = await resolveNpmCmdPath(env)
+      await execBinary(npmCmd, ['install', '-g', `${npmPkg}@latest`], { timeout: 600000, env })
+      if (id === 'opencode') await ensureOpenCodeBinaryReady(env)
+      invalidateWindowsRegistryPathCache()
       logger.info(`[local-env] Tool upgraded: ${id}`)
       return { success: true }
     } catch (err: any) {
@@ -2244,7 +2390,6 @@ async function resolvePythonPath(pythonPath: string | undefined, env: NodeJS.Pro
 
   if (process.platform === 'win32') {
     try {
-      const { scanAvailablePythons } = await import('./python-detect.service')
       const scanned = await scanAvailablePythons({ env }, false)
       const found = scanned.find((sp) => sp.path && !isWindowsAppsPath(path.dirname(sp.path)))
       if (found?.path) return found.path

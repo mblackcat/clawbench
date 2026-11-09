@@ -131,9 +131,18 @@ export const useLocalEnvStore = create<LocalEnvState>((set, get) => ({
     try {
       const result = await window.api.localEnv.detectOne(toolId)
       set((s) => {
-        const tools = s.tools.map((t) => (t.toolId === toolId ? result : t))
+        // A tool missing from a stale cache (e.g. added by an upgrade) is appended
+        // rather than silently dropped.
+        const exists = s.tools.some((t) => t.toolId === toolId)
+        const tools = exists
+          ? s.tools.map((t) => (t.toolId === toolId ? result : t))
+          : [...s.tools, result]
         // Keep localStorage in sync
-        saveCache({ tools, packageManagers: s.packageManagers!, platform: s.platform })
+        saveCache({
+          tools,
+          packageManagers: s.packageManagers ?? { brew: false, winget: false, xcodeSelect: false },
+          platform: s.platform
+        })
         return { tools, refreshingOne: { ...s.refreshingOne, [toolId]: false } }
       })
     } catch (err) {

@@ -407,8 +407,22 @@ export function getToolCandidatePaths(binary: string): string[] {
       path.join(appData, 'npm', `${binary}.exe`),
       path.join(localAppData, 'npm', `${binary}.cmd`),
       path.join(localAppData, 'pnpm', `${binary}.cmd`),
-      path.join(localAppData, 'pnpm', `${binary}.exe`)
+      path.join(localAppData, 'pnpm', `${binary}.exe`),
+      path.join(home, 'scoop', 'shims', `${binary}.exe`),
+      path.join(home, 'scoop', 'shims', `${binary}.cmd`),
+      path.join(localAppData, 'Microsoft', 'WinGet', 'Links', `${binary}.exe`)
     )
+    // npm global shims under nvm-windows or the official Node.js install dir
+    // (npm's prefix defaults to the node dir there, not %APPDATA%\npm)
+    if (process.env.NVM_SYMLINK) {
+      list.push(
+        path.join(process.env.NVM_SYMLINK, `${binary}.cmd`),
+        path.join(process.env.NVM_SYMLINK, `${binary}.exe`)
+      )
+    }
+    for (const prog of [process.env.ProgramFiles, process.env['ProgramFiles(x86)']].filter(Boolean) as string[]) {
+      list.push(path.join(prog, 'nodejs', `${binary}.cmd`), path.join(prog, 'nodejs', `${binary}.exe`))
+    }
     if (binary === 'agy' || binary === 'antigravity') {
       list.push(
         path.join(localAppData, 'agy', 'bin', `${binary}.exe`),

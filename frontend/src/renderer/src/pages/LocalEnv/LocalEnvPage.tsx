@@ -15,6 +15,15 @@ const BASE_DEV_IDS = new Set(['homebrew', 'python', 'nodejs', 'go', 'java', 'doc
 const DATABASE_IDS = new Set(['mysql', 'postgresql', 'mongodb', 'redis'])
 const VCS_IDS = new Set(['git', 'svn', 'perforce'])
 
+/** Non-AI env tools the main-process detectAll returns on this platform (keep in
+ *  sync with local-env.service detectAll) — used to spot a stale cache after an
+ *  upgrade added new env cards. */
+function expectedEnvToolIds(platform: string): string[] {
+  return [...BASE_DEV_IDS, ...DATABASE_IDS, ...VCS_IDS].filter(
+    (id) => id !== 'homebrew' || platform === 'darwin'
+  )
+}
+
 /** Route state / hash that asks the page to scroll to (and flash) the AI tools group. */
 const LOCAL_ENV_AI_TOOLS_ANCHOR = 'ai-tools'
 
@@ -85,8 +94,10 @@ const LocalEnvPage: React.FC = () => {
   // (new tools added, or cached tool ids that no group knows about any more)
   useEffect(() => {
     const cached = useLocalEnvStore.getState().tools
-    const knownIds = new Set(cached.map((t) => t.toolId))
-    const missingNew = AI_CODING_TOOL_IDS.some((id) => !knownIds.has(id))
+    const knownIds = new Set<string>(cached.map((t) => t.toolId))
+    const missingNew = AI_CODING_TOOL_IDS.some((id) => !knownIds.has(id)) ||
+      // Env cards added by an upgrade are absent from the old cache — force a re-detect
+      expectedEnvToolIds(window.api.platform).some((id) => !knownIds.has(id))
     const hasLegacy = cached.some(
       (tl) =>
         !AI_CODING_TOOL_ID_SET.has(tl.toolId) &&
