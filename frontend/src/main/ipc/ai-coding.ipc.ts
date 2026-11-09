@@ -34,7 +34,7 @@ import {
   detectAvailableCLIs,
   onPtyInput
 } from '../services/ai-coding.service'
-import { listNativeSessions, loadNativeSessionTranscript } from '../services/native-sessions.service'
+import { listNativeSessions, loadNativeSessionTranscript, deleteNativeSession } from '../services/native-sessions.service'
 import { writeToPty, resizePty, killPtySession } from '../services/pty-manager.service'
 import { loadShellEnv } from '../services/cli-detect.service'
 import { getIMBridgeService } from '../services/im/im-bridge.service'
@@ -296,6 +296,20 @@ export function registerAICodingIpc(): void {
     if (!validateToolType(toolType)) throw new Error('Invalid tool type')
     assertId(sessionId, 'session')
     return loadNativeSessionTranscript(safeDir, toolType, sessionId)
+  })
+
+  ipcMain.handle('ai-coding:delete-native-session', async (_event, workingDir: string, toolType: string, sessionId: string) => {
+    const safeDir = validateDirPath(workingDir)
+    if (!safeDir) {
+      throw new Error('Invalid working directory')
+    }
+    if (!validateToolType(toolType)) {
+      throw new Error('Invalid tool type')
+    }
+    if (!validateId(sessionId)) {
+      throw new Error('Invalid session ID format')
+    }
+    return deleteNativeSession(safeDir, toolType, sessionId)
   })
 
   // ── Session output (for IM cards) ──

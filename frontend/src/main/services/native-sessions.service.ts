@@ -1022,6 +1022,7 @@ function resolveAntigravityBaseDirs(): string[] {
 
 interface SqliteStatement {
   all: () => unknown[]
+  run?: (...params: unknown[]) => { changes: number }
 }
 
 interface SqliteDatabase {
@@ -1803,4 +1804,242 @@ export async function loadNativeSessionTranscript(
     console.error(`[NativeSessions] Failed to load ${toolType} transcript:`, err)
     return []
   }
+}
+
+/**
+ * Permanently delete a native CLI tool session from disk.
+ */
+export async function deleteNativeSession(
+  workingDir: string,
+  toolType: AIToolType,
+  sessionId: string
+): Promise<boolean> {
+  let deleted = false
+
+  try {
+    if (toolType === 'claude') {
+      const projectDirs = resolveClaudeProjectDirs(workingDir)
+      const checkedDirs = new Set(projectDirs)
+      const claudeProjectsRoot = path.join(os.homedir(), '.claude', 'projects')
+      if (fs.existsSync(claudeProjectsRoot)) {
+        try {
+          for (const entry of fs.readdirSync(claudeProjectsRoot, { withFileTypes: true })) {
+            if (entry.isDirectory()) checkedDirs.add(path.join(claudeProjectsRoot, entry.name))
+          }
+        } catch { /* skip */ }
+      }
+
+      for (const dir of checkedDirs) {
+        const jsonlFile = path.join(dir, `${sessionId}.jsonl`)
+        if (fs.existsSync(jsonlFile)) {
+          try {
+            fs.unlinkSync(jsonlFile)
+            deleted = true
+          } catch { /* skip */ }
+          claudeFileCache.delete(jsonlFile)
+        }
+        const subDir = path.join(dir, sessionId)
+        if (fs.existsSync(subDir)) {
+          try {
+            fs.rmSync(subDir, { recursive: true, force: true })
+            deleted = true
+          } catch { /* skip */ }
+        }
+      }
+    } else if (toolType === 'codex') {
+      for (const filePath of collectCodexSessionFiles()) {
+        try {
+          const base = path.basename(filePath)
+          let match = base === `${sessionId}.jsonl` || base.includes(sessionId)
+          if (!match) {
+            const { meta } = parseCodexSessionFile(filePath)
+            if (meta?.payload?.id === sessionId) match = true
+          }
+          if (match) {
+            fs.unlinkSync(filePath)
+            codexFileCache.delete(filePath)
+            deleted = true
+          }
+        } catch { /* skip */ }
+      }
+
+      const codexDir = path.join(os.homedir(), '.codex')
+      const historyFile = path.join(codexDir, 'history.jsonl')
+      if (fs.existsSync(historyFile)) {
+        try {
+          const content = fs.readFileSync(historyFile, 'utf-8')
+          const filtered = content.split('\n').filter((line) => {
+            if (!line.trim()) return false
+            try {
+              const entry = JSON.parse(line)
+              return entry.session_id !== sessionId
+            } catch { return true }
+          }).join('\n')
+          fs.writeFileSync(historyFile, filtered ? filtered + '\n' : '', 'utf-8')
+        } catch { /* skip */ }
+      }
+
+      const indexFile = path.join(codexDir, 'session_index.jsonl')
+      if (fs.existsSync(indexFile)) {
+        try {
+          const content = fs.readFileSync(indexFile, 'utf-8')
+          const filtered = content.split('\n').filter((line) => {
+            if (!line.trim()) return false
+            try {
+              const entry = JSON.parse(line)
+              return entry.id !== sessionId
+            } catch { return true }
+          }).join('\n')
+          fs.writeFileSync(indexFile, filtered ? filtered + '\n' : '', 'utf-8')
+        } catch { /* skip */ }
+      }
+
+      cachedCodexHistory = null
+      cachedCodexIndex = null
+    } else if (toolType === 'antigravity') {
+      const baseDirs = resolveAntigravityBaseDirs()
+      let DatabaseConstructor: BetterSqliteConstructor | null = null
+      try {
+        DatabaseConstructor = require('better-sqlite3') as unknown as BetterSqliteConstructor
+      } catch { /* outside Electron */ }
+
+      for (const baseDir of baseDirs) {
+        const dbPath = path.join(baseDir, 'conversation_summaries.db')
+        const convDir = path.join(baseDir, 'conversations')
+        const historyFile = path.join(baseDir, 'history.jsonl')
+
+        if (DatabaseConstructor && fs.existsSync(dbPath)) {
+          let db: SqliteDatabase | null = null
+          try {
+            db = new DatabaseConstructor(dbPath, { fileMustExist: true })
+            const res = db.prepare('DELETE FROM conversation_summaries WHERE conversation_id = ?').run?.(sessionId)
+            if (res && res.changes > 0) deleted = true
+          } catch { /* ignore db write error */ }
+          finally {
+            try { db?.close() } catch { /* skip */ }
+          }
+        }
+
+        if (fs.existsSync(convDir)) {
+          try {
+            for (const f of fs.readdirSync(convDir)) {
+              if (f.startsWith(sessionId)) {
+                fs.rmSync(path.join(convDir, f), { recursive: true, force: true })
+                deleted = true
+              }
+            }
+          } catch { /* skip */ }
+        }
+
+        if (fs.existsSync(historyFile)) {
+          try {
+            const content = fs.readFileSync(historyFile, 'utf-8')
+            const filtered = content.split('\n').filter((line) => {
+              if (!line.trim()) return false
+              try {
+                const entry = JSON.parse(line) as Record<string, unknown>
+                const rawConvId = entry?.conversationId || entry?.conversation_id
+              } catch { return true }
+            }).join('\n')
+            fs.writeFileSync(historyFile, filtered ? filtered + '\n' : '', 'utf-8')
+          } catch { /* skip */ }
+        }
+      }
+    } else if (toolType === 'gemini') {
+      const chatsDirs = new Set(resolveGeminiChatsDirs(workingDir))
+      const geminiTmp = path.join(os.homedir(), '.gemini', 'tmp')
+      if (fs.existsSync(geminiTmp)) {
+        try {
+          for (const entry of fs.readdirSync(geminiTmp, { withFileTypes: true })) {
+            if (entry.isDirectory()) {
+              const cDir = path.join(geminiTmp, entry.name, 'chats')
+              if (fs.existsSync(cDir)) chatsDirs.add(cDir)
+            }
+          }
+        } catch { /* skip */ }
+      }
+
+      for (const chatsDir of chatsDirs) {
+        if (!fs.existsSync(chatsDir)) continue
+        try {
+          for (const file of fs.readdirSync(chatsDir)) {
+            const filePath = path.join(chatsDir, file)
+            if (file.startsWith(sessionId) || file.replace(/\.(json|jsonl)$/, '') === sessionId) {
+              fs.unlinkSync(filePath)
+              deleted = true
+              continue
+            }
+            try {
+              const parsed = parseGeminiSessionFile(filePath)
+              if (parsed?.sessionId === sessionId) {
+                fs.unlinkSync(filePath)
+                deleted = true
+              }
+            } catch { /* skip */ }
+          }
+        } catch { /* skip */ }
+      }
+    } else if (toolType === 'grok') {
+      const projectDirs = new Set(resolveGrokProjectDirs(workingDir))
+      const grokSessionsRoot = path.join(os.homedir(), '.grok', 'sessions')
+      if (fs.existsSync(grokSessionsRoot)) {
+        try {
+          for (const entry of fs.readdirSync(grokSessionsRoot, { withFileTypes: true })) {
+            if (entry.isDirectory()) projectDirs.add(path.join(grokSessionsRoot, entry.name))
+          }
+        } catch { /* skip */ }
+      }
+
+      for (const projectDir of projectDirs) {
+        const sessionDir = path.join(projectDir, sessionId)
+        if (fs.existsSync(sessionDir)) {
+          try {
+            fs.rmSync(sessionDir, { recursive: true, force: true })
+            deleted = true
+          } catch { /* skip */ }
+        }
+      }
+    } else if (toolType === 'omp') {
+      const sessionDirs = new Set(resolveOmpSessionDirs(workingDir))
+      const ompSessionsRoot = path.join(os.homedir(), '.omp', 'agent', 'sessions')
+      if (fs.existsSync(ompSessionsRoot)) {
+        try {
+          for (const entry of fs.readdirSync(ompSessionsRoot, { withFileTypes: true })) {
+            if (entry.isDirectory()) sessionDirs.add(path.join(ompSessionsRoot, entry.name))
+          }
+        } catch { /* skip */ }
+      }
+
+      for (const dir of sessionDirs) {
+        if (!fs.existsSync(dir)) continue
+        try {
+          for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            const entryPath = path.join(dir, entry.name)
+            if (entry.isFile() && entry.name.endsWith('.jsonl')) {
+              let match = entry.name.includes(sessionId)
+              if (!match) {
+                const head = readOmpSessionHead(entryPath)
+                const sid = head.sessionId || entry.name.replace(/\.jsonl$/, '').replace(/^[^_]*_/, '')
+                if (sid === sessionId) match = true
+              }
+              if (match) {
+                fs.unlinkSync(entryPath)
+                deleted = true
+              }
+            } else if (entry.isDirectory() && entry.name === sessionId) {
+              fs.rmSync(entryPath, { recursive: true, force: true })
+              deleted = true
+            }
+          }
+        } catch { /* skip */ }
+      }
+    }
+  } catch (err) {
+    console.error(`[NativeSessions] Failed to delete ${toolType} session ${sessionId}:`, err)
+  } finally {
+    invalidateNativeSessionCache(workingDir, toolType)
+    invalidateNativeSessionCache()
+  }
+
+  return deleted
 }

@@ -31,7 +31,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { AI_TOOL_NAMES, AI_TOOL_SHORT_NAMES, AI_TOOL_TAG_COLORS, AI_TOOL_TAG_STYLE, getAIToolIcon, TOOLS_WITH_NATIVE_SESSIONS } from './aiToolMeta'
 import { useT } from '../../i18n'
 import { useAICodingStore } from '../../stores/useAICodingStore'
-import { useAttentionStore } from '../../stores/useAttentionStore'
+import { useAttentionStore, dismissCodingTarget } from '../../stores/useAttentionStore'
 import { useVcsSelectionStore } from '../../stores/useVcsSelectionStore'
 import { MONO_FONT_STACK } from '../../utils/mono-font'
 import type { AICodingSession, AICodingWorkspace, AIToolType } from '../../types/ai-coding'
@@ -209,6 +209,29 @@ function isSessionRowArchived(row: SidebarSessionRow, archived: Set<string>): bo
   if (row.nativeSessionId && archived.has(nativeArchiveKey(row.toolType, row.nativeSessionId))) return true
   if (row.openedSessionId && archived.has(openedArchiveKey(row.openedSessionId))) return true
   return false
+}
+
+export function createSessionRowMenuItems(options: {
+  isPinned: boolean
+  onTogglePin: () => void
+  onArchive: () => void
+  onDelete: () => void
+  pinLabel: string
+  unpinLabel: string
+  archiveLabel: string
+  deleteLabel: string
+}): NonNullable<MenuProps['items']> {
+  return [
+    {
+      key: 'pin',
+      label: options.isPinned ? options.unpinLabel : options.pinLabel,
+      onClick: options.onTogglePin
+    },
+    { type: 'divider' },
+    { key: 'archive', label: options.archiveLabel, onClick: options.onArchive },
+    { type: 'divider' },
+    { key: 'delete', label: options.deleteLabel, danger: true, onClick: options.onDelete }
+  ]
 }
 
 export const PINNED_SESSIONS_STORAGE_KEY = 'cb-workbench-pinned-sessions'
@@ -442,6 +465,8 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
   const updateWorkspace = useAICodingStore((s) => s.updateWorkspace)
   const renameGroup = useAICodingStore((s) => s.renameGroup)
   const deleteGroup = useAICodingStore((s) => s.deleteGroup)
+  const deleteSession = useAICodingStore((s) => s.deleteSession)
+  const closeSessionTabs = useAICodingStore((s) => s.closeSessionTabs)
   const attentionItems = useAttentionStore((s) => s.items)
   const codingAttentionIds = useMemo(
     () => attentionItems.filter((i) => i.source === 'ai-coding' && i.targetId).map((i) => i.targetId as string),
@@ -933,12 +958,25 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
   /** Hide a conversation from the history list without deleting it. Records both
    * the native key (so it stays hidden across restarts) and the opened-session
    * key (so a session still hidden before it links to a native id doesn't pop
-   * back when the link arrives). */
-  const handleArchiveSessionRow = useCallback((row: SidebarSessionRow) => {
+   * back when the link arrives). Also closes any open tab for this session. */
+  const handleArchiveSessionRow = useCallback(async (row: SidebarSessionRow) => {
     const keys: string[] = []
     if (row.nativeSessionId) keys.push(nativeArchiveKey(row.toolType, row.nativeSessionId))
     if (row.openedSessionId) keys.push(openedArchiveKey(row.openedSessionId))
     if (keys.length === 0) return
+
+    // Auto-close any opened tab for this session
+    const openedIds = new Set<string>()
+    if (row.openedSessionId) openedIds.add(row.openedSessionId)
+    if (row.nativeSessionId) {
+      sessions
+        .filter((s) => s.toolType === row.toolType && s.toolSessionId === row.nativeSessionId)
+        .forEach((s) => openedIds.add(s.id))
+    }
+    for (const sid of openedIds) {
+      await closeSessionTabs(sid)
+    }
+
     setArchivedSessionKeys((prev) => {
       if (keys.every((k) => prev.has(k))) return prev
       const next = new Set(prev)
@@ -946,7 +984,87 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
       return next
     })
     message.success(t('coding.sessionArchived'))
-  }, [message, t])
+  }, [closeSessionTabs, message, sessions, t])
+
+  const handleDeleteSessionRow = useCallback((row: SidebarSessionRow, wsId: string) => {
+    modal.confirm({
+      title: t('coding.deleteSession'),
+      content: t('coding.deleteSessionConfirm', row.title || row.key),
+      okText: t('common.delete'),
+      okButtonProps: { danger: true },
+      cancelText: t('common.cancel'),
+      onOk: async () => {
+        try {
+          // 1. Collect all opened sessions matching this row
+          const openedIds = new Set<string>()
+          if (row.openedSessionId) openedIds.add(row.openedSessionId)
+          if (row.nativeSessionId) {
+            sessions
+              .filter((s) => s.toolType === row.toolType && s.toolSessionId === row.nativeSessionId)
+              .forEach((s) => openedIds.add(s.id))
+          }
+
+          // 2. Automatically close open tabs for this session
+          for (const sid of openedIds) {
+            await closeSessionTabs(sid)
+          }
+
+          // 3. Delete opened session record(s)
+          for (const sid of openedIds) {
+            await deleteSession(sid)
+          }
+
+          // 4. Delete native CLI session record on disk if present
+          if (row.nativeSessionId) {
+            const ws = workspaces.find((w) => w.id === wsId)
+            if (ws?.workingDir) {
+              await window.api.aiCoding.deleteNativeSession(ws.workingDir, row.toolType, row.nativeSessionId)
+            }
+            dismissCodingTarget(row.nativeSessionId)
+            setNativeSessionsMap((prev) => {
+              const existing = prev[wsId]
+              if (!existing) return prev
+              return {
+                ...prev,
+                [wsId]: {
+                  ...existing,
+                  sessions: existing.sessions.filter(
+                    (s) => !(s.toolType === row.toolType && s.sessionId === row.nativeSessionId)
+                  )
+                }
+              }
+            })
+          }
+
+          // 5. Clean up pin & archive keys
+          const pinKeys: string[] = []
+          if (row.nativeSessionId) pinKeys.push(nativePinKey(row.toolType, row.nativeSessionId))
+          if (row.openedSessionId) pinKeys.push(openedPinKey(row.openedSessionId))
+          for (const sid of openedIds) pinKeys.push(openedPinKey(sid))
+          setPinnedSessionKeys((prev) => {
+            const next = new Set(prev)
+            for (const k of pinKeys) next.delete(k)
+            return next
+          })
+
+          const archiveKeys: string[] = []
+          if (row.nativeSessionId) archiveKeys.push(nativeArchiveKey(row.toolType, row.nativeSessionId))
+          if (row.openedSessionId) archiveKeys.push(openedArchiveKey(row.openedSessionId))
+          for (const sid of openedIds) archiveKeys.push(openedArchiveKey(sid))
+          setArchivedSessionKeys((prev) => {
+            const next = new Set(prev)
+            for (const k of archiveKeys) next.delete(k)
+            return next
+          })
+
+          message.success(t('coding.sessionDeleted'))
+        } catch (err) {
+          console.error('Delete session failed:', err)
+          message.error(t('coding.deleteSessionFailed'))
+        }
+      }
+    })
+  }, [closeSessionTabs, deleteSession, message, modal, sessions, t, workspaces])
 
   /** Persist a within-group workspace reorder. Pinned and unpinned are separate
    *  sortable sections, so cross-section drags are rejected. After a valid drag
@@ -1186,17 +1304,18 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
     { key: 'delete', label: t('coding.deleteGroupMenu'), danger: true, onClick: () => handleDeleteGroup(groupId) }
   ]
 
-  const buildSessionRowMenu = (row: SidebarSessionRow): MenuProps['items'] => {
+  const buildSessionRowMenu = (row: SidebarSessionRow, wsId: string): MenuProps['items'] => {
     const isPinned = isSessionRowPinned(row, pinnedSessionKeys, openedSessionMap)
-    return [
-      {
-        key: 'pin',
-        label: isPinned ? t('workbench.unpin') : t('workbench.pin'),
-        onClick: () => handleTogglePinSessionRow(row)
-      },
-      { type: 'divider' },
-      { key: 'archive', label: t('coding.archiveSession'), onClick: () => handleArchiveSessionRow(row) }
-    ]
+    return createSessionRowMenuItems({
+      isPinned,
+      onTogglePin: () => handleTogglePinSessionRow(row),
+      onArchive: () => void handleArchiveSessionRow(row),
+      onDelete: () => handleDeleteSessionRow(row, wsId),
+      pinLabel: t('workbench.pin'),
+      unpinLabel: t('workbench.unpin'),
+      archiveLabel: t('coding.archiveSession'),
+      deleteLabel: t('coding.deleteSession')
+    })
   }
 
   const rowBase: React.CSSProperties = {
@@ -1749,7 +1868,7 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
                         return (
                           <Dropdown
                             key={row.key}
-                            menu={{ items: buildSessionRowMenu(row) }}
+                            menu={{ items: buildSessionRowMenu(row, ws.id) }}
                             trigger={['contextMenu']}
                           >
                             <div

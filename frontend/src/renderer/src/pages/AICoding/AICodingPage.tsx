@@ -3,7 +3,7 @@
  * 子概念：chat bubble & tui —— Claude Code / Codex / Gemini 编程会话。
  * 注意：本模块旧名为 "AIWorkbench"，与资源中心 Workbench(`/workbench`) 无关。
  */
-import React, { useEffect, useState, useMemo, useCallback } from 'react'
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { Spin, App, theme, Typography } from 'antd'
 import { MessageOutlined } from '@ant-design/icons'
 import { useLocation } from 'react-router-dom'
@@ -18,10 +18,17 @@ import PaneTabBar from './PaneTabBar'
 import { useT } from '../../i18n'
 import { useAICodingStore } from '../../stores/useAICodingStore'
 import { useAttentionStore } from '../../stores/useAttentionStore'
+import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { findLeafBySessionId, collectLeaves } from '../../types/split-layout'
 import type { AIToolType } from '../../types/ai-coding'
 
 const { Text } = Typography
+
+function isSamePath(a: string, b: string): boolean {
+  const normA = a.replace(/\\/g, '/').replace(/\/$/, '')
+  const normB = b.replace(/\\/g, '/').replace(/\/$/, '')
+  return normA.toLowerCase() === normB.toLowerCase()
+}
 
 /** Tab callbacks the landing toolbar has no tabs for. */
 
@@ -144,9 +151,99 @@ const AICodingPage: React.FC = () => {
     [groups]
   )
 
+  // Auto-select session passed via navigation state (e.g. from workbench "AI Code" button)
+  const location = useLocation()
+  const pendingSessionId = (location.state as { selectSessionId?: string } | null)?.selectSessionId
+
+  // Track whether we've evaluated the default initial page on module entry
+  const hasAutoCheckedRef = useRef(false)
+
   useEffect(() => {
-    fetchAll()
-  }, [fetchAll])
+    let cancelled = false
+
+    const init = async (): Promise<void> => {
+      await fetchAll()
+      if (cancelled) return
+
+      // Only evaluate once when switching to this module
+      if (hasAutoCheckedRef.current) return
+      hasAutoCheckedRef.current = true
+
+      // If navigation requested a specific session, skip landing auto-open
+      if (pendingSessionId) return
+
+      const state = useAICodingStore.getState()
+      const currentLayout = state.getOrCreateLayout()
+      const currentSessions = state.sessions
+      const currentWorkspaces = state.workspaces
+
+      // If there are already open session tabs in the layout, do not auto-open landing
+      const sessionIds = new Set(currentSessions.map((s) => s.id))
+      const hasOpenTabs = collectLeaves(currentLayout).some((leaf) =>
+        leaf.tabIds.some((id) => sessionIds.has(id))
+      )
+      if (hasOpenTabs) return
+
+      // "如果没有会话页，则默认打开最后会话的workspace的初始页"
+      const validSessions = currentSessions.filter((s) =>
+        currentWorkspaces.some((w) => w.id === s.workspaceId)
+      )
+
+      if (validSessions.length > 0) {
+        const lastSession = [...validSessions].sort((a, b) => {
+          const aTime = a.updatedAt || a.startedAt || a.createdAt || 0
+          const bTime = b.updatedAt || b.startedAt || b.createdAt || 0
+          return bTime - aTime
+        })[0]
+        setLandingWorkspaceId(lastSession.workspaceId)
+        return
+      }
+
+      // "如果是第一次使用，则默认打开工作台所在工作区那个默认的workspace的初始页"
+      try {
+        let activeWorkbenchWs = useWorkspaceStore.getState().activeWorkspace
+        if (!activeWorkbenchWs) {
+          activeWorkbenchWs = (await window.api?.workspace?.getActive?.()) ?? null
+          if (!activeWorkbenchWs) {
+            const list = (await window.api?.workspace?.list?.()) ?? []
+            activeWorkbenchWs = list[0] ?? null
+          }
+        }
+
+        if (activeWorkbenchWs?.path) {
+          const targetDir = activeWorkbenchWs.path
+          const matched = currentWorkspaces.find((w) => isSamePath(w.workingDir, targetDir))
+          if (matched) {
+            setLandingWorkspaceId(matched.id)
+            return
+          }
+
+          // If no matching AI Coding workspace exists yet, create one
+          const groups = state.groups
+          const defaultGroupId = groups.find((g) => g.isDefault)?.id || 'default'
+          const created = await window.api.aiCoding.createWorkspace(targetDir, defaultGroupId)
+          await fetchAll()
+          if (!cancelled) {
+            setLandingWorkspaceId(created.id)
+          }
+          return
+        }
+      } catch (err) {
+        console.error('[AICodingPage] Failed to resolve default workbench workspace:', err)
+      }
+
+      // Fallback: if any AI coding workspaces exist, pick the first
+      if (currentWorkspaces.length > 0) {
+        setLandingWorkspaceId(currentWorkspaces[0].id)
+      }
+    }
+
+    void init()
+
+    return () => {
+      cancelled = true
+    }
+  }, [fetchAll, pendingSessionId])
 
   // After route re-entry, flex + Allotment + xterm may measure against a
   // transient container size. Kick a couple of layout passes once paint settles
@@ -181,10 +278,6 @@ const AICodingPage: React.FC = () => {
       }
     }
   }, [setActiveSession, getOrCreateLayout, focusedPaneId, addTabToPane])
-
-  // Auto-select session passed via navigation state (e.g. from workbench "AI Code" button)
-  const location = useLocation()
-  const pendingSessionId = (location.state as { selectSessionId?: string } | null)?.selectSessionId
 
   useEffect(() => {
     if (!pendingSessionId || loading) return
@@ -308,6 +401,7 @@ const AICodingPage: React.FC = () => {
               onToggleTerminalPanel={() => openSessionInPane(landingWorkspace.id, 'terminal')}
               gitPanelOpen={vcsPanelOpen}
               onToggleGitPanel={toggleVcsPanel}
+              onClose={() => setLandingWorkspaceId(null)}
             />
             <WorkspaceLandingPanel
               workspace={landingWorkspace}

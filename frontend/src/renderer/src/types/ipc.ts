@@ -730,6 +730,7 @@ export interface ClawBenchAPI {
       blocks: import('./ai-coding').CodingContentBlock[]
       timestamp: number
     }>>
+    deleteNativeSession: (workingDir: string, toolType: string, sessionId: string) => Promise<boolean>
     getSessionOutput: (sessionId: string) => Promise<string>
     getRawSessionOutput: (sessionId: string) => Promise<string>
     getRawSessionSnapshot: (sessionId: string) => Promise<{ data: string; offset: number }>

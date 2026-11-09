@@ -196,6 +196,7 @@ interface AICodingState {
   setPaneActiveTab: (paneId: string, sessionId: string) => void
   addTabToPane: (paneId: string, sessionId: string) => void
   removeTabFromPane: (paneId: string, sessionId: string) => void
+  closeSessionTabs: (sessionId: string) => Promise<void>
   setFocusedPane: (paneId: string) => void
   setSplitSizes: (path: number[], sizes: number[]) => void
 }
@@ -258,11 +259,17 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
     }
   },
   deleteSession: async (id) => {
-    const { activeSessionId: aid, sessionMessages: sm, sessionStreaming: ss, sessionStreamingBlocks: sb, sessionModes: smo, sessionContextUsage: scu } = get()
-    await window.api.aiCoding.deleteSession(id); const sessions = await window.api.aiCoding.getSessions()
-    const nm = { ...sm }; const ns = { ...ss }; const nb = { ...sb }; const nmo = { ...smo }; const ncu = { ...scu }; delete nm[id]; delete ns[id]; delete nb[id]; delete nmo[id]; delete ncu[id]
-    set({ sessions, activeSessionId: aid === id ? null : aid, sessionMessages: nm, sessionStreaming: ns, sessionStreamingBlocks: nb, sessionModes: nmo, sessionContextUsage: ncu })
     dismissCodingTarget(id)
+    await get().closeSessionTabs(id)
+    const { sessionMessages: sm, sessionStreaming: ss, sessionStreamingBlocks: sb, sessionModes: smo, sessionContextUsage: scu, sessionPendingQuestions: spq, sessionPendingPermissions: spp } = get()
+    await window.api.aiCoding.deleteSession(id)
+    const sessions = await window.api.aiCoding.getSessions()
+    const nm = { ...sm }; const ns = { ...ss }; const nb = { ...sb }; const nmo = { ...smo }; const ncu = { ...scu }
+    const nq = { ...spq }; const np = { ...spp }
+    delete nm[id]; delete ns[id]; delete nb[id]; delete nmo[id]; delete ncu[id]; delete nq[id]; delete np[id]
+    // Read activeSessionId after the awaits: closeSessionTabs may have moved it.
+    const curActive = get().activeSessionId
+    set({ sessions, activeSessionId: curActive === id ? null : curActive, sessionMessages: nm, sessionStreaming: ns, sessionStreamingBlocks: nb, sessionModes: nmo, sessionContextUsage: ncu, sessionPendingQuestions: nq, sessionPendingPermissions: np })
     _dropStaleTabs()
   },
   stopSession: async (id) => { await window.api.aiCoding.stopSession(id); const sessions = await window.api.aiCoding.getSessions(); set(s => ({ sessions, sessionStreaming: { ...s.sessionStreaming, [id]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [id]: [] } })) },
@@ -908,16 +915,63 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
         activeSessionId: nextLeaf?.activeTabId || null,
       })
     } else {
+      const nextActiveInLeaf = leaf.activeTabId === sessionId ? (newTabs[0] || null) : leaf.activeTabId
       root = updateLeaf(root, paneId, l => ({
         ...l,
         tabIds: newTabs,
-        activeTabId: l.activeTabId === sessionId ? (newTabs[0] || null) : l.activeTabId,
+        activeTabId: nextActiveInLeaf,
       }))
-      set({ globalLayout: root })
+      const currentActive = get().activeSessionId
+      const newActive = currentActive === sessionId ? nextActiveInLeaf : currentActive
+      set({ globalLayout: root, activeSessionId: newActive })
     }
 
     _persistLayout(root)
   },
+  closeSessionTabs: async (sessionId) => {
+    dismissCodingTarget(sessionId)
+    let root = get().globalLayout
+    if (!root) return
+
+    const leaves = collectLeaves(root)
+    let changed = false
+    for (const leaf of leaves) {
+      if (!leaf.tabIds.includes(sessionId)) continue
+      changed = true
+      const newTabs = leaf.tabIds.filter((id) => id !== sessionId)
+      if (newTabs.length === 0) {
+        root = removeLeaf(root, leaf.id) || createDefaultLayout([])
+      } else {
+        root = updateLeaf(root, leaf.id, (l) => ({
+          ...l,
+          tabIds: newTabs,
+          activeTabId: l.activeTabId === sessionId ? newTabs[0] || null : l.activeTabId
+        }))
+      }
+    }
+
+    if (changed) {
+      const remainingLeaves = collectLeaves(root)
+      const focused = get().focusedPaneId && remainingLeaves.some((l) => l.id === get().focusedPaneId)
+        ? get().focusedPaneId
+        : remainingLeaves[0]?.id || null
+      const currentActive = get().activeSessionId
+      let nextActive = currentActive
+      if (currentActive === sessionId) {
+        const activeLeaf = remainingLeaves.find((l) => l.id === focused) || remainingLeaves[0]
+        nextActive = activeLeaf?.activeTabId || null
+      }
+      set({ globalLayout: root, focusedPaneId: focused, activeSessionId: nextActive })
+      _persistLayout(root)
+    }
+
+    try {
+      await get().stopSession(sessionId)
+    } catch {
+      // ignore
+    }
+  },
+
 
   setFocusedPane: (paneId) => set({ focusedPaneId: paneId }),
 

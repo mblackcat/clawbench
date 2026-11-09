@@ -761,6 +761,8 @@ export const api = {
       ipcRenderer.invoke('ai-coding:list-native-sessions', workingDir, toolType),
     loadNativeSessionTranscript: (workingDir: string, toolType: string, sessionId: string) =>
       ipcRenderer.invoke('ai-coding:load-native-session-transcript', workingDir, toolType, sessionId),
+    deleteNativeSession: (workingDir: string, toolType: string, sessionId: string) =>
+      ipcRenderer.invoke('ai-coding:delete-native-session', workingDir, toolType, sessionId),
 
     // Session output
     getSessionOutput: (sessionId: string) =>

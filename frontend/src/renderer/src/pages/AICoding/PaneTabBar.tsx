@@ -60,6 +60,7 @@ interface PaneTabBarProps {
   gitPanelOpen?: boolean
   onToggleGitPanel?: () => void
   isFocused?: boolean
+  onClose?: () => void
 }
 
 const PaneTabBar: React.FC<PaneTabBarProps> = ({
@@ -71,6 +72,7 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
   terminalPanelOpen, onToggleTerminalPanel,
   gitPanelOpen, onToggleGitPanel,
   isFocused,
+  onClose
 }) => {
   const t = useT()
   const { token } = theme.useToken()
@@ -391,6 +393,18 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
                 </span>
               )}
             </span>
+          </Tooltip>
+        )}
+        {onClose && (
+          <Tooltip title={t('common.close')}>
+            <Button
+              type="text"
+              size="small"
+              icon={<CloseOutlined style={{ fontSize: 12 }} />}
+              onClick={onClose}
+              style={{ color: token.colorTextSecondary }}
+              aria-label={t('common.close')}
+            />
           </Tooltip>
         )}
       </div>
