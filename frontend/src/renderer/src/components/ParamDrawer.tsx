@@ -141,6 +141,9 @@ const ParamDrawer: React.FC<ParamDrawerProps> = ({
       />
     </Tooltip>
   ) : null
+  // Background clicks don't close the drawer (avoids losing typed params) unless
+  // the manifest explicitly opts in with mask_closable / maskClosable: true
+  const maskClosable = Boolean(manifest?.mask_closable ?? manifest?.maskClosable ?? false)
 
   return (
     <Drawer
@@ -152,6 +155,7 @@ const ParamDrawer: React.FC<ParamDrawerProps> = ({
       width={400}
       open={open}
       onClose={onClose}
+      maskClosable={maskClosable}
       destroyOnHidden
       // Keep above layout chrome; no-drag is enforced globally in theme-overhaul.css
       zIndex={1100}

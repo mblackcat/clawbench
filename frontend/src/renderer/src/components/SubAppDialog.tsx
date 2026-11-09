@@ -37,6 +37,9 @@ interface DialogData {
   components: DialogComponent[]
   footer_buttons: DialogButton[]
   closable?: boolean
+  /** Close on background click; default false (SDK Dialog.mask_closable) */
+  mask_closable?: boolean
+  maskClosable?: boolean
   width?: number
 }
 
@@ -475,12 +478,14 @@ const SubAppDialog: React.FC = () => {
       </Button>
     )
   })
+  const maskClosable = Boolean(dialog.mask_closable ?? dialog.maskClosable ?? false)
 
   return (
     <Modal
       open={open}
       title={dialog.title}
       closable={dialog.closable !== false}
+      maskClosable={maskClosable}
       onCancel={handleCancel}
       width={dialog.width || 520}
       footer={footerButtons.length > 0 ? <Space>{footerButtons}</Space> : null}

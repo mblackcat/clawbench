@@ -171,6 +171,8 @@ class Dialog:
     components: List[UIComponent] = field(default_factory=list)
     footer_buttons: List[Button] = field(default_factory=list)
     closable: bool = True
+    # Clicking the background mask closes the dialog only when explicitly enabled
+    mask_closable: bool = False
     width: Optional[int] = None
     
     def to_dict(self) -> Dict[str, Any]:
@@ -181,6 +183,7 @@ class Dialog:
             'components': [c.to_dict() for c in self.components],
             'footer_buttons': [b.to_dict() for b in self.footer_buttons],
             'closable': self.closable,
+            'mask_closable': self.mask_closable,
             'width': self.width,
         }
 
@@ -265,6 +268,7 @@ def _parse_dialog(data: Dict[str, Any]) -> Dialog:
         components=components,
         footer_buttons=footer_buttons,
         closable=data.get('closable', True),
+        mask_closable=data.get('mask_closable', False),
         width=data.get('width'),
     )
 
