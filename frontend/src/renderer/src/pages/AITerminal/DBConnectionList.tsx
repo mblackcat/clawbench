@@ -269,6 +269,13 @@ const DBConnectionList: React.FC<Props> = ({ onNew, onEdit }) => {
                               />
                             </Tooltip>
                           )}
+                          <Tooltip title={t('terminal.edit')}>
+                            <Button
+                              type="text" size="small" icon={<EditOutlined style={{ fontSize: 11 }} />}
+                              onClick={() => onEdit(conn)}
+                              style={{ width: 22, height: 22 }}
+                            />
+                          </Tooltip>
                           <Button
                             type="text" size="small" danger icon={<DeleteOutlined style={{ fontSize: 11 }} />}
                             onClick={() => handleDelete(conn)}
