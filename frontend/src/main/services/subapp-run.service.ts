@@ -12,7 +12,7 @@
  * Callers keep their own result contracts; this module only reports
  * success / failure and streams progress lines through `onOutput`.
  */
-import { getUser } from '../store/auth.store'
+import { getUser, getFeishuPlatformAppId } from '../store/auth.store'
 import { mainT } from '../utils/i18n'
 import * as logger from '../utils/logger'
 import {
@@ -102,7 +102,10 @@ export async function gateSubAppRun(
       userId: user.id,
       username: user.name,
       email: user.email || '',
-      feishuId: user.feishuId || ''
+      feishuId: user.feishuId || '',
+      // Feishu open_ids are scoped to the app that issued them; sub-apps that
+      // call Feishu with their own app need this to tell whether feishuId is usable
+      platformAppId: getFeishuPlatformAppId()
     }
   }
   return { ok: true, params: effective }
