@@ -17,6 +17,8 @@ import { adminRouter } from './routes/adminRoutes';
 import { projectRouter } from './routes/projectRoutes';
 import { commonAppRouter } from './routes/commonAppRoutes';
 import { feishuEventRouter } from './routes/feishuEventRoutes';
+import { shareRouter } from './routes/shareRoutes';
+import { shareLandingPageHandler, workbenchLandingPageHandler } from './controllers/shareController';
 
 /**
  * 创建 Express 应用
@@ -202,6 +204,12 @@ export function createApp(): Application {
 
   // Feishu drive events (callback + SSE for CoPiper sync)
   app.use('/api/v1/feishu', feishuEventRouter);
+
+  // App sharing: share info API + public landing pages that launch the desktop
+  // client via <scheme>://open-app (installer download when it is missing)
+  app.use('/api/v1/share', shareRouter);
+  app.get('/open/app/:appId', shareLandingPageHandler);
+  app.get('/open', workbenchLandingPageHandler);
 
   // 默认路由重定向到管理面板
   app.get('/', (req, res) => res.redirect('/admin/dashboard'));
