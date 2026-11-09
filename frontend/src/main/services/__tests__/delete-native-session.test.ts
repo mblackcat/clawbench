@@ -8,7 +8,7 @@ describe('deleteNativeSession', () => {
   const tempDirs: string[] = []
 
   const createTempDir = (): string => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vb-test-native-del-'))
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cb-test-native-del-'))
     tempDirs.push(dir)
     return dir
   }

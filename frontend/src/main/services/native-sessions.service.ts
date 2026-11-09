@@ -121,16 +121,29 @@ function safeJsonParseObject(text: string): Record<string, unknown> {
 // Claude provider
 // ════════════════════════════════════════════════════════════════
 
-/** Convert absolute path to Claude's project hash: "/" → "-" */
+/** Claude Code truncates project dir names past this length and appends `-<hash>`. */
+const CLAUDE_PROJECT_NAME_MAX = 200
+
+/**
+ * Convert absolute path to Claude's project dir name. Claude Code replaces every
+ * non-alphanumeric char (`_`, `.`, spaces, CJK, …) with "-"; the legacy rule
+ * (only ":" and "/") is kept for dirs created by older versions.
+ */
 function claudeProjectHashCandidates(dirPath: string): string[] {
   const resolved = path.resolve(dirPath).replace(/\\/g, '/').replace(/\/+$/, '')
-  const base = resolved.replace(/:/g, '-').replace(/\//g, '-')
-  const candidates = new Set<string>([base])
+  const bases = [
+    resolved.replace(/[^a-zA-Z0-9]/g, '-'),
+    resolved.replace(/:/g, '-').replace(/\//g, '-')
+  ]
+  const candidates = new Set<string>()
 
-  // Claude Code on Windows has used both upper- and lower-case drive letters.
-  if (/^[A-Za-z]--/.test(base)) {
-    candidates.add(base.charAt(0).toLowerCase() + base.slice(1))
-    candidates.add(base.charAt(0).toUpperCase() + base.slice(1))
+  for (const base of bases) {
+    candidates.add(base)
+    // Claude Code on Windows has used both upper- and lower-case drive letters.
+    if (/^[A-Za-z]--/.test(base)) {
+      candidates.add(base.charAt(0).toLowerCase() + base.slice(1))
+      candidates.add(base.charAt(0).toUpperCase() + base.slice(1))
+    }
   }
 
   return [...candidates]
@@ -140,6 +153,13 @@ function claudeProjectHashCandidates(dirPath: string): string[] {
 function resolveClaudeStyleProjectDirs(workingDir: string, projectsRoots: string[]): string[] {
   const candidates = claudeProjectHashCandidates(workingDir)
   const dirs = new Set<string>()
+  const caseInsensitive = process.platform === 'win32'
+  const norm = (name: string): string => (caseInsensitive ? name.toLowerCase() : name)
+  // Over-long names are stored as `<first 200 chars>-<hash>`; the hash can't be
+  // reproduced reliably, so match on the truncated prefix instead.
+  const longPrefixes = candidates
+    .filter((c) => c.length > CLAUDE_PROJECT_NAME_MAX)
+    .map((c) => norm(c.slice(0, CLAUDE_PROJECT_NAME_MAX)) + '-')
 
   for (const projectsDir of projectsRoots) {
     if (!fs.existsSync(projectsDir)) continue
@@ -149,11 +169,16 @@ function resolveClaudeStyleProjectDirs(workingDir: string, projectsRoots: string
       if (fs.existsSync(projectDir)) dirs.add(projectDir)
     }
 
-    if (process.platform === 'win32') {
+    if (caseInsensitive || longPrefixes.length > 0) {
       try {
-        const lowerCandidates = new Set(candidates.map((c) => c.toLowerCase()))
+        const normCandidates = new Set(candidates.map(norm))
         for (const entry of fs.readdirSync(projectsDir, { withFileTypes: true })) {
-          if (entry.isDirectory() && lowerCandidates.has(entry.name.toLowerCase())) {
+          if (!entry.isDirectory()) continue
+          const name = norm(entry.name)
+          if (
+            (caseInsensitive && normCandidates.has(name)) ||
+            longPrefixes.some((prefix) => name.startsWith(prefix))
+          ) {
             dirs.add(path.join(projectsDir, entry.name))
           }
         }
