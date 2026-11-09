@@ -189,6 +189,16 @@ export async function updateUserAvatar(userId: string, avatarUrl: string): Promi
 }
 
 /**
+ * 记录用户最近一次登录 / 会话同步的客户端 IP（不改 updated_at：IP 刷新不算资料变更）
+ * @param userId 用户ID
+ * @param ip 服务端观察到的 IP（见 utils/clientIp）
+ */
+export async function updateUserLastLoginIp(userId: string, ip: string | undefined): Promise<void> {
+  if (!userId || !ip) return;
+  await database.run('UPDATE users SET last_login_ip = ? WHERE user_id = ?', [ip, userId]);
+}
+
+/**
  * 删除用户
  * @param userId 用户ID
  * @returns 是否删除成功

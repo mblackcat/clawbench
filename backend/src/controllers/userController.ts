@@ -2,7 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import { AppError } from '../middleware/errorHandler';
 import { ErrorCode } from '../types/api';
 import { validateRegistrationInput } from '../utils/validation';
-import { createUser, emailExists, usernameExists, getUserById } from '../repositories/userRepository';
+import { createUser, emailExists, usernameExists, getUserById, updateUserLastLoginIp } from '../repositories/userRepository';
+import { getClientIp } from '../utils/clientIp';
 import { userToResponse } from '../models/user';
 import { loginUser as loginUserService, logoutUser as logoutUserService } from '../services/authService';
 import { AuthRequest } from '../middleware/auth';
@@ -103,6 +104,11 @@ export async function login(
       );
     }
 
+    // 记录服务端观察到的客户端 IP（仅 admin 用户列表可见；失败不影响登录）
+    await updateUserLastLoginIp(loginResponse.userId, getClientIp(req)).catch((err) =>
+      logger.warn('Failed to record login IP:', err)
+    );
+
     logger.info(`User login successful: ${loginResponse.userId}`);
 
     // 返回登录响应
@@ -185,6 +191,28 @@ export async function getCurrentUser(
       success: true,
       data: userToResponse(user),
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * 会话同步：记录当前会话的客户端 IP（登录后 / 客户端启动恢复会话时调用）
+ * POST /api/v1/users/report-ip
+ *
+ * IP 取自服务端观察到的 req.ip（受 TRUST_PROXY 约束），忽略请求体中的任何自报 IP。
+ */
+export async function reportUserIp(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    if (!req.userId) {
+      throw new AppError(ErrorCode.AUTH_REQUIRED, 'Authentication required');
+    }
+    await updateUserLastLoginIp(req.userId, getClientIp(req));
+    res.status(200).json({ success: true, data: { recorded: true } });
   } catch (error) {
     next(error);
   }

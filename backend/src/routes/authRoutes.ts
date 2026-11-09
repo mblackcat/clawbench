@@ -5,6 +5,7 @@ import {
   feishuRefreshToken,
   feishuPublicConfig,
 } from '../controllers/authController';
+import { optionalAuthenticate } from '../middleware/auth';
 
 /**
  * 认证相关路由（飞书 OAuth 等）
@@ -33,4 +34,4 @@ authRouter.get('/feishu/public-config', feishuPublicConfig);
  * POST /api/v1/auth/feishu/refresh-token
  * 刷新飞书 User Access Token（使用 refresh_token）
  */
-authRouter.post('/feishu/refresh-token', feishuRefreshToken);
+authRouter.post('/feishu/refresh-token', optionalAuthenticate, feishuRefreshToken);
