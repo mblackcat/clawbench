@@ -2,7 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../i18n', () => ({ getT: () => (k: string) => k }))
 
-import { useAttentionStore, isViewingTarget, raiseCodingCompletion } from '../useAttentionStore'
+import {
+  useAttentionStore,
+  isViewingTarget,
+  raiseCodingCompletion,
+  raiseCodingAction,
+  raiseWorkbenchCompletion,
+  dismissCodingTarget
+} from '../useAttentionStore'
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0))
 
@@ -71,5 +78,65 @@ describe('attention: dismiss is a no-op when nothing matches', () => {
     await flush()
     useAttentionStore.getState().dismissByTarget('ai-coding', 's1')
     expect(useAttentionStore.getState().hasSessionAttention('s1')).toBe(false)
+  })
+})
+
+describe('attention: red dots that must clear', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    vi.spyOn(document, 'hasFocus').mockReturnValue(false)
+    useAttentionStore.setState({
+      items: [],
+      context: { pathname: '/settings', activeChatId: null, activeCodingId: null }
+    })
+  })
+
+  it('clearViewed clears workbench completions only when on a workbench route', () => {
+    raiseWorkbenchCompletion('task-1', 'Test App')
+    expect(useAttentionStore.getState().items.length).toBe(1)
+    expect(useAttentionStore.getState().items[0].source).toBe('workbench')
+
+    useAttentionStore.getState().clearViewed()
+    expect(useAttentionStore.getState().items.length).toBe(1)
+
+    useAttentionStore.setState({
+      context: { pathname: '/workbench/installed', activeChatId: null, activeCodingId: null }
+    })
+    useAttentionStore.getState().clearViewed()
+    expect(useAttentionStore.getState().items.length).toBe(0)
+  })
+
+  it('dismissBySource clears all workbench items', () => {
+    raiseWorkbenchCompletion('task-1', 'App 1')
+    raiseWorkbenchCompletion('task-2', 'App 2')
+    expect(useAttentionStore.getState().items.length).toBe(2)
+
+    useAttentionStore.getState().dismissBySource('workbench')
+    expect(useAttentionStore.getState().items.length).toBe(0)
+  })
+
+  it('clearViewed clears a coding completion only when viewing that session', () => {
+    raiseCodingCompletion('session-1', 'Session Title')
+    expect(useAttentionStore.getState().items.length).toBe(1)
+
+    useAttentionStore.setState({
+      context: { pathname: '/ai-coding', activeChatId: null, activeCodingId: 'session-2' }
+    })
+    useAttentionStore.getState().clearViewed()
+    expect(useAttentionStore.getState().items.length).toBe(1)
+
+    useAttentionStore.setState({
+      context: { pathname: '/ai-coding', activeChatId: null, activeCodingId: 'session-1' }
+    })
+    useAttentionStore.getState().clearViewed()
+    expect(useAttentionStore.getState().items.length).toBe(0)
+  })
+
+  it('dismissCodingTarget clears the target regardless of kind', () => {
+    raiseCodingAction('session-3', 'Action needed')
+    expect(useAttentionStore.getState().items.length).toBe(1)
+
+    dismissCodingTarget('session-3')
+    expect(useAttentionStore.getState().items.length).toBe(0)
   })
 })

@@ -182,6 +182,7 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
 
   const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
     if (key === '/workbench') {
+      useAttentionStore.getState().dismissBySource('workbench')
       navigate('/workbench/installed')
     } else {
       navigate(key)

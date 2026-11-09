@@ -258,14 +258,27 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
     }
   },
   deleteSession: async (id) => {
-    const { activeSessionId: aid, sessionMessages: sm, sessionStreaming: ss, sessionStreamingBlocks: sb, sessionModes: smo, sessionContextUsage: scu } = get()
+    const { activeSessionId: aid, sessionMessages: sm, sessionStreaming: ss, sessionStreamingBlocks: sb, sessionModes: smo, sessionContextUsage: scu, sessionPendingQuestions: spq, sessionPendingPermissions: spp } = get()
     await window.api.aiCoding.deleteSession(id); const sessions = await window.api.aiCoding.getSessions()
-    const nm = { ...sm }; const ns = { ...ss }; const nb = { ...sb }; const nmo = { ...smo }; const ncu = { ...scu }; delete nm[id]; delete ns[id]; delete nb[id]; delete nmo[id]; delete ncu[id]
-    set({ sessions, activeSessionId: aid === id ? null : aid, sessionMessages: nm, sessionStreaming: ns, sessionStreamingBlocks: nb, sessionModes: nmo, sessionContextUsage: ncu })
+    const nm = { ...sm }; const ns = { ...ss }; const nb = { ...sb }; const nmo = { ...smo }; const ncu = { ...scu }
+    const nq = { ...spq }; const np = { ...spp }
+    delete nm[id]; delete ns[id]; delete nb[id]; delete nmo[id]; delete ncu[id]; delete nq[id]; delete np[id]
+    set({ sessions, activeSessionId: aid === id ? null : aid, sessionMessages: nm, sessionStreaming: ns, sessionStreamingBlocks: nb, sessionModes: nmo, sessionContextUsage: ncu, sessionPendingQuestions: nq, sessionPendingPermissions: np })
     dismissCodingTarget(id)
     _dropStaleTabs()
   },
-  stopSession: async (id) => { await window.api.aiCoding.stopSession(id); const sessions = await window.api.aiCoding.getSessions(); set(s => ({ sessions, sessionStreaming: { ...s.sessionStreaming, [id]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [id]: [] } })) },
+  stopSession: async (id) => {
+    dismissCodingTarget(id)
+    await window.api.aiCoding.stopSession(id)
+    const sessions = await window.api.aiCoding.getSessions()
+    set(s => ({
+      sessions,
+      sessionStreaming: { ...s.sessionStreaming, [id]: false },
+      sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [id]: [] },
+      sessionPendingQuestions: { ...s.sessionPendingQuestions, [id]: null },
+      sessionPendingPermissions: { ...s.sessionPendingPermissions, [id]: null }
+    }))
+  },
   launchSession: async (id, opts) => {
     // Always seed the reasoning effort so the first turn (and any relaunch)
     // honors the user's choice; main process maps it per tool.
@@ -696,7 +709,14 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
     window.api.aiCoding.setEffort(sid, effort).catch(() => { /* session may not be running yet */ })
   },
   setClaudeViewMode: (sid, m) => { localStorage.setItem('cb-claude-view-mode', m); set(s => ({ claudeViewModes: { ...s.claudeViewModes, [sid]: m } })) },
-  interruptSession: async (sid) => { try { await window.api.aiCoding.interruptSession(sid) } catch { /* */ } },
+  interruptSession: async (sid) => {
+    dismissCodingTarget(sid)
+    set(s => ({
+      sessionPendingQuestions: { ...s.sessionPendingQuestions, [sid]: null },
+      sessionPendingPermissions: { ...s.sessionPendingPermissions, [sid]: null }
+    }))
+    try { await window.api.aiCoding.interruptSession(sid) } catch { /* */ }
+  },
   answerQuestion: async (sessionId, questionId, answers, answerText) => {
     // Mark the question block as answered so the card stops soliciting input.
     set(s => {
@@ -874,6 +894,11 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
     set({ globalLayout: newRoot, activeSessionId: sessionId, focusedPaneId: paneId })
     void get().hydrateSessionTranscript(sessionId)
     _persistLayout(newRoot)
+    // Switching to the tab means its completion was seen (pending prompts stay)
+    const st = get()
+    if (!st.sessionPendingQuestions[sessionId] && !st.sessionPendingPermissions[sessionId]) {
+      dismissCodingTarget(sessionId)
+    }
   },
 
   addTabToPane: (paneId, sessionId) => {
@@ -890,6 +915,7 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
   },
 
   removeTabFromPane: (paneId, sessionId) => {
+    dismissCodingTarget(sessionId)
     let root = get().globalLayout
     if (!root) return
 
