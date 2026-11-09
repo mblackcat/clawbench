@@ -8,6 +8,9 @@ import { database } from '../../database';
  * enforce foreign keys by default) don't fail.
  */
 export async function cleanAllTables(): Promise<void> {
+  // AI system models / usage audit (no FKs)
+  await database.run('DELETE FROM ai_usage_logs');
+  await database.run('DELETE FROM ai_system_models');
   await database.run('DELETE FROM chat_attachments');
   await database.run('DELETE FROM messages');
   await database.run('DELETE FROM conversations');

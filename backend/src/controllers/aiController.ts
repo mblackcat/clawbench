@@ -2,7 +2,10 @@ import { Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { AuthRequest } from '../middleware/auth';
-import { getBuiltinModels, getModelConfig, streamChat, generateTitle, ChatMessage, ContentPart, ToolDefinition } from '../services/aiService';
+import { getBuiltinModels, getModelConfig, streamChat, generateTitle, ChatMessage, ContentPart, ToolDefinition, ModelConfig } from '../services/aiService';
+import { getSystemModelSecret, listSystemModels } from '../repositories/aiSystemModelRepository';
+import { createUsageLog } from '../repositories/aiUsageRepository';
+import { AI_MODEL_KINDS, AiModelKind, AiSystemModel, parseSystemModelOptionId, systemModelOptionId } from '../models/aiModel';
 import { createMessage } from '../repositories/messageRepository';
 import { getConversationById, updateConversation } from '../repositories/conversationRepository';
 import { getAttachmentsByIds } from '../repositories/chatAttachmentRepository';
@@ -10,15 +13,61 @@ import { logger } from '../utils/logger';
 import { config } from '../config/index';
 
 /**
+ * 解析模型：先查环境变量内置模型（AI_BUILTIN_MODELS），再查 admin-panel 配置的 chat 系统模型。
+ * 返回的 ModelConfig.id 为上游真实模型名；modelRef 为客户端可见的模型 id（用于用量审计）。
+ */
+async function resolveChatModel(
+  optionId: string
+): Promise<{ modelConfig: ModelConfig; modelRef: string } | undefined> {
+  const builtin = getModelConfig(optionId);
+  if (builtin) return { modelConfig: builtin, modelRef: builtin.id };
+  // 系统模型选项 id：<配置 id>::<上游模型 id>（单独配置 id 时取默认模型）
+  const { modelId, modelName } = parseSystemModelOptionId(optionId);
+  const resolved = await getSystemModelSecret(modelId);
+  if (!resolved || !resolved.model.enabled || resolved.model.kind !== 'chat' || !resolved.apiKey) return undefined;
+  const { model, apiKey } = resolved;
+  const upstream = modelName ?? model.modelNames[0];
+  if (!upstream || !model.modelNames.includes(upstream)) return undefined;
+  return {
+    modelRef: model.modelId,
+    modelConfig: {
+      id: upstream,
+      name: model.name,
+      provider: model.apiFormat === 'gemini' ? 'google' : 'openai',
+      endpoint: model.endpoint,
+      apiKey,
+    },
+  };
+}
+
+/** 系统模型配置 → 客户端选项（多模型配置显示为「配置名 · 模型 id」） */
+function expandSystemModels(models: AiSystemModel[]) {
+  return models.flatMap((m) =>
+    m.modelNames.map((modelName) => ({
+      optionId: systemModelOptionId(m.modelId, modelName),
+      modelId: m.modelId,
+      configName: m.name,
+      label: m.modelNames.length > 1 ? `${m.name} · ${modelName}` : m.name,
+      kind: m.kind,
+      apiFormat: m.apiFormat,
+      modelName,
+    }))
+  );
+}
+
+/**
  * GET /api/v1/ai/models
- * Get builtin models list
+ * Get builtin models list (env builtin + admin-configured chat system models)
  */
 export async function getModelsHandler(
   req: AuthRequest,
   res: Response
 ): Promise<void> {
   try {
-    const models = getBuiltinModels();
+    const systemChatModels = expandSystemModels(
+      (await listSystemModels({ kind: 'chat', enabledOnly: true })).filter((m) => m.hasApiKey)
+    ).map((o) => ({ id: o.optionId, name: o.label, provider: o.apiFormat === 'gemini' ? 'google' : 'openai' }));
+    const models = [...getBuiltinModels(), ...systemChatModels];
     res.status(200).json({
       success: true,
       data: { models },
@@ -60,9 +109,9 @@ export async function streamChatHandler(
       return;
     }
 
-    // Find model config
-    const modelConfig = getModelConfig(modelId);
-    if (!modelConfig) {
+    // Find model config (env builtin or admin-configured system model)
+    const resolvedModel = typeof modelId === 'string' ? await resolveChatModel(modelId) : undefined;
+    if (!resolvedModel) {
       res.status(404).json({
         success: false,
         error: { code: 'NOT_FOUND', message: 'Model not found' },
@@ -130,7 +179,11 @@ export async function streamChatHandler(
       }
     });
 
+    const { modelConfig, modelRef } = resolvedModel;
     let fullContent = '';
+    const started = Date.now();
+    let usage: { promptTokens: number; completionTokens: number } | undefined;
+    let streamFailed = false;
 
     try {
       const validTools: ToolDefinition[] | undefined = tools && Array.isArray(tools) && tools.length > 0 ? tools : undefined;
@@ -139,16 +192,35 @@ export async function streamChatHandler(
         if (chunk.type === 'delta' && chunk.content) {
           fullContent += chunk.content;
         }
+        if (chunk.type === 'done' && chunk.usage) usage = chunk.usage;
+        if (chunk.type === 'error') streamFailed = true;
         res.write(`data: ${JSON.stringify(chunk)}\n\n`);
       }
     } catch (streamError: any) {
       if (upstreamAbort.signal.aborted) {
         logger.info('Stream aborted: client disconnected');
       } else {
+        streamFailed = true;
         logger.error('Stream error:', streamError);
         res.write(`data: ${JSON.stringify({ type: 'error', message: streamError.message })}\n\n`);
       }
     }
+
+    // 用量审计（仅元数据，不记录对话内容）
+    createUsageLog({
+      userId: req.userId,
+      source: 'system',
+      modelRef,
+      modelName: modelConfig.id,
+      kind: 'chat',
+      scene: 'chat.stream',
+      status: streamFailed ? 'error' : 'success',
+      durationMs: Date.now() - started,
+      inputTokens: usage?.promptTokens ?? null,
+      outputTokens: usage?.completionTokens ?? null,
+      outputCount: null,
+      errorCode: streamFailed ? 'STREAM_ERROR' : upstreamAbort.signal.aborted ? 'CLIENT_ABORTED' : null,
+    }).catch((err) => logger.error('Error writing usage log:', err));
 
     // Save assistant message to DB if conversation provided
     if (conversationId && fullContent) {
@@ -205,8 +277,8 @@ export async function generateTitleHandler(
       return;
     }
 
-    const modelConfig = getModelConfig(modelId);
-    if (!modelConfig) {
+    const resolvedModel = typeof modelId === 'string' ? await resolveChatModel(modelId) : undefined;
+    if (!resolvedModel) {
       res.status(404).json({
         success: false,
         error: { code: 'NOT_FOUND', message: 'Model not found' },
@@ -214,7 +286,7 @@ export async function generateTitleHandler(
       return;
     }
 
-    const title = await generateTitle(modelConfig, messages as ChatMessage[]);
+    const title = await generateTitle(resolvedModel.modelConfig, messages as ChatMessage[]);
 
     // Update conversation title if conversationId provided
     if (conversationId) {
@@ -235,5 +307,80 @@ export async function generateTitleHandler(
       success: false,
       error: { code: 'INTERNAL_ERROR', message: 'Failed to generate title' },
     });
+  }
+}
+
+/**
+ * GET /api/v1/ai/system-models?kind=chat|image
+ * 客户端「系统」分组：已启用且已配置密钥的系统模型（不含密钥 / endpoint）
+ */
+export async function listSystemModelsHandler(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const kind = typeof req.query.kind === 'string' ? req.query.kind : undefined;
+    if (kind && !AI_MODEL_KINDS.includes(kind as AiModelKind)) {
+      res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'Invalid kind' } });
+      return;
+    }
+    // 一条配置的每个上游模型 id 展开为一个选项；optionId 回传给 /ai/chat/stream 等接口
+    const models = expandSystemModels(
+      (await listSystemModels({ kind: kind as AiModelKind | undefined, enabledOnly: true })).filter((m) => m.hasApiKey)
+    ).map((o) => ({
+      optionId: o.optionId,
+      modelId: o.modelId,
+      name: o.label,
+      configName: o.configName,
+      kind: o.kind,
+      apiFormat: o.apiFormat,
+      modelName: o.modelName,
+    }));
+    res.json({ success: true, data: { models } });
+  } catch (error) {
+    logger.error('Error listing system models:', error);
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
+  }
+}
+
+/**
+ * POST /api/v1/ai/usage/report
+ * 客户端上报「自用」模型调用用量（不含 prompt / 内容）。
+ * Body: { kind, modelName, scene, status, durationMs?, inputTokens?, outputTokens?, outputCount?, errorCode? }
+ */
+export async function reportUsageHandler(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const b = req.body ?? {};
+    const str = (v: unknown, max: number) => (typeof v === 'string' && v.trim() && v.length <= max ? v.trim() : null);
+    const num = (v: unknown) =>
+      v === undefined || v === null ? null : Number.isFinite(Number(v)) && Number(v) >= 0 ? Math.round(Number(v)) : NaN;
+    const modelName = str(b.modelName, 200);
+    const scene = str(b.scene, 64);
+    const values = [num(b.durationMs), num(b.inputTokens), num(b.outputTokens), num(b.outputCount)];
+    if (
+      !AI_MODEL_KINDS.includes(b.kind) ||
+      !modelName ||
+      !scene ||
+      !['success', 'error'].includes(b.status) ||
+      values.some((v) => Number.isNaN(v))
+    ) {
+      res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'Invalid usage report' } });
+      return;
+    }
+    await createUsageLog({
+      userId: req.userId!,
+      source: 'personal',
+      modelRef: null,
+      modelName,
+      kind: b.kind,
+      scene,
+      status: b.status,
+      durationMs: values[0],
+      inputTokens: values[1],
+      outputTokens: values[2],
+      outputCount: values[3],
+      errorCode: b.status === 'error' ? str(b.errorCode, 64) : null,
+    });
+    res.status(201).json({ success: true, data: { recorded: true } });
+  } catch (error) {
+    logger.error('Error recording usage report:', error);
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
   }
 }

@@ -10,6 +10,14 @@ import {
   updateApplicationAdminHandler,
   listExecutionErrorsHandler,
 } from '../controllers/adminController';
+import {
+  listAiModelsHandler,
+  createAiModelHandler,
+  updateAiModelHandler,
+  deleteAiModelHandler,
+  listAiUsageHandler,
+  summarizeAiUsageHandler,
+} from '../controllers/aiModelAdminController';
 
 /**
  * Admin routes — all require authentication + admin role.
@@ -34,3 +42,13 @@ adminRouter.put('/applications/:applicationId', updateApplicationAdminHandler);
 
 // Execution error logs (admin-only visibility)
 adminRouter.get('/applications/:applicationId/execution-errors', listExecutionErrorsHandler);
+
+// System AI models (team models; keys encrypted at rest, never returned)
+adminRouter.get('/ai-models', listAiModelsHandler);
+adminRouter.post('/ai-models', createAiModelHandler);
+adminRouter.put('/ai-models/:modelId', updateAiModelHandler);
+adminRouter.delete('/ai-models/:modelId', deleteAiModelHandler);
+
+// AI usage audit (metadata only, no prompts)
+adminRouter.get('/ai-usage', listAiUsageHandler);
+adminRouter.get('/ai-usage/summary', summarizeAiUsageHandler);
