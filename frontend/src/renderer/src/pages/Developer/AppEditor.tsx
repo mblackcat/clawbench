@@ -118,6 +118,7 @@ const AppEditor: React.FC = () => {
             category: manifest.category || 'other',
             icon: manifest.icon || '',
             supported_workspace_types: manifest.supported_workspace_types || [],
+            run_after_install: manifest.run_after_install === true,
             params: manifest.params || []
           })
         } catch (err) {
@@ -220,6 +221,7 @@ const AppEditor: React.FC = () => {
             coerceParamDefault(p)
           ),
       confirm_before_run: false,
+      run_after_install: values.run_after_install === true,
       min_sdk_version: '1.0.0',
       published: false
     }
@@ -415,6 +417,16 @@ const AppEditor: React.FC = () => {
                 </Checkbox>
               </Space>
             </Checkbox.Group>
+          </Form.Item>
+
+          <Form.Item
+            name="run_after_install"
+            label={t('appEditor.runAfterInstall')}
+            tooltip={t('appEditor.runAfterInstallHelp')}
+            valuePropName="checked"
+            initialValue={false}
+          >
+            <Switch />
           </Form.Item>
         </div>
 

@@ -48,6 +48,7 @@ import { useNavigate } from 'react-router-dom';
 import type { SubAppManifest } from '../../types/subapp';
 import { resolveAppPublished } from '../../types/subapp';
 import { useSubAppStore } from '../../stores/useSubAppStore';
+import { useRunAfterInstallStore } from '../../stores/useRunAfterInstallStore';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore';
@@ -1096,6 +1097,18 @@ const InstalledAppsPage: React.FC = () => {
     setDrawerInitialValues(buildInitialAppParams(appId, manifest.params || []));
     setDrawerOpen(true);
   }, []);
+
+  // run_after_install with an unfilled required param: open its params drawer
+  // once the freshly installed app shows up (useRunAfterInstallPrompt navigates here)
+  const runAfterInstallPending = useRunAfterInstallStore((s) => s.pending);
+  useEffect(() => {
+    if (!runAfterInstallPending) return;
+    const target = appInfos.find((i) => i.id === runAfterInstallPending.appId);
+    if (!target) return;
+    useRunAfterInstallStore.getState().clear();
+    setActiveTab('app');
+    handleShowDetail(target.id, target.manifest);
+  }, [runAfterInstallPending, appInfos, handleShowDetail]);
 
   const handleDrawerSubmit = async (params: Record<string, unknown>) => {
     setDrawerOpen(false);

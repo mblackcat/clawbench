@@ -27,6 +27,8 @@ export interface SubAppManifest {
   python_requirements?: string
   supported_workspace_types?: string[]
   confirm_before_run?: boolean
+  /** Execute once automatically right after a marketplace install. Default false. */
+  run_after_install?: boolean
   params?: ParamDef[]
   min_sdk_version?: string
   published?: boolean // 是否已发布到服务端

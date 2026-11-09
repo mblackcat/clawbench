@@ -54,6 +54,7 @@ if __name__ == "__main__":
   "entry": "main.py",
   "supported_workspace_types": ["git", "svn", "perforce"],
   "confirm_before_run": false,
+  "run_after_install": false,
   "published": false,
   "min_sdk_version": "1.1.0",
   "params": [
@@ -72,6 +73,7 @@ if __name__ == "__main__":
 
 Param types: \`string\` | \`boolean\` | \`number\` | \`enum\` (needs \`options\`) | \`path\` | \`text\` (multi-line).
 \`supported_workspace_types\` empty = workspace-agnostic.
+\`run_after_install: true\` runs the app once right after a marketplace install (params drawer opens instead when a required param has no default).
 
 ## Dynamic enum options (SDK 1.1.0+)
 
@@ -292,6 +294,7 @@ export function createAppScaffold(
       supported_workspace_types: appInfo.supported_workspace_types || [],
       params: appInfo.params || [],
       confirm_before_run: appInfo.confirm_before_run || false,
+      run_after_install: appInfo.run_after_install === true,
       min_sdk_version: appInfo.min_sdk_version || '1.1.0',
       published: false // 新创建的应用默认未发布
     }
