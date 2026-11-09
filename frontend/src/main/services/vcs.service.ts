@@ -324,9 +324,9 @@ async function prepareSvnCommit(workspacePath: string): Promise<VcsExecResult> {
 // ── Unified diff for one path (file or directory) ──
 
 /** Whole-response budget; beyond this the diff is cut and flagged truncated. */
-const MAX_DIFF_BYTES = 3 * 1024 * 1024
+export const MAX_DIFF_BYTES = 3 * 1024 * 1024
 /** Per-file budget when synthesizing a diff for an added/untracked file. */
-const MAX_NEW_FILE_BYTES = 512 * 1024
+export const MAX_NEW_FILE_BYTES = 512 * 1024
 /** Cap on untracked files walked when the target is a directory. */
 const MAX_NEW_FILES = 200
 /** Bytes sniffed for a NUL byte when classifying a file as binary. */
@@ -335,12 +335,12 @@ const BINARY_SNIFF_BYTES = 8192
  *  whole file and can collapse the unchanged runs itself (GitHub-style). Kept
  *  off for directory targets, where whole-file context across a subtree would
  *  blow the response budget and truncate later files. */
-const FULL_CONTEXT_LINES = 100000
+export const FULL_CONTEXT_LINES = 100000
 
 /** Raw stdout of a diff command. Unlike the helpers above this keeps the output
  *  untrimmed (diffs are whitespace-significant) and raises the buffer ceiling,
  *  since a subtree diff easily exceeds execFile's 1 MB default. */
-function runDiffCommand(command: string, workspacePath: string, args: string[]): Promise<string> {
+export function runDiffCommand(command: string, workspacePath: string, args: string[]): Promise<string> {
   return new Promise((resolvePromise, reject) => {
     execFile(
       command,

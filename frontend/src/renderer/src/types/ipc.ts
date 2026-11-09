@@ -51,6 +51,25 @@ interface VcsChangedFile {
   deletions: number
 }
 
+/** One entry of the History section (git commit / svn revision / p4 changelist). */
+export interface VcsCommit {
+  id: string
+  shortId: string
+  author: string
+  /** ms since epoch; 0 when unknown */
+  date: number
+  message: string
+}
+
+/** A file touched by one commit. `ref`/`oldRef` are opaque VCS locators. */
+export interface VcsCommitFile {
+  path: string
+  status: string
+  oldPath?: string
+  ref: string
+  oldRef?: string
+}
+
 interface VcsExecResult {
   success: boolean
   output?: string
@@ -277,6 +296,24 @@ export interface ClawBenchAPI {
     push: (workspacePath: string, vcsType?: string) => Promise<VcsExecResult>
     pull: (workspacePath: string, vcsType?: string) => Promise<VcsExecResult>
     discardFile: (workspacePath: string, filePath: string, isUntracked: boolean, vcsType?: string) => Promise<VcsExecResult>
+    log: (workspacePath: string, vcsType?: string, cursor?: string, limit?: number) => Promise<{
+      type: VcsType
+      commits: VcsCommit[]
+      nextCursor: string | null
+      error?: string
+    }>
+    commitFiles: (workspacePath: string, commitId: string, vcsType?: string) => Promise<{
+      type: VcsType
+      files: VcsCommitFile[]
+      error?: string
+    }>
+    commitFileDiff: (workspacePath: string, commitId: string, file: VcsCommitFile, vcsType?: string) => Promise<{
+      type: VcsType
+      path: string
+      diff: string
+      truncated?: boolean
+      error?: string
+    }>
   }
   settings: {
     get: () => Promise<Record<string, unknown>>

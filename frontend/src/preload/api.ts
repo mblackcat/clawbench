@@ -285,7 +285,20 @@ export const api = {
     pull: (workspacePath: string, vcsType?: string) =>
       ipcRenderer.invoke('vcs:pull', workspacePath, vcsType),
     discardFile: (workspacePath: string, filePath: string, isUntracked: boolean, vcsType?: string) =>
-      ipcRenderer.invoke('vcs:discard-file', workspacePath, filePath, isUntracked, vcsType)
+      ipcRenderer.invoke('vcs:discard-file', workspacePath, filePath, isUntracked, vcsType),
+    /** One page of commit history; pass back `nextCursor` for the next page. */
+    log: (workspacePath: string, vcsType?: string, cursor?: string, limit?: number) =>
+      ipcRenderer.invoke('vcs:log', workspacePath, vcsType, cursor, limit),
+    /** Files changed by one commit / revision / changelist. */
+    commitFiles: (workspacePath: string, commitId: string, vcsType?: string) =>
+      ipcRenderer.invoke('vcs:commit-files', workspacePath, commitId, vcsType),
+    /** Unified diff of one file as changed by one commit. */
+    commitFileDiff: (
+      workspacePath: string,
+      commitId: string,
+      file: { path: string; status: string; oldPath?: string; ref: string; oldRef?: string },
+      vcsType?: string
+    ) => ipcRenderer.invoke('vcs:commit-file-diff', workspacePath, commitId, file, vcsType)
   },
 
   dialog: {

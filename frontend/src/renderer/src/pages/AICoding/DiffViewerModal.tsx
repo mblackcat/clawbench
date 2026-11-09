@@ -3,7 +3,7 @@ import { Modal, Segmented, Button, Spin, Tooltip, theme } from 'antd'
 import { CloseOutlined, DownOutlined, FileOutlined, UpOutlined } from '@ant-design/icons'
 import { MONO_FONT_STACK } from '../../utils/mono-font'
 import { useT } from '../../i18n'
-import type { VcsType } from '../../types/ipc'
+import type { VcsCommitFile, VcsType } from '../../types/ipc'
 import {
   parseUnifiedDiff,
   buildCollapsibleSegments,
@@ -22,6 +22,9 @@ interface DiffViewerModalProps {
   /** Workspace-relative path of the double-clicked entry (file or directory). */
   target: string | null
   vcsType?: VcsType | null
+  /** When set, show `commitFile` as changed by this commit (History section)
+   *  instead of the working-copy diff of `target`. */
+  commit?: { id: string; shortId: string; file: VcsCommitFile } | null
   onClose: () => void
 }
 
@@ -80,6 +83,7 @@ const DiffViewerModal: React.FC<DiffViewerModalProps> = ({
   workingDir,
   target,
   vcsType,
+  commit,
   onClose
 }) => {
   const { token } = theme.useToken()
@@ -115,7 +119,9 @@ const DiffViewerModal: React.FC<DiffViewerModalProps> = ({
     setLoading(true)
     setError(null)
     try {
-      const result = await window.api.vcs.fileDiff(workingDir, target, vcsType || undefined)
+      const result = commit
+        ? await window.api.vcs.commitFileDiff(workingDir, commit.id, commit.file, vcsType || undefined)
+        : await window.api.vcs.fileDiff(workingDir, target, vcsType || undefined)
       if (seq !== requestSeq.current) return
       if (result?.error) {
         setError(result.error)
@@ -131,7 +137,7 @@ const DiffViewerModal: React.FC<DiffViewerModalProps> = ({
     } finally {
       if (seq === requestSeq.current) setLoading(false)
     }
-  }, [open, target, workingDir, vcsType])
+  }, [open, target, workingDir, vcsType, commit])
 
   useEffect(() => {
     void load()
@@ -158,6 +164,22 @@ const DiffViewerModal: React.FC<DiffViewerModalProps> = ({
       >
         {target || ''}
       </span>
+      {commit && (
+        <span
+          style={{
+            flexShrink: 0,
+            fontFamily: MONO_FONT_STACK,
+            fontSize: 11,
+            fontWeight: 400,
+            padding: '0 6px',
+            borderRadius: 4,
+            color: token.colorTextSecondary,
+            background: token.colorFillTertiary
+          }}
+        >
+          {commit.shortId}
+        </span>
+      )}
       <span
         style={{
           display: 'flex',

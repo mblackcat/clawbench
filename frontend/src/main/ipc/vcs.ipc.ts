@@ -11,6 +11,12 @@ import {
   pushVcs,
   type VcsType
 } from '../services/vcs.service'
+import {
+  getVcsCommitFileDiff,
+  getVcsCommitFiles,
+  getVcsLog,
+  type VcsCommitFile
+} from '../services/vcs-history.service'
 
 export function registerVcsIpc(): void {
   ipcMain.handle('vcs:detect', async (_event, workspacePath: string) => {
@@ -54,4 +60,21 @@ export function registerVcsIpc(): void {
   ipcMain.handle('vcs:discard-file', async (_event, workspacePath: string, filePath: string, isUntracked: boolean, vcsType?: string) => {
     return discardVcsFile(workspacePath, filePath, isUntracked, vcsType as VcsType | undefined)
   })
+
+  // History section: paged commit log, the files one commit touched, and the
+  // diff of one of those files (reuses the Changes diff viewer).
+  ipcMain.handle('vcs:log', async (_event, workspacePath: string, vcsType?: string, cursor?: string, limit?: number) => {
+    return getVcsLog(workspacePath, vcsType as VcsType | undefined, cursor, limit)
+  })
+
+  ipcMain.handle('vcs:commit-files', async (_event, workspacePath: string, commitId: string, vcsType?: string) => {
+    return getVcsCommitFiles(workspacePath, commitId, vcsType as VcsType | undefined)
+  })
+
+  ipcMain.handle(
+    'vcs:commit-file-diff',
+    async (_event, workspacePath: string, commitId: string, file: VcsCommitFile, vcsType?: string) => {
+      return getVcsCommitFileDiff(workspacePath, commitId, file, vcsType as VcsType | undefined)
+    }
+  )
 }
