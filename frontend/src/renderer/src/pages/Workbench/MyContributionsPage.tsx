@@ -16,6 +16,7 @@ import {
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { applicationManager } from '../../services/applicationManager';
+import { ApiClientError } from '../../services/apiClient';
 import type { Application } from '../../types/api';
 import { useSubAppStore } from '../../stores/useSubAppStore';
 import { useAuthStore, useIsAdmin } from '../../stores/useAuthStore';
@@ -563,13 +564,19 @@ const MyContributionsPage: React.FC = () => {
       cancelText: t('common.cancel'),
       onOk: async () => {
         try {
-          await applicationManager.deleteApplication(applicationId);
+          try {
+            await applicationManager.deleteApplication(applicationId);
+          } catch (error) {
+            // 404: the cloud record is already gone (e.g. deleted from another client) → treat as deleted
+            if (!(error instanceof ApiClientError && error.status === 404)) throw error;
+          }
           message.success(t('mine.deleteRemoteSuccess'));
           await loadApps();
           setIsJiggleMode(false);
         } catch (error) {
           console.error('Failed to delete remote app:', error);
-          message.error(t('mine.deleteRemoteFailed'));
+          const reason = error instanceof Error ? error.message : '';
+          message.error(reason ? t('mine.deleteFailedReason', reason) : t('mine.deleteRemoteFailed'));
         }
       }
     });

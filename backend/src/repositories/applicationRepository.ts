@@ -247,12 +247,22 @@ export async function incrementExecutionCount(applicationId: string): Promise<bo
  * @returns 是否删除成功
  */
 export async function deleteApplication(applicationId: string): Promise<boolean> {
-  const result = await database.run(
-    'DELETE FROM applications WHERE application_id = ?',
-    [applicationId]
-  );
-
-  return result.changes > 0;
+  // Delete the child rows first: MySQL / PostgreSQL enforce the foreign keys, so a
+  // previously published app (with version rows) could not be deleted otherwise;
+  // SQLite doesn't enforce them but would leave orphan rows behind.
+  return database.transaction(async () => {
+    await database.run('DELETE FROM application_execution_errors WHERE application_id = ?', [
+      applicationId,
+    ]);
+    await database.run('DELETE FROM application_versions WHERE application_id = ?', [
+      applicationId,
+    ]);
+    const result = await database.run(
+      'DELETE FROM applications WHERE application_id = ?',
+      [applicationId]
+    );
+    return result.changes > 0;
+  });
 }
 
 /**

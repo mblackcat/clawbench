@@ -591,7 +591,12 @@ export async function deleteApplicationHandler(
       return;
     }
 
-    // 删除应用
+    // Remember the package paths so storage can be cleaned up once the rows are gone
+    const versionFiles = (await getVersionsByApplicationId(applicationId))
+      .map((v) => v.filePath)
+      .filter(Boolean);
+
+    // 删除应用（主表 + 版本 / 执行错误记录在同一事务内删除）
     const deleted = await deleteApplication(applicationId);
 
     if (!deleted) {
@@ -614,6 +619,13 @@ export async function deleteApplicationHandler(
     });
 
     logger.info(`Application deleted: ${applicationId} by user ${req.userId}`);
+
+    // Package cleanup failures don't affect the result; just log them
+    for (const filePath of versionFiles) {
+      storageService.deleteFile(filePath).catch((err) => {
+        logger.warn(`Failed to remove package file of deleted app ${applicationId}: ${filePath}`, err);
+      });
+    }
   } catch (error) {
     logger.error('Error deleting application:', error);
     res.status(500).json({
