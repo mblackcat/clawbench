@@ -141,6 +141,7 @@ export function getAugmentedEnv(): NodeJS.ProcessEnv {
       path.join(home, '.opencode', 'bin'),
       path.join(localAppData, 'omp'),
       path.join(localAppData, 'Programs', 'omp'),
+      path.join(localAppData, 'agy', 'bin'),
       path.join(home, '.local', 'bin'),
       path.join(home, '.bun', 'bin'),
       path.join(localAppData, 'pnpm')
