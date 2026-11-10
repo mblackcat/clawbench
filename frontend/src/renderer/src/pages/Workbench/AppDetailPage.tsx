@@ -31,6 +31,7 @@ import { apiClient } from '../../services/apiClient';
 import type { ApplicationDetail } from '../../types/api';
 import { useT } from '../../i18n';
 import { normalizeAppType } from '../../utils/app-match';
+import { AppIcon, getMarketAppIcon } from '../../components/AppIcon';
 import { useRunInstalledApp, resolveInstalledSubApp } from '../../hooks/useRunInstalledApp';
 
 const { Title, Paragraph, Text } = Typography;
@@ -56,7 +57,12 @@ const AppDetailPage: React.FC = () => {
       message.error(t('workbench.runFailed'));
       return;
     }
-    await runApp(local.id || local.manifest.id, app.name || local.manifest.name, local.manifest);
+    await runApp(
+      local.id || local.manifest.id,
+      app.name || local.manifest.name,
+      local.manifest,
+      getMarketAppIcon(app)
+    );
   };
 
   useEffect(() => {
@@ -202,18 +208,21 @@ const AppDetailPage: React.FC = () => {
       <Card>
         <div style={{ marginBottom: 24 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <Title level={3} style={{ marginBottom: 8 }}>
-                {app.name}
-              </Title>
-              <Space>
-                <Tag color="blue">{app.category}</Tag>
-                <Tag color={app.published ? 'success' : 'warning'}>
-                  {app.published ? t('appDetail.published') : t('appDetail.unpublished')}
-                </Tag>
-                {isInstalled && <Tag color="success">{t('appDetail.installed')}</Tag>}
-                {hasUpdate && <Tag color="orange">{t('appDetail.hasUpdate')}</Tag>}
-              </Space>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <AppIcon icon={getMarketAppIcon(app)} name={app.name} category={app.category} size={48} />
+              <div>
+                <Title level={3} style={{ marginBottom: 8, marginTop: 0 }}>
+                  {app.name}
+                </Title>
+                <Space>
+                  <Tag color="blue">{app.category}</Tag>
+                  <Tag color={app.published ? 'success' : 'warning'}>
+                    {app.published ? t('appDetail.published') : t('appDetail.unpublished')}
+                  </Tag>
+                  {isInstalled && <Tag color="success">{t('appDetail.installed')}</Tag>}
+                  {hasUpdate && <Tag color="orange">{t('appDetail.hasUpdate')}</Tag>}
+                </Space>
+              </div>
             </div>
             <Space>
               {isOwner && (

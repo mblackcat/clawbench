@@ -1,5 +1,24 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { theme } from 'antd'
+import { API_BASE_URL } from '../services/apiClient'
+
+/**
+ * Server-relative icon paths (`/uploads/...`, set by admins on builtin apps)
+ * resolve against the backend origin — in the Electron renderer they would
+ * otherwise resolve against file:// or the dev server. Anything else is kept.
+ */
+export function resolveAppIconUrl(rawIcon?: string | null, apiBase: string = API_BASE_URL): string | null {
+  const trimmed = rawIcon?.trim()
+  if (!trimmed) return null
+  if (trimmed.startsWith('/') && !trimmed.startsWith('//')) {
+    try {
+      return `${new URL(apiBase).origin}${trimmed}`
+    } catch {
+      return trimmed
+    }
+  }
+  return trimmed
+}
 
 interface AppIconProps {
   icon?: string | null
@@ -8,6 +27,14 @@ interface AppIconProps {
   size?: number
   style?: React.CSSProperties
   className?: string
+}
+
+/** Icon of a marketplace app: metadata.icon, else its cover. */
+export function getMarketAppIcon(app?: { metadata?: Record<string, unknown> | null } | null): string | undefined {
+  const meta = app?.metadata
+  if (typeof meta?.icon === 'string' && meta.icon.trim()) return meta.icon
+  if (typeof meta?.coverUrl === 'string' && meta.coverUrl.trim()) return meta.coverUrl
+  return undefined
 }
 
 // Category fallback glyphs (stroke uses currentColor)
@@ -96,8 +123,13 @@ export const AppIcon: React.FC<AppIconProps> = ({
 }) => {
   const { token } = theme.useToken()
   const [failed, setFailed] = useState(false)
+  // A new icon (e.g. refreshed from the server) gets a fresh load attempt
+  useEffect(() => {
+    setFailed(false)
+  }, [icon])
 
-  const hasCustomIcon = Boolean(icon && icon.trim() && !failed)
+  const resolvedIcon = resolveAppIconUrl(icon)
+  const hasCustomIcon = Boolean(resolvedIcon && !failed)
   const meta = getCategoryTheme(category, name, token)
   const FallbackIcon = meta.Icon
 
@@ -123,7 +155,7 @@ export const AppIcon: React.FC<AppIconProps> = ({
     >
       {hasCustomIcon ? (
         <img
-          src={icon!}
+          src={resolvedIcon!}
           alt={name || ''}
           style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
           onError={() => setFailed(true)}

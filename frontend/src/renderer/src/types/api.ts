@@ -250,6 +250,8 @@ export interface CommonAppInfo {
   name: string;
   description: string | null;
   version: string | null;
+  /** 图标 URL / data URI（admin 可编辑） */
+  icon?: string | null;
   /** 服务端是否已发布归档（admin 覆盖发布后为 true，客户端据此优先取服务端版本） */
   hasArchive?: boolean;
   enabled: boolean;
@@ -259,6 +261,7 @@ export interface CommonAppInfo {
   pinned: boolean;
   downloadCount?: number;
   executionCount?: number;
+  errorCount?: number;
   config: Record<string, unknown>;
 }
 

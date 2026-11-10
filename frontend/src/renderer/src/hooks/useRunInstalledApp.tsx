@@ -37,6 +37,7 @@ export async function resolveInstalledSubApp(
 interface DrawerState {
   appId: string
   manifest: SubAppManifest
+  icon?: string
   initialValues: Record<string, unknown>
 }
 
@@ -47,7 +48,7 @@ interface DrawerState {
  * Render the returned `paramDrawer` element once in the page.
  */
 export function useRunInstalledApp(): {
-  runApp: (appId: string, appName: string, manifest: SubAppManifest) => Promise<void>
+  runApp: (appId: string, appName: string, manifest: SubAppManifest, icon?: string) => Promise<void>
   paramDrawer: React.ReactElement
 } {
   const { message } = App.useApp()
@@ -86,11 +87,11 @@ export function useRunInstalledApp(): {
   )
 
   const runApp = useCallback(
-    async (appId: string, appName: string, manifest: SubAppManifest) => {
+    async (appId: string, appName: string, manifest: SubAppManifest, icon?: string) => {
       const params = manifest.params || []
       const initialValues = buildInitialAppParams(appId, params)
       if (params.some((p) => p.required) || manifest.confirm_before_run) {
-        setDrawer({ appId, manifest, initialValues })
+        setDrawer({ appId, manifest, icon, initialValues })
         setDrawerOpen(true)
         return
       }
@@ -111,6 +112,7 @@ export function useRunInstalledApp(): {
       open={drawerOpen}
       onClose={() => setDrawerOpen(false)}
       manifest={drawer?.manifest ?? null}
+      icon={drawer?.icon}
       initialValues={drawer?.initialValues ?? {}}
       resolveSlot={window.api.subapp.resolveSlot}
       onSubmit={handleSubmit}

@@ -31,7 +31,7 @@ import { seedTaskFromExecuteResult, describeEarlyTerminal } from '../../utils/su
 import { isAuthoredByCurrentUser } from '../../utils/app-identity';
 import { isBuiltinAppId, resolveLocalAppStatus, type AppCardStatus } from '../../utils/app-status';
 import { AppVersionTag } from '../../components/AppStatusTag';
-import { AppIcon } from '../../components/AppIcon';
+import { AppIcon, getMarketAppIcon } from '../../components/AppIcon';
 import { FolderCard } from '../../components/FolderCard';
 
 const { Title, Text } = Typography;
@@ -60,6 +60,8 @@ interface MineItem {
   /** Server version when known */
   remoteVersion?: string
   description: string
+  /** Server icon/cover (market metadata), else manifest.icon */
+  icon?: string
   category: MineTabKey
   /** Local manifest when on disk */
   manifest?: SubAppManifest
@@ -267,6 +269,7 @@ const MyContributionsPage: React.FC = () => {
         version: manifest.version || remoteVersion || '1.0.0',
         remoteVersion,
         description: manifest.description || '',
+        icon: getMarketAppIcon(serverMatch) || manifest.icon,
         category: toTabKey(manifest.type),
         manifest,
         appType,
@@ -286,6 +289,7 @@ const MyContributionsPage: React.FC = () => {
         version: app.version || '1.0.0',
         remoteVersion: app.version,
         description: app.description || '',
+        icon: getMarketAppIcon(app),
         category: toTabKey(app.type),
         appType: app.published ? 'published' : 'local',
         status: 'remote_only',
@@ -710,7 +714,7 @@ const MyContributionsPage: React.FC = () => {
             width: 'calc(100% - 74px)'
           }}
         >
-          <AppIcon icon={app?.icon} name={item.name} category={app?.category} size={28} />
+          <AppIcon icon={item.icon || app?.icon} name={item.name} category={app?.category} size={28} />
           <Tooltip title={item.name}>
             <Text
               strong

@@ -32,7 +32,7 @@ import { useSettingsStore } from '../../stores/useSettingsStore';
 import CreateTypeModal from '../../components/CreateTypeModal';
 import SkillInstallModal from '../../components/SkillInstallModal';
 import { AppVersionTag } from '../../components/AppStatusTag';
-import { AppIcon } from '../../components/AppIcon';
+import { AppIcon, getMarketAppIcon } from '../../components/AppIcon';
 import { FolderCard } from '../../components/FolderCard';
 import {
   resolveDiscoverStatus,
@@ -239,7 +239,12 @@ const AppLibraryPage: React.FC = () => {
       return;
     }
     setDrawerOpen(false);
-    await runApp(local.id || local.manifest.id, app.name || local.manifest.name, local.manifest);
+    await runApp(
+      local.id || local.manifest.id,
+      app.name || local.manifest.name,
+      local.manifest,
+      getMarketAppIcon(app)
+    );
   };
 
   const confirmUpdate = (app: Application) => {
@@ -592,10 +597,7 @@ const AppLibraryPage: React.FC = () => {
     const isBuiltin = isBuiltinAppId(app.applicationId);
     const isPinned = pinnedApps.includes(app.applicationId);
     const variant = isBuiltin ? 'builtin' : isDraft ? 'draft' : owned ? 'own-published' : 'regular';
-    const iconUrl =
-      (typeof app.metadata?.icon === 'string' && app.metadata.icon) ||
-      (typeof app.metadata?.coverUrl === 'string' && app.metadata.coverUrl) ||
-      undefined;
+    const iconUrl = getMarketAppIcon(app);
 
     return (
       <FolderCard
@@ -785,7 +787,21 @@ const AppLibraryPage: React.FC = () => {
       )}
 
       <Drawer
-        title={drawerApp?.name}
+        title={
+          drawerApp ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+              <AppIcon
+                icon={getMarketAppIcon(drawerApp)}
+                name={drawerApp.name}
+                category={drawerApp.category}
+                size={24}
+              />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {drawerApp.name}
+              </span>
+            </div>
+          ) : null
+        }
         placement="right"
         width={400}
         open={drawerOpen}

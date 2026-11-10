@@ -14,6 +14,7 @@ import dayjs from 'dayjs'
 import type { SubAppManifest } from '../types/subapp'
 import AppParamFields, { type AppParamFieldsHandle } from './AppParamFields'
 import AppScheduleModal from './AppScheduleModal'
+import { AppIcon } from './AppIcon'
 import { useAppScheduleStore } from '../stores/useAppScheduleStore'
 import { useT } from '../i18n'
 
@@ -28,6 +29,8 @@ interface ParamDrawerProps {
   open: boolean
   onClose: () => void
   manifest: SubAppManifest | null
+  /** Icon override (server-configured market / builtin icon); defaults to manifest.icon */
+  icon?: string
   initialValues?: Record<string, unknown>
   resolveSlot: (
     appId: string,
@@ -41,6 +44,7 @@ const ParamDrawer: React.FC<ParamDrawerProps> = ({
   open,
   onClose,
   manifest,
+  icon,
   initialValues,
   resolveSlot,
   onSubmit
@@ -101,6 +105,15 @@ const ParamDrawer: React.FC<ParamDrawerProps> = ({
           justifyContent: 'center'
         }}
       />
+      {manifest && (
+        <AppIcon
+          icon={icon || manifest.icon}
+          name={manifest.name}
+          category={manifest.category}
+          size={22}
+          style={{ marginInlineEnd: 2 }}
+        />
+      )}
       <Text strong ellipsis style={{ minWidth: 0, flex: 1 }}>
         {manifest ? manifest.name : ''}
       </Text>
