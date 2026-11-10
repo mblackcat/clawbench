@@ -12,6 +12,7 @@
 - [API Documentation](./API_DOCUMENTATION.md) -- Backend REST API reference
 - [App Marketplace](./APP_MARKETPLACE.md) -- Application marketplace system and features
 - [App Logging](./APP_LOGGING.md) -- Execution logging system
+- [Remote Task Dispatch](./REMOTE_TASK_DISPATCH.md) -- Server-dispatched app runs on desktop clients (SSE signal + pull, trust model)
 - [Project Status](./PROJECT_STATUS.md) -- Current implementation status and roadmap
 - [UI Guide](./UI_GUIDE.md) -- Practical guide for building UI apps (quick start, templates, testing)
 - [UI Reference](./UI_REFERENCE.md) -- UI system architecture, component catalog, and protocol reference

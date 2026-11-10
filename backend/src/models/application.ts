@@ -17,6 +17,8 @@ export interface Application {
   category: string | null;
   published: boolean;
   featured: boolean;
+  /** Admin opt-in for remote task dispatch (see docs/REMOTE_TASK_DISPATCH.md) */
+  dispatchable?: boolean;
   downloadCount: number;
   executionCount: number;
   metadata: Record<string, any> | null;
@@ -72,6 +74,7 @@ export interface ApplicationResponse {
   category: string | null;
   published: boolean;
   featured: boolean;
+  dispatchable?: boolean;
   /** 最新版本号（取自 application_versions 中 published_at 最新的一条） */
   version?: string;
   downloadCount: number;
@@ -95,6 +98,7 @@ export interface ApplicationRow {
   category: string | null;
   published: number; // SQLite uses 0/1 for boolean
   featured: number; // SQLite uses 0/1 for boolean
+  dispatchable?: number | null;
   download_count: number;
   execution_count: number;
   metadata: string | null; // JSON stored as string
@@ -115,6 +119,7 @@ export function applicationRowToApplication(row: ApplicationRow): Application {
     category: row.category,
     published: row.published === 1,
     featured: row.featured === 1,
+    dispatchable: Number(row.dispatchable) === 1,
     downloadCount: row.download_count,
     executionCount: row.execution_count,
     metadata: row.metadata ? JSON.parse(row.metadata) : null,
@@ -146,6 +151,7 @@ export function applicationToResponse(
     category: app.category,
     published: app.published,
     featured: app.featured,
+    dispatchable: Boolean(app.dispatchable),
     version: latestVersion,
     downloadCount: app.downloadCount,
     executionCount: app.executionCount,

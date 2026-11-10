@@ -97,4 +97,6 @@ export interface TaskInfo {
   result?: { success: boolean; summary: string; summaryI18nKey?: string; summaryI18nArgs?: string[] }
   /** True when this task was triggered by the app scheduler (定时执行), not a manual run. */
   scheduled?: boolean
+  /** True when this task was dispatched by the server (remote task dispatch). */
+  remote?: boolean
 }

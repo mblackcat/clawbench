@@ -56,6 +56,9 @@ function recordTaskUsageOnce(
 /** Map of taskId to app display name */
 const taskAppNames = new Map<string, string>()
 
+/** Map of taskId to manifest id for every live task (any launch path); see isAppRunning */
+const runningTaskAppIds = new Map<string, string>()
+
 /**
  * Map of taskId to marketplace app identity, used only by `executeSubApp`
  * (the primary workbench "run" path) to report execution results/errors to
@@ -79,6 +82,8 @@ export interface IMExecCallbacks {
   onOutput?: (message: string, level: string) => void
   onProgress?: (percent: number, message: string) => void
   onComplete?: (success: boolean, summary: string, cancelled?: boolean) => void
+  /** Process exit code (fires on close, before onComplete's fallback). */
+  onExit?: (code: number | null) => void
 }
 
 export interface PythonResolution {
@@ -344,6 +349,7 @@ export function executeSubApp(
   logger.info(`Starting task ${taskId}: ${entryFile} in ${appPath}`)
 
   taskAppNames.set(taskId, appName)
+  runningTaskAppIds.set(taskId, appId)
   taskAppMeta.set(taskId, { appId, version })
 
   // Write params and workspace info to temp JSON files
@@ -501,6 +507,7 @@ export function executeSubApp(
     cancelledTasks.delete(taskId)
     recordedUsageTasks.delete(taskId)
     taskAppNames.delete(taskId)
+    runningTaskAppIds.delete(taskId)
     taskAppMeta.delete(taskId)
     cleanupTempFiles(paramsFile, workspaceFile)
   })
@@ -540,6 +547,7 @@ export function executeSubApp(
     runningTasks.delete(taskId)
     recordedUsageTasks.delete(taskId)
     taskAppNames.delete(taskId)
+    runningTaskAppIds.delete(taskId)
     taskAppMeta.delete(taskId)
     cleanupTempFiles(paramsFile, workspaceFile)
   })
@@ -668,6 +676,7 @@ export function executeSubAppWithCallbacks(
   logger.info(`[IM] Starting task ${taskId}: ${entryFile} in ${appPath}`)
 
   taskAppNames.set(taskId, appName)
+  runningTaskAppIds.set(taskId, appId)
 
   const tmpDir = ensureTempDir()
   const paramsFile = join(tmpDir, `params-${taskId}.json`)
@@ -764,6 +773,7 @@ export function executeSubAppWithCallbacks(
     if (stdoutBuffer.trim()) {
       callbacks.onOutput?.(stdoutBuffer, 'info')
     }
+    callbacks.onExit?.(code)
     // Result handler already accounts for cancelledTasks; only finalize here
     // when no terminal result was emitted.
     if (!completedTasks.has(taskId)) {
@@ -790,6 +800,7 @@ export function executeSubAppWithCallbacks(
     cancelledTasks.delete(taskId)
     recordedUsageTasks.delete(taskId)
     taskAppNames.delete(taskId)
+    runningTaskAppIds.delete(taskId)
     cleanupTempFiles(paramsFile, workspaceFile)
   })
 
@@ -800,8 +811,19 @@ export function executeSubAppWithCallbacks(
     runningTasks.delete(taskId)
     recordedUsageTasks.delete(taskId)
     taskAppNames.delete(taskId)
+    runningTaskAppIds.delete(taskId)
     cleanupTempFiles(paramsFile, workspaceFile)
   })
+}
+
+/**
+ * Whether any live task (manual, scheduled, IM, remote, …) is running this app.
+ */
+export function isAppRunning(appId: string): boolean {
+  for (const [taskId, id] of runningTaskAppIds) {
+    if (id === appId && runningTasks.has(taskId)) return true
+  }
+  return false
 }
 
 /**

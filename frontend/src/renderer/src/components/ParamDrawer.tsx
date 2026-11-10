@@ -12,6 +12,7 @@ import {
 import { ClockCircleOutlined, CloseOutlined, SyncOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import type { SubAppManifest } from '../types/subapp'
+import type { RemoteTaskItem } from '../types/ipc'
 import AppParamFields, { type AppParamFieldsHandle } from './AppParamFields'
 import AppScheduleModal from './AppScheduleModal'
 import { useAppScheduleStore } from '../stores/useAppScheduleStore'
@@ -35,6 +36,9 @@ interface ParamDrawerProps {
     params?: Record<string, unknown>
   ) => Promise<unknown>
   onSubmit: (params: Record<string, unknown>) => void
+  /** Confirming a server-dispatched task: shows who/why and Reject / Confirm & Run. */
+  remoteTask?: RemoteTaskItem | null
+  onReject?: () => void
 }
 
 const ParamDrawer: React.FC<ParamDrawerProps> = ({
@@ -43,7 +47,9 @@ const ParamDrawer: React.FC<ParamDrawerProps> = ({
   manifest,
   initialValues,
   resolveSlot,
-  onSubmit
+  onSubmit,
+  remoteTask,
+  onReject
 }) => {
   const { token } = theme.useToken()
   const t = useT()
@@ -51,8 +57,8 @@ const ParamDrawer: React.FC<ParamDrawerProps> = ({
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false)
 
-  // Only "app" resources support scheduling (Python sub-apps)
-  const canSchedule = !manifest?.type || manifest.type === 'app'
+  // Only "app" resources support scheduling (Python sub-apps); not while confirming a remote task
+  const canSchedule = !remoteTask && (!manifest?.type || manifest.type === 'app')
   const schedule = useAppScheduleStore((s) =>
     manifest && canSchedule ? s.schedules.find((x) => x.appId === manifest.id) : undefined
   )
@@ -166,18 +172,69 @@ const ParamDrawer: React.FC<ParamDrawerProps> = ({
       }}
       footer={
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <Space>
-            <Button onClick={onClose}>{manifest?.params?.length ? t('common.cancel') : t('skillDetail.close')}</Button>
-            <Button type="primary" onClick={handleSubmit} disabled={isRefreshing}>
-              {t('paramDrawer.run')}
-            </Button>
-          </Space>
+          {remoteTask ? (
+            <Space>
+              <Button onClick={onClose}>{t('remoteTask.later')}</Button>
+              <Button danger onClick={() => onReject?.()}>
+                {t('remoteTask.reject')}
+              </Button>
+              <Button type="primary" onClick={handleSubmit} disabled={isRefreshing}>
+                {t('remoteTask.confirmRun')}
+              </Button>
+            </Space>
+          ) : (
+            <Space>
+              <Button onClick={onClose}>{manifest?.params?.length ? t('common.cancel') : t('skillDetail.close')}</Button>
+              <Button type="primary" onClick={handleSubmit} disabled={isRefreshing}>
+                {t('paramDrawer.run')}
+              </Button>
+            </Space>
+          )}
         </div>
       }
     >
+      {remoteTask && (
+        <div
+          data-testid="remote-task-banner"
+          style={{
+            marginBottom: 16,
+            padding: '12px 14px',
+            background: token.colorInfoBg,
+            border: `1px solid ${token.colorInfoBorder}`,
+            borderRadius: token.borderRadiusLG
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <Text strong>
+              {t('remoteTask.dispatchedBy')}: {remoteTask.dispatchedByName || t('remoteTask.unknownDispatcher')}
+            </Text>
+            <Tag color="blue" style={{ margin: 0 }}>
+              {t('remoteTask.remoteBadge')}
+            </Tag>
+          </div>
+          {remoteTask.reason && (
+            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+              {t('remoteTask.reason')}: {remoteTask.reason}
+            </Text>
+          )}
+          {remoteTask.installAction && (
+            <Text type="warning" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+              {remoteTask.installAction === 'upgrade'
+                ? t('remoteTask.willUpgrade', remoteTask.localVersion || '?', remoteTask.appVersion)
+                : t('remoteTask.willInstall', remoteTask.appVersion)}
+            </Text>
+          )}
+          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+            {t('remoteTask.confirmHint')}
+          </Text>
+        </div>
+      )}
+
       <Descriptions column={1} size="small" style={{ marginBottom: 12 }}>
         <Descriptions.Item label={t('paramDrawer.name')}>{manifest?.name}</Descriptions.Item>
-        <Descriptions.Item label={t('paramDrawer.version')}>{manifest?.version}</Descriptions.Item>
+        <Descriptions.Item label={t('paramDrawer.version')}>
+          {remoteTask ? remoteTask.appVersion : manifest?.version}
+        </Descriptions.Item>
         {manifest?.author && (
           <Descriptions.Item label={t('paramDrawer.author')}>
             {typeof manifest.author === 'string' ? manifest.author : manifest.author.name}

@@ -18,6 +18,7 @@ import {
 } from '../services/settings.service'
 import { setLastChatModel, getLastChatModel, setLastBuiltinChatModel, getLastBuiltinChatModel, getLastChatModelSource, getChatPreferences, setChatPreferences, getAiToolsConfig, getAiToolsConfigRaw, setAiToolsConfig, getAgentSettings, setAgentSettings } from '../store/settings.store'
 import { saveApiToken, clearApiToken } from '../store/api-credentials.store'
+import { remoteTaskService } from '../services/remote-task.service'
 import { refreshGlobalShortcuts, getRegisteredShortcutDigits } from '../services/shortcut.service'
 import { warmProjectCommonAppsCache } from '../services/project.service'
 import { detectLarkCli, resetFeishuCliCache } from '../services/feishu-tools.service'
@@ -135,9 +136,14 @@ export function registerSettingsIpc(): void {
 
   ipcMain.handle('credentials:save-api-token', async (_event, token: string) => {
     saveApiToken(token)
+    // Start the remote task channel after login (idempotent: a token refresh
+    // keeps the running session, which re-reads the token on each request;
+    // logout/user switch goes through clear-api-token → stop first).
+    remoteTaskService.start()
   })
 
   ipcMain.handle('credentials:clear-api-token', async () => {
+    remoteTaskService.stop()
     clearApiToken()
   })
 

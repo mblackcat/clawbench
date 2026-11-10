@@ -4,6 +4,7 @@ import { logger } from '../utils/logger';
 import { initializeSqliteSchema } from './schema/sqlite.schema';
 import { initializeAiSchema } from './schema/ai.schema';
 import { Dialect } from './schema/dialect';
+import { initializeDispatchSchema } from './schema/dispatch.schema';
 
 /**
  * Initialise the database schema for the active dialect.
@@ -42,4 +43,7 @@ export async function initializeSchema(): Promise<void> {
   const dialect: Dialect = dbType === 'mysql' || dbType === 'postgres' ? dbType : 'sqlite';
   // 系统模型 / 用量审计
   await initializeAiSchema(database, dialect);
+
+  // Remote task dispatch tables (after the base schema: it ALTERs applications)
+  await initializeDispatchSchema(database, dialect);
 }

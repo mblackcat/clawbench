@@ -80,7 +80,14 @@ const translations: Record<Lang, Record<string, string>> = {
     'protocol.confirmRunDetail':
       '应用 ID：{0}\n参数：{1}\n\n该请求来自工作台之外（例如网页链接）。如果你不认识这个链接来源，请选择取消。',
     'protocol.confirmRunOk': '运行',
-    'protocol.noParams': '（无）'
+    'protocol.noParams': '（无）',
+    // remote task dispatch
+    'remoteTask.announce': '📡 远程任务：{0}（下发人：{1}）',
+    'remoteTask.notifyRunningTitle': '远程任务正在运行：{0}',
+    'remoteTask.notifyRunningBody': '服务器下发的任务正在后台运行。可在「设置 → 远程任务」中关闭。{0}',
+    'remoteTask.notifyDoneTitle': '远程任务完成：{0}',
+    'remoteTask.notifyFailedTitle': '远程任务失败：{0}',
+    'remoteTask.unknownDispatcher': '管理员'
   },
   en: {
     'subapp.pythonConfiguredPathUnavailable':
@@ -159,7 +166,14 @@ const translations: Record<Lang, Record<string, string>> = {
     'protocol.confirmRunDetail':
       'App ID: {0}\nParameters: {1}\n\nThis request came from outside the app (for example a web link). Cancel if you do not recognize where the link came from.',
     'protocol.confirmRunOk': 'Run',
-    'protocol.noParams': '(none)'
+    'protocol.noParams': '(none)',
+    // remote task dispatch
+    'remoteTask.announce': '📡 Remote task: {0} (dispatched by {1})',
+    'remoteTask.notifyRunningTitle': 'Remote task running: {0}',
+    'remoteTask.notifyRunningBody': 'A task dispatched by the server is running in the background. You can turn this off in Settings → Remote Tasks. {0}',
+    'remoteTask.notifyDoneTitle': 'Remote task finished: {0}',
+    'remoteTask.notifyFailedTitle': 'Remote task failed: {0}',
+    'remoteTask.unknownDispatcher': 'an admin'
   }
 }
 

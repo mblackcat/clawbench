@@ -4,6 +4,7 @@
  */
 
 import fs from 'fs'
+import crypto from 'crypto'
 import { join } from 'path'
 import { getTempDir } from '../../utils/paths'
 import { unzipArchive } from '../../utils/zip'
@@ -86,13 +87,33 @@ export async function searchMarketApps(keywords: string, limit = 10): Promise<Ma
 
 /**
  * Downloads and installs an app from the marketplace.
+ *
+ * `version` pins a specific published version; `expectedSha256` (remote task
+ * dispatch) rejects a package whose bytes differ from what the admin
+ * dispatched (`reasonCode: 'HASH_MISMATCH'`).
  */
-export async function installMarketApp(appId: string): Promise<{ success: boolean; name?: string; error?: string }> {
+export async function installMarketApp(
+  appId: string,
+  version?: string,
+  expectedSha256?: string
+): Promise<{ success: boolean; name?: string; error?: string; reasonCode?: string }> {
   try {
     // Download zip
+    const base = `${API_BASE_URL}/applications/${encodeURIComponent(appId)}/download`
     const buffer = await fetchPackageArchive(
-      `${API_BASE_URL}/applications/${encodeURIComponent(appId)}/download`
+      version ? `${base}?version=${encodeURIComponent(version)}` : base
     )
+
+    if (expectedSha256) {
+      const actual = crypto.createHash('sha256').update(buffer).digest('hex')
+      if (actual.toLowerCase() !== expectedSha256.toLowerCase()) {
+        return {
+          success: false,
+          error: `Package checksum mismatch: expected ${expectedSha256}, got ${actual}`,
+          reasonCode: 'HASH_MISMATCH'
+        }
+      }
+    }
     const tmpDir = getTempDir()
     if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true })
 
@@ -123,7 +144,7 @@ export async function installMarketApp(appId: string): Promise<{ success: boolea
     } catch { /* ignore cleanup errors */ }
 
     if (!result.success) {
-      return { success: false, error: result.error }
+      return { success: false, error: result.error, reasonCode: 'INSTALL_FAILED' }
     }
     if (result.targetDir) {
       try {

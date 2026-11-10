@@ -27,6 +27,7 @@ import MCPServerSettings from './MCPServerSettings'
 import AIToolsSettings from './AIToolsSettings'
 import AIAssistantSettings from './AIAssistantSettings'
 import ProjectSelectCard from './ProjectSelectCard'
+import RemoteTaskSettingsCard from './RemoteTaskSettingsCard'
 import { generalModeFallbackPath } from '../../constants/app-mode'
 import EnvPathSettings from './EnvPathSettings'
 import { useT } from '../../i18n'
@@ -296,6 +297,9 @@ const SettingsPage: React.FC = () => {
 
                 {/* Card 2: Python / IDE / terminal paths (scanned pickers) */}
                 <EnvPathSettings />
+
+                {/* Card 3: Remote task dispatch (hidden in local mode) */}
+                <RemoteTaskSettingsCard />
               </div>
             )
           },

@@ -11,6 +11,9 @@ export async function cleanAllTables(): Promise<void> {
   // AI system models / usage audit (no FKs)
   await database.run('DELETE FROM ai_usage_logs');
   await database.run('DELETE FROM ai_system_models');
+  // remote task dispatch (executions reference tasks)
+  await database.run('DELETE FROM dispatched_task_executions');
+  await database.run('DELETE FROM dispatched_tasks');
   await database.run('DELETE FROM chat_attachments');
   await database.run('DELETE FROM messages');
   await database.run('DELETE FROM conversations');
