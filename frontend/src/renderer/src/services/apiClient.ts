@@ -553,6 +553,14 @@ class ApiClient {
   }
 
   /**
+   * 会话同步：让后端记录本次会话的客户端 IP（服务端按 req.ip 观察，不上报本机 IP）。
+   * 仅 admin 用户列表可见。
+   */
+  async reportSession(): Promise<void> {
+    await this.httpClient.post<{ recorded: boolean }>('/users/report-ip', {}, true);
+  }
+
+  /**
    * 检查是否已登录
    */
   isLoggedIn(): boolean {
