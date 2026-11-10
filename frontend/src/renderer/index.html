@@ -4,12 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ClawBench</title>
-    <!-- Motion layer: apply data-motion before first paint so tokens are in effect before React hydrates. No IPC. -->
+    <!-- Motion & font layer: apply data-motion / data-font-size before first paint so tokens are in effect before React hydrates. No IPC. -->
     <script>
       try {
         var stored = localStorage.getItem('cb-motion');
         var motion = stored === 'agile' || stored === 'off' ? 'agile' : 'elegant';
         document.documentElement.setAttribute('data-motion', motion);
+        var fontSize = localStorage.getItem('cb-font-size') === 'large' ? 'large' : 'standard';
+        document.documentElement.setAttribute('data-font-size', fontSize);
+        if (fontSize === 'large') {
+          document.documentElement.style.setProperty('--cb-font-scale', '1.2');
+          document.documentElement.style.setProperty('--cb-font-size-base', '16.8px');
+          document.documentElement.style.setProperty('--cb-font-size-sm', '14.4px');
+        }
       } catch (e) {}
     </script>
   </head>

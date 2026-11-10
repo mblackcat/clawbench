@@ -12,9 +12,16 @@ import {
   withProModulesEnabled,
   type AppMode
 } from '../constants/app-mode'
+import {
+  applyFontSizeToDom,
+  normalizeFontSize,
+  readStoredFontSize,
+  type FontSizeMode
+} from '../constants/font-size'
 
 export type { ModuleVisibility } from '../constants/module-visibility'
 export type { AppMode } from '../constants/app-mode'
+export type { FontSizeMode } from '../constants/font-size'
 
 /** Read the persisted app mode; falls back to the default on any error. */
 function readStoredAppMode(): AppMode {
@@ -44,6 +51,8 @@ interface SettingsState {
   pythonPath: string
   language: string
   theme: string
+  /** Font size mode: standard or large (+20%) */
+  fontSize: FontSizeMode
   userAppDir: string
   autoUpdate: boolean
   localIdePath: string
@@ -67,6 +76,7 @@ interface SettingsState {
   updateAiToolsConfig: (config: AiToolsConfig) => Promise<void>
   completeSetup: () => Promise<void>
   setAppMode: (mode: AppMode) => void
+  setFontSize: (mode: FontSizeMode) => void
   setActiveProject: (project: SelectedProject | null) => void
   togglePinnedApp: (appId: string) => void
 }
@@ -83,6 +93,8 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   pythonPath: '',
   language: 'zh-CN',
   theme: 'light',
+  // localStorage mirror (applied pre-paint by index.html) until settings load
+  fontSize: typeof localStorage !== 'undefined' ? readStoredFontSize() : 'standard',
   userAppDir: '',
   autoUpdate: true,
   localIdePath: '',
@@ -112,6 +124,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
         pythonPath: (settings.pythonPath as string) ?? '',
         language: (settings.language as string) ?? 'zh-CN',
         theme: (settings.theme as string) ?? 'light',
+        fontSize: settings.fontSize ? normalizeFontSize(settings.fontSize) : readStoredFontSize(),
         userAppDir: (settings.userAppDir as string) ?? '',
         autoUpdate: (settings.autoUpdate as boolean) ?? true,
         localIdePath: (settings.localIdePath as string) ?? '',
@@ -132,6 +145,10 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   },
 
   updateSetting: async (key: string, value: unknown) => {
+    if (key === 'fontSize') {
+      useSettingsStore.getState().setFontSize(normalizeFontSize(value))
+      return
+    }
     await window.api.settings.set(key, value)
     set((state) => ({ ...state, [key]: value }))
   },
@@ -158,6 +175,12 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       }
     }
     set({ appMode: mode })
+  },
+
+  setFontSize: (mode) => {
+    const next = applyFontSizeToDom(mode)
+    set({ fontSize: next })
+    Promise.resolve(window.api.settings.set('fontSize', next)).catch(() => {})
   },
 
   setActiveProject: (project) => {

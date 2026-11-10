@@ -6,48 +6,42 @@ import enUS from 'antd/locale/en_US'
 import AppRoutes from './routes'
 import { useSettingsStore } from './stores/useSettingsStore'
 import ViewTransitionBridge from './motion/ViewTransitionBridge'
-import {
-  PALETTE_FRAME_BG,
-  darkTokens,
-  getBaseTheme,
-  getShellThemeConfig,
-  isDarkTheme,
-  lightTokens,
-  resolvePalette
-} from './theme'
+import { applyThemeToDom, getBaseTheme, getShellThemeConfig, resolvePalette } from './theme'
+import { applyFontSizeToDom } from './constants/font-size'
 import './types/ipc'
 
 const App: React.FC = () => {
   const theme = useSettingsStore((state) => state.theme)
   const language = useSettingsStore((state) => state.language)
+  const fontSize = useSettingsStore((state) => state.fontSize)
   const fetchSettings = useSettingsStore((state) => state.fetchSettings)
 
   useEffect(() => {
     fetchSettings()
   }, [])
 
-  // data-theme = base (light/dark) for CSS; data-palette = stored theme name
+  // data-theme = base (light/dark) for CSS; data-palette = resolved palette
   const baseTheme = getBaseTheme(theme)
-  const dark = isDarkTheme(theme)
+  const palette = resolvePalette(theme)
+  const largeFont = fontSize === 'large'
 
   useEffect(() => {
-    document.body.setAttribute('data-theme', baseTheme)
-    document.body.setAttribute('data-palette', theme)
-    // Match the outer frame so route switches never flash a different color
-    document.body.style.background = PALETTE_FRAME_BG[resolvePalette(theme)]
-    // Keep caret (text insertion cursor) aligned with primary text color —
-    // light-mode inputs otherwise inherit a washed-out caret that vanishes.
-    document.body.style.caretColor = dark ? darkTokens.colorText : lightTokens.colorText
-  }, [theme, baseTheme, dark])
+    // data-theme / data-palette, frame background, caret and --cb-primary* accents
+    applyThemeToDom(theme)
+  }, [theme])
 
-  const themeConfig = useMemo(() => getShellThemeConfig(theme), [theme])
+  useEffect(() => {
+    applyFontSizeToDom(fontSize)
+  }, [fontSize])
+
+  const themeConfig = useMemo(() => getShellThemeConfig(theme, { largeFont }), [theme, largeFont])
 
   const antLocale = language === 'en' ? enUS : zhCN
 
   return (
     <ConfigProvider locale={antLocale} theme={themeConfig}>
       <AntApp>
-        <div data-theme={baseTheme} data-palette={theme} style={{ height: '100%' }}>
+        <div data-theme={baseTheme} data-palette={palette} data-font-size={fontSize} style={{ height: '100%' }}>
           <HashRouter>
             <ViewTransitionBridge />
             <AppRoutes />

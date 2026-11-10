@@ -52,6 +52,8 @@ interface SettingsSchema {
   pythonPath: string
   language: string
   theme: string
+  /** Font size mode: 'standard' | 'large' (+20%) */
+  fontSize: string
   userAppDir: string
   autoUpdate: boolean
   localIdePath: string
@@ -135,6 +137,8 @@ interface PublicSettings {
   pythonPath: string
   language: string
   theme: string
+  /** Font size mode: 'standard' | 'large' (+20%) */
+  fontSize: string
   userAppDir: string
   autoUpdate: boolean
   localIdePath: string
@@ -170,6 +174,10 @@ export const settingsStore = new Store<SettingsSchema>({
     theme: {
       type: 'string',
       default: 'light'
+    },
+    fontSize: {
+      type: 'string',
+      default: 'standard'
     },
     userAppDir: {
       type: 'string',
@@ -447,6 +455,7 @@ export function getSettings(): PublicSettings {
     pythonPath: settingsStore.get('pythonPath'),
     language: settingsStore.get('language'),
     theme: settingsStore.get('theme'),
+    fontSize: settingsStore.get('fontSize') === 'large' ? 'large' : 'standard',
     userAppDir: userAppDir,
     autoUpdate: settingsStore.get('autoUpdate'),
     localIdePath: settingsStore.get('localIdePath'),
