@@ -345,6 +345,47 @@ export async function dispatchTaskHandler(req: AuthRequest, res: Response): Prom
   }
 }
 
+/**
+ * GET /api/v1/admin/tasks/app-manifest/:applicationId?version=
+ * Param definitions of a published package (for the dispatch form).
+ */
+export async function getDispatchAppManifestHandler(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const { applicationId } = req.params;
+    const version = typeof req.query.version === 'string' ? req.query.version : undefined;
+    const targetVersion = version
+      ? await getVersionByNumber(applicationId, version)
+      : await getLatestVersion(applicationId);
+    if (!targetVersion) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Version not found' } });
+      return;
+    }
+    let manifest: SubAppManifestMini | null = null;
+    try {
+      const buf = await storageService.readFile(targetVersion.filePath);
+      const content = readZipEntry(buf, 'manifest.json');
+      manifest = content ? JSON.parse(content) : null;
+    } catch {
+      manifest = null;
+    }
+    if (!manifest) {
+      res.status(400).json({ success: false, error: { code: 'INVALID_PACKAGE', message: 'manifest.json unreadable' } });
+      return;
+    }
+    res.status(200).json({
+      success: true,
+      data: {
+        version: targetVersion.version,
+        confirmBeforeRun: Boolean(manifest.confirm_before_run),
+        params: Array.isArray(manifest.params) ? manifest.params : [],
+      },
+    });
+  } catch (err) {
+    logger.error('Error reading dispatch app manifest:', err);
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
+  }
+}
+
 export async function revokeTaskHandler(req: AuthRequest, res: Response): Promise<void> {
   try {
     const { taskId } = req.params;

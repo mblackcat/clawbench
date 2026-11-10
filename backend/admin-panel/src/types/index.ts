@@ -60,6 +60,8 @@ export interface ApplicationResponse {
   category: string | null;
   published: boolean;
   featured: boolean;
+  /** Admin opt-in for remote task dispatch */
+  dispatchable?: boolean;
   /** Latest version number (from application_versions) */
   version?: string;
   downloadCount: number;
@@ -255,4 +257,62 @@ export interface CommonAppVersionHistory {
   changedByName?: string | null;
   source: string;
   createdAt: number;
+}
+
+// ---- Remote task dispatch ----
+export type DispatchedTaskTargetScope = 'ALL' | 'USER' | 'PROJECT';
+
+export type DispatchedTaskExecutionStatus =
+  | 'RECEIVED'
+  | 'WAITING_CONFIRM'
+  | 'RUNNING'
+  | 'SUCCESS'
+  | 'FAILED'
+  | 'CANCELLED'
+  | 'REJECTED'
+  | 'SKIPPED'
+  | 'EXPIRED'
+  | 'REVOKED'
+  | 'ABANDONED';
+
+export interface DispatchedTaskExecution {
+  executionId: string;
+  taskId: string;
+  userId: string;
+  username?: string;
+  machineId: string;
+  status: DispatchedTaskExecutionStatus;
+  reasonCode: string | null;
+  exitCode: number | null;
+  durationMs: number | null;
+  summary: string | null;
+  logExcerpt: string | null;
+  claimedAt: number;
+  startedAt: number | null;
+  completedAt: number | null;
+  leaseExpiresAt: number | null;
+  updatedAt: number;
+}
+
+export interface DispatchedTaskItem {
+  taskId: string;
+  appId: string;
+  appName: string;
+  appVersion: string;
+  packageSha256: string;
+  targetScope: DispatchedTaskTargetScope;
+  targetId: string | null;
+  presetParams: Record<string, unknown>;
+  forceConfirm: boolean;
+  autoInstall: boolean;
+  reason: string | null;
+  dispatchedBy: string;
+  dispatchedByName?: string;
+  status: 'ACTIVE' | 'REVOKED' | 'EXPIRED';
+  createdAt: number;
+  expiresAt: number;
+  revokedAt: number | null;
+  revokedBy: string | null;
+  executionCounts?: Record<string, number>;
+  totalExecutions?: number;
 }

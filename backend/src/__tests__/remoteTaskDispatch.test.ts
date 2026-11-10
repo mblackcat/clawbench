@@ -443,6 +443,22 @@ describe('Remote Task Dispatch API', () => {
     });
   });
 
+  describe('Dispatch form manifest endpoint', () => {
+    it('returns package param definitions to admins only', async () => {
+      const res = await request(app)
+        .get(`/api/v1/admin/tasks/app-manifest/${testAppId}`)
+        .set('Authorization', `Bearer ${adminUser.token}`);
+      expect(res.status).toBe(200);
+      expect(res.body.data.version).toBe('1.0.0');
+      expect(res.body.data.params.map((p: any) => p.name)).toEqual(['fixIssues', 'mode', 'customPath']);
+
+      const denied = await request(app)
+        .get(`/api/v1/admin/tasks/app-manifest/${testAppId}`)
+        .set('Authorization', `Bearer ${normalUser.token}`);
+      expect(denied.status).toBe(403);
+    });
+  });
+
   describe('Security hardening (ClawBench)', () => {
     it('forbids non-admins from dispatching or listing tasks', async () => {
       const dispatchRes = await request(app)

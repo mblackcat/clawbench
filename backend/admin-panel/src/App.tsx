@@ -7,6 +7,7 @@ import DashboardPage from './pages/DashboardPage';
 import UserManagementPage from './pages/UserManagementPage';
 import ResourceListPage from './pages/ResourceListPage';
 import ResourceDetailPage from './pages/ResourceDetailPage';
+import TaskDispatchPage from './pages/TaskDispatchPage';
 import CommonAppsPage from './pages/CommonAppsPage';
 import ProjectManagementPage from './pages/ProjectManagementPage';
 import { useApi } from './hooks/useApi';
@@ -63,6 +64,15 @@ const AdminShell: React.FC = () => (
         <Route path="resources" element={<Navigate to="/admin/dashboard" replace />} />
         <Route path="store" element={<Navigate to="/admin/dashboard" replace />} />
         <Route path="store/:appId" element={<StoreRedirect />} />
+        {/* Remote task dispatch — push app runs to desktop clients (admin only) */}
+        <Route
+          path="tasks/dispatch"
+          element={
+            <RequireAdmin>
+              <TaskDispatchPage />
+            </RequireAdmin>
+          }
+        />
         {/* Projects — multi-tenant projects + members + per-project app configs */}
         <Route
           path="projects"

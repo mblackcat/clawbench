@@ -10,6 +10,7 @@ import {
   HomeOutlined,
   SunOutlined,
   MoonOutlined,
+  SendOutlined,
 } from '@ant-design/icons';
 import { useApi } from '../hooks/useApi';
 import { useTheme } from '../hooks/useTheme';
@@ -72,6 +73,7 @@ const Layout: React.FC<Props> = ({ admin, children }) => {
     ...(role === 'admin'
       ? [
           { key: '/admin/apps', icon: <AppstoreOutlined />, label: 'App Manage' },
+          { key: '/admin/tasks/dispatch', icon: <SendOutlined />, label: 'Task Dispatch' },
           { key: '/admin/projects', icon: <ProjectOutlined />, label: 'Projects' },
           { key: '/admin/users', icon: <UserOutlined />, label: 'Users' },
         ]

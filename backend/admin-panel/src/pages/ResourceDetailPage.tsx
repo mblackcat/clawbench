@@ -43,6 +43,7 @@ const ResourceDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [togglingFeatured, setTogglingFeatured] = useState(false);
   const [togglingPublished, setTogglingPublished] = useState(false);
+  const [togglingDispatchable, setTogglingDispatchable] = useState(false);
   const [executionErrors, setExecutionErrors] = useState<ExecutionErrorResponse[]>([]);
   const [loadingErrors, setLoadingErrors] = useState(false);
   const [coverInput, setCoverInput] = useState('');
@@ -148,6 +149,23 @@ const ResourceDetailPage: React.FC = () => {
     }
   };
 
+  const handleToggleDispatchable = async (next: boolean) => {
+    if (!app) return;
+    setTogglingDispatchable(true);
+    try {
+      await fetchApi(`/api/v1/admin/applications/${encodeURIComponent(app.applicationId)}/dispatchable`, {
+        method: 'PATCH',
+        body: JSON.stringify({ dispatchable: next }),
+      });
+      setApp({ ...app, dispatchable: next });
+      message.success(next ? 'Remote dispatch enabled' : 'Remote dispatch disabled');
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : 'Failed to update');
+    } finally {
+      setTogglingDispatchable(false);
+    }
+  };
+
   const handleSaveCover = async () => {
     if (!app) return;
     setSavingCover(true);
@@ -248,6 +266,7 @@ const ResourceDetailPage: React.FC = () => {
               </span>
             )}
             {app.category && <Tag>{app.category}</Tag>}
+            {app.dispatchable && <Tag color="cyan">Dispatchable</Tag>}
             {autoFavicon && (
               <Tooltip title="Cover auto-resolved from website favicon">
                 <Tag>Auto favicon</Tag>
@@ -341,6 +360,28 @@ const ResourceDetailPage: React.FC = () => {
                     onChange={handleTogglePublished}
                   />
                 </div>
+                {app.type === 'app' && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 16,
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 560, fontSize: 13.5 }}>Dispatchable</div>
+                      <div className="muted" style={{ fontSize: 12.5 }}>
+                        Allow admins to dispatch remote runs of this app (Task Dispatch).
+                      </div>
+                    </div>
+                    <Switch
+                      checked={Boolean(app.dispatchable)}
+                      loading={togglingDispatchable}
+                      onChange={handleToggleDispatchable}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </div>
