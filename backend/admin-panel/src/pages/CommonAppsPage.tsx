@@ -12,6 +12,7 @@ import {
   Empty,
   Spin,
   Popconfirm,
+  theme,
 } from 'antd';
 import {
   ReloadOutlined,
@@ -22,6 +23,8 @@ import {
   PlayCircleOutlined,
   PlusOutlined,
   DeleteOutlined,
+  WarningOutlined,
+  AppstoreOutlined,
 } from '@ant-design/icons';
 import { useApi } from '../hooks/useApi';
 import type { CommonApp } from '../types';
@@ -35,15 +38,55 @@ interface CommonAppFormValues {
   name?: string;
   description?: string;
   version?: string;
+  icon?: string;
   pinned?: boolean;
   configText?: string;
 }
+
+/** Square app icon with a generic fallback (broken / missing URL). */
+const CommonAppIcon: React.FC<{ src?: string | null; size: number; dashed?: boolean }> = ({
+  src,
+  size,
+  dashed,
+}) => {
+  const { token } = theme.useToken();
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [src]);
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: 8,
+        overflow: 'hidden',
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: token.colorFillTertiary,
+        border: `1px ${dashed ? 'dashed' : 'solid'} ${token.colorBorderSecondary}`,
+      }}
+    >
+      {src && !failed ? (
+        <img
+          src={src}
+          alt=""
+          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <AppstoreOutlined style={{ fontSize: size * 0.5, color: token.colorTextTertiary }} />
+      )}
+    </div>
+  );
+};
 
 const CommonAppsPage: React.FC = () => {
   const [apps, setApps] = useState<CommonApp[]>([]);
   const [loading, setLoading] = useState(true);
   const { fetchApi } = useApi();
   const { message } = App.useApp();
+  const { token } = theme.useToken();
 
   const [editingApp, setEditingApp] = useState<CommonApp | null>(null);
   /** 'create' | 'edit' | null (null = modal closed). */
@@ -122,6 +165,7 @@ const CommonAppsPage: React.FC = () => {
       name: record.name,
       description: record.description || '',
       version: record.version || '',
+      icon: record.icon || '',
       pinned: record.pinned,
       configText: JSON.stringify(record.config ?? {}, null, 2),
     });
@@ -199,6 +243,7 @@ const CommonAppsPage: React.FC = () => {
           name: values.name,
           description: values.description,
           version: values.version?.trim() ? values.version.trim() : null,
+          icon: values.icon?.trim() ? values.icon.trim() : null,
           pinned: values.pinned,
           config,
         });
@@ -299,6 +344,7 @@ const CommonAppsPage: React.FC = () => {
             >
               <div className="app-card-head">
                 <HolderOutlined className="app-card-handle" />
+                <CommonAppIcon src={app.icon} size={36} />
                 <div className="app-card-titles">
                   <div className="app-card-title">{app.name}</div>
                   <div className="app-card-subtitle">
@@ -328,6 +374,11 @@ const CommonAppsPage: React.FC = () => {
                 <Tooltip title="Runs">
                   <span>
                     <PlayCircleOutlined /> {formatNumber(app.executionCount)}
+                  </span>
+                </Tooltip>
+                <Tooltip title="Errors reported by clients">
+                  <span style={{ color: (app.errorCount ?? 0) > 0 ? token.colorError : undefined }}>
+                    <WarningOutlined /> {formatNumber(app.errorCount ?? 0)}
                   </span>
                 </Tooltip>
                 <span className="muted">Updated {formatDateTime(app.updatedAt)}</span>
@@ -396,6 +447,23 @@ const CommonAppsPage: React.FC = () => {
           >
             <Input maxLength={100} />
           </Form.Item>
+          {modalMode === 'edit' && (
+            <Form.Item
+              label="Icon"
+              tooltip="https:// URL, server path (/uploads/...) or data:image/... URI. Shown on client cards."
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <Form.Item noStyle shouldUpdate={(prev, cur) => prev.icon !== cur.icon}>
+                  {({ getFieldValue }) => (
+                    <CommonAppIcon src={getFieldValue('icon')} size={40} dashed />
+                  )}
+                </Form.Item>
+                <Form.Item name="icon" noStyle>
+                  <Input placeholder="https://… / /uploads/… / data:image/…" allowClear style={{ flex: 1 }} />
+                </Form.Item>
+              </div>
+            </Form.Item>
+          )}
           <Form.Item name="description" label="Description">
             <TextArea rows={2} />
           </Form.Item>

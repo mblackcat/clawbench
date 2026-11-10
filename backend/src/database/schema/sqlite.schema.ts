@@ -282,6 +282,7 @@ export async function initializeSqliteSchema(database: DatabaseAdapter): Promise
       name TEXT NOT NULL,
       description TEXT,
       version TEXT,
+      icon TEXT,
       builtin INTEGER NOT NULL DEFAULT 1,
       enabled INTEGER NOT NULL DEFAULT 1,
       sort_order INTEGER NOT NULL DEFAULT 0,
@@ -325,6 +326,10 @@ export async function initializeSqliteSchema(database: DatabaseAdapter): Promise
   }
   if (!hasCommonAppCol('file_size')) {
     await database.run(`ALTER TABLE common_apps ADD COLUMN file_size INTEGER`);
+  }
+  // admin 可编辑的图标（URL / data URI）
+  if (!hasCommonAppCol('icon')) {
+    await database.run(`ALTER TABLE common_apps ADD COLUMN icon TEXT`);
   }
 
   // 幂等 seed 内置通用应用（已存在的行不覆盖；ClawBench 默认空种子）

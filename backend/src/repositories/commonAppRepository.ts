@@ -45,6 +45,8 @@ export interface UpdateCommonAppInput {
   name?: string;
   description?: string;
   version?: string | null;
+  /** 图标 URL / data URI（设为 null 即清除） */
+  icon?: string | null;
   builtin?: boolean;
   enabled?: boolean;
   sortOrder?: number;
@@ -80,11 +82,24 @@ export interface CreateCommonAppInput {
  * @returns 通用应用列表
  */
 export async function listCommonApps(): Promise<CommonApp[]> {
-  const rows = await database.all<CommonAppRow>(
-    'SELECT * FROM common_apps ORDER BY sort_order ASC, app_key ASC'
-  );
+  const [rows, errorRows] = await Promise.all([
+    database.all<CommonAppRow>(
+      'SELECT * FROM common_apps ORDER BY sort_order ASC, app_key ASC'
+    ),
+    database
+      .all<{ app_key: string; cnt: number | string }>(
+        'SELECT app_key, COUNT(*) AS cnt FROM common_app_execution_errors GROUP BY app_key'
+      )
+      .catch(() => [] as { app_key: string; cnt: number | string }[]),
+  ]);
 
-  return rows.map(commonAppRowToCommonApp);
+  // COUNT(*) comes back as a string on PG / bigint drivers → normalize
+  const errorMap = new Map<string, number>(errorRows.map((r) => [r.app_key, Number(r.cnt)]));
+  return rows.map((row) => {
+    const app = commonAppRowToCommonApp(row);
+    app.errorCount = errorMap.get(row.app_key) ?? 0;
+    return app;
+  });
 }
 
 /**
@@ -93,12 +108,20 @@ export async function listCommonApps(): Promise<CommonApp[]> {
  * @returns 通用应用或undefined
  */
 export async function getCommonApp(appKey: string): Promise<CommonApp | undefined> {
-  const row = await database.get<CommonAppRow>(
-    'SELECT * FROM common_apps WHERE app_key = ?',
-    [appKey]
-  );
+  const [row, errorRow] = await Promise.all([
+    database.get<CommonAppRow>('SELECT * FROM common_apps WHERE app_key = ?', [appKey]),
+    database
+      .get<{ cnt: number | string }>(
+        'SELECT COUNT(*) AS cnt FROM common_app_execution_errors WHERE app_key = ?',
+        [appKey]
+      )
+      .catch(() => undefined),
+  ]);
 
-  return row ? commonAppRowToCommonApp(row) : undefined;
+  if (!row) return undefined;
+  const app = commonAppRowToCommonApp(row);
+  app.errorCount = Number(errorRow?.cnt ?? 0);
+  return app;
 }
 
 /**
@@ -144,12 +167,14 @@ export async function createCommonApp(input: CreateCommonAppInput): Promise<Comm
     name: input.name,
     description: input.description ?? null,
     version,
+    icon: null,
     builtin: !!input.builtin,
     enabled: input.enabled !== false,
     sortOrder: input.sortOrder ?? 0,
     pinned: !!input.pinned,
     downloadCount: 0,
     executionCount: 0,
+    errorCount: 0,
     filePath: null,
     fileSize: null,
     config,
@@ -195,6 +220,7 @@ export async function updateCommonApp(
   const name = input.name ?? app.name;
   const description = input.description !== undefined ? input.description : app.description;
   const version = input.version !== undefined ? input.version : app.version;
+  const icon = input.icon !== undefined ? input.icon : app.icon;
   const builtin = input.builtin !== undefined ? input.builtin : app.builtin;
   const enabled = input.enabled !== undefined ? input.enabled : app.enabled;
   const sortOrder = input.sortOrder !== undefined ? input.sortOrder : app.sortOrder;
@@ -205,9 +231,9 @@ export async function updateCommonApp(
 
   await database.run(
     `UPDATE common_apps
-     SET name = ?, description = ?, version = ?, builtin = ?, enabled = ?, sort_order = ?, pinned = ?, config = ?, file_path = ?, file_size = ?, updated_at = ?
+     SET name = ?, description = ?, version = ?, icon = ?, builtin = ?, enabled = ?, sort_order = ?, pinned = ?, config = ?, file_path = ?, file_size = ?, updated_at = ?
      WHERE app_key = ?`,
-    [name, description, version, builtin ? 1 : 0, enabled ? 1 : 0, sortOrder, pinned ? 1 : 0, JSON.stringify(config), filePath, fileSize, now, appKey]
+    [name, description, version, icon, builtin ? 1 : 0, enabled ? 1 : 0, sortOrder, pinned ? 1 : 0, JSON.stringify(config), filePath, fileSize, now, appKey]
   );
 
   // Record a version-history entry when the version actually changes.

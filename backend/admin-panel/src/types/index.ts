@@ -200,6 +200,8 @@ export interface CommonApp {
   description?: string | null;
   /** Version (builtin apps ship with the client bundle) */
   version?: string | null;
+  /** App icon URL or data URI (admin-editable; shown on client cards) */
+  icon?: string | null;
   /** True for builtin apps; distinguishes them from user-developed apps */
   builtin: boolean;
   enabled: boolean;
@@ -210,6 +212,8 @@ export interface CommonApp {
   downloadCount: number;
   /** Client-reported run count */
   executionCount: number;
+  /** Client-reported error count */
+  errorCount?: number;
   /** True once an admin uploaded a server-side archive for this app */
   hasArchive?: boolean;
   config: Record<string, unknown>;

@@ -242,6 +242,7 @@ export async function initializePostgresSchema(database: DatabaseAdapter): Promi
       name TEXT NOT NULL,
       description TEXT,
       version TEXT,
+      icon TEXT,
       builtin INTEGER NOT NULL DEFAULT 1,
       enabled INTEGER NOT NULL DEFAULT 1,
       sort_order INTEGER NOT NULL DEFAULT 0,
@@ -276,6 +277,8 @@ export async function initializePostgresSchema(database: DatabaseAdapter): Promi
   // admin 上传的通用应用归档（为空则无服务端内容）
   await database.run(`ALTER TABLE common_apps ADD COLUMN IF NOT EXISTS file_path TEXT`);
   await database.run(`ALTER TABLE common_apps ADD COLUMN IF NOT EXISTS file_size BIGINT`);
+  // admin 可编辑的图标（URL / data URI）
+  await database.run(`ALTER TABLE common_apps ADD COLUMN IF NOT EXISTS icon TEXT`);
 
   // 通用应用执行错误日志表
   await database.run(`

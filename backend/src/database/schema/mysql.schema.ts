@@ -394,6 +394,7 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
       name VARCHAR(255) NOT NULL,
       description TEXT,
       version VARCHAR(32),
+      icon TEXT,
       builtin INTEGER NOT NULL DEFAULT 1,
       enabled INTEGER NOT NULL DEFAULT 1,
       sort_order INTEGER NOT NULL DEFAULT 0,
@@ -423,6 +424,8 @@ export async function initializeMysqlSchema(database: DatabaseAdapter): Promise<
   // admin 上传的通用应用归档（为空则无服务端内容）
   await addColumnIfMissing('common_apps', 'file_path', 'VARCHAR(500)');
   await addColumnIfMissing('common_apps', 'file_size', 'BIGINT');
+  // admin 可编辑的图标（URL / data URI）
+  await addColumnIfMissing('common_apps', 'icon', 'TEXT');
 
   // 幂等 seed 内置通用应用（ClawBench 默认空种子）
   const seedNow = Date.now();
