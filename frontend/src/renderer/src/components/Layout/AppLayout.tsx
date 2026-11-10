@@ -11,6 +11,7 @@ import SubAppDialog from '../SubAppDialog'
 import WeatherEffect from '../WeatherEffect'
 import AttentionManager from '../AttentionManager'
 import PythonEnvCheck from '../PythonEnvCheck'
+import RemoteTaskManager from '../RemoteTaskManager'
 import { useTaskStore } from '../../stores/useTaskStore'
 import { useAutoWeather } from '../../stores/useWeatherStore'
 import { useSubAppExecution } from '../../hooks/useSubAppExecution'
@@ -270,6 +271,7 @@ const AppLayout: React.FC = () => {
       <SubAppDialog />
       <AttentionManager />
       <PythonEnvCheck />
+      <RemoteTaskManager />
     </Layout>
   )
 }

@@ -46,6 +46,7 @@ interface TaskState {
 
 export interface StartTaskOptions {
   scheduled?: boolean
+  remote?: boolean
   /** Create the task already in a terminal state (e.g. disabled before process start). */
   status?: TaskStatus
   result?: { success: boolean; summary: string; summaryI18nKey?: string; summaryI18nArgs?: string[] }
@@ -85,7 +86,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         startedAt: Date.now(),
         completedAt: isTerminalTaskStatus(status) ? Date.now() : undefined,
         result: opts?.result,
-        scheduled: opts?.scheduled
+        scheduled: opts?.scheduled,
+        remote: opts?.remote
       }
       const isError =
         status === 'failed' || status === 'disabled' || opts?.initialOutput?.type === 'error'

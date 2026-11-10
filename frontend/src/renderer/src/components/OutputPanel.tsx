@@ -7,6 +7,7 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   ClockCircleOutlined,
+  CloudDownloadOutlined,
   LoadingOutlined,
   MinusCircleOutlined,
   ExclamationCircleOutlined,
@@ -267,6 +268,12 @@ const OutputPanel: React.FC<OutputPanelProps> = ({ taskId }) => {
           {task.scheduled && (
             <Tag icon={<ClockCircleOutlined />} color="purple" style={{ margin: 0 }}>
               {t('output.scheduled')}
+            </Tag>
+          )}
+
+          {task.remote && (
+            <Tag icon={<CloudDownloadOutlined />} color="blue" style={{ margin: 0 }}>
+              {t('remoteTask.remoteBadge')}
             </Tag>
           )}
 

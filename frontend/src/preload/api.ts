@@ -1042,5 +1042,23 @@ export const api = {
     }
   },
 
+  // Remote task dispatch (server-dispatched app runs; see docs/REMOTE_TASK_DISPATCH.md)
+  remoteTask: {
+    listWaiting: () => ipcRenderer.invoke('remoteTask:listWaiting'),
+    confirm: (taskId: string, params: Record<string, unknown>) =>
+      ipcRenderer.invoke('remoteTask:confirm', taskId, params),
+    reject: (taskId: string) => ipcRenderer.invoke('remoteTask:reject', taskId),
+    openLogDir: () => ipcRenderer.invoke('remoteTask:openLogDir'),
+    pull: () => ipcRenderer.invoke('remoteTask:pull'),
+    getMode: () => ipcRenderer.invoke('remoteTask:getMode'),
+    setMode: (mode: 'silent' | 'always-confirm' | 'disabled') =>
+      ipcRenderer.invoke('remoteTask:setMode', mode),
+    onWaitingChanged: (callback: (tasks: unknown[]) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, tasks: unknown[]) => callback(tasks)
+      ipcRenderer.on('remoteTask:waiting-changed', handler)
+      return () => ipcRenderer.removeListener('remoteTask:waiting-changed', handler)
+    }
+  },
+
   platform: process.platform
 }

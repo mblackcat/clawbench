@@ -67,6 +67,29 @@ export interface DetectedEnvironmentItem {
   isDefault?: boolean
 }
 
+// ---- Remote task dispatch ----
+export type RemoteTaskMode = 'silent' | 'always-confirm' | 'disabled'
+
+/** A server-dispatched task waiting for the user's confirmation. */
+export interface RemoteTaskItem {
+  taskId: string
+  appId: string
+  appName: string
+  appVersion: string
+  packageSha256: string
+  presetParams: Record<string, unknown>
+  forceConfirm: boolean
+  autoInstall: boolean
+  reason?: string | null
+  dispatchedByName?: string | null
+  executionStatus: 'RECEIVED' | 'WAITING_CONFIRM'
+  expiresAt: number
+  confirmed?: boolean
+  /** The app must be installed / upgraded first (always requires confirmation). */
+  installAction?: 'install' | 'upgrade'
+  localVersion?: string
+}
+
 export interface ClawBenchAPI {
   workspace: {
     list: () => Promise<import('./workspace').Workspace[]>
@@ -143,7 +166,13 @@ export interface ClawBenchAPI {
       }) => void
     ) => () => void
     onTaskStarted: (
-      callback: (data: { taskId: string; appId: string; appName: string }) => void
+      callback: (data: {
+        taskId: string
+        appId: string
+        appName: string
+        scheduled?: boolean
+        remote?: boolean
+      }) => void
     ) => () => void
     onUi: (callback: (data: any) => void) => () => void
   }
@@ -1011,6 +1040,16 @@ export interface ClawBenchAPI {
     /** Best-guess LAN IPv4 of this machine (physical NIC preferred; 127.0.0.1 fallback) */
     getLocalIp: () => Promise<string>
     onLog: (callback: (data: { level: string; message: string; timestamp: number }) => void) => () => void
+  }
+  remoteTask: {
+    listWaiting: () => Promise<RemoteTaskItem[]>
+    confirm: (taskId: string, params: Record<string, unknown>) => Promise<{ success: boolean }>
+    reject: (taskId: string) => Promise<{ success: boolean }>
+    openLogDir: () => Promise<{ success: boolean; dir?: string }>
+    pull: () => Promise<{ success: boolean }>
+    getMode: () => Promise<RemoteTaskMode>
+    setMode: (mode: RemoteTaskMode) => Promise<{ success: boolean }>
+    onWaitingChanged: (callback: (tasks: RemoteTaskItem[]) => void) => () => void
   }
   platform: string
 }

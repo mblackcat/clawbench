@@ -48,7 +48,20 @@ export interface ActiveProjectInfo {
  */
 export const DEFAULT_PINNED_APP_IDS: string[] = []
 
+/**
+ * How this client handles tasks an admin dispatches from the server
+ * (see docs/REMOTE_TASK_DISPATCH.md):
+ * - `always-confirm` (default): every task waits for the user to review and confirm
+ * - `silent`: already-installed apps whose task needs no confirmation run in the
+ *   background (with a system notification + "Remote" badge in the output panel)
+ * - `disabled`: tasks are skipped and reported as DISABLED_BY_USER
+ */
+export type RemoteTaskMode = 'silent' | 'always-confirm' | 'disabled'
+export const REMOTE_TASK_MODES: readonly RemoteTaskMode[] = ['silent', 'always-confirm', 'disabled']
+export const DEFAULT_REMOTE_TASK_MODE: RemoteTaskMode = 'always-confirm'
+
 interface SettingsSchema {
+  remoteTaskMode: RemoteTaskMode
   pythonPath: string
   language: string
   theme: string
@@ -132,6 +145,7 @@ export interface LocalEnvMirrorBackup {
 }
 
 interface PublicSettings {
+  remoteTaskMode: RemoteTaskMode
   pythonPath: string
   language: string
   theme: string
@@ -155,6 +169,11 @@ interface PublicSettings {
 export const settingsStore = new Store<SettingsSchema>({
   name: 'settings',
   schema: {
+    remoteTaskMode: {
+      type: 'string',
+      enum: [...REMOTE_TASK_MODES],
+      default: DEFAULT_REMOTE_TASK_MODE
+    },
     hasCompletedSetup: {
       type: 'boolean',
       default: false
@@ -444,6 +463,7 @@ export function getSettings(): PublicSettings {
   }
   
   return {
+    remoteTaskMode: getRemoteTaskMode(),
     pythonPath: settingsStore.get('pythonPath'),
     language: settingsStore.get('language'),
     theme: settingsStore.get('theme'),
@@ -630,4 +650,14 @@ export function setAgentSettings(settings: Partial<AgentSettings>): void {
   if (settings.maxAgentToolSteps !== undefined) settingsStore.set('maxAgentToolSteps', settings.maxAgentToolSteps)
   if (settings.assistantEnabled !== undefined) settingsStore.set('assistantEnabled', settings.assistantEnabled)
   if (settings.setupRole !== undefined) settingsStore.set('setupRole', settings.setupRole)
+}
+
+export function getRemoteTaskMode(): RemoteTaskMode {
+  const mode = settingsStore.get('remoteTaskMode') as RemoteTaskMode | undefined
+  return mode && REMOTE_TASK_MODES.includes(mode) ? mode : DEFAULT_REMOTE_TASK_MODE
+}
+
+export function setRemoteTaskMode(mode: RemoteTaskMode): void {
+  if (!REMOTE_TASK_MODES.includes(mode)) throw new Error(`Invalid remote task mode: ${String(mode)}`)
+  settingsStore.set('remoteTaskMode', mode)
 }

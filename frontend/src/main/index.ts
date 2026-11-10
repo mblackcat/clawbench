@@ -28,6 +28,7 @@ import { flushPendingUsageEvents } from './services/usage-tracking.service'
 import { seedBuiltinApps } from './services/builtin-apps.service'
 import { initWorkbenchVenvInBackground } from './services/python-venv.service'
 import { warmProjectCommonAppsCache } from './services/project.service'
+import { remoteTaskService } from './services/remote-task.service'
 import {
   createAppTray,
   destroyAppTray,
@@ -304,6 +305,9 @@ app.whenReady().then(() => {
   // Prepare the dedicated workbench Python venv in the background if needed
   initWorkbenchVenvInBackground()
 
+  // Remote task dispatch channel (no-op until logged in to a server)
+  remoteTaskService.start()
+
   logger.info('Application ready')
 
   app.on('activate', () => {
@@ -334,6 +338,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  remoteTaskService.stop()
   setIsQuitting(true)
   // AI Coding: close Claude SDK / Codex app-server sessions so their child
   // processes (MCP servers etc.) don't outlive the app.
