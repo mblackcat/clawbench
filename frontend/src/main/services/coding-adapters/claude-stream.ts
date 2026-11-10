@@ -15,7 +15,8 @@
  * The client (renderer) receives only the simple protocol in stream-events.ts.
  */
 
-import type { CodingStreamEvent } from './stream-events'
+import type { CodingStreamEvent, StreamContextUsage } from './stream-events'
+import { claudeRequestUsage, reportedContextWindow, resolveClaudeContextWindow } from './claude-context'
 
 interface BlockAccum {
   type: 'text' | 'thinking' | 'tool_use'
@@ -42,6 +43,12 @@ export interface ClaudeStreamState {
    * the `taskId` carried by TaskUpdate.
    */
   tasks: TaskAccum[]
+  /** Model as configured for the session (from `system/init` or /model) — may carry the `[1m]` suffix the API model id lacks. */
+  configuredModel?: string
+  /** Context window reported by the SDK (`result.modelUsage[*].contextWindow`); persists across turns. */
+  contextWindow?: number
+  /** Usage of the latest main-thread API request — the real context occupancy. */
+  lastRequestUsage?: StreamContextUsage
 }
 
 interface TaskAccum {
@@ -123,6 +130,7 @@ export function processClaudeMessage(raw: any, st: ClaudeStreamState): CodingStr
 
   if (msgType === 'system') {
     if (raw.subtype === 'init') {
+      if (typeof raw.model === 'string' && raw.model) st.configuredModel = raw.model
       out.push({ type: 'system', subtype: 'init', session_id: raw.session_id || '' })
     }
     return out
@@ -136,6 +144,29 @@ export function processClaudeMessage(raw: any, st: ClaudeStreamState): CodingStr
     if (evType === 'message_start') {
       st.messageIndex += 1
       out.push({ type: 'turn_start' })
+      const msg = ev.message
+      // Sub-agent (Task) requests run in their own context — don't let them
+      // overwrite the main conversation's occupancy.
+      if (msg && !raw.parent_tool_use_id) {
+        const model = typeof msg.model === 'string' ? msg.model : undefined
+        const req = claudeRequestUsage(msg.usage)
+        if (req || model) {
+          let usage: StreamContextUsage = {}
+          if (req) {
+            // Only the prompt side is known at message_start; output arrives via message_delta.
+            const outputTokens = req.outputTokens || 0
+            const used = (req.inputTokens || 0) + (req.cachedInputTokens || 0) + outputTokens || undefined
+            usage = { ...req, outputTokens, usedTokens: used }
+            usage.contextWindow = resolveClaudeContextWindow({
+              models: [st.configuredModel, model],
+              reported: st.contextWindow,
+              usedTokens: used,
+            })
+            st.lastRequestUsage = usage
+          }
+          out.push({ type: 'context_usage', model, usage })
+        }
+      }
       return out
     }
 
@@ -213,7 +244,28 @@ export function processClaudeMessage(raw: any, st: ClaudeStreamState): CodingStr
       return out
     }
 
-    // message_delta / message_stop / content_block_* variants: nothing to emit.
+    if (evType === 'message_delta') {
+      const u = ev.usage
+      if (u && typeof u.output_tokens === 'number' && !raw.parent_tool_use_id) {
+        const prev = st.lastRequestUsage || {}
+        const used = (prev.inputTokens || 0) + (prev.cachedInputTokens || 0) + u.output_tokens || undefined
+        const usage: StreamContextUsage = {
+          ...prev,
+          outputTokens: u.output_tokens,
+          usedTokens: used,
+          contextWindow: resolveClaudeContextWindow({
+            models: [st.configuredModel],
+            reported: st.contextWindow ?? prev.contextWindow,
+            usedTokens: used,
+          }),
+        }
+        st.lastRequestUsage = usage
+        out.push({ type: 'context_usage', usage })
+      }
+      return out
+    }
+
+    // message_stop / content_block_* variants: nothing to emit.
     return out
   }
 
@@ -228,6 +280,22 @@ export function processClaudeMessage(raw: any, st: ClaudeStreamState): CodingStr
       if (text) out.push({ type: 'delta', text })
     }
     // tool_use blocks were already emitted via stream events; nothing more here.
+    // The final assistant message carries authoritative per-request usage
+    // (covers the case where partial stream events were not delivered).
+    if (!raw.parent_tool_use_id) {
+      const req = claudeRequestUsage(raw.message?.usage)
+      if (req && req.usedTokens && req.usedTokens >= (st.lastRequestUsage?.usedTokens || 0)) {
+        const model = typeof raw.message?.model === 'string' ? raw.message.model : undefined
+        st.lastRequestUsage = {
+          ...req,
+          contextWindow: resolveClaudeContextWindow({
+            models: [st.configuredModel, model],
+            reported: st.contextWindow,
+            usedTokens: req.usedTokens,
+          }),
+        }
+      }
+    }
     return out
   }
 
@@ -251,30 +319,42 @@ export function processClaudeMessage(raw: any, st: ClaudeStreamState): CodingStr
 
   if (msgType === 'result') {
     const costUsd = typeof raw.total_cost_usd === 'number' ? raw.total_cost_usd : undefined
+    const model = typeof raw.model === 'string' ? raw.model : typeof raw.message?.model === 'string' ? raw.message.model : undefined
     const resultText = raw.subtype === 'success' ? (raw.result ?? '') : ''
+    // NOTE: raw.usage is the SUM over every API request of the turn (tool
+    // loops make it far larger than the context) — it must not be used as
+    // occupancy. Use the last main-thread request's usage instead, and take
+    // the authoritative window size from modelUsage.
+    const reported = reportedContextWindow(raw.modelUsage, model)
+    if (reported) st.contextWindow = reported
+    let usageObj: StreamContextUsage | undefined
+    if (st.lastRequestUsage) {
+      const last = st.lastRequestUsage
+      usageObj = {
+        ...last,
+        contextWindow: resolveClaudeContextWindow({
+          models: [st.configuredModel, model],
+          reported: st.contextWindow ?? last.contextWindow,
+          usedTokens: last.usedTokens,
+        }),
+      }
+      st.lastRequestUsage = usageObj
+    }
     out.push({
       type: 'result',
       session_id: raw.session_id || '',
       cost_usd: costUsd,
+      model,
+      usage: usageObj,
       subtype: raw.subtype,
       result: resultText,
     })
-    const u = raw.usage
-    if (u && typeof u === 'object') {
-      const inputTokens = typeof u.input_tokens === 'number' ? u.input_tokens : undefined
-      const outputTokens = typeof u.output_tokens === 'number' ? u.output_tokens : undefined
-      const cached = typeof u.cache_read_input_tokens === 'number' ? u.cache_read_input_tokens : undefined
-      if (inputTokens !== undefined || outputTokens !== undefined || cached !== undefined) {
-        out.push({
-          type: 'context_usage',
-          usage: {
-            inputTokens,
-            cachedInputTokens: cached,
-            outputTokens,
-            usedTokens: (inputTokens || 0) + (cached || 0) || undefined,
-          },
-        })
-      }
+    if (usageObj || model) {
+      out.push({
+        type: 'context_usage',
+        model,
+        usage: usageObj || {},
+      })
     }
     resetForTurn(st)
     return out

@@ -33,15 +33,19 @@ import {
 import {
   launchSDKSession, writeToSDKSession, closeSDKSession, hasSDKSession,
   getSDKSessionOutput, interruptSDKSession, setSDKPermissionMode, setSDKEffort,
-  resolveSDKPermission, answerSDKQuestion, detectManagedInteractiveState
+  resolveSDKPermission, answerSDKQuestion, detectManagedInteractiveState,
+  getLiveSDKStats
 } from './sdk-session-manager.service'
 import {
   launchCodexSession, writeToCodexSession, closeCodexSession, hasCodexSession,
-  getCodexSessionOutput, interruptCodexSession, setCodexSessionMode, setCodexSessionEffort, resolveBundledCodexPath
+  getCodexSessionOutput, interruptCodexSession, setCodexSessionMode, setCodexSessionEffort, resolveBundledCodexPath,
+  getLiveCodexStats
 } from './codex-session-manager.service'
 import { detectAvailableCLIs, getAugmentedEnv, loadShellEnv } from './cli-detect.service'
 import { settingsStore } from '../store/settings.store'
-import { resolveOmpSessionDirs, invalidateNativeSessionCache } from './native-sessions.service'
+import { resolveOmpSessionDirs, invalidateNativeSessionCache, getNativeSessionStats } from './native-sessions.service'
+import { getClaudeConfiguredModel } from './coding-adapters/claude-settings'
+import { resolveClaudeContextWindow } from './coding-adapters/claude-context'
 import { getToolCandidatePaths } from '../utils/windows-env'
 import { mainT } from '../utils/i18n'
 import { looksLikePtyPrompt } from '../utils/pty-prompt'
@@ -164,6 +168,117 @@ export function getRawSessionOutputSnapshot(sessionId: string): { data: string; 
   return getRawPtyOutputSnapshot(sessionId)
 }
 
+export interface CodingSessionStatsResult {
+  sessionId: string
+  toolType: AIToolType
+  model?: string
+  costUsd: number
+  contextUsage?: {
+    inputTokens?: number
+    cachedInputTokens?: number
+    outputTokens?: number
+    usedTokens?: number
+    contextWindow?: number
+  }
+  /** Window of the configured model when no usage has been observed yet (fresh session). */
+  contextWindow?: number
+  updatedAt: number
+}
+
+/**
+ * Placeholder that createSession used to persist for every new Claude session.
+ * A display name, never a real API id — treat it as "model unknown".
+ */
+const LEGACY_CLAUDE_PLACEHOLDER_MODEL = 'Claude 3.7 Sonnet'
+
+export async function getSessionStats(sessionId: string): Promise<CodingSessionStatsResult | null> {
+  const session = getSessionById(sessionId)
+  if (!session) return null
+  const config = getAICodingConfig()
+  const workspace = config.workspaces.find((w) => w.id === session.workspaceId)
+  const workingDir = workspace?.workingDir || ''
+  const isClaude = session.toolType === 'claude'
+  const knownModel = isClaude && session.model === LEGACY_CLAUDE_PLACEHOLDER_MODEL ? undefined : session.model
+
+  // 1. Live in-memory SDK / Codex session
+  if (hasSDKSession(sessionId)) {
+    const live = getLiveSDKStats(sessionId)
+    if (live && (live.contextUsage || live.model || live.costUsd !== undefined)) {
+      if (live.model && live.model !== session.model) updateSession(sessionId, { model: live.model })
+      if (typeof live.costUsd === 'number' && live.costUsd > (session.costUsd || 0)) updateSession(sessionId, { costUsd: live.costUsd })
+      return {
+        sessionId,
+        toolType: session.toolType,
+        model: live.model || knownModel,
+        costUsd: live.costUsd ?? session.costUsd ?? 0,
+        contextUsage: live.contextUsage,
+        updatedAt: Date.now()
+      }
+    }
+  }
+
+  if (hasCodexSession(sessionId)) {
+    const live = getLiveCodexStats(sessionId)
+    if (live && (live.contextUsage || live.model || live.costUsd !== undefined)) {
+      if (live.model && live.model !== session.model) updateSession(sessionId, { model: live.model })
+      if (typeof live.costUsd === 'number' && live.costUsd > (session.costUsd || 0)) updateSession(sessionId, { costUsd: live.costUsd })
+      return {
+        sessionId,
+        toolType: session.toolType,
+        model: live.model || session.model,
+        costUsd: live.costUsd ?? session.costUsd ?? 0,
+        contextUsage: live.contextUsage,
+        updatedAt: Date.now()
+      }
+    }
+  }
+
+  // 2. Query native on-disk stats
+  if (workingDir && session.toolType) {
+    const nativeStats = await getNativeSessionStats(workingDir, session.toolType, session.toolSessionId)
+    if (nativeStats) {
+      const updates: Partial<AICodingSession> = {}
+      if (nativeStats.model && nativeStats.model !== session.model) updates.model = nativeStats.model
+      if (typeof nativeStats.costUsd === 'number' && nativeStats.costUsd > (session.costUsd || 0)) updates.costUsd = nativeStats.costUsd
+      if (Object.keys(updates).length > 0) updateSession(sessionId, updates)
+
+      return {
+        sessionId,
+        toolType: session.toolType,
+        model: nativeStats.model || knownModel,
+        costUsd: nativeStats.costUsd ?? session.costUsd ?? 0,
+        contextUsage: nativeStats.contextUsage,
+        updatedAt: Date.now()
+      }
+    }
+  }
+
+  // 3. Fallback — nothing observed yet (fresh session: no turn, no transcript).
+  // For Claude, report what Claude Code itself is configured to run, e.g.
+  // `claude-opus-5-5[1M]` → Opus 5.5 with a 1M window, instead of placeholders.
+  if (isClaude) {
+    const configured = getClaudeConfiguredModel(workingDir || undefined)
+    const model = configured || knownModel
+    return {
+      sessionId,
+      toolType: session.toolType,
+      model,
+      costUsd: session.costUsd ?? 0,
+      contextUsage: undefined,
+      contextWindow: resolveClaudeContextWindow({ models: [model] }),
+      updatedAt: Date.now()
+    }
+  }
+  return {
+    sessionId,
+    toolType: session.toolType,
+    model: session.model,
+    costUsd: session.costUsd ?? 0,
+    contextUsage: undefined,
+    updatedAt: Date.now()
+  }
+}
+
 // ── SDK session event handler (for IM mode) ──
 
 function activityFromToolName(name: string | undefined): AICodingSession['lastActivity'] {
@@ -210,13 +325,18 @@ function handleSDKEvent(sessionId: string, data: Record<string, unknown>): void 
   } else if (msgType === 'result') {
     const sid = (data.session_id as string) ?? ''
     const costUsd = typeof data.cost_usd === 'number' ? data.cost_usd : undefined
+    const model = typeof data.model === 'string' && data.model ? data.model : undefined
     // After a turn finishes, check if it's waiting for interactive input
     const currentOutput = getSDKSessionOutput(sessionId)
     const interactiveState = detectManagedInteractiveState(currentOutput)
     const updates: Partial<AICodingSession> = { status: 'idle', lastActivity: interactiveState || 'none' }
     if (sid) updates.toolSessionId = sid
     if (costUsd !== undefined) updates.costUsd = costUsd
+    if (model) updates.model = model
     updateSession(sessionId, updates)
+  } else if (msgType === 'context_usage') {
+    const model = typeof data.model === 'string' && data.model ? data.model : undefined
+    if (model) updateSession(sessionId, { model })
   } else if (msgType === 'error') {
     updateSession(sessionId, { status: 'idle', lastActivity: 'none' })
   }
@@ -365,6 +485,20 @@ function handlePtyOutputStabilized(sessionId: string): void {
     notifyDataChanged()
     if (session.toolType === 'terminal') return
     const attention = detectPtyAttentionKind(session)
+    // Refresh model / cost from the CLI's on-disk transcript for the status bar.
+    const workspace = getAICodingConfig().workspaces.find((w) => w.id === session.workspaceId)
+    if (workspace?.workingDir) {
+      void getNativeSessionStats(workspace.workingDir, session.toolType, session.toolSessionId).then((stats) => {
+        if (!stats) return
+        const updates: Partial<AICodingSession> = {}
+        if (stats.model && stats.model !== session.model) updates.model = stats.model
+        if (typeof stats.costUsd === 'number' && stats.costUsd > (session.costUsd || 0)) updates.costUsd = stats.costUsd
+        if (Object.keys(updates).length > 0) {
+          updateSession(sessionId, updates)
+          notifyDataChanged()
+        }
+      }).catch(() => { /* stats are best-effort */ })
+    }
     broadcastPipeEvent(sessionId, {
       type: attention.kind === 'action' ? 'action' : 'result',
       toolType: session.toolType,
@@ -498,6 +632,7 @@ export function createWorkspace(
     groupId,
     createdAt: now,
     updatedAt: now,
+
     order: maxOrder + 1
   }
   workspaces.push(workspace)
@@ -592,6 +727,16 @@ function getSessionById(id: string): AICodingSession | undefined {
   return runtimeSessions.get(id) || getAICodingConfig().sessions.find((s) => s.id === id)
 }
 
+const DEFAULT_TOOL_MODELS: Partial<Record<AIToolType, string>> = {
+  // No Claude entry: its real model comes from Claude Code's own settings
+  // (`getClaudeConfiguredModel`), resolved live in getSessionStats. A
+  // persisted guess here shadowed it and pinned the window to 200k.
+  codex: 'GPT-4o',
+  antigravity: 'Gemini 2.5 Pro',
+  gemini: 'Gemini 2.5 Pro',
+  grok: 'Grok 2'
+}
+
 export function createSession(
   workspaceId: string,
   toolType: AIToolType,
@@ -606,7 +751,8 @@ export function createSession(
     status: 'closed',
     lastActivity: 'none',
     createdAt: now,
-    updatedAt: now
+    updatedAt: now,
+    model: DEFAULT_TOOL_MODELS[toolType]
   }
   const { sessions } = getAICodingConfig()
   sessions.push(session)
@@ -631,6 +777,8 @@ export function createRuntimeSession(
     lastActivity: 'none',
     createdAt: now,
     updatedAt: now,
+
+    model: DEFAULT_TOOL_MODELS[toolType],
     ...updates
   }
   runtimeSessions.set(session.id, session)

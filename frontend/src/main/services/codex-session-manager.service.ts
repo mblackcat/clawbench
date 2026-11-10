@@ -6,6 +6,7 @@ import * as fs from 'fs'
 import * as logger from '../utils/logger'
 import { killProcessTree } from '../utils/process-tree'
 import { scanAndMergeInstructions } from './coding-adapters/instructions'
+import { computeCodexCost, parseCodexTokenInfo } from './coding-adapters/codex-usage'
 
 // Canonical Codex permission modes (new native vocabulary). The renderer sends
 // these; older aliases (ask-first/auto-edit) and SDK strings are normalized by
@@ -83,6 +84,15 @@ interface CodexSessionState {
   /** Block ids whose block_start has already been emitted (dedup, per turn). */
   seenBlocks: Set<string>
   thinkingLengths: Record<string, number>
+  lastModel?: string
+  lastCostUsd?: number
+  lastUsage?: {
+    inputTokens?: number
+    cachedInputTokens?: number
+    outputTokens?: number
+    usedTokens?: number
+    contextWindow?: number
+  }
 }
 
 const codexSessions = new Map<string, CodexSessionState>()
@@ -297,25 +307,6 @@ function extractToolResult(item: any): string {
   return ''
 }
 
-function serializeUsage(usage: any, tokenUsage?: any): Record<string, unknown> | null {
-  const total = tokenUsage?.total
-  const inputTokens =
-    total?.inputTokens ??
-    usage?.input_tokens ??
-    usage?.inputTokens ??
-    0
-  const cachedInputTokens =
-    usage?.cached_input_tokens ??
-    usage?.cache_read_input_tokens ??
-    total?.cachedInputTokens ??
-    0
-  const outputTokens = usage?.output_tokens ?? usage?.outputTokens ?? 0
-  const contextWindow = total?.contextWindow ?? usage?.context_window ?? usage?.contextWindow
-  const usedTokens = Number(inputTokens || 0) + Number(cachedInputTokens || 0)
-  if (!usedTokens && !outputTokens && !contextWindow) return null
-  return { inputTokens, cachedInputTokens, outputTokens, contextWindow, usedTokens }
-}
-
 function respond(state: CodexSessionState, id: number | undefined, result: unknown): void {
   if (id === undefined || !state.process.stdin.writable) return
   state.process.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, result }) + '\n')
@@ -462,8 +453,15 @@ function handleNotification(sessionId: string, state: CodexSessionState, msg: Js
   }
 
   if (method === 'thread/tokenUsage/updated') {
-    const usage = serializeUsage(null, params.tokenUsage)
-    if (usage) emitEvent(sessionId, state, { type: 'context_usage', usage })
+    // tokenUsage = { total (cumulative → cost), last (latest request → occupancy), modelContextWindow }
+    const { context, cost } = parseCodexTokenInfo(params.tokenUsage)
+    const model = state.lastModel || state.env?.CODEX_MODEL || 'GPT-4o'
+    state.lastModel = model
+    if (cost) state.lastCostUsd = computeCodexCost(model, cost)
+    if (context) {
+      state.lastUsage = context
+      emitEvent(sessionId, state, { type: 'context_usage', usage: context, model, cost_usd: state.lastCostUsd })
+    }
     return
   }
 
@@ -491,12 +489,23 @@ function handleNotification(sessionId: string, state: CodexSessionState, msg: Js
   }
 
   if (method === 'turn/completed') {
-    const usage = serializeUsage(params.usage)
-    if (usage) emitEvent(sessionId, state, { type: 'context_usage', usage })
+    const model = (typeof params.thread?.model === 'string' && params.thread.model) || (typeof params.model === 'string' && params.model) || state.lastModel || state.env?.CODEX_MODEL || 'GPT-4o'
+    state.lastModel = model
+    // Turn-level usage aggregates every request of the turn, so it is only a
+    // fallback when no per-request tokenUsage update has been seen.
+    if (!state.lastUsage && params.usage) {
+      const { context, cost } = parseCodexTokenInfo({ total: params.usage, modelContextWindow: params.usage?.model_context_window ?? params.usage?.modelContextWindow })
+      if (context) state.lastUsage = context
+      if (cost && state.lastCostUsd === undefined) state.lastCostUsd = computeCodexCost(model, cost)
+    }
+    const usage = state.lastUsage
+    if (usage) emitEvent(sessionId, state, { type: 'context_usage', usage, model, cost_usd: state.lastCostUsd })
     emitEvent(sessionId, state, {
       type: 'result',
       session_id: state.threadId || '',
       usage,
+      model,
+      cost_usd: state.lastCostUsd,
       subtype: params.status || 'success',
       result: ''
     })
@@ -723,4 +732,24 @@ export function setCodexSessionEffort(sessionId: string, effort: string): boolea
   const mapped = toCodexReasoningEffort(effort)
   if (mapped) state.modelReasoningEffort = mapped
   return true
+}
+
+export function getLiveCodexStats(sessionId: string): {
+  model?: string
+  costUsd?: number
+  contextUsage?: {
+    inputTokens?: number
+    cachedInputTokens?: number
+    outputTokens?: number
+    usedTokens?: number
+    contextWindow?: number
+  }
+} | null {
+  const state = codexSessions.get(sessionId)
+  if (!state) return null
+  return {
+    model: state.lastModel,
+    costUsd: state.lastCostUsd,
+    contextUsage: state.lastUsage,
+  }
 }

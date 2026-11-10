@@ -19,6 +19,7 @@ import {
   getSessionOutput,
   getRawSessionOutputSnapshot,
   getRawSessionOutput,
+  getSessionStats,
   interruptSession,
   executeSessionSlashCommand,
   setSessionPermissionMode,
@@ -324,6 +325,11 @@ export function registerAICodingIpc(): void {
 
   ipcMain.handle('ai-coding:get-raw-session-snapshot', async (_event, sessionId: string) => {
     return getRawSessionOutputSnapshot(sessionId)
+  })
+
+  ipcMain.handle('ai-coding:get-session-stats', async (_event, sessionId: string) => {
+    if (!validateId(sessionId)) return null
+    return getSessionStats(sessionId)
   })
 
   // ── Groups ──

@@ -24,6 +24,15 @@ import * as crypto from 'crypto'
 import * as readline from 'readline'
 import { execFile } from 'child_process'
 import type { AIToolType } from '../store/ai-coding.store'
+import {
+  claudeModelMatches,
+  claudeRequestUsage,
+  isSyntheticClaudeModel,
+  reportedContextWindow,
+  resolveClaudeContextWindow
+} from './coding-adapters/claude-context'
+import { getClaudeConfiguredModel } from './coding-adapters/claude-settings'
+import { computeCodexCost, parseCodexTokenInfo } from './coding-adapters/codex-usage'
 
 // ── Public types ──
 
@@ -58,6 +67,12 @@ function normalizeSessionPath(dirPath: string): string {
   if (!dirPath) return ''
   const resolved = path.resolve(dirPath).replace(/\\/g, '/').replace(/\/+$/, '')
   return process.platform === 'win32' ? resolved.toLowerCase() : resolved
+}
+
+function isSamePath(candidatePath: string, targetPath: string): boolean {
+  const candidate = normalizeSessionPath(candidatePath)
+  const target = normalizeSessionPath(targetPath)
+  return Boolean(candidate && target && candidate === target)
 }
 
 function isSameOrChildPath(candidatePath: string, parentPath: string): boolean {
@@ -438,6 +453,9 @@ function readClaudeTranscript(workingDir: string, sessionId: string): NativeTran
   // transcript; Nth TaskCreate is 1-based taskId N. Deleted tasks are
   // tombstoned (kept in place) so later taskId references stay aligned.
   const taskAcc: Array<{ content: string; activeForm: string; status: 'pending' | 'in_progress' | 'completed' | 'deleted' }> = []
+  let latestUsage: NativeTranscriptBlock | null = null
+  let claudeModel: string | undefined
+  let claudeReportedWindow = 0
   for (const line of raw.split('\n')) {
     if (!line.trim()) continue
     let data: any
@@ -518,6 +536,36 @@ function readClaudeTranscript(workingDir: string, sessionId: string): NativeTran
       }
       pushTranscriptMessage(messages, 'assistant', blocks, ts)
     }
+    // Per-request usage lives on main-thread assistant lines. `result` usage is
+    // a whole-turn aggregate and sidechain lines belong to sub-agents — both
+    // would misstate the context occupancy. `<synthetic>` lines (API errors,
+    // interrupts) carry zeroed usage that would blank the occupancy.
+    if (data.type === 'result') {
+      const reported = reportedContextWindow(data.modelUsage)
+      if (reported) claudeReportedWindow = reported
+    }
+    const req = data.type !== 'result' && !data.isSidechain && data.message && typeof data.message === 'object' &&
+      !isSyntheticClaudeModel(data.message.model)
+      ? claudeRequestUsage(data.message.usage)
+      : null
+    if (req) {
+      if (typeof data.message.model === 'string' && data.message.model) claudeModel = data.message.model
+      latestUsage = { type: 'context_usage', ...req }
+    }
+  }
+
+  if (latestUsage && latestUsage.type === 'context_usage') {
+    // Transcripts record the API model id, which never carries `[1m]`; only
+    // the configured model can tell a 1M session apart (when it matches).
+    const configured = getClaudeConfiguredModel(workingDir)
+    latestUsage.contextWindow = resolveClaudeContextWindow({
+      models: [claudeModel, claudeModelMatches(configured, claudeModel) ? configured : undefined],
+      reported: claudeReportedWindow,
+      usedTokens: latestUsage.usedTokens,
+    })
+    const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant')
+    if (lastAssistant) lastAssistant.blocks.push(latestUsage)
+    else pushTranscriptMessage(messages, 'assistant', [latestUsage])
   }
 
   return messages
@@ -644,15 +692,9 @@ function extractCodexMessageText(content: any): string {
 }
 
 function codexUsageBlock(info: any): NativeTranscriptBlock | null {
-  const total = info?.total_token_usage || info?.last_token_usage || info
-  if (!total) return null
-  const inputTokens = total.input_tokens ?? total.inputTokens ?? 0
-  const cachedInputTokens = total.cached_input_tokens ?? total.cachedInputTokens ?? 0
-  const outputTokens = total.output_tokens ?? total.outputTokens ?? 0
-  const contextWindow = info?.model_context_window ?? total.context_window ?? total.contextWindow
-  const usedTokens = Number(inputTokens || 0) + Number(cachedInputTokens || 0)
-  if (!usedTokens && !outputTokens && !contextWindow) return null
-  return { type: 'context_usage', inputTokens, cachedInputTokens, outputTokens, usedTokens, contextWindow }
+  // Occupancy comes from last_token_usage (total_token_usage is cumulative).
+  const { context } = parseCodexTokenInfo(info)
+  return context ? { type: 'context_usage', ...context } : null
 }
 
 function readCodexTranscript(workingDir: string, sessionId: string): NativeTranscriptMessage[] {
@@ -816,6 +858,7 @@ const codexProvider: NativeSessionProvider = {
     fileInfos.sort((a, b) => b.mtime - a.mtime)
 
     const sessions: NativeSession[] = []
+    const seenSessionIds = new Set<string>()
 
     for (const info of fileInfos) {
       try {
@@ -824,9 +867,10 @@ const codexProvider: NativeSessionProvider = {
 
         const sessionCwd = meta.payload?.cwd
         const sessionId = meta.payload?.id
-        if (!sessionId) continue
+        if (!sessionId || seenSessionIds.has(sessionId)) continue
 
         if (sessionCwd && isSameOrChildPath(sessionCwd, workingDir)) {
+          seenSessionIds.add(sessionId)
           const indexEntry = indexMap.get(sessionId)
           const historyEntry = titleMap.get(sessionId)
           const indexTitle = titleFromCodexText(indexEntry?.threadName || '')
@@ -926,8 +970,7 @@ function parseGeminiSessionFile(filePath: string): { sessionId: string; title: s
 function resolveGeminiChatsDirs(workingDir: string): string[] {
   // Antigravity CLI (Gemini-based) may keep the same layout under ~/.antigravity/tmp
   const tmpDirs = [
-    path.join(os.homedir(), '.gemini', 'tmp'),
-    path.join(os.homedir(), '.antigravity', 'tmp')
+    path.join(os.homedir(), '.gemini', 'tmp')
   ].filter((d) => fs.existsSync(d))
   if (tmpDirs.length === 0) return []
 
@@ -941,15 +984,18 @@ function resolveGeminiChatsDirs(workingDir: string): string[] {
   }
 
   addChatsDir(geminiProjectHash(workingDir))
-  addChatsDir(path.basename(workingDir))
 
+  const mappedDirNames = new Map<string, string>()
   const projectsFile = path.join(os.homedir(), '.gemini', 'projects.json')
   if (fs.existsSync(projectsFile)) {
     try {
       const data = JSON.parse(fs.readFileSync(projectsFile, 'utf-8'))
       const projects = data.projects || data
       for (const [projectRoot, projectName] of Object.entries(projects)) {
-        if (isSameOrChildPath(projectRoot, workingDir)) addChatsDir(projectName as string)
+        if (typeof projectName === 'string' && projectName) {
+          mappedDirNames.set(projectName, projectRoot)
+          if (isSamePath(projectRoot, workingDir)) addChatsDir(projectName)
+        }
       }
     } catch { /* skip */ }
   }
@@ -962,10 +1008,33 @@ function resolveGeminiChatsDirs(workingDir: string): string[] {
         if (!fs.existsSync(projectRootFile)) continue
         try {
           const projectRoot = fs.readFileSync(projectRootFile, 'utf-8').trim()
-          if (isSameOrChildPath(projectRoot, workingDir)) addChatsDir(entry.name)
+          if (projectRoot) {
+            mappedDirNames.set(entry.name, projectRoot)
+            if (isSamePath(projectRoot, workingDir)) addChatsDir(entry.name)
+          }
         } catch { /* skip */ }
       }
     } catch { /* skip */ }
+  }
+
+  // Legacy basename fallback only when not bound to a different workspace root
+  const baseName = path.basename(workingDir)
+  if (baseName) {
+    const boundRoot = mappedDirNames.get(baseName)
+    if (!boundRoot || isSamePath(boundRoot, workingDir)) {
+      for (const geminiTmpDir of tmpDirs) {
+        const candidateDir = path.join(geminiTmpDir, baseName)
+        const projectRootFile = path.join(candidateDir, '.project_root')
+        if (fs.existsSync(projectRootFile)) {
+          try {
+            const root = fs.readFileSync(projectRootFile, 'utf-8').trim()
+            if (root && !isSamePath(root, workingDir)) continue
+          } catch { /* skip */ }
+        }
+        const chatsDir = path.join(candidateDir, 'chats')
+        if (fs.existsSync(chatsDir)) chatsDirs.add(chatsDir)
+      }
+    }
   }
 
   return [...chatsDirs]
@@ -1102,25 +1171,27 @@ const antigravityProvider: NativeSessionProvider = {
             'SELECT conversation_id, title, preview, last_modified_time, workspace_uris, last_user_input_time FROM conversation_summaries'
           ).all() as AntigravitySummaryRow[]
           for (const row of rows) {
+            if (!row.conversation_id || seenSessionIds.has(row.conversation_id)) continue
+
             let uris: string[] = []
             if (row.workspace_uris) {
               try {
                 const parsed = JSON.parse(row.workspace_uris)
-                if (Array.isArray(parsed)) uris = parsed.filter((u): u is string => typeof u === 'string')
+                if (Array.isArray(parsed)) uris = parsed.filter((u): u is string => typeof u === 'string' && u.trim().length > 0)
               } catch {
-                if (typeof row.workspace_uris === 'string') uris = [row.workspace_uris]
+                if (typeof row.workspace_uris === 'string' && row.workspace_uris.trim()) {
+                  uris = [row.workspace_uris.trim()]
+                }
               }
             }
 
-            const matches = uris.length === 0 || uris.some((u) => {
+            // Require an explicit workspace URI belonging to workingDir; never match empty URIs
+            // or parent directories, which would duplicate one conversation across all workspaces.
+            const matches = uris.length > 0 && uris.some((u) => {
               const p = fileUriToPath(u)
-              return isSameOrChildPath(p, workingDir) || isSameOrChildPath(workingDir, p)
+              return isSameOrChildPath(p, workingDir)
             })
             if (!matches) continue
-
-            seenSessionIds.add(row.conversation_id)
-            const rawTitle = (row.title || '').trim() || (row.preview || '').trim()
-            const title = rawTitle ? truncateTitle(rawTitle) : `Session ${row.conversation_id.slice(0, 8)}`
 
             let modifiedAt = 0
             if (row.last_modified_time && !row.last_modified_time.startsWith('0001-')) {
@@ -1140,11 +1211,23 @@ const antigravityProvider: NativeSessionProvider = {
                 sizeBytes = stat.size
               } catch { /* skip */ }
             }
+            if (!modifiedAt) {
+              try {
+                const brainStat = fs.statSync(path.join(baseDir, 'brain', row.conversation_id))
+                modifiedAt = brainStat.mtimeMs
+              } catch { /* skip */ }
+            }
+            // Skip uninitialized/ghost summary rows with no valid timestamp or backing conversation files
+            if (!modifiedAt || modifiedAt <= 0) continue
+
+            seenSessionIds.add(row.conversation_id)
+            const rawTitle = (row.title || '').trim() || (row.preview || '').trim()
+            const title = rawTitle ? truncateTitle(rawTitle) : `Session ${row.conversation_id.slice(0, 8)}`
 
             sessions.push({
               sessionId: row.conversation_id,
               title,
-              modifiedAt: modifiedAt || Date.now(),
+              modifiedAt,
               sizeBytes
             })
           }
@@ -1158,13 +1241,14 @@ const antigravityProvider: NativeSessionProvider = {
       // 2. Also check history.jsonl (captures prompts or works when DB is locked/unavailable)
       if (fs.existsSync(historyFile)) {
         try {
+          const historyMtime = fs.statSync(historyFile).mtimeMs
           const content = fs.readFileSync(historyFile, 'utf-8')
           for (const line of content.split('\n')) {
             if (!line.trim()) continue
             try {
               const entry = JSON.parse(line) as AntigravityHistoryEntry
               const ws = typeof entry.workspace === 'string' ? entry.workspace : typeof entry.cwd === 'string' ? entry.cwd : ''
-              if (!ws || (!isSameOrChildPath(ws, workingDir) && !isSameOrChildPath(workingDir, ws))) continue
+              if (!ws || !isSameOrChildPath(ws, workingDir)) continue
 
               const rawConvId = entry.conversationId || entry.conversation_id
               const convId = typeof rawConvId === 'string' ? rawConvId : ''
@@ -1181,25 +1265,26 @@ const antigravityProvider: NativeSessionProvider = {
                 continue
               }
 
+              const parsedTs = typeof entry.timestamp === 'number'
+                ? entry.timestamp
+                : typeof entry.timestamp === 'string'
+                  ? new Date(entry.timestamp).getTime()
+                  : historyMtime
+              if (!Number.isFinite(parsedTs) || parsedTs <= 0) continue
+
               seenSessionIds.add(convId)
               const title = typeof entry.display === 'string' && entry.display
                 ? truncateTitle(entry.display)
                 : `Session ${convId.slice(0, 8)}`
-              const timestamp = typeof entry.timestamp === 'number' ? entry.timestamp : Date.now()
               sessions.push({
                 sessionId: convId,
                 title,
-                modifiedAt: timestamp
+                modifiedAt: parsedTs
               })
             } catch { /* skip line */ }
           }
         } catch { /* skip history */ }
       }
-    }
-
-    // 3. Fallback to Gemini tmp directory if no sessions found (legacy compatibility)
-    if (sessions.length === 0) {
-      return geminiProvider.listSessions(workingDir)
     }
 
     sessions.sort((a, b) => b.modifiedAt - a.modifiedAt)
@@ -1831,6 +1916,460 @@ export async function loadNativeSessionTranscript(
   }
 }
 
+export interface NativeSessionStats {
+  model?: string
+  costUsd?: number
+  contextUsage?: {
+    inputTokens?: number
+    cachedInputTokens?: number
+    outputTokens?: number
+    usedTokens?: number
+    contextWindow?: number
+  }
+}
+
+function getClaudeNativeStats(workingDir: string, sessionId?: string): NativeSessionStats | null {
+  // Never fall back to "newest transcript in the project dir": a freshly
+  // opened session has no transcript yet, and borrowing another session's
+  // file showed its (often near-full) context usage and cost instead.
+  const filePath = sessionId ? findClaudeSessionFile(workingDir, sessionId) : null
+  if (!filePath) return null
+
+  try {
+    const raw = fs.readFileSync(filePath, 'utf-8')
+    const lines = raw.split('\n')
+    let model: string | undefined
+    let costUsd: number | undefined
+    let usage: NativeSessionStats['contextUsage'] | undefined
+    let usageModel: string | undefined
+    let reportedWindow = 0
+
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i].trim()
+      if (!line) continue
+      try {
+        const data = JSON.parse(line)
+        // `<synthetic>` lines (API errors, interrupts) are not a real model
+        // and carry zeroed usage — skip them for both.
+        if (isSyntheticClaudeModel(data.message?.model)) continue
+        if (costUsd === undefined) {
+          if (typeof data.total_cost_usd === 'number') costUsd = data.total_cost_usd
+          else if (typeof data.cost_usd === 'number') costUsd = data.cost_usd
+        }
+        if (!model) {
+          if (typeof data.message?.model === 'string' && data.message.model) model = data.message.model
+          else if (typeof data.model === 'string' && data.model) model = data.model
+        }
+        if (data.type === 'result' && !reportedWindow) {
+          reportedWindow = reportedContextWindow(data.modelUsage)
+        }
+        // Occupancy = latest main-thread request (not the turn aggregate on
+        // `result` lines, not sub-agent sidechain lines).
+        if (!usage && data.type !== 'result' && !data.isSidechain && data.message && typeof data.message === 'object') {
+          const req = claudeRequestUsage(data.message.usage)
+          if (req) {
+            usage = req
+            if (typeof data.message.model === 'string') usageModel = data.message.model
+          }
+        }
+        if (model && costUsd !== undefined && usage) break
+      } catch { /* skip */ }
+    }
+
+    // Transcripts record the API model id, which never carries `[1m]`; only
+    // the configured model can tell a 1M session apart (when it matches).
+    const configured = getClaudeConfiguredModel(workingDir)
+    if (usage) {
+      const observed = usageModel || model
+      usage.contextWindow = resolveClaudeContextWindow({
+        models: [usageModel, model, claudeModelMatches(configured, observed) ? configured : undefined],
+        reported: reportedWindow,
+        usedTokens: usage.usedTokens,
+      })
+    }
+
+    if (usage && costUsd === undefined) {
+      const inCost = ((usage.inputTokens || 0) * 3.0) / 1_000_000
+      const cacheCost = ((usage.cachedInputTokens || 0) * 0.3) / 1_000_000
+      const outCost = ((usage.outputTokens || 0) * 15.0) / 1_000_000
+      costUsd = inCost + cacheCost + outCost
+    }
+
+    return {
+      model: model || configured,
+      costUsd: costUsd ?? 0,
+      contextUsage: usage
+    }
+  } catch {
+    return null
+  }
+}
+
+function getAntigravityNativeStats(workingDir: string, sessionId?: string): NativeSessionStats | null {
+  const baseDirs = resolveAntigravityBaseDirs()
+  if (baseDirs.length === 0) return null
+
+  let configuredModel = 'Gemini 3.8 Flash (High)'
+  for (const baseDir of baseDirs) {
+    const sFile = path.join(baseDir, 'settings.json')
+    if (fs.existsSync(sFile)) {
+      try {
+        const s = JSON.parse(fs.readFileSync(sFile, 'utf-8'))
+        if (typeof s.model === 'string' && s.model) configuredModel = s.model
+        else if (typeof s.modelSelection === 'string' && s.modelSelection) configuredModel = s.modelSelection
+        break
+      } catch { /* skip */ }
+    }
+  }
+
+  // Only the bound conversation — the old "newest transcript in brain/"
+  // fallback ignored the workspace entirely and showed another conversation's
+  // usage on freshly opened sessions.
+  let transcriptPath: string | null = null
+  if (sessionId) {
+    for (const baseDir of baseDirs) {
+      const p = path.join(baseDir, 'brain', sessionId, '.system_generated', 'logs', 'transcript.jsonl')
+      if (fs.existsSync(p)) {
+        transcriptPath = p
+        break
+      }
+    }
+  }
+
+  if (!transcriptPath) {
+    return {
+      model: configuredModel,
+      costUsd: 0,
+      contextUsage: {
+        inputTokens: 0,
+        cachedInputTokens: 0,
+        outputTokens: 0,
+        usedTokens: 0,
+        contextWindow: 1_000_000
+      }
+    }
+  }
+
+  try {
+    const raw = fs.readFileSync(transcriptPath, 'utf-8')
+    const lines = raw.split('\n')
+    // Each usage row is one request (input / cache_read / output are disjoint):
+    // the LAST row is the context occupancy, the SUM of all rows is the cost.
+    let inputTokens = 0
+    let cachedInputTokens = 0
+    let outputTokens = 0
+    let sumIn = 0
+    let sumCached = 0
+    let sumOut = 0
+    let detectedModel = configuredModel
+
+    for (const line of lines) {
+      if (!line.trim()) continue
+      try {
+        const row = JSON.parse(line)
+        if (row.input_tokens || row.output_tokens || row.cache_read_tokens) {
+          inputTokens = typeof row.input_tokens === 'number' ? row.input_tokens : 0
+          cachedInputTokens = typeof row.cache_read_tokens === 'number' ? row.cache_read_tokens : 0
+          outputTokens = typeof row.output_tokens === 'number' ? row.output_tokens : 0
+          sumIn += inputTokens
+          sumCached += cachedInputTokens
+          sumOut += outputTokens
+        }
+        if (typeof row.content === 'string') {
+          // Lazy match up to a sentence-ending "." so versions like "3.8" survive.
+          const match = row.content.match(/Model Selection` from .*? to (Gemini .+?)\.(?:\s|$)/)
+          if (match && match[1]) {
+            detectedModel = match[1].trim()
+          }
+        }
+      } catch { /* skip */ }
+    }
+
+    const usedTokens = inputTokens + cachedInputTokens + outputTokens
+    const isPro = detectedModel.toLowerCase().includes('pro')
+    const inRate = isPro ? 1.25 : 0.10
+    const cacheRate = isPro ? 0.3125 : 0.025
+    const outRate = isPro ? 5.00 : 0.40
+    const costUsd = (sumIn * inRate + sumCached * cacheRate + sumOut * outRate) / 1_000_000
+
+    return {
+      model: detectedModel,
+      costUsd,
+      contextUsage: {
+        inputTokens,
+        cachedInputTokens,
+        outputTokens,
+        usedTokens,
+        contextWindow: Math.max(1_000_000, usedTokens)
+      }
+    }
+  } catch {
+    return {
+      model: configuredModel,
+      costUsd: 0,
+      contextUsage: {
+        inputTokens: 0,
+        cachedInputTokens: 0,
+        outputTokens: 0,
+        usedTokens: 0,
+        contextWindow: 1_000_000
+      }
+    }
+  }
+}
+
+function getCodexNativeStats(workingDir: string, sessionId?: string): NativeSessionStats | null {
+  // No "newest rollout in this cwd" fallback: a fresh session would show
+  // another session's usage/cost. Stats appear once toolSessionId is bound.
+  const filePath = sessionId ? findCodexSessionFile(workingDir, sessionId) : null
+  if (!filePath) return null
+
+  try {
+    const raw = fs.readFileSync(filePath, 'utf-8')
+    const lines = raw.split('\n')
+    let model: string | undefined
+    let usage: NativeSessionStats['contextUsage'] | undefined
+    let costUsage: ReturnType<typeof parseCodexTokenInfo>['cost'] = null
+
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i].trim()
+      if (!line) continue
+      try {
+        const data = JSON.parse(line)
+        if (!model && (data.type === 'turn_context' || data.type === 'session_meta') && typeof data.payload?.model === 'string' && data.payload.model) {
+          model = data.payload.model
+        }
+        if (!usage && data.type === 'event_msg' && data.payload?.type === 'token_count') {
+          const { context, cost } = parseCodexTokenInfo(data.payload.info)
+          if (context) {
+            usage = context
+            costUsage = cost
+          }
+        }
+        if (usage && model) break
+      } catch { /* skip */ }
+    }
+
+    const resolvedModel = model || process.env.CODEX_MODEL || 'GPT-4o'
+    return {
+      model: resolvedModel,
+      costUsd: computeCodexCost(resolvedModel, costUsage),
+      contextUsage: usage
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Locate the chat file of a Gemini session. Gemini names files
+ * `session-<timestamp>-<first 8 chars of sessionId>.json[l]`, so a plain
+ * `includes(sessionId)` never matched a full UUID.
+ */
+function findGeminiSessionFile(workingDir: string, sessionId: string): string | null {
+  const shortId = sessionId.slice(0, 8)
+  for (const chatsDir of resolveGeminiChatsDirs(workingDir)) {
+    let files: string[]
+    try { files = fs.readdirSync(chatsDir).filter((f) => f.endsWith('.json') || f.endsWith('.jsonl')) } catch { continue }
+    for (const f of files) {
+      if (f.includes(sessionId)) return path.join(chatsDir, f)
+    }
+    for (const f of files) {
+      if (!shortId || !f.includes(shortId)) continue
+      const full = path.join(chatsDir, f)
+      try {
+        if (parseGeminiSessionFile(full)?.sessionId === sessionId) return full
+      } catch { /* skip */ }
+    }
+  }
+  return null
+}
+
+/**
+ * Per-message Gemini usage → disjoint {uncached input, cached, output}.
+ * Handles chat-recording `tokens` ({input, output, cached, thoughts, total})
+ * and raw API `usageMetadata`; in both, cached is a SUBSET of input.
+ */
+function geminiMessageUsage(row: any): { input: number; cached: number; output: number; used: number } | null {
+  const t = row?.tokens
+  const u = row?.usageMetadata
+  let input = 0
+  let cached = 0
+  let output = 0
+  let total = 0
+  if (t && typeof t === 'object') {
+    input = Number(t.input) || 0
+    cached = Number(t.cached) || 0
+    output = (Number(t.output) || 0) + (Number(t.thoughts) || 0)
+    total = Number(t.total) || 0
+  } else if (u && typeof u === 'object') {
+    input = Number(u.promptTokenCount) || 0
+    cached = Number(u.cachedContentTokenCount) || 0
+    output = (Number(u.candidatesTokenCount) || 0) + (Number(u.thoughtsTokenCount) || 0)
+    total = Number(u.totalTokenCount) || 0
+  } else {
+    return null
+  }
+  if (!input && !output && !total) return null
+  cached = Math.min(cached, input)
+  return { input: input - cached, cached, output, used: total > 0 ? total : input + output }
+}
+
+function getGeminiNativeStats(workingDir: string, sessionId?: string): NativeSessionStats | null {
+  // No "newest chat file" fallback — it showed another session's usage.
+  const filePath = sessionId ? findGeminiSessionFile(workingDir, sessionId) : null
+  if (!filePath) return null
+
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8')
+    let model: string | undefined
+    const rows: any[] = []
+    if (filePath.endsWith('.json')) {
+      const data = JSON.parse(content)
+      if (typeof data.model === 'string' && data.model) model = data.model
+      if (Array.isArray(data.messages)) rows.push(...data.messages)
+      if (data.usageMetadata || data.tokenUsage) rows.push({ usageMetadata: data.usageMetadata || data.tokenUsage })
+    } else {
+      for (const line of content.split('\n')) {
+        if (!line.trim()) continue
+        try { rows.push(JSON.parse(line)) } catch { /* skip */ }
+      }
+    }
+
+    // Last message with usage = occupancy; sum over messages = cost.
+    let last: ReturnType<typeof geminiMessageUsage> = null
+    let sumIn = 0
+    let sumCached = 0
+    let sumOut = 0
+    for (const row of rows) {
+      if (typeof row?.model === 'string' && row.model) model = row.model
+      const u = geminiMessageUsage(row)
+      if (!u) continue
+      last = u
+      sumIn += u.input
+      sumCached += u.cached
+      sumOut += u.output
+    }
+
+    const resolvedModel = model || 'Gemini 2.5 Pro'
+    const isPro = resolvedModel.toLowerCase().includes('pro')
+    const inRate = isPro ? 1.25 : 0.10
+    const cacheRate = isPro ? 0.3125 : 0.025
+    const outRate = isPro ? 5.00 : 0.40
+    const costUsd = (sumIn * inRate + sumCached * cacheRate + sumOut * outRate) / 1_000_000
+
+    return {
+      model: resolvedModel,
+      costUsd,
+      contextUsage: last
+        ? {
+            inputTokens: last.input,
+            cachedInputTokens: last.cached,
+            outputTokens: last.output,
+            usedTokens: last.used,
+            contextWindow: Math.max(1_000_000, last.used)
+          }
+        : undefined
+    }
+  } catch {
+    return null
+  }
+}
+
+function readJsonFile(file: string): any {
+  try { return JSON.parse(fs.readFileSync(file, 'utf-8')) } catch { return null }
+}
+
+/**
+ * Grok session dir layout (~/.grok/sessions/<encoded cwd>/<sessionId>/):
+ *  - summary.json  → `current_model_id`
+ *  - signals.json  → `contextTokensUsed` / `contextWindowTokens` (authoritative occupancy + window)
+ *  - usage.json    → cumulative `session` totals and `costUsdTicks` (1e-10 USD per tick)
+ * The old reader looked for prompt_tokens in summary.json (never present), so
+ * Grok always showed 0 tokens / "Grok 2" / a 128k window.
+ */
+function getGrokNativeStats(workingDir: string, sessionId?: string): NativeSessionStats | null {
+  // No "newest session dir" fallback — it showed another session's usage.
+  if (!sessionId) return null
+  let sessionDir: string | null = null
+  for (const projectDir of resolveGrokProjectDirs(workingDir)) {
+    const full = path.join(projectDir, sessionId)
+    try {
+      if (fs.statSync(full).isDirectory()) { sessionDir = full; break }
+    } catch { /* missing */ }
+  }
+  if (!sessionDir) return null
+
+  try {
+    const summary = readJsonFile(path.join(sessionDir, 'summary.json')) || {}
+    const signals = readJsonFile(path.join(sessionDir, 'signals.json')) || {}
+    const usageFile = readJsonFile(path.join(sessionDir, 'usage.json')) || {}
+    const totals = usageFile.session || {}
+
+    const model: string | undefined =
+      (typeof summary.current_model_id === 'string' && summary.current_model_id) ||
+      (typeof summary.model === 'string' && summary.model) ||
+      (typeof signals.primaryModelId === 'string' && signals.primaryModelId) ||
+      (typeof totals.primaryModelId === 'string' && totals.primaryModelId) ||
+      undefined
+
+    const toNum = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+    const used = toNum(signals.contextTokensUsed)
+    const window = toNum(signals.contextWindowTokens)
+
+    let costUsd = 0
+    if (toNum(totals.costUsdTicks) > 0) {
+      costUsd = toNum(totals.costUsdTicks) / 1e10
+    } else if (toNum(totals.inputTokens) || toNum(totals.outputTokens)) {
+      const cachedTot = Math.min(toNum(totals.cachedReadTokens), toNum(totals.inputTokens))
+      costUsd = ((toNum(totals.inputTokens) - cachedTot) * 2.0 + cachedTot * 0.5 + toNum(totals.outputTokens) * 10.0) / 1_000_000
+    }
+
+    return {
+      model: model || 'Grok',
+      costUsd,
+      contextUsage: used || window
+        ? {
+            // signals.json only reports the occupancy total, not its breakdown.
+            inputTokens: used,
+            cachedInputTokens: 0,
+            outputTokens: 0,
+            usedTokens: used,
+            contextWindow: window > 0 ? Math.max(window, used) : undefined
+          }
+        : undefined
+    }
+  } catch {
+    return null
+  }
+}
+
+export async function getNativeSessionStats(
+  workingDir: string,
+  toolType: AIToolType,
+  sessionId?: string
+): Promise<NativeSessionStats | null> {
+  try {
+    switch (toolType) {
+      case 'claude':
+        return getClaudeNativeStats(workingDir, sessionId)
+      case 'antigravity':
+        return getAntigravityNativeStats(workingDir, sessionId)
+      case 'codex':
+        return getCodexNativeStats(workingDir, sessionId)
+      case 'gemini':
+        return getGeminiNativeStats(workingDir, sessionId)
+      case 'grok':
+        return getGrokNativeStats(workingDir, sessionId)
+      default:
+        return null
+    }
+  } catch (err) {
+    console.error(`[NativeSessions] Failed to get stats for ${toolType}:`, err)
+    return null
+  }
+}
+
 /**
  * Permanently delete a native CLI tool session from disk.
  */
@@ -1840,6 +2379,16 @@ export async function deleteNativeSession(
   sessionId: string
 ): Promise<boolean> {
   let deleted = false
+  // This deletes files on disk: only exact, path-safe ids — never prefix or
+  // substring matches, which a short id would turn into a mass delete.
+  if (
+    typeof sessionId !== 'string' ||
+    sessionId.length < 8 ||
+    sessionId === '.' || sessionId === '..' ||
+    !/^[A-Za-z0-9_.:-]+$/.test(sessionId)
+  ) {
+    return false
+  }
 
   try {
     if (toolType === 'claude') {
@@ -1875,7 +2424,8 @@ export async function deleteNativeSession(
       for (const filePath of collectCodexSessionFiles()) {
         try {
           const base = path.basename(filePath)
-          let match = base === `${sessionId}.jsonl` || base.includes(sessionId)
+          // Codex rollout files are `rollout-<timestamp>-<id>.jsonl`.
+          let match = base === `${sessionId}.jsonl` || base.endsWith(`-${sessionId}.jsonl`)
           if (!match) {
             const { meta } = parseCodexSessionFile(filePath)
             if (meta?.payload?.id === sessionId) match = true
@@ -1948,7 +2498,7 @@ export async function deleteNativeSession(
         if (fs.existsSync(convDir)) {
           try {
             for (const f of fs.readdirSync(convDir)) {
-              if (f.startsWith(sessionId)) {
+              if (f === sessionId || f.startsWith(`${sessionId}.`)) {
                 fs.rmSync(path.join(convDir, f), { recursive: true, force: true })
                 deleted = true
               }
@@ -1958,15 +2508,24 @@ export async function deleteNativeSession(
 
         if (fs.existsSync(historyFile)) {
           try {
+            let removedFromHistory = false
             const content = fs.readFileSync(historyFile, 'utf-8')
             const filtered = content.split('\n').filter((line) => {
               if (!line.trim()) return false
               try {
                 const entry = JSON.parse(line) as Record<string, unknown>
                 const rawConvId = entry?.conversationId || entry?.conversation_id
+                if (rawConvId === sessionId) {
+                  removedFromHistory = true
+                  return false
+                }
+                return true
               } catch { return true }
             }).join('\n')
-            fs.writeFileSync(historyFile, filtered ? filtered + '\n' : '', 'utf-8')
+            if (removedFromHistory) {
+              fs.writeFileSync(historyFile, filtered ? filtered + '\n' : '', 'utf-8')
+              deleted = true
+            }
           } catch { /* skip */ }
         }
       }
@@ -1989,7 +2548,7 @@ export async function deleteNativeSession(
         try {
           for (const file of fs.readdirSync(chatsDir)) {
             const filePath = path.join(chatsDir, file)
-            if (file.startsWith(sessionId) || file.replace(/\.(json|jsonl)$/, '') === sessionId) {
+            if (file.replace(/\.(json|jsonl)$/, '') === sessionId) {
               fs.unlinkSync(filePath)
               deleted = true
               continue
@@ -2041,7 +2600,8 @@ export async function deleteNativeSession(
           for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
             const entryPath = path.join(dir, entry.name)
             if (entry.isFile() && entry.name.endsWith('.jsonl')) {
-              let match = entry.name.includes(sessionId)
+              const stem = entry.name.replace(/\.jsonl$/, '')
+              let match = stem === sessionId || stem.endsWith(`_${sessionId}`)
               if (!match) {
                 const head = readOmpSessionHead(entryPath)
                 const sid = head.sessionId || entry.name.replace(/\.jsonl$/, '').replace(/^[^_]*_/, '')

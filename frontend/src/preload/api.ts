@@ -772,6 +772,8 @@ export const api = {
       ipcRenderer.invoke('ai-coding:get-raw-session-output', sessionId),
     getRawSessionSnapshot: (sessionId: string) =>
       ipcRenderer.invoke('ai-coding:get-raw-session-snapshot', sessionId) as Promise<{ data: string; offset: number }>,
+    getSessionStats: (sessionId: string) =>
+      ipcRenderer.invoke('ai-coding:get-session-stats', sessionId),
 
     getGroups: () => ipcRenderer.invoke('ai-coding:get-groups'),
     createGroup: (name: string) => ipcRenderer.invoke('ai-coding:create-group', name),

@@ -24,7 +24,7 @@ export type CodingStreamEvent =
   // Lifecycle
   | { type: 'system'; subtype: 'init' | 'local'; session_id?: string; message?: string }
   | { type: 'turn_start' }
-  | { type: 'result'; session_id?: string; cost_usd?: number; usage?: StreamContextUsage; subtype?: string; result?: string }
+  | { type: 'result'; session_id?: string; cost_usd?: number; model?: string; usage?: StreamContextUsage; subtype?: string; result?: string }
   | { type: 'error'; error: { message: string } }
   // Streaming text / thinking (renderer appends to the current segment)
   | { type: 'delta'; text: string }
@@ -36,7 +36,7 @@ export type CodingStreamEvent =
   | { type: 'tool_executing'; id: string; name: string; input: Record<string, unknown> }
   | { type: 'tool_result'; id: string; content: string; isError?: boolean }
   // Side-channel structured blocks
-  | { type: 'context_usage'; usage: StreamContextUsage }
+  | { type: 'context_usage'; usage: StreamContextUsage; model?: string }
   | { type: 'ask_user_question'; id: string; questions: unknown[] }
   | { type: 'todo_update'; todos: unknown[] }
   // Tool-permission confirmation — server blocks on canUseTool until the

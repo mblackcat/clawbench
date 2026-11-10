@@ -46,6 +46,7 @@ export interface AICodingSession {
   status: 'closed' | 'idle' | 'running' | 'completed' | 'error'
   lastActivity: 'thinking' | 'tool_call' | 'writing' | 'reading' | 'waiting_input' | 'auth_request' | 'none'
   costUsd?: number
+  model?: string
   durationMs?: number
   startedAt?: number
   title?: string
@@ -149,6 +150,7 @@ export const aiCodingStore = new Store<AICodingSchema>({
           status: { type: 'string' },
           lastActivity: { type: 'string' },
           costUsd: { type: 'number' },
+          model: { type: 'string' },
           durationMs: { type: 'number' },
           startedAt: { type: 'number' },
           title: { type: 'string' },
