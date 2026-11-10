@@ -115,6 +115,26 @@ describe('ApiClient', () => {
         })
       );
     });
+
+    it('reportSession posts an empty body to report-ip (no self-reported IP)', async () => {
+      apiClient.setToken('test-token');
+      (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        json: async () => ({ success: true, data: { recorded: true } }),
+      });
+
+      await apiClient.reportSession();
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/report-ip'),
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({}),
+          headers: expect.objectContaining({ Authorization: 'Bearer test-token' }),
+        })
+      );
+    });
   });
 
   describe('Error Handling', () => {

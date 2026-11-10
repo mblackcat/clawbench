@@ -35,6 +35,9 @@ export async function initializeSqliteSchema(database: DatabaseAdapter): Promise
   if (!columnNames.includes('auth_provider')) {
     await database.run(`ALTER TABLE users ADD COLUMN auth_provider TEXT`);
   }
+  if (!columnNames.includes('last_login_ip')) {
+    await database.run(`ALTER TABLE users ADD COLUMN last_login_ip TEXT`);
+  }
   if (!columnNames.includes('role')) {
     await database.run(`ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'`);
   }

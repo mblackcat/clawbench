@@ -6,6 +6,9 @@ import { initializeSchema } from '../database/schema';
 import { cleanAllTables } from './helpers/db-cleanup';
 import { createUser } from '../repositories/userRepository';
 import { createApplication } from '../repositories/applicationRepository';
+import { createApplicationVersion } from '../repositories/applicationVersionRepository';
+import { createExecutionError } from '../repositories/applicationExecutionErrorRepository';
+import { config } from '../config';
 import { generateToken, calculateExpiresAt } from '../utils/jwt';
 import { createAuthToken } from '../repositories/authTokenRepository';
 import { v4 as uuidv4 } from 'uuid';
@@ -216,6 +219,45 @@ describe('Application Update and Delete API', () => {
       const getResponse = await request(app)
         .get(`/api/v1/applications/${testApplicationId}`);
       expect(getResponse.status).toBe(404);
+    });
+
+    it('should delete a previously published (unpublished) app together with its versions and execution errors', async () => {
+      await createApplicationVersion({
+        applicationId: testApplicationId,
+        version: '1.0.0',
+        filePath: `apps/${testApplicationId}/1.0.0.zip`,
+        fileSize: 1,
+      });
+      await createExecutionError({
+        applicationId: testApplicationId,
+        userId: testUserId,
+        version: '1.0.0',
+        message: 'boom',
+      });
+
+      // MySQL / PostgreSQL enforce foreign keys; SQLite does not by default, so
+      // turn it on here to reproduce the production failure.
+      const isSqlite = config.database.type === 'sqlite';
+      if (isSqlite) await database.run('PRAGMA foreign_keys = ON');
+      try {
+        const response = await request(app)
+          .delete(`/api/v1/applications/${testApplicationId}`)
+          .set('Authorization', `Bearer ${testToken}`);
+        expect(response.status).toBe(200);
+      } finally {
+        if (isSqlite) await database.run('PRAGMA foreign_keys = OFF');
+      }
+
+      const versions = await database.all(
+        'SELECT * FROM application_versions WHERE application_id = ?',
+        [testApplicationId]
+      );
+      const errors = await database.all(
+        'SELECT * FROM application_execution_errors WHERE application_id = ?',
+        [testApplicationId]
+      );
+      expect(versions).toHaveLength(0);
+      expect(errors).toHaveLength(0);
     });
 
     it('should return 401 when not authenticated', async () => {

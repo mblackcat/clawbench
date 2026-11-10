@@ -40,7 +40,7 @@ import {
   getCodexSessionOutput, interruptCodexSession, setCodexSessionMode, setCodexSessionEffort, resolveBundledCodexPath
 } from './codex-session-manager.service'
 import { detectAvailableCLIs, getAugmentedEnv, loadShellEnv } from './cli-detect.service'
-import { settingsStore } from '../store/settings.store'
+import { settingsStore, getAiModelConfigs } from '../store/settings.store'
 import { resolveOmpSessionDirs, invalidateNativeSessionCache } from './native-sessions.service'
 import { getToolCandidatePaths } from '../utils/windows-env'
 import { mainT } from '../utils/i18n'
@@ -99,11 +99,8 @@ async function resolveCommandPath(binary: string, env: Record<string, string>): 
 function buildToolEnv(toolType: AIToolType): Record<string, string> {
   const env = getAugmentedEnv() as Record<string, string>
 
-  const aiModelConfigs = (settingsStore.get('aiModelConfigs') ?? []) as Array<{
-    provider: string
-    apiKey: string
-    enabled: boolean
-  }>
+  // Decrypted keys (stored encrypted via safeStorage)
+  const aiModelConfigs = getAiModelConfigs()
 
   // Antigravity CLI is Gemini-based and reads the same key
   if ((toolType === 'gemini' || toolType === 'antigravity') && !env.GEMINI_API_KEY) {

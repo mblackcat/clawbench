@@ -77,6 +77,8 @@ export const useAuthStore = create<AuthState>((set) => ({
         apiClient.setToken(candidateToken)
         try {
           const apiUser = await apiClient.getCurrentUser()
+          // 会话恢复后同步登录信息（最近 IP，仅 admin 可见）；失败静默
+          void apiClient.reportSession().catch(() => {})
           set({
             loggedIn: true,
             user: {
@@ -122,6 +124,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       if (status.loggedIn && status.token) {
         // 将 JWT 设置到 renderer 的 apiClient
         apiClient.setToken(status.token)
+        // 登录后同步登录信息（最近 IP，仅 admin 可见）；失败静默
+        void apiClient.reportSession().catch(() => {})
       } else if (!status.loggedIn) {
         set({ error: getT()('login.feishuIncomplete') })
       }

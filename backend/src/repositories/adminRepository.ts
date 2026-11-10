@@ -8,7 +8,7 @@ import { User, UserRow, userRowToUser } from '../models/user';
 
 /**
  * List users with optional search, pagination.
- * Search matches against username and email (LIKE).
+ * Search matches against username, email and last_login_ip (LIKE).
  */
 export async function listUsers(
   search?: string,
@@ -19,10 +19,10 @@ export async function listUsers(
     const term = `%${search.trim()}%`;
     const rows = await database.all<UserRow>(
       `SELECT * FROM users
-       WHERE username LIKE ? OR email LIKE ?
+       WHERE username LIKE ? OR email LIKE ? OR last_login_ip LIKE ?
        ORDER BY created_at DESC
        LIMIT ? OFFSET ?`,
-      [term, term, limit, offset]
+      [term, term, term, limit, offset]
     );
     return rows.map(userRowToUser);
   }
@@ -41,8 +41,8 @@ export async function countUsers(search?: string): Promise<number> {
   if (search && search.trim()) {
     const term = `%${search.trim()}%`;
     const row = await database.get<{ cnt: number }>(
-      `SELECT COUNT(*) AS cnt FROM users WHERE username LIKE ? OR email LIKE ?`,
-      [term, term]
+      `SELECT COUNT(*) AS cnt FROM users WHERE username LIKE ? OR email LIKE ? OR last_login_ip LIKE ?`,
+      [term, term, term]
     );
     return row?.cnt ?? 0;
   }

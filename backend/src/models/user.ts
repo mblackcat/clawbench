@@ -14,6 +14,8 @@ export interface User {
   avatarUrl?: string;
   authProvider?: string;
   role: 'admin' | 'user';
+  /** 最近一次登录 / 会话同步时服务端观察到的客户端 IP（受 TRUST_PROXY 约束，仅 admin 可见） */
+  lastLoginIp?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -65,6 +67,7 @@ export interface UserRow {
   avatar_url?: string;
   auth_provider?: string;
   role: string;
+  last_login_ip?: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -82,6 +85,7 @@ export function userRowToUser(row: UserRow): User {
     avatarUrl: row.avatar_url || undefined,
     authProvider: row.auth_provider || undefined,
     role: (row.role as 'admin' | 'user') || 'user',
+    lastLoginIp: row.last_login_ip || undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -102,4 +106,16 @@ export function userToResponse(user: User): UserResponse {
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
+}
+
+/**
+ * Admin 用户列表响应：在公开响应之外附带最近登录 IP。
+ * IP 属于个人信息，只能经 admin 接口（/api/v1/admin/users）下发，勿在其它响应中使用。
+ */
+export interface AdminUserResponse extends UserResponse {
+  lastLoginIp?: string;
+}
+
+export function userToAdminResponse(user: User): AdminUserResponse {
+  return { ...userToResponse(user), lastLoginIp: user.lastLoginIp };
 }

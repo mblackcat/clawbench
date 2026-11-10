@@ -136,6 +136,8 @@ export function createApp(): Application {
     });
     app.use('/api/v1/ai/chat/stream', aiStreamLimiter);
     app.use('/api/v1/ai/chat/generate-title', aiStreamLimiter);
+    // 自用模型用量上报：同一限流，避免刷写审计日志
+    app.use('/api/v1/ai/usage/report', aiStreamLimiter);
 
     // 创建应用：只作用于 POST /api/v1/applications（不影响列表/详情/更新/下载，
     // 否则浏览发现页会耗尽额度）

@@ -24,7 +24,7 @@ import {
   countExecutionErrors,
 } from '../repositories/applicationExecutionErrorRepository';
 import { getUserById } from '../repositories/userRepository';
-import { userToResponse } from '../models/user';
+import { userToResponse, userToAdminResponse } from '../models/user';
 import { applicationToResponse } from '../models/application';
 import { executionErrorToResponse } from '../models/applicationExecutionError';
 import { logger } from '../utils/logger';
@@ -76,7 +76,8 @@ export async function listUsersHandler(
     res.json({
       success: true,
       data: {
-        users: users.map(userToResponse),
+        // Admin-only view: includes the last observed client IP
+        users: users.map(userToAdminResponse),
         total,
         limit,
         offset,

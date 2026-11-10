@@ -1,5 +1,6 @@
 import Store from 'electron-store'
 import { getUserAppsPath } from '../utils/paths'
+import { decryptSecretValue, encryptSecretValue, SECRET_ENC_PREFIX } from '../utils/secret-storage'
 
 export interface ModuleVisibility {
   aiChat: boolean
@@ -461,8 +462,9 @@ export function getSettings(): PublicSettings {
     localIdePath: settingsStore.get('localIdePath'),
     localTerminalPath: settingsStore.get('localTerminalPath'),
     hasCompletedSetup: settingsStore.get('hasCompletedSetup') ?? false,
-    aiModelConfigs: settingsStore.get('aiModelConfigs'),
-    imageGenConfigs: settingsStore.get('imageGenConfigs'),
+    // Keys are masked here: this object is returned to the renderer as-is (settings:get)
+    aiModelConfigs: getAiModelConfigs().map(withMaskedKey),
+    imageGenConfigs: getImageGenConfigs().map(withMaskedKey),
     moduleVisibility: settingsStore.get('moduleVisibility') ?? { aiChat: true, copiper: false, aiAgents: true, openClaw: false, aiTerminal: true, localEnv: true, aiCoding: true },
     appShortcutEnabled: settingsStore.get('appShortcutEnabled') ?? true,
     appShortcutModifier: settingsStore.get('appShortcutModifier') ?? 'Control+Shift',
@@ -519,15 +521,29 @@ export function setCommonAppConfigCache(projectId: string, apps: unknown): void 
   settingsStore.set('commonAppConfigCache', { ...cache, [projectId]: apps })
 }
 
+// 自用模型 API Key 落盘前用 safeStorage 加密；读取时解密（旧版明文照常可读）
+function withDecryptedKey<T extends { apiKey: string }>(c: T): T {
+  return { ...c, apiKey: decryptSecretValue(c.apiKey) }
+}
+
+function withEncryptedKey<T extends { apiKey: string }>(c: T): T {
+  return { ...c, apiKey: encryptSecretValue(c.apiKey) }
+}
+
+function withMaskedKey<T extends { apiKey: string }>(c: T): T {
+  return { ...c, apiKey: c.apiKey ? '****' + c.apiKey.slice(-4) : '' }
+}
+
+/** Model configs with decrypted API keys (main process only — never send to the renderer). */
 export function getAiModelConfigs(): AIModelConfig[] {
   // Normalize legacy provider value: 'claude' was renamed to 'anthropic'
-  return settingsStore.get('aiModelConfigs').map((c) =>
-    (c.provider as string) === 'claude' ? { ...c, provider: 'anthropic' as const } : c
+  return (settingsStore.get('aiModelConfigs') ?? []).map((c) =>
+    withDecryptedKey((c.provider as string) === 'claude' ? { ...c, provider: 'anthropic' as const } : c)
   )
 }
 
 export function setAiModelConfigs(configs: AIModelConfig[]): void {
-  settingsStore.set('aiModelConfigs', configs)
+  settingsStore.set('aiModelConfigs', configs.map(withEncryptedKey))
 }
 
 export function getLastChatModel(): { configId: string; modelId: string } {
@@ -591,12 +607,22 @@ export function setAiToolsConfig(config: SettingsSchema['aiToolsConfig']): void 
   settingsStore.set('aiToolsConfig', config)
 }
 
+/** Image-gen configs with decrypted API keys (main process only). */
 export function getImageGenConfigs(): ImageGenConfig[] {
-  return settingsStore.get('imageGenConfigs')
+  return (settingsStore.get('imageGenConfigs') ?? []).map(withDecryptedKey)
 }
 
 export function setImageGenConfigs(configs: ImageGenConfig[]): void {
-  settingsStore.set('imageGenConfigs', configs)
+  settingsStore.set('imageGenConfigs', configs.map(withEncryptedKey))
+}
+
+/** 启动时把旧版明文存储的自用模型密钥一次性加密（幂等） */
+export function encryptStoredModelKeys(): void {
+  const plain = (c: { apiKey: string }) => !!c.apiKey && !c.apiKey.startsWith(SECRET_ENC_PREFIX)
+  const ai = settingsStore.get('aiModelConfigs') ?? []
+  if (ai.some(plain)) setAiModelConfigs(getAiModelConfigs())
+  const img = settingsStore.get('imageGenConfigs') ?? []
+  if (img.some(plain)) setImageGenConfigs(getImageGenConfigs())
 }
 
 export function getSetting<K extends keyof SettingsSchema>(key: K): SettingsSchema[K] {
@@ -607,6 +633,15 @@ export function setSetting<K extends keyof SettingsSchema>(
   key: K,
   value: SettingsSchema[K]
 ): void {
+  // Secret-bearing lists always go through the encrypting setters
+  if (key === 'aiModelConfigs') {
+    setAiModelConfigs((value as AIModelConfig[] | undefined) ?? [])
+    return
+  }
+  if (key === 'imageGenConfigs') {
+    setImageGenConfigs((value as ImageGenConfig[] | undefined) ?? [])
+    return
+  }
   settingsStore.set(key, value)
 }
 

@@ -105,6 +105,15 @@ const UserManagementPage: React.FC = () => {
       ),
     },
     {
+      // Last server-observed client IP (recorded at login / session sync; admin-only)
+      title: 'Last IP',
+      dataIndex: 'lastLoginIp',
+      key: 'lastLoginIp',
+      width: 150,
+      render: (ip?: string) =>
+        ip ? <code style={{ fontSize: 12 }}>{ip}</code> : <span className="muted">—</span>,
+    },
+    {
       title: 'Created',
       dataIndex: 'createdAt',
       key: 'createdAt',
@@ -149,7 +158,7 @@ const UserManagementPage: React.FC = () => {
             setSearch(v);
             setPage(1);
           }}
-          placeholder="Search by username or email…"
+          placeholder="Search by username, email or IP…"
         />
       </div>
 

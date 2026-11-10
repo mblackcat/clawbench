@@ -2,6 +2,8 @@ import { database } from './index';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 import { initializeSqliteSchema } from './schema/sqlite.schema';
+import { initializeAiSchema } from './schema/ai.schema';
+import { Dialect } from './schema/dialect';
 
 /**
  * Initialise the database schema for the active dialect.
@@ -35,4 +37,9 @@ export async function initializeSchema(): Promise<void> {
       await initializeSqliteSchema(database);
       break;
   }
+
+  // 方言无关的独立 schema 模块（按方言映射列类型）
+  const dialect: Dialect = dbType === 'mysql' || dbType === 'postgres' ? dbType : 'sqlite';
+  // 系统模型 / 用量审计
+  await initializeAiSchema(database, dialect);
 }

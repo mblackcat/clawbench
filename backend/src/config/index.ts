@@ -32,6 +32,16 @@ if (nodeEnv === 'production' && (!corsOrigins || corsOrigins.length === 0)) {
   );
 }
 
+// 系统模型密钥加密密钥（AI_KEY_SECRET）：生产环境必须 >= 16 字符且无任何回退
+// （null = 未配置，加解密被拒绝）；非生产环境缺省时由 JWT_SECRET 派生，方便本地开发与测试。
+const rawAiKeySecret = (process.env.AI_KEY_SECRET || '').trim();
+const aiKeySecret: string | null =
+  rawAiKeySecret.length >= 16
+    ? rawAiKeySecret
+    : nodeEnv === 'production'
+      ? null
+      : rawAiKeySecret || `dev-ai-key:${jwtSecret}`;
+
 /**
  * TRUST_PROXY → Express `trust proxy` setting.
  * 未设置 / 'false' / '0' → false（默认，直连部署）；'true' → true；
@@ -149,6 +159,9 @@ export const config = {
         return [];
       }
     })(),
+    // 系统模型 API Key 落库加密密钥（AI_KEY_SECRET）。生产环境必须显式配置，
+    // 否则 admin 无法保存密钥、已存密钥视为未配置（见 utils/secretBox）；修改后需在 admin-panel 重新录入密钥。
+    keySecret: aiKeySecret,
   },
 
   // 飞书 OAuth 配置

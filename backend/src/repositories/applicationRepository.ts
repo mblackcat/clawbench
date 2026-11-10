@@ -247,12 +247,21 @@ export async function incrementExecutionCount(applicationId: string): Promise<bo
  * @returns 是否删除成功
  */
 export async function deleteApplication(applicationId: string): Promise<boolean> {
-  const result = await database.run(
-    'DELETE FROM applications WHERE application_id = ?',
-    [applicationId]
-  );
-
-  return result.changes > 0;
+  // 先删引用 applications 的子表：MySQL / PostgreSQL 强制外键，曾发布过（有版本记录）的应用
+  // 直接删主表会违反约束；SQLite 默认不强制外键，但也会留下孤儿行。
+  return database.transaction(async () => {
+    await database.run('DELETE FROM application_execution_errors WHERE application_id = ?', [
+      applicationId,
+    ]);
+    await database.run('DELETE FROM application_versions WHERE application_id = ?', [
+      applicationId,
+    ]);
+    const result = await database.run(
+      'DELETE FROM applications WHERE application_id = ?',
+      [applicationId]
+    );
+    return result.changes > 0;
+  });
 }
 
 /**

@@ -12,6 +12,7 @@ import { useScheduledTaskStore } from '../../stores/useScheduledTaskStore'
 import { useAIModelStore } from '../../stores/useAIModelStore'
 import { ProviderIcon } from '../../components/ProviderIcons'
 import { useT } from '../../i18n'
+import { parseModelSelectValue } from '../../utils/model-select-value'
 
 const { Text } = Typography
 const { TextArea } = Input
@@ -98,19 +99,19 @@ const ScheduledTaskEditor: React.FC = () => {
       const values = await form.validateFields()
       const timeStr = timeValue.format('HH:mm')
       const modelValue = values.modelValue as string
-      const modelParts = modelValue?.split(':') || []
+      const parsedModel = parseModelSelectValue(modelValue)
 
       let modelSource: 'builtin' | 'local' = 'builtin'
       let modelId = ''
       let modelConfigId: string | undefined
 
-      if (modelParts[0] === 'builtin') {
+      if (parsedModel?.source === 'builtin') {
         modelSource = 'builtin'
-        modelId = modelParts[1]
-      } else if (modelParts[0] === 'local') {
+        modelId = parsedModel.modelId
+      } else if (parsedModel?.source === 'local') {
         modelSource = 'local'
-        modelConfigId = modelParts[1]
-        modelId = modelParts[2]
+        modelConfigId = parsedModel.configId
+        modelId = parsedModel.modelId
       }
 
       const data = {

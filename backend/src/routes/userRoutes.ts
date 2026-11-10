@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { registerUser, login, logout, getCurrentUser } from '../controllers/userController';
+import { registerUser, login, logout, getCurrentUser, reportUserIp } from '../controllers/userController';
 import { getUserApplicationsHandler } from '../controllers/applicationController';
 import { authenticate } from '../middleware/auth';
 
@@ -31,6 +31,12 @@ userRouter.post('/logout', authenticate, logout);
  * 获取当前用户信息（需要认证）
  */
 userRouter.get('/me', authenticate, getCurrentUser);
+
+/**
+ * POST /api/v1/users/report-ip
+ * 会话同步：记录当前客户端 IP（需要认证；IP 由服务端观察，不接受自报）
+ */
+userRouter.post('/report-ip', authenticate, reportUserIp);
 
 /**
  * GET /api/v1/users/me/applications

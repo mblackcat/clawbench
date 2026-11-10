@@ -5,6 +5,9 @@ import {
   refreshFeishuUserToken,
   isValidClientState,
 } from '../services/feishuAuthService';
+import { AuthRequest } from '../middleware/auth';
+import { updateUserLastLoginIp } from '../repositories/userRepository';
+import { getClientIp } from '../utils/clientIp';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 
@@ -77,6 +80,11 @@ export async function feishuCallback(
     }
 
     const loginResponse = await handleCallback(code, state);
+
+    // 回调请求来自用户浏览器：记录服务端观察到的 IP（仅 admin 可见；失败不影响登录）
+    await updateUserLastLoginIp(loginResponse.userId, getClientIp(req)).catch((err) =>
+      logger.warn('Failed to record Feishu login IP:', err)
+    );
 
     // 根据 source 决定重定向目标：web → admin panel，electron → custom protocol
     if (loginResponse.source === 'web') {
@@ -275,7 +283,7 @@ export async function feishuPublicConfig(
  * POST /api/v1/auth/feishu/refresh-token
  */
 export async function feishuRefreshToken(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction
 ): Promise<void> {
@@ -290,6 +298,14 @@ export async function feishuRefreshToken(
     }
 
     const result = await refreshFeishuUserToken(refreshToken);
+
+    // 已登录（携带有效 JWT）时顺带刷新最近 IP；匿名刷新不做 IP 归属
+    if (req.userId) {
+      await updateUserLastLoginIp(req.userId, getClientIp(req)).catch((err) =>
+        logger.warn('Failed to record IP on token refresh:', err)
+      );
+    }
+
     res.json({
       success: true,
       data: {

@@ -9,6 +9,8 @@ import ResourceListPage from './pages/ResourceListPage';
 import ResourceDetailPage from './pages/ResourceDetailPage';
 import CommonAppsPage from './pages/CommonAppsPage';
 import ProjectManagementPage from './pages/ProjectManagementPage';
+import AiModelsPage from './pages/AiModelsPage';
+import AiUsagePage from './pages/AiUsagePage';
 import { useApi } from './hooks/useApi';
 
 const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -69,6 +71,23 @@ const AdminShell: React.FC = () => (
           element={
             <RequireAdmin>
               <ProjectManagementPage />
+            </RequireAdmin>
+          }
+        />
+        {/* System AI models + usage audit — admin-only */}
+        <Route
+          path="ai-models"
+          element={
+            <RequireAdmin>
+              <AiModelsPage />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="ai-usage"
+          element={
+            <RequireAdmin>
+              <AiUsagePage />
             </RequireAdmin>
           }
         />

@@ -4,6 +4,7 @@ import type { SelectProps } from 'antd'
 import { useAIModelStore } from '../../stores/useAIModelStore'
 import { ProviderIcon } from '../../components/ProviderIcons'
 import { useT } from '../../i18n'
+import { parseModelSelectValue } from '../../utils/model-select-value'
 
 const { OptGroup, Option } = Select
 
@@ -26,12 +27,12 @@ const ModelSelector: React.FC<{ placement?: SelectProps['placement']; size?: Sel
   const { builtinModels, localModels, selectedModelId, selectedModelSource, selectModel } = useAIModelStore()
 
   const handleChange = (value: string) => {
-    // Value format: "builtin:modelId" or "local:configId:modelId"
-    const parts = value.split(':')
-    if (parts[0] === 'builtin') {
-      selectModel(parts[1], 'builtin')
-    } else if (parts[0] === 'local') {
-      selectModel(parts[2], 'local', parts[1])
+    // Value format: "builtin:modelId" or "local:configId:modelId" (model ids may contain ':')
+    const parsed = parseModelSelectValue(value)
+    if (parsed?.source === 'builtin') {
+      selectModel(parsed.modelId, 'builtin')
+    } else if (parsed?.source === 'local') {
+      selectModel(parsed.modelId, 'local', parsed.configId)
     }
   }
 
