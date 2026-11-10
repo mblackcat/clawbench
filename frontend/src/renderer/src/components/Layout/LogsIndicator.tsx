@@ -3,13 +3,18 @@
  * TopBar logs button (General mode, no sider).
  *
  * Absorbs the former StatusBar log icon + notification bell badge:
- *   - count  = attention items, else unread legacy notifications
- *   - alert  = unseen task errors / transient error alert / attention / notifications
+ *   - count  = unread legacy notifications
+ *   - alert  = unseen task errors / transient error alert / notifications
  *   - dot    = alert (or unread system logs) without a count
+ *
+ * Attention items (background completions, AI Work sessions waiting on the user)
+ * are NOT counted here: the logs drawer cannot clear them, so the badge would
+ * stick. They are surfaced on their own sidebar entries and in the tray instead.
  */
 import React from 'react'
 import { Badge, theme } from 'antd'
-import { ExclamationCircleOutlined } from '@ant-design/icons'
+import { ExclamationCircleOutlined, WarningOutlined } from '@ant-design/icons'
+import { InteractiveMorphIcon } from '../common/InteractiveMorphIcon'
 import { useTaskStore } from '../../stores/useTaskStore'
 import { useNotificationStore } from '../../stores/useNotificationStore'
 import { useAttentionStore } from '../../stores/useAttentionStore'
@@ -18,7 +23,7 @@ import { LogsIcon } from '../icons/MenuIcons'
 export interface LogsIndicatorState {
   /** Numeric badge (0 = none) */
   badgeCount: number
-  /** Something needs the user's attention (errors / attention / notifications) */
+  /** Something needs the user's attention (errors / notifications) */
   hasAlert: boolean
   /** Show a dot instead of a count */
   showDot: boolean
@@ -33,13 +38,12 @@ export function useLogsIndicator(): LogsIndicatorState {
   const hasErrorAlert = useTaskStore((s) => s.hasErrorAlert)
   const hasUnreadLogs = useTaskStore((s) => s.hasUnreadLogs)
   const unreadCount = useNotificationStore((s) => s.unreadCount)
-  const attentionCount = useAttentionStore((s) => s.items.length)
   // Inline so Zustand tracks item/context changes via selector return value
   const attentionHasAction = useAttentionStore((s) => s.hasAction())
 
   const hasErrors = hasUnseenErrors || hasErrorAlert
-  const badgeCount = attentionCount > 0 ? attentionCount : unreadCount
-  const hasAlert = hasErrors || attentionCount > 0 || unreadCount > 0
+  const badgeCount = unreadCount
+  const hasAlert = hasErrors || unreadCount > 0
   const showDot = (hasAlert || hasUnreadLogs) && badgeCount === 0
 
   return { badgeCount, hasAlert, showDot, attentionHasAction, hasErrors }
@@ -68,9 +72,12 @@ export const LogsBadgeIcon: React.FC<LogsBadgeIconProps> = ({ state, size = 16, 
       style={{ color: token.colorTextLightSolid }}
     >
       {hasAlert ? (
-        <ExclamationCircleOutlined
+        <InteractiveMorphIcon
+          icon={<ExclamationCircleOutlined />}
+          hoverIcon={<WarningOutlined />}
+          size={size}
           className={attentionHasAction ? 'cb-attention-flash' : undefined}
-          style={{ color: token.colorError, fontSize: size }}
+          style={{ color: token.colorError }}
         />
       ) : (
         <LogsIcon style={{ fontSize: size }} />
