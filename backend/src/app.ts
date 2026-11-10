@@ -17,6 +17,8 @@ import { adminRouter } from './routes/adminRoutes';
 import { projectRouter } from './routes/projectRoutes';
 import { commonAppRouter } from './routes/commonAppRoutes';
 import { feishuEventRouter } from './routes/feishuEventRoutes';
+import { adminTaskRouter } from './routes/adminTaskRoutes';
+import { clientRouter } from './routes/clientTaskRoutes';
 
 /**
  * 创建 Express 应用
@@ -57,6 +59,8 @@ export function createApp(): Application {
     logger.warn('CORS_ORIGIN is not set — all origins are allowed (development only).');
     app.use(cors());
   }
+  // Client task reports carry a redacted log excerpt (up to 32K chars) — allow 256kb there
+  app.use('/api/v1/client/tasks', express.json({ limit: '256kb' }));
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
@@ -195,6 +199,11 @@ export function createApp(): Application {
 
   // Admin routes (require auth + admin role)
   app.use('/api/v1/admin', adminRouter);
+  // Remote task dispatch (admin side: dispatch / revoke / list / dispatchable toggle)
+  app.use('/api/v1/admin', adminTaskRouter);
+
+  // Desktop client channel: SSE signals + task pull / status / heartbeat / report
+  app.use('/api/v1/client', clientRouter);
 
   // Projects (multi-tenant) + common apps (builtin registry, kill-switch/pin)
   app.use('/api/v1/projects', projectRouter);

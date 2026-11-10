@@ -3,6 +3,7 @@ import { database } from './database';
 import { initializeSchema } from './database/schema';
 import { config } from './config';
 import { logger } from './utils/logger';
+import { startDispatchWatcher, stopDispatchWatcher } from './services/taskDispatchWatcher.service';
 
 /**
  * 启动服务器
@@ -30,17 +31,22 @@ async function startServer() {
       logger.info(`Server is running on port ${config.port}`);
       logger.info(`Environment: ${config.nodeEnv}`);
       logger.info(`API endpoint: http://localhost:${config.port}/api/v1`);
+      // Every worker runs the watcher: it fans NEW_TASK signals out to the SSE
+      // clients connected to *this* worker (dispatch rows are shared via the DB).
+      startDispatchWatcher();
     });
 
     // 优雅关闭
     process.on('SIGTERM', async () => {
       logger.info('SIGTERM signal received: closing HTTP server');
+      stopDispatchWatcher();
       await database.close();
       process.exit(0);
     });
 
     process.on('SIGINT', async () => {
       logger.info('SIGINT signal received: closing HTTP server');
+      stopDispatchWatcher();
       await database.close();
       process.exit(0);
     });

@@ -8,6 +8,9 @@ import { database } from '../../database';
  * enforce foreign keys by default) don't fail.
  */
 export async function cleanAllTables(): Promise<void> {
+  // remote task dispatch (executions reference tasks)
+  await database.run('DELETE FROM dispatched_task_executions');
+  await database.run('DELETE FROM dispatched_tasks');
   await database.run('DELETE FROM chat_attachments');
   await database.run('DELETE FROM messages');
   await database.run('DELETE FROM conversations');

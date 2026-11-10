@@ -2,6 +2,7 @@ import { database } from './index';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 import { initializeSqliteSchema } from './schema/sqlite.schema';
+import { initializeDispatchSchema } from './schema/dispatch.schema';
 
 /**
  * Initialise the database schema for the active dialect.
@@ -35,4 +36,10 @@ export async function initializeSchema(): Promise<void> {
       await initializeSqliteSchema(database);
       break;
   }
+
+  // Remote task dispatch tables (after the base schema: it ALTERs applications)
+  await initializeDispatchSchema(
+    database,
+    dbType === 'mysql' || dbType === 'postgres' ? dbType : 'sqlite'
+  );
 }
