@@ -25,6 +25,7 @@ import {
 } from '../../constants/app-mode'
 import { getIslandThemeConfig } from '../../theme'
 import { useT } from '../../i18n'
+import { InteractiveMorphIcon } from '../common/InteractiveMorphIcon'
 
 const { Header, Sider, Content } = Layout
 
@@ -49,13 +50,17 @@ const AppLayout: React.FC = () => {
   const activeTaskId = useTaskStore((state) => state.activeTaskId)
   const appMode = useSettingsStore((state) => state.appMode)
   const currentTheme = useSettingsStore((state) => state.theme)
+  const largeFont = useSettingsStore((state) => state.fontSize === 'large')
   const showSider = shouldShowLeftSider(appMode)
   const { token } = antTheme.useToken()
   const logsIndicator = useLogsIndicator()
   const t = useT()
 
   // Content island gets its own antd theme (page surface inside the shell frame)
-  const islandThemeConfig = useMemo(() => getIslandThemeConfig(currentTheme), [currentTheme])
+  const islandThemeConfig = useMemo(
+    () => getIslandThemeConfig(currentTheme, { largeFont }),
+    [currentTheme, largeFont]
+  )
 
   // 初始化 subapp 执行监听
   useSubAppExecution()
@@ -175,11 +180,10 @@ const AppLayout: React.FC = () => {
                   }}
                   style={bottomBtnStyle(4)}
                 >
-                  {collapsed ? (
-                    <MenuUnfoldOutlined style={{ fontSize: 16 }} />
-                  ) : (
-                    <MenuFoldOutlined style={{ fontSize: 16 }} />
-                  )}
+                  <InteractiveMorphIcon
+                    icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+                    size={16}
+                  />
                   {!collapsed && <span>{t('common.collapseSidebar')}</span>}
                 </div>
               </Tooltip>

@@ -1,13 +1,14 @@
 /**
  * Minimal client version / update row for the user menu.
- * Shows current version + a manual "check for updates" refresh button; only
- * shows an install button when an update is ready.
+ * Shows the current version on the left; update state + a manual "check for
+ * updates" button on the right (install button only when an update is ready).
  * Auto-download is handled by the main process; install is always manual.
  */
 
 import React, { useCallback, useState } from 'react'
-import { App, Button, Typography, theme } from 'antd'
-import { LoadingOutlined, ReloadOutlined } from '@ant-design/icons'
+import { App, Button, Tooltip, Typography, theme } from 'antd'
+import { LoadingOutlined, ReloadOutlined, SyncOutlined } from '@ant-design/icons'
+import { InteractiveMorphIcon } from './common/InteractiveMorphIcon'
 import { useUpdaterStore } from '../stores/useUpdaterStore'
 import { useT } from '../i18n'
 
@@ -21,9 +22,6 @@ const ClientUpdatePanel: React.FC = () => {
   const [checking, setChecking] = useState(false)
 
   const appVersion = import.meta.env.VITE_APP_VERSION ?? '0.1.0'
-  const showUpdateAction =
-    status === 'available' || status === 'downloading' || status === 'downloaded'
-
   /**
    * `check()` resolves only after electron-updater has emitted
    * available / not-available / error, so the store status is already settled
@@ -70,45 +68,48 @@ const ClientUpdatePanel: React.FC = () => {
         minHeight: 20
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0 }}>
-        <Text style={{ fontSize: 13, color: token.colorText }}>
-          {t('topbar.currentVersion', appVersion)}
-        </Text>
-        <Button
-          type="text"
-          size="small"
-          title={t('statusbar.checkUpdate')}
-          aria-label={t('statusbar.checkUpdate')}
-          loading={checking || status === 'checking'}
-          icon={<ReloadOutlined style={{ fontSize: 12 }} />}
-          onClick={(e) => {
-            e.stopPropagation()
-            void handleCheck()
-          }}
-          style={{ width: 22, height: 22, minWidth: 22, color: token.colorTextSecondary }}
-        />
+      <Text
+        title={t('topbar.currentVersion', appVersion)}
+        style={{ fontSize: 13, color: token.colorText, flex: 1, minWidth: 0, fontFamily: 'monospace' }}
+      >
+        v{appVersion.replace(/^v/, '')}
+      </Text>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+        {status === 'available' && (
+          <Text style={{ fontSize: 12, color: token.colorPrimary }}>
+            {t('topbar.updateAvailableShort', version || '')}
+          </Text>
+        )}
+
+        {status === 'downloading' && (
+          <Text style={{ fontSize: 12, color: token.colorPrimary, whiteSpace: 'nowrap' }}>
+            <LoadingOutlined style={{ marginRight: 4 }} />
+            {downloadPercent}%
+          </Text>
+        )}
+
+        {status === 'downloaded' && (
+          <Button type="primary" size="small" onClick={install}>
+            {t('topbar.installUpdate', version || '')}
+          </Button>
+        )}
+
+        <Tooltip title={t('statusbar.checkUpdate')}>
+          <Button
+            type="text"
+            size="small"
+            aria-label={t('statusbar.checkUpdate')}
+            loading={checking || status === 'checking'}
+            icon={<InteractiveMorphIcon icon={<ReloadOutlined />} hoverIcon={<SyncOutlined />} size={12} />}
+            onClick={(e) => {
+              e.stopPropagation()
+              void handleCheck()
+            }}
+            style={{ width: 22, height: 22, minWidth: 22, color: token.colorTextSecondary }}
+          />
+        </Tooltip>
       </div>
-
-      {status === 'available' && (
-        <Text style={{ fontSize: 12, color: token.colorPrimary }}>
-          {t('topbar.updateAvailableShort', version || '')}
-        </Text>
-      )}
-
-      {status === 'downloading' && (
-        <Text style={{ fontSize: 12, color: token.colorPrimary, whiteSpace: 'nowrap' }}>
-          <LoadingOutlined style={{ marginRight: 4 }} />
-          {downloadPercent}%
-        </Text>
-      )}
-
-      {status === 'downloaded' && (
-        <Button type="primary" size="small" onClick={install}>
-          {t('topbar.installUpdate', version || '')}
-        </Button>
-      )}
-
-      {!showUpdateAction && null}
     </div>
   )
 }

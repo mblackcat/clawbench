@@ -14,6 +14,7 @@ import {
   EditOutlined,
   ReloadOutlined
 } from '@ant-design/icons'
+import { InteractiveMorphIcon } from './common/InteractiveMorphIcon'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useAIModelStore } from '../stores/useAIModelStore'
@@ -676,10 +677,10 @@ const EditorChatPanel: React.FC<EditorChatPanelProps> = ({
         </Text>
         <ModelSelector size="small" />
         <Tooltip title={t('editor.clearChat')}>
-          <Button type="text" size="small" icon={<ClearOutlined />} onClick={handleClear} disabled={streaming} />
+          <Button type="text" size="small" icon={<InteractiveMorphIcon icon={<ClearOutlined />} />} onClick={handleClear} disabled={streaming} />
         </Tooltip>
         <Tooltip title={t('editor.closePanel')}>
-          <Button type="text" size="small" icon={<CloseOutlined />} onClick={onClose} />
+          <Button type="text" size="small" icon={<InteractiveMorphIcon icon={<CloseOutlined />} />} onClick={onClose} />
         </Tooltip>
       </div>
 
@@ -746,11 +747,11 @@ const EditorChatPanel: React.FC<EditorChatPanelProps> = ({
         />
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
           {streaming ? (
-            <Button danger icon={<StopOutlined />} onClick={handleCancel}>
+            <Button danger icon={<InteractiveMorphIcon icon={<StopOutlined />} />} onClick={handleCancel}>
               {t('editor.stop')}
             </Button>
           ) : (
-            <Button type="primary" icon={<SendOutlined />} onClick={handleSend} disabled={!inputValue.trim()}>
+            <Button type="primary" icon={<InteractiveMorphIcon icon={<SendOutlined />} />} onClick={handleSend} disabled={!inputValue.trim()}>
               {t('editor.send')}
             </Button>
           )}

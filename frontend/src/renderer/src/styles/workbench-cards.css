@@ -337,8 +337,16 @@
 
 /* Primary (run / install / download) */
 [data-theme="light"] .cb-round-action-btn.cb-round-action-primary {
-  background: #546DF5;
+  background: var(--cb-primary, #2F8F82);
   color: #FFFFFF;
+}
+
+[data-theme="light"] .cb-round-action-btn.cb-round-action-primary:hover {
+  background: var(--cb-primary-hover, #38A697);
+}
+
+[data-theme="light"] .cb-round-action-btn.cb-round-action-primary:active {
+  background: var(--cb-primary-active, #26776C);
 }
 
 [data-theme="dark"] .cb-round-action-btn.cb-round-action-primary {
@@ -369,11 +377,11 @@
 /* Toggle (e.g. AI Work enablement on Local Env cards) */
 .cb-round-action-btn.cb-round-action-toggle.active {
   background: #FFFFFF;
-  color: #546DF5;
+  color: var(--cb-primary, #2F8F82);
 }
 
 [data-theme="light"] .cb-round-action-btn.cb-round-action-toggle.active {
-  box-shadow: 0 2px 8px rgba(84, 109, 245, 0.25);
+  box-shadow: 0 2px 8px var(--cb-primary-shadow, rgba(47, 143, 130, 0.20));
 }
 
 .cb-round-action-btn.cb-round-action-toggle.inactive {

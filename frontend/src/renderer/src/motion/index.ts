@@ -1,10 +1,14 @@
 /** Motion layer public surface. Styles live in styles/motion.css. */
 export {
   MOTION_STORAGE_KEY,
+  MOTION_CHANGE_EVENT,
   initMotionPreference,
   setMotionMode,
   readStoredMotionPref,
   isAgileMotion,
+  isMotionEnabled,
+  useMotionEnabled,
+  useMotionMode,
   prefersReducedMotion,
   supportsDiscreteTransition,
   supportsPopover,

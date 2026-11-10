@@ -1,10 +1,12 @@
 import React from 'react'
 import Icon from '@ant-design/icons'
 import type { CustomIconComponentProps } from '@ant-design/icons/lib/components/Icon'
+import { InteractiveMorphIcon } from '../common/InteractiveMorphIcon'
 
 /**
  * Main sidebar menu icons — monochrome, follow theme via currentColor.
- * Stroke-based 24×24 glyphs, optically balanced at 14–16px.
+ * Stroke-based 24×24 glyphs, optically balanced at 14–16px, with a spring
+ * hover / press micro-interaction (see common/InteractiveMorphIcon).
  */
 
 // ── Workbench: 2×2 resource cards (apps / skills / prompts hub) ──
@@ -122,32 +124,36 @@ const LogsSvg = () => (
   </svg>
 )
 
-type MenuIconProps = Partial<CustomIconComponentProps>
+type MenuIconProps = Partial<CustomIconComponentProps> & {
+  /** Selected state (current route) — kept static, no hover bounce needed */
+  active?: boolean
+  /** Controlled hover state (defaults to hover detection on the parent menu item) */
+  hovered?: boolean
+}
 
-export const WorkbenchIcon = (props: MenuIconProps) => (
-  <Icon component={WorkbenchSvg} {...props} />
-)
+/**
+ * Wraps a glyph in InteractiveMorphIcon so the whole menu row / button drives a
+ * spring hover + press micro-interaction (disabled with the motion switch).
+ */
+const makeMenuIcon = (Svg: React.FC): React.FC<MenuIconProps> => {
+  const MenuIcon: React.FC<MenuIconProps> = ({ active, hovered, className, style }) => (
+    <InteractiveMorphIcon
+      icon={<Icon component={Svg} />}
+      active={active}
+      hovered={hovered}
+      className={className}
+      style={style}
+    />
+  )
+  return MenuIcon
+}
 
-export const AIChatIcon = (props: MenuIconProps) => (
-  <Icon component={AIChatSvg} {...props} />
-)
-
-export const AICodingIcon = (props: MenuIconProps) => (
-  <Icon component={AICodingSvg} {...props} />
-)
-
-export const CopiperIcon = (props: MenuIconProps) => (
-  <Icon component={CopiperSvg} {...props} />
-)
-
-export const AITerminalIcon = (props: MenuIconProps) => (
-  <Icon component={AITerminalSvg} {...props} />
-)
-
-export const LocalEnvIcon = (props: MenuIconProps) => (
-  <Icon component={LocalEnvSvg} {...props} />
-)
-
-export const LogsIcon = (props: MenuIconProps) => (
-  <Icon component={LogsSvg} {...props} />
-)
+export const WorkbenchIcon = makeMenuIcon(WorkbenchSvg)
+export const AIChatIcon = makeMenuIcon(AIChatSvg)
+export const AICodingIcon = makeMenuIcon(AICodingSvg)
+/** Alias matching the user-facing name "AI Work" */
+export const AIWorkIcon = AICodingIcon
+export const CopiperIcon = makeMenuIcon(CopiperSvg)
+export const AITerminalIcon = makeMenuIcon(AITerminalSvg)
+export const LocalEnvIcon = makeMenuIcon(LocalEnvSvg)
+export const LogsIcon = makeMenuIcon(LogsSvg)

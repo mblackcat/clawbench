@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Modal, Typography, Tabs, App, theme } from 'antd'
 import { CopyOutlined, CheckOutlined } from '@ant-design/icons'
+import { InteractiveMorphIcon } from './common/InteractiveMorphIcon'
 import { useT } from '../i18n'
 
 const { Title, Paragraph, Text, Link } = Typography
@@ -54,7 +55,11 @@ const CopyableCode: React.FC<{
         }}
         title="Copy"
       >
-        {copied ? <CheckOutlined /> : <CopyOutlined />}
+        <InteractiveMorphIcon
+          icon={copied ? <CheckOutlined /> : <CopyOutlined />}
+          swapKey={copied}
+          triggerScope="self"
+        />
       </span>
     </div>
   )

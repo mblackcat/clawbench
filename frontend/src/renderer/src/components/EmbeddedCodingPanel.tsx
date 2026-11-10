@@ -5,6 +5,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { Button, Tooltip, Spin, Typography, theme } from 'antd'
 import { CloseOutlined, CodeOutlined, PauseCircleOutlined, StopOutlined } from '@ant-design/icons'
+import { InteractiveMorphIcon } from './common/InteractiveMorphIcon'
 import { useShallow } from 'zustand/react/shallow'
 import { useAICodingStore } from '../stores/useAICodingStore'
 import CodingChatPanel from '../pages/AICoding/CodingChatPanel'
@@ -198,7 +199,7 @@ const EmbeddedCodingPanel: React.FC<EmbeddedCodingPanelProps> = ({
             <CodeOutlined style={{ color: token.colorPrimary }} />
             <Text strong style={{ fontSize: 13 }}>{t('codeEditor.selectCodingTool')}</Text>
           </div>
-          <Button type="text" size="small" icon={<CloseOutlined />} onClick={onClose} />
+          <Button type="text" size="small" icon={<InteractiveMorphIcon icon={<CloseOutlined />} />} onClick={onClose} />
         </div>
 
         {/* Tool list */}
@@ -272,17 +273,17 @@ const EmbeddedCodingPanel: React.FC<EmbeddedCodingPanelProps> = ({
           {isStreaming && (
             <>
               <Tooltip title={t('coding.interruptTask')}>
-                <Button type="text" size="small" icon={<PauseCircleOutlined />} onClick={handleInterrupt} />
+                <Button type="text" size="small" icon={<InteractiveMorphIcon icon={<PauseCircleOutlined />} />} onClick={handleInterrupt} />
               </Tooltip>
               <Tooltip title={t('coding.stopSession')}>
-                <Button type="text" size="small" danger icon={<StopOutlined />} onClick={handleStop} />
+                <Button type="text" size="small" danger icon={<InteractiveMorphIcon icon={<StopOutlined />} />} onClick={handleStop} />
               </Tooltip>
             </>
           )}
           <Tooltip title={t('codeEditor.newCodingSession')}>
-            <Button type="text" size="small" icon={<CodeOutlined />} onClick={handleNewSession} />
+            <Button type="text" size="small" icon={<InteractiveMorphIcon icon={<CodeOutlined />} />} onClick={handleNewSession} />
           </Tooltip>
-          <Button type="text" size="small" icon={<CloseOutlined />} onClick={onClose} />
+          <Button type="text" size="small" icon={<InteractiveMorphIcon icon={<CloseOutlined />} />} onClick={onClose} />
         </div>
       </div>
 
