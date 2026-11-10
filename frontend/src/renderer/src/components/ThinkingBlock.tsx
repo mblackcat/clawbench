@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Spin, theme } from 'antd'
 import { CheckCircleOutlined, UpOutlined, DownOutlined } from '@ant-design/icons'
+import { InteractiveMorphIcon } from './common/InteractiveMorphIcon'
 import { useT } from '../i18n'
 
 interface ThinkingBlockProps {
@@ -48,6 +49,7 @@ const ThinkingBlock: React.FC<ThinkingBlockProps> = ({ content, isStreaming, com
     >
       {/* Header */}
       <div
+        className="cb-interactive-target"
         onClick={() => { if (!isStreaming) setExpanded((v) => !v) }}
         style={{
           display: 'flex',
@@ -66,9 +68,11 @@ const ThinkingBlock: React.FC<ThinkingBlockProps> = ({ content, isStreaming, com
         )}
         <span style={{ flex: 1 }}>{isStreaming ? t('coding.thinking') : t('coding.thinkingProcess')}</span>
         {!isStreaming && (
-          expanded
-            ? <UpOutlined style={{ fontSize: arrowSize }} />
-            : <DownOutlined style={{ fontSize: arrowSize }} />
+          <InteractiveMorphIcon
+            icon={expanded ? <UpOutlined /> : <DownOutlined />}
+            swapKey={expanded}
+            size={arrowSize}
+          />
         )}
       </div>
       {/* Content */}

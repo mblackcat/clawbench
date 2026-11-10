@@ -1,3 +1,5 @@
+import { useSyncExternalStore } from 'react'
+
 /**
  * Motion layer — preference helpers.
  *
@@ -7,9 +9,16 @@
  *
  * Persisted in localStorage as 'cb-motion'.
  * CSS sets --dur-* to 1ms (not 0) when agile so transitionend/animationend still fire.
+ *
+ * The motion switch is the single on/off for every animated affordance:
+ * agile turns off view transitions, hover/press physics and icon morphs alike
+ * (`useMotionEnabled()` lets components react to runtime changes).
  */
 
 export const MOTION_STORAGE_KEY = 'cb-motion'
+
+/** Window event fired by `setMotionMode` so subscribers update in the same tick. */
+export const MOTION_CHANGE_EVENT = 'cb-motion-change'
 
 export type MotionMode = 'elegant' | 'agile'
 
@@ -23,19 +32,33 @@ export function readStoredMotionPref(): MotionMode {
   }
 }
 
-/** Apply the motion setting to document root and localStorage. */
+/** Whether rich animations (view transitions, hover physics, icon morphs) are on. */
+export function isMotionEnabled(): boolean {
+  if (typeof document !== 'undefined' && document.documentElement) {
+    const attr = document.documentElement.getAttribute('data-motion')
+    if (attr === 'agile' || attr === 'off') return false
+    if (attr === 'elegant') return true
+  }
+  return readStoredMotionPref() === 'elegant'
+}
+
+/** Apply the motion setting to document root and localStorage, and notify subscribers. */
 export function setMotionMode(mode: MotionMode): void {
-  const root = document.documentElement
-  root.setAttribute('data-motion', mode)
+  if (typeof document !== 'undefined' && document.documentElement) {
+    document.documentElement.setAttribute('data-motion', mode)
+  }
   try {
     localStorage.setItem(MOTION_STORAGE_KEY, mode)
   } catch {
     /* ignore quota / private mode */
   }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(MOTION_CHANGE_EVENT, { detail: mode }))
+  }
 }
 
 export function isAgileMotion(): boolean {
-  return readStoredMotionPref() === 'agile'
+  return !isMotionEnabled()
 }
 
 export function prefersReducedMotion(): boolean {
@@ -44,6 +67,38 @@ export function prefersReducedMotion(): boolean {
   if (mode === 'agile') return true
   if (mode === 'elegant') return false
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+function subscribeMotion(callback: () => void): () => void {
+  if (typeof window === 'undefined') return () => {}
+
+  const onStorage = (e: StorageEvent): void => {
+    if (e.key === MOTION_STORAGE_KEY) callback()
+  }
+  window.addEventListener(MOTION_CHANGE_EVENT, callback)
+  window.addEventListener('storage', onStorage)
+
+  let observer: MutationObserver | null = null
+  if (typeof MutationObserver !== 'undefined' && document.documentElement) {
+    observer = new MutationObserver(callback)
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-motion'] })
+  }
+
+  return () => {
+    window.removeEventListener(MOTION_CHANGE_EVENT, callback)
+    window.removeEventListener('storage', onStorage)
+    observer?.disconnect()
+  }
+}
+
+/** Reactive motion switch: re-renders when the user toggles 敏捷 / 优雅 at runtime. */
+export function useMotionEnabled(): boolean {
+  return useSyncExternalStore(subscribeMotion, isMotionEnabled, () => true)
+}
+
+/** Reactive `MotionMode` ('elegant' | 'agile'). */
+export function useMotionMode(): MotionMode {
+  return useMotionEnabled() ? 'elegant' : 'agile'
 }
 
 /** Hydrate <html data-motion> from storage before first paint. */

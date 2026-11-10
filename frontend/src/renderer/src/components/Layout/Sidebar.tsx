@@ -6,6 +6,7 @@ import type { MenuProps } from 'antd'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { useAttentionStore } from '../../stores/useAttentionStore'
 import { useT } from '../../i18n'
+import { InteractiveMorphIcon } from '../common/InteractiveMorphIcon'
 import {
   WorkbenchIcon,
   AIChatIcon,
@@ -31,7 +32,16 @@ const OpenClawSvg = () => (
     <circle cx="75" cy="35" r="6" fill="var(--openclaw-eye, #050810)"/>
   </svg>
 )
-const OpenClawIcon = (props: any) => <Icon component={OpenClawSvg} {...props} />
+const OpenClawIcon: React.FC<{ active?: boolean; className?: string; style?: React.CSSProperties }> = ({
+  active,
+  className,
+  style
+}) => (
+  <InteractiveMorphIcon icon={<Icon component={OpenClawSvg} />} active={active} className={className} style={style} />
+)
+
+/** Top-level menu keys, in menu order (used to resolve the selected entry). */
+const MENU_KEYS = ['/workbench', '/ai-chat', '/ai-coding', '/ai-terminal', '/ai-agents', '/local-env', '/copiper']
 
 interface BadgeColors {
   bg: string
@@ -114,46 +124,50 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
     ring: token.colorBgLayout
   }
 
+  const selectedKey =
+    MENU_KEYS.find((key) => location.pathname.startsWith(key)) ?? '/ai-chat'
+  const isActive = (key: string): boolean => selectedKey === key
+
   const allItems: (NonNullable<MenuProps['items']>[number] & { moduleKey?: string })[] = [
     {
       key: '/workbench',
-      icon: withTopLeftBadge(<WorkbenchIcon />, badgeColors, counts.workbench > 0),
+      icon: withTopLeftBadge(<WorkbenchIcon active={isActive('/workbench')} />, badgeColors, counts.workbench > 0),
       label: t('menu.workbench')
     },
     {
       key: '/ai-chat',
-      icon: withTopLeftBadge(<AIChatIcon />, badgeColors, counts.aiChat > 0),
+      icon: withTopLeftBadge(<AIChatIcon active={isActive('/ai-chat')} />, badgeColors, counts.aiChat > 0),
       label: t('menu.aiChat'),
       moduleKey: 'aiChat'
     },
     {
       key: '/ai-coding',
       // AI Coding shows how many sessions are waiting on the user
-      icon: withTopLeftBadge(<AICodingIcon />, badgeColors, false, counts.aiCoding),
+      icon: withTopLeftBadge(<AICodingIcon active={isActive('/ai-coding')} />, badgeColors, false, counts.aiCoding),
       label: t('menu.aiCoding'),
       moduleKey: 'aiCoding'
     },
     {
       key: '/ai-terminal',
-      icon: <AITerminalIcon />,
+      icon: <AITerminalIcon active={isActive('/ai-terminal')} />,
       label: t('menu.aiTerminal'),
       moduleKey: 'aiTerminal'
     },
     {
       key: '/ai-agents',
-      icon: <OpenClawIcon />,
+      icon: <OpenClawIcon active={isActive('/ai-agents')} />,
       label: t('menu.aiAgents'),
       moduleKey: 'aiAgents'
     },
     {
       key: '/local-env',
-      icon: <LocalEnvIcon />,
+      icon: <LocalEnvIcon active={isActive('/local-env')} />,
       label: t('menu.localEnv'),
       moduleKey: 'localEnv'
     },
     {
       key: '/copiper',
-      icon: <CopiperIcon />,
+      icon: <CopiperIcon active={isActive('/copiper')} />,
       label: t('menu.copiper'),
       moduleKey: 'copiper'
     }
@@ -166,10 +180,6 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
     })
     .map(({ moduleKey: _moduleKey, ...rest }) => rest)
 
-  const selectedKey =
-    allItems
-      .map((item) => item?.key as string)
-      .find((key) => location.pathname.startsWith(key)) ?? '/ai-chat'
 
   // Persist the active top-level route on every navigation (not just menu clicks)
   useEffect(() => {
@@ -182,6 +192,8 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
 
   const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
     if (key === '/workbench') {
+      // Clicking the entry acknowledges background-run completions (its red dot)
+      useAttentionStore.getState().dismissBySource('workbench')
       navigate('/workbench/installed')
     } else {
       navigate(key)

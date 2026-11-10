@@ -15,7 +15,10 @@ import {
   CloudDownloadOutlined,
   ThunderboltOutlined,
   DesktopOutlined,
-  CopyOutlined
+  CopyOutlined,
+  CheckOutlined,
+  FontSizeOutlined,
+  DownloadOutlined
 } from '@ant-design/icons'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useT } from '../../i18n'
@@ -38,7 +41,9 @@ import { FeishuIcon, FeishuDisconnectedIcon } from '../icons/FeishuIcon'
 import ClientUpdatePanel from '../ClientUpdatePanel'
 import WeatherIcon, { useWeatherNames } from '../WeatherIcon'
 import { LogsBadgeIcon, useLogsIndicator } from './LogsIndicator'
-import { type MotionMode, readStoredMotionPref, setMotionMode } from '../../motion'
+import { type MotionMode, setMotionMode, useMotionMode } from '../../motion'
+import type { FontSizeMode } from '../../constants/font-size'
+import { InteractiveMorphIcon } from '../common/InteractiveMorphIcon'
 import {
   PALETTE_CAPSULE,
   PALETTE_SWATCH,
@@ -70,12 +75,15 @@ const TopBar: React.FC<TopBarProps> = ({ showLogsEntry = false, onToggleLogs }) 
   const location = useLocation()
   const loggedIn = useAuthStore((state) => state.loggedIn)
   const user = useAuthStore((state) => state.user)
+  const isLocalMode = useAuthStore((state) => state.isLocalMode)
   const activeWorkspace = useWorkspaceStore((state) => state.activeWorkspace)
   const { token } = theme.useToken()
   const { message } = App.useApp()
   const t = useT()
   const currentTheme = useSettingsStore((state) => state.theme)
   const language = useSettingsStore((state) => state.language)
+  const fontSize = useSettingsStore((state) => state.fontSize)
+  const setFontSize = useSettingsStore((state) => state.setFontSize)
   const updateSetting = useSettingsStore((state) => state.updateSetting)
   const appMode = useSettingsStore((state) => state.appMode)
   const setAppMode = useSettingsStore((state) => state.setAppMode)
@@ -105,8 +113,11 @@ const TopBar: React.FC<TopBarProps> = ({ showLogsEntry = false, onToggleLogs }) 
   const [imModalOpen, setIMModalOpen] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
-  const [motionMode, setMotionModeState] = useState<MotionMode>(() => readStoredMotionPref())
+  // Reactive: follows setMotionMode() from anywhere (single motion on/off switch)
+  const motionMode = useMotionMode()
   const [localIp, setLocalIp] = useState<string>('')
+  const [copiedIp, setCopiedIp] = useState(false)
+  const copiedIpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const isMac = window.api.platform === 'darwin'
   const isWin = window.api.platform === 'win32'
@@ -178,8 +189,21 @@ const TopBar: React.FC<TopBarProps> = ({ showLogsEntry = false, onToggleLogs }) 
 
   const handleMotionChange = useCallback((mode: MotionMode) => {
     setMotionMode(mode)
-    setMotionModeState(mode)
   }, [])
+
+  const handleFontSizeChange = useCallback(
+    (mode: FontSizeMode) => {
+      if (mode !== fontSize) setFontSize(mode)
+    },
+    [fontSize, setFontSize]
+  )
+
+  useEffect(
+    () => () => {
+      if (copiedIpTimerRef.current) clearTimeout(copiedIpTimerRef.current)
+    },
+    []
+  )
 
   useEffect(() => {
     const cleanupUpdater = initUpdater()
@@ -236,6 +260,9 @@ const TopBar: React.FC<TopBarProps> = ({ showLogsEntry = false, onToggleLogs }) 
     if (!localIp) return
     try {
       await navigator.clipboard.writeText(localIp)
+      setCopiedIp(true)
+      if (copiedIpTimerRef.current) clearTimeout(copiedIpTimerRef.current)
+      copiedIpTimerRef.current = setTimeout(() => setCopiedIp(false), 1500)
       message.success(t('topbar.ipCopied'))
     } catch {
       message.error(t('workbench.copyFailed'))
@@ -549,6 +576,27 @@ const TopBar: React.FC<TopBarProps> = ({ showLogsEntry = false, onToggleLogs }) 
         )}
       </div>
 
+      <div style={menuRowBase}>
+        <FontSizeOutlined style={menuIconStyle} />
+        <Text style={{ fontSize: 13, flex: 1, minWidth: 0 }}>{t('topbar.fontSize')}</Text>
+        {renderCapsule(
+          fontSize !== 'large',
+          {
+            key: 'standard',
+            title: t('topbar.fontSizeStandardTip'),
+            content: t('topbar.fontSizeStandard'),
+            onClick: () => handleFontSizeChange('standard')
+          },
+          {
+            key: 'large',
+            title: t('topbar.fontSizeLargeTip'),
+            content: t('topbar.fontSizeLarge'),
+            onClick: () => handleFontSizeChange('large')
+          },
+          { minWidth: 84, ...menuCapsuleOpts }
+        )}
+      </div>
+
       {/* Atmosphere (weather): click label = next effect; capsule = on/off. Right-click = next effect. */}
       <div style={menuRowBase}>
         <div
@@ -617,7 +665,7 @@ const TopBar: React.FC<TopBarProps> = ({ showLogsEntry = false, onToggleLogs }) 
       {/* Group 2: 引导 / 设置 */}
       {renderActionRow(
         'guide',
-        <CompassOutlined style={menuIconStyle} />,
+        <InteractiveMorphIcon icon={<CompassOutlined />} style={menuIconStyle} />,
         <span style={{ flex: 1 }}>{t('topbar.guide')}</span>,
         () => {
           setUserMenuOpen(false)
@@ -626,7 +674,7 @@ const TopBar: React.FC<TopBarProps> = ({ showLogsEntry = false, onToggleLogs }) 
       )}
       {renderActionRow(
         'settings',
-        <SettingOutlined style={menuIconStyle} />,
+        <InteractiveMorphIcon icon={<SettingOutlined />} style={menuIconStyle} />,
         <span style={{ flex: 1 }}>{t('menu.settings')}</span>,
         () => {
           setUserMenuOpen(false)
@@ -640,7 +688,7 @@ const TopBar: React.FC<TopBarProps> = ({ showLogsEntry = false, onToggleLogs }) 
       {/* Group 3: 本机 IP / 版本 / Fable 5 认证 */}
       {renderActionRow(
         'ip',
-        <DesktopOutlined style={menuIconStyle} />,
+        <InteractiveMorphIcon icon={<DesktopOutlined />} style={menuIconStyle} />,
         <>
           <Text
             style={{ fontSize: 13, color: token.colorText, flex: 1, minWidth: 0, fontFamily: 'monospace' }}
@@ -653,7 +701,13 @@ const TopBar: React.FC<TopBarProps> = ({ showLogsEntry = false, onToggleLogs }) 
               type="text"
               size="small"
               aria-label={t('topbar.copyIp')}
-              icon={<CopyOutlined style={{ fontSize: 12 }} />}
+              icon={
+                <InteractiveMorphIcon
+                  icon={copiedIp ? <CheckOutlined /> : <CopyOutlined />}
+                  swapKey={copiedIp}
+                  size={12}
+                />
+              }
               onClick={(e) => {
                 e.stopPropagation()
                 void copyLocalIp()
@@ -678,7 +732,7 @@ const TopBar: React.FC<TopBarProps> = ({ showLogsEntry = false, onToggleLogs }) 
       {/* Group 4: 退出 */}
       {renderActionRow(
         'logout',
-        <LogoutOutlined style={{ ...menuIconStyle, color: token.colorError }} />,
+        <InteractiveMorphIcon icon={<LogoutOutlined />} style={{ ...menuIconStyle, color: token.colorError }} />,
         <span>{t('topbar.logout')}</span>,
         () => {
           setUserMenuOpen(false)
@@ -737,25 +791,13 @@ const TopBar: React.FC<TopBarProps> = ({ showLogsEntry = false, onToggleLogs }) 
           </span>
         </div>
 
-        <div className="cb-topbar-divider" />
-        {renderCapsule(
-          appMode === 'general',
-          {
-            key: 'general',
-            title: t('topbar.modeGeneral'),
-            content: t('topbar.modeGeneral'),
-            onClick: () => handleModeChange('general')
-          },
-          {
-            key: 'pro',
-            title: t('topbar.modePro'),
-            content: t('topbar.modePro'),
-            onClick: () => handleModeChange('pro')
-          },
-          { minWidth: 96, ...capsuleStyle }
+        {/* ProjectSwitcher renders nothing in local mode — drop its divider too */}
+        {!isLocalMode && (
+          <>
+            <div className="cb-topbar-divider" />
+            <ProjectSwitcher />
+          </>
         )}
-        <div className="cb-topbar-divider" />
-        <ProjectSwitcher />
         {/* General mode: workspace + branch pickers are hidden (mode + project only) */}
         {appMode === 'pro' && (
           <>
@@ -816,19 +858,37 @@ const TopBar: React.FC<TopBarProps> = ({ showLogsEntry = false, onToggleLogs }) 
           </Tooltip>
         )}
 
-        {/* Downloaded update: install CTA left of avatar (same action as avatar menu) */}
+        {/* Downloaded update: install CTA left of the mode capsule (same action as avatar menu) */}
         {updaterStatus === 'downloaded' && (
           <Tooltip title={t('topbar.installUpdate', updaterVersion || '')}>
             <Button
               type="primary"
               size="small"
-              icon={<CloudDownloadOutlined />}
+              icon={<InteractiveMorphIcon icon={<CloudDownloadOutlined />} hoverIcon={<DownloadOutlined />} />}
               onClick={installUpdate}
               style={{ height: 26, fontSize: 12, paddingInline: 10 }}
             >
               {t('topbar.updateClient')}
             </Button>
           </Tooltip>
+        )}
+
+        {/* 通用 | 研发 — right controls, directly left of the avatar */}
+        {renderCapsule(
+          appMode === 'general',
+          {
+            key: 'general',
+            title: t('topbar.modeGeneral'),
+            content: t('topbar.modeGeneral'),
+            onClick: () => handleModeChange('general')
+          },
+          {
+            key: 'pro',
+            title: t('topbar.modePro'),
+            content: t('topbar.modePro'),
+            onClick: () => handleModeChange('pro')
+          },
+          { minWidth: 96, ...capsuleStyle }
         )}
 
         {loggedIn && user ? (
@@ -921,7 +981,7 @@ const TopBar: React.FC<TopBarProps> = ({ showLogsEntry = false, onToggleLogs }) 
             <Button
               type="link"
               size="small"
-              icon={<LoginOutlined />}
+              icon={<InteractiveMorphIcon icon={<LoginOutlined />} />}
               onClick={() => navigate('/login')}
             >
               {t('topbar.login')}
@@ -938,17 +998,17 @@ const TopBar: React.FC<TopBarProps> = ({ showLogsEntry = false, onToggleLogs }) 
               style={{ display: 'flex', alignItems: 'center', height: '100%', marginRight: -12 }}
             >
               <button className="cb-win-btn" onClick={handleWindowMinimize} title={t('topbar.minimize')}>
-                <MinusOutlined style={{ fontSize: 12 }} />
+                <InteractiveMorphIcon icon={<MinusOutlined />} size={12} />
               </button>
               <button
                 className="cb-win-btn"
                 onClick={handleWindowMaximize}
                 title={isMaximized ? t('topbar.restore') : t('topbar.maximize')}
               >
-                {isMaximized ? <BlockOutlined style={{ fontSize: 12 }} /> : <BorderOutlined style={{ fontSize: 12 }} />}
+                <InteractiveMorphIcon icon={isMaximized ? <BlockOutlined /> : <BorderOutlined />} size={12} />
               </button>
               <button className="cb-win-btn cb-win-btn-close" onClick={handleWindowClose} title={t('topbar.close')}>
-                <CloseOutlined style={{ fontSize: 12 }} />
+                <InteractiveMorphIcon icon={<CloseOutlined />} size={12} />
               </button>
             </div>
           </>
