@@ -17,7 +17,7 @@ import {
   registerGlobalShortcuts,
   unregisterGlobalShortcuts
 } from './services/shortcut.service'
-import { settingsStore } from './store/settings.store'
+import { settingsStore, encryptStoredModelKeys } from './store/settings.store'
 import * as logger from './utils/logger'
 import { migrateSettings, scheduleEnvAutoDetect } from './utils/migrate-settings'
 import { resolveWindowBackground } from './utils/window-background'
@@ -240,6 +240,13 @@ app.whenReady().then(() => {
 
   // 迁移旧设置
   migrateSettings()
+
+  // Personal model API keys: legacy plaintext → safeStorage-encrypted (idempotent)
+  try {
+    encryptStoredModelKeys()
+  } catch (err) {
+    logger.warn('Failed to encrypt stored model keys:', err)
+  }
 
   // Seed bundled builtin template apps into user-apps (no-op when none bundled)
   try {

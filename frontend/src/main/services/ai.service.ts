@@ -4,7 +4,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 import { randomUUID } from 'crypto'
 import fs from 'fs'
 import { BrowserWindow } from 'electron'
-import { settingsStore, AIModelConfig } from '../store/settings.store'
+import { AIModelConfig, getAiModelConfigs } from '../store/settings.store'
 import { normalizeOpenAIBaseURL, normalizeAnthropicBaseURL } from '../utils/endpoint'
 import * as logger from '../utils/logger'
 import { applyClaudeThinkingParams } from './claude-thinking'
@@ -52,8 +52,7 @@ const activeTasks = new Map<string, StreamTask>()
  * Get full model config by id (with real apiKey)
  */
 function getModelConfigById(configId: string): AIModelConfig | undefined {
-  const configs = settingsStore.get('aiModelConfigs') || []
-  return configs.find((c: AIModelConfig) => c.id === configId)
+  return getAiModelConfigs().find((c: AIModelConfig) => c.id === configId)
 }
 
 /**

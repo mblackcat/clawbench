@@ -1,6 +1,5 @@
 import Store from 'electron-store'
-import { safeStorage } from 'electron'
-import * as logger from '../utils/logger'
+import { encryptSecretValue, decryptSecretValue } from '../utils/secret-storage'
 
 export interface User {
   id: string
@@ -60,32 +59,10 @@ export const authStore = new Store<AuthSchema>({
 })
 
 // Tokens are encrypted with the OS keystore (safeStorage) before being written
-// to disk. Values written by older versions are plaintext — they stay readable
-// and get encrypted the next time they are saved.
-const ENC_PREFIX = 'enc:v1:'
-
-function encryptValue(value: string): string {
-  if (!value) return ''
-  try {
-    if (safeStorage.isEncryptionAvailable()) {
-      return ENC_PREFIX + safeStorage.encryptString(value).toString('base64')
-    }
-  } catch (err) {
-    logger.warn('safeStorage unavailable, storing token without OS encryption:', err)
-  }
-  return value
-}
-
-function decryptValue(stored: string): string {
-  if (!stored) return ''
-  if (!stored.startsWith(ENC_PREFIX)) return stored
-  try {
-    return safeStorage.decryptString(Buffer.from(stored.slice(ENC_PREFIX.length), 'base64'))
-  } catch (err) {
-    logger.error('Failed to decrypt stored token, treating as logged out:', err)
-    return ''
-  }
-}
+// to disk; see utils/secret-storage. A token that fails to decrypt reads as ''
+// (treated as logged out).
+const encryptValue = encryptSecretValue
+const decryptValue = decryptSecretValue
 
 export function clearAuth(): void {
   authStore.set('user', null)
