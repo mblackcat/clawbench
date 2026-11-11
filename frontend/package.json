@@ -46,7 +46,9 @@
     "electron-store": "^8.2.0",
     "electron-updater": "^6.1.0",
     "js-yaml": "^4.1.1",
+    "lucide": "1.62.0",
     "mongodb": "^7.1.0",
+    "morphicons": "2.0.2",
     "mysql2": "^3.19.1",
     "node-pty": "^1.1.0",
     "openai": "^6.22.0",
@@ -148,7 +150,10 @@
       {
         "from": "builtin-apps",
         "to": "builtin-apps",
-        "filter": ["**/*", "!README.md"]
+        "filter": [
+          "**/*",
+          "!README.md"
+        ]
       }
     ],
     "icon": "resources/icon.png",
