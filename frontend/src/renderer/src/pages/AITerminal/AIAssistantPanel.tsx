@@ -1,13 +1,16 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { Input, Button, Typography, theme, Space, Tooltip, Spin, Segmented } from 'antd'
 import {
-  SendOutlined, StopOutlined, ThunderboltOutlined,
+  ThunderboltOutlined,
   HourglassOutlined, ClearOutlined, ControlOutlined,
-  UpOutlined, DownOutlined, RobotOutlined,
+  RobotOutlined,
   LoadingOutlined, CheckCircleOutlined,
   CloseCircleOutlined, CodeOutlined, ToolOutlined,
-  PlayCircleOutlined, ConsoleSqlOutlined
+  ConsoleSqlOutlined
 } from '@ant-design/icons'
+import { ChevronUp, ChevronDown, Play, Zap, Trash2, Flame, Send, Square, Octagon } from 'lucide'
+import { InteractiveMorphIcon } from '../../components/common/InteractiveMorphIcon'
+import { AntdMorphIcon } from '../../components/common/AntdMorphIcon'
 import { useAITerminalStore } from '../../stores/useAITerminalStore'
 import { useAIModelStore } from '../../stores/useAIModelStore'
 import { useT, getT } from '../../i18n'
@@ -985,7 +988,7 @@ const AIAssistantPanel: React.FC = () => {
             <Button
               type="text"
               size="small"
-              icon={collapsed ? <UpOutlined /> : <DownOutlined />}
+              icon={<AntdMorphIcon icon={collapsed ? ChevronUp : ChevronDown} size={12} />}
               onClick={(e) => { e.stopPropagation(); setCollapsed(!collapsed) }}
               style={{ fontSize: 11 }}
             />
@@ -1061,7 +1064,7 @@ const AIAssistantPanel: React.FC = () => {
               <Button
                 type="default"
                 danger
-                icon={<StopOutlined />}
+                icon={<InteractiveMorphIcon icon={Square} hoverIcon={Octagon} size={13} />}
                 onClick={handleCancel}
                 style={{ flexShrink: 0 }}
                 size="small"
@@ -1069,7 +1072,7 @@ const AIAssistantPanel: React.FC = () => {
             ) : (
               <Button
                 type="primary"
-                icon={<SendOutlined />}
+                icon={<InteractiveMorphIcon icon={Send} hoverIcon={Zap} size={13} />}
                 onClick={handleSend}
                 disabled={!inputValue.trim()}
                 style={{ flexShrink: 0 }}
@@ -1096,14 +1099,14 @@ const AIAssistantPanel: React.FC = () => {
             <Space.Compact direction="vertical" size="small" style={{ flexShrink: 0 }}>
               <Button
                 type="primary"
-                icon={<PlayCircleOutlined />}
+                icon={<InteractiveMorphIcon icon={Play} hoverIcon={Zap} size={13} />}
                 onClick={handleExecuteSQL}
                 disabled={!sqlInput.trim() || !currentDBConnId}
                 size="small"
               />
               <Button
                 type="text"
-                icon={<ClearOutlined />}
+                icon={<InteractiveMorphIcon icon={Trash2} hoverIcon={Flame} size={13} />}
                 onClick={() => { setSqlInput(''); setSqlError(null) }}
                 size="small"
               />

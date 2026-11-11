@@ -1,10 +1,14 @@
 import React, { useCallback } from 'react'
 import { Typography, Tabs, Button, Tooltip, App, theme } from 'antd'
 import {
-  PlusOutlined, SyncOutlined, CloseOutlined, DesktopOutlined,
-  CloudServerOutlined, DeleteOutlined, EditOutlined,
-  MenuFoldOutlined, MenuUnfoldOutlined, FileTextOutlined
+  DesktopOutlined,
+  CloudServerOutlined
 } from '@ant-design/icons'
+import {
+  RotateCw, RefreshCw, Plus, Sparkles, Pencil, FileEdit, Trash2, Flame, X, RotateCcw,
+  PanelLeftOpen, PanelLeftClose, Terminal, SquareTerminal, Database, DatabaseZap, FileText, ScrollText
+} from 'lucide'
+import { InteractiveMorphIcon } from '../../components/common/InteractiveMorphIcon'
 import { useAITerminalStore } from '../../stores/useAITerminalStore'
 import { useT } from '../../i18n'
 import type { TerminalConnection, DBConnection, SidePanelMode } from '../../types/ai-terminal'
@@ -96,7 +100,7 @@ const AITerminalSidebar: React.FC<Props> = ({ onNewConnection, onEditConnection,
               <Button
                 type="text"
                 size="small"
-                icon={<MenuUnfoldOutlined />}
+                icon={<InteractiveMorphIcon icon={PanelLeftOpen} hoverIcon={PanelLeftClose} size={14} />}
                 onClick={onToggleCollapse}
               />
             </Tooltip>
@@ -106,7 +110,7 @@ const AITerminalSidebar: React.FC<Props> = ({ onNewConnection, onEditConnection,
               <Button
                 type={sideMode === 'terminal' ? 'primary' : 'text'}
                 size="small"
-                icon={<DesktopOutlined />}
+                icon={<InteractiveMorphIcon icon={Terminal} hoverIcon={SquareTerminal} size={14} />}
                 onClick={() => setSideMode('terminal')}
                 style={{ width: 28, height: 28 }}
               />
@@ -115,7 +119,7 @@ const AITerminalSidebar: React.FC<Props> = ({ onNewConnection, onEditConnection,
               <Button
                 type={sideMode === 'db' ? 'primary' : 'text'}
                 size="small"
-                icon={<CloudServerOutlined />}
+                icon={<InteractiveMorphIcon icon={Database} hoverIcon={DatabaseZap} size={14} />}
                 onClick={() => setSideMode('db')}
                 style={{ width: 28, height: 28 }}
               />
@@ -151,7 +155,7 @@ const AITerminalSidebar: React.FC<Props> = ({ onNewConnection, onEditConnection,
               <Button
                 type="text"
                 size="small"
-                icon={<MenuFoldOutlined />}
+                icon={<InteractiveMorphIcon icon={PanelLeftClose} hoverIcon={PanelLeftOpen} size={14} />}
                 onClick={onToggleCollapse}
                 style={{ flexShrink: 0, marginRight: 2 }}
               />
@@ -198,10 +202,12 @@ const AITerminalSidebar: React.FC<Props> = ({ onNewConnection, onEditConnection,
                       }} />
                       <Text ellipsis style={{ fontSize: 12 }}>{tab.title}</Text>
                     </div>
-                    <CloseOutlined
+                    <span
                       onClick={(e) => { e.stopPropagation(); closeTab(tab.id) }}
-                      style={{ fontSize: 10, color: token.colorTextTertiary, flexShrink: 0 }}
-                    />
+                      style={{ display: 'inline-flex', padding: 2, cursor: 'pointer', flexShrink: 0, color: token.colorTextTertiary }}
+                    >
+                      <InteractiveMorphIcon icon={X} hoverIcon={RotateCcw} size={10} />
+                    </span>
                   </div>
                 ))
               )}
@@ -219,10 +225,10 @@ const AITerminalSidebar: React.FC<Props> = ({ onNewConnection, onEditConnection,
               <Text strong style={{ fontSize: 11, color: token.colorTextTertiary }}>{t('terminal.connectionList')}</Text>
               <div style={{ display: 'flex', gap: 2 }}>
                 <Tooltip title={t('terminal.syncSSHConfig')}>
-                  <Button type="text" size="small" icon={<SyncOutlined style={{ fontSize: 11 }} />} onClick={() => syncSSHConfig()} style={{ width: 22, height: 22 }} />
+                  <Button type="text" size="small" icon={<InteractiveMorphIcon icon={RotateCw} hoverIcon={RefreshCw} size={12} />} onClick={() => syncSSHConfig()} style={{ width: 22, height: 22 }} />
                 </Tooltip>
                 <Tooltip title={t('terminal.newConnection')}>
-                  <Button type="text" size="small" icon={<PlusOutlined style={{ fontSize: 11 }} />} onClick={onNewConnection} style={{ width: 22, height: 22 }} />
+                  <Button type="text" size="small" icon={<InteractiveMorphIcon icon={Plus} hoverIcon={Sparkles} size={12} />} onClick={onNewConnection} style={{ width: 22, height: 22 }} />
                 </Tooltip>
               </div>
             </div>
@@ -262,7 +268,7 @@ const AITerminalSidebar: React.FC<Props> = ({ onNewConnection, onEditConnection,
                     <Tooltip title={t('terminal.openSSHConfig')}>
                       <Button
                         type="text" size="small"
-                        icon={<FileTextOutlined style={{ fontSize: 11 }} />}
+                        icon={<InteractiveMorphIcon icon={FileText} hoverIcon={ScrollText} size={11} />}
                         onClick={handleOpenSSHConfig}
                         style={{ width: 22, height: 22 }}
                       />
@@ -295,12 +301,12 @@ const AITerminalSidebar: React.FC<Props> = ({ onNewConnection, onEditConnection,
                       </div>
                       <div style={{ display: 'flex', gap: 2, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
                         <Button
-                          type="text" size="small" icon={<EditOutlined style={{ fontSize: 11 }} />}
+                          type="text" size="small" icon={<InteractiveMorphIcon icon={Pencil} hoverIcon={FileEdit} size={12} />}
                           onClick={() => onEditConnection(conn)}
                           style={{ width: 22, height: 22 }}
                         />
                         <Button
-                          type="text" size="small" danger icon={<DeleteOutlined style={{ fontSize: 11 }} />}
+                          type="text" size="small" danger icon={<InteractiveMorphIcon icon={Trash2} hoverIcon={Flame} size={12} />}
                           onClick={() => handleDeleteConnection(conn)}
                           style={{ width: 22, height: 22 }}
                         />

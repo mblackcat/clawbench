@@ -1,6 +1,7 @@
 import React from 'react'
 import { theme, Typography } from 'antd'
-import { CloseOutlined, ReloadOutlined } from '@ant-design/icons'
+import { RotateCw, RefreshCw, X, RotateCcw } from 'lucide'
+import { InteractiveMorphIcon } from '../../components/common/InteractiveMorphIcon'
 import { useAITerminalStore } from '../../stores/useAITerminalStore'
 
 const { Text } = Typography
@@ -53,24 +54,29 @@ const TerminalTabBar: React.FC = () => {
               {tab.title}
             </Text>
             {tab.status === 'disconnected' && (
-              <ReloadOutlined
+              <span
                 onClick={(e) => { e.stopPropagation(); reconnectTab(tab.id) }}
                 style={{
-                  fontSize: 10,
                   color: token.colorWarning,
                   marginLeft: 4,
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  display: 'inline-flex'
                 }}
-              />
+              >
+                <InteractiveMorphIcon icon={RotateCw} hoverIcon={RefreshCw} size={10} />
+              </span>
             )}
-            <CloseOutlined
+            <span
               onClick={(e) => { e.stopPropagation(); closeTab(tab.id) }}
               style={{
-                fontSize: 10,
                 color: token.colorTextTertiary,
-                marginLeft: 4
+                marginLeft: 4,
+                cursor: 'pointer',
+                display: 'inline-flex'
               }}
-            />
+            >
+              <InteractiveMorphIcon icon={X} hoverIcon={RotateCcw} size={10} />
+            </span>
           </div>
         )
       })}
