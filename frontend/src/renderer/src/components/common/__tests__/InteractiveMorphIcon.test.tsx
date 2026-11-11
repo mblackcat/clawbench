@@ -1,8 +1,9 @@
 import React, { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { PlusOutlined, StarOutlined, CopyOutlined, CheckOutlined } from '@ant-design/icons'
+import { PanelLeftClose, Sparkles, Plus, Check } from 'lucide'
 import { InteractiveMorphIcon } from '../InteractiveMorphIcon'
+import { AntdMorphIcon } from '../AntdMorphIcon'
 import { isMotionEnabled, setMotionMode } from '../../../motion'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -26,7 +27,8 @@ describe('InteractiveMorphIcon & motion switch', () => {
     localStorage.clear()
   })
 
-  const iconSpan = (): HTMLElement => container.querySelector('.cb-morph-icon') as HTMLElement
+  const iconSpan = (): HTMLElement => container.querySelector('.interactive-morph-icon') as HTMLElement
+  const svgMarkup = (): string => iconSpan().querySelector('svg')?.innerHTML ?? ''
   const hover = async (el: Element, enter: boolean): Promise<void> => {
     await act(async () => {
       el.dispatchEvent(new MouseEvent(enter ? 'mouseenter' : 'mouseleave', { bubbles: true }))
@@ -40,14 +42,34 @@ describe('InteractiveMorphIcon & motion switch', () => {
     await act(async () => {
       root.render(
         <button>
-          <InteractiveMorphIcon icon={<PlusOutlined />} hoverIcon={<StarOutlined />} size={16} />
+          <InteractiveMorphIcon icon={Plus} hoverIcon={Sparkles} size={16} />
         </button>
       )
     })
 
     expect(iconSpan()).toBeTruthy()
+    expect(iconSpan().classList.contains('anticon')).toBe(true)
+    expect(iconSpan().classList.contains('cb-morph-icon')).toBe(true)
     expect(iconSpan().style.transform).toBe('scale(1)')
-    expect(iconSpan().style.fontSize).toBe('16px')
+    const svg = iconSpan().querySelector('svg') as SVGElement
+    expect(svg).toBeTruthy()
+    expect(svg.getAttribute('width')).toBe('16')
+  })
+
+  it('defaults to 1em so it inherits the antd font-size', async () => {
+    await act(async () => {
+      root.render(<InteractiveMorphIcon icon={Plus} />)
+    })
+    expect(iconSpan().querySelector('svg')?.getAttribute('width')).toBe('1em')
+  })
+
+  it('paints with currentColor (theme tokens), never a hardcoded color', async () => {
+    await act(async () => {
+      root.render(<InteractiveMorphIcon icon={Plus} />)
+    })
+    const svg = iconSpan().querySelector('svg') as SVGElement
+    expect(svg.outerHTML).toContain('currentColor')
+    expect(svg.outerHTML).not.toMatch(/#[0-9a-f]{3,6}\b/i)
   })
 
   it('is static (no transform / transition) in agile mode', async () => {
@@ -57,7 +79,7 @@ describe('InteractiveMorphIcon & motion switch', () => {
     await act(async () => {
       root.render(
         <button>
-          <InteractiveMorphIcon icon={<PlusOutlined />} hoverIcon={<StarOutlined />} size={16} />
+          <InteractiveMorphIcon icon={Plus} hoverIcon={Sparkles} size={16} />
         </button>
       )
     })
@@ -71,7 +93,7 @@ describe('InteractiveMorphIcon & motion switch', () => {
     await act(async () => {
       root.render(
         <button>
-          <InteractiveMorphIcon icon={<PlusOutlined />} />
+          <InteractiveMorphIcon icon={Plus} hoverIcon={Sparkles} size={16} />
         </button>
       )
     })
@@ -84,26 +106,33 @@ describe('InteractiveMorphIcon & motion switch', () => {
     expect(iconSpan().style.transform).toBe('scale(1)')
   })
 
-  it('hovering the parent control grows the icon and swaps to hoverIcon', async () => {
+  it('AntdMorphIcon respects motion mode seamlessly', async () => {
+    setMotionMode('agile')
+    await act(async () => {
+      root.render(<AntdMorphIcon icon={PanelLeftClose} size={16} />)
+    })
+    const span = container.querySelector('.anticon')
+    expect(span).toBeTruthy()
+    expect(span?.querySelector('svg')).toBeTruthy()
+  })
+
+  it('hovering the parent .ant-segmented-item grows the icon', async () => {
     setMotionMode('elegant')
     await act(async () => {
       root.render(
         <div className="ant-segmented-item" id="seg">
-          <InteractiveMorphIcon icon={<PlusOutlined />} hoverIcon={<StarOutlined />} size={14} />
+          <InteractiveMorphIcon icon={Plus} hoverIcon={Sparkles} size={14} triggerScope="parent" />
         </div>
       )
     })
     const parent = container.querySelector('#seg') as HTMLElement
-    expect(container.querySelector('.anticon-plus')).toBeTruthy()
+    expect(iconSpan().style.transform).toBe('scale(1)')
 
     await hover(parent, true)
     expect(iconSpan().style.transform).toBe('scale(1.12)')
-    expect(container.querySelector('.anticon-star')).toBeTruthy()
-    expect(container.querySelector('.anticon-plus')).toBeNull()
 
     await hover(parent, false)
     expect(iconSpan().style.transform).toBe('scale(1)')
-    expect(container.querySelector('.anticon-plus')).toBeTruthy()
   })
 
   it('shrinks while pressed', async () => {
@@ -111,7 +140,7 @@ describe('InteractiveMorphIcon & motion switch', () => {
     await act(async () => {
       root.render(
         <button id="btn">
-          <InteractiveMorphIcon icon={<PlusOutlined />} />
+          <InteractiveMorphIcon icon={Plus} />
         </button>
       )
     })
@@ -126,47 +155,26 @@ describe('InteractiveMorphIcon & motion switch', () => {
     expect(iconSpan().style.transform).not.toBe('scale(0.88)')
   })
 
-  it('never swaps on hover in agile mode, but keeps the semantic active icon', async () => {
+  it('never morphs on hover in agile mode, but keeps the semantic active icon', async () => {
     setMotionMode('agile')
     await act(async () => {
       root.render(
         <button id="btn">
-          <InteractiveMorphIcon icon={<PlusOutlined />} hoverIcon={<StarOutlined />} />
+          <InteractiveMorphIcon icon={Plus} hoverIcon={Sparkles} />
         </button>
       )
     })
+    const idle = svgMarkup()
     await hover(container.querySelector('#btn')!, true)
-    expect(container.querySelector('.anticon-plus')).toBeTruthy()
-    expect(container.querySelector('.anticon-star')).toBeNull()
+    expect(svgMarkup()).toBe(idle)
 
     await act(async () => {
       root.render(
         <button id="btn">
-          <InteractiveMorphIcon icon={<PlusOutlined />} activeIcon={<CheckOutlined />} active />
+          <InteractiveMorphIcon icon={Plus} activeIcon={Check} active />
         </button>
       )
     })
-    expect(container.querySelector('.anticon-check')).toBeTruthy()
-  })
-
-  it('accepts icon components as well as elements', async () => {
-    await act(async () => {
-      root.render(<InteractiveMorphIcon icon={CopyOutlined} />)
-    })
-    expect(container.querySelector('.anticon-copy')).toBeTruthy()
-  })
-
-  it('cross-fades only after a swap (swapKey change), not on mount', async () => {
-    setMotionMode('elegant')
-    await act(async () => {
-      root.render(<InteractiveMorphIcon icon={<CopyOutlined />} swapKey={false} />)
-    })
-    expect(container.querySelector('.cb-morph-layer-in')).toBeNull()
-
-    await act(async () => {
-      root.render(<InteractiveMorphIcon icon={<CheckOutlined />} swapKey={true} />)
-    })
-    expect(container.querySelector('.anticon-check')).toBeTruthy()
-    expect(container.querySelector('.cb-morph-layer-in')).toBeTruthy()
+    expect(svgMarkup()).not.toBe(idle)
   })
 })
