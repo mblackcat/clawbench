@@ -1895,7 +1895,6 @@ const translations: Record<Lang, Record<string, string>> = {
     'setup.moduleHint': '根据你的职能已预设模块开关，你可以手动调整',
     'setup.stepRole': '职能与模块',
     'setup.stepWorkspace': '工作区',
-    'setup.stepLLM': 'AI 模型',
     'setup.prev': '上一步',
     'setup.next': '下一步',
     'setup.finish': '开始使用',
@@ -1917,10 +1916,6 @@ const translations: Record<Lang, Record<string, string>> = {
     'setup.wsPathRequired': '请选择工作区路径',
     'setup.wsAddFailed': '添加工作区失败',
     'setup.wsDeleteFailed': '删除工作区失败',
-    'setup.llmTitle': '配置 AI 模型',
-    'setup.llmDesc': 'ClawBench 的 AI 能力需要配置大语言模型（LLM）。你可以稍后在设置中自行配置。',
-    'setup.llmHint': '支持 OpenAI、Claude、Gemini、DeepSeek 等多种模型提供商。前往设置页面选择并配置你的 API Key 即可开始使用。',
-    'setup.goSettings': '前往设置',
 
     // CoPiper (JDB 表格编辑、校验和导出)
     'copiper.dbCreated': 'JDB 文件已创建',
@@ -4579,7 +4574,6 @@ const translations: Record<Lang, Record<string, string>> = {
     'setup.moduleHint': 'Modules are preset for your role, but you can adjust them manually',
     'setup.stepRole': 'Role & Modules',
     'setup.stepWorkspace': 'Workspace',
-    'setup.stepLLM': 'AI Model',
     'setup.prev': 'Previous',
     'setup.next': 'Next',
     'setup.finish': 'Get Started',
@@ -4601,10 +4595,6 @@ const translations: Record<Lang, Record<string, string>> = {
     'setup.wsPathRequired': 'Please select a workspace path',
     'setup.wsAddFailed': 'Failed to add workspace',
     'setup.wsDeleteFailed': 'Failed to delete workspace',
-    'setup.llmTitle': 'Configure AI Model',
-    'setup.llmDesc': 'ClawBench needs an LLM to power its AI features. You can configure this later in Settings.',
-    'setup.llmHint': 'Supports OpenAI, Claude, Gemini, DeepSeek, and many more providers. Go to Settings to add your API keys and start using AI features.',
-    'setup.goSettings': 'Go to Settings',
 
     // CoPiper (JDB table editing, validation, and export)
     'copiper.dbCreated': 'JDB file created',

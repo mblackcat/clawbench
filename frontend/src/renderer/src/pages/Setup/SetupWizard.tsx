@@ -18,7 +18,6 @@ import {
   PlusOutlined,
   DeleteOutlined,
   FolderOpenOutlined,
-  SettingOutlined,
   CheckCircleOutlined,
   AppstoreOutlined,
   CodeOutlined,
@@ -647,71 +646,13 @@ const StepWorkspace: React.FC<{ mode: AppMode; required: boolean }> = ({ mode, r
   )
 }
 
-// ─── Step 5: LLM reminder ────────────────────────────────────────────────────
-
-const StepLLM: React.FC = () => {
-  const { token } = theme.useToken()
-  const t = useT()
-  const navigate = useNavigate()
-
-  return (
-    <div style={{ textAlign: 'center', maxWidth: 500, margin: '0 auto' }}>
-      <div
-        style={{
-          width: 64,
-          height: 64,
-          borderRadius: '50%',
-          background: token.colorPrimaryBg,
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginBottom: 20
-        }}
-      >
-        <SettingOutlined style={{ fontSize: 28, color: token.colorPrimary }} />
-      </div>
-
-      <Title level={4} style={{ marginBottom: 8 }}>{t('setup.llmTitle')}</Title>
-      <Paragraph type="secondary" style={{ fontSize: 14, marginBottom: 0 }}>
-        {t('setup.llmDesc')}
-      </Paragraph>
-
-      <div
-        style={{
-          marginTop: 24,
-          padding: '14px 18px',
-          borderRadius: token.borderRadiusLG,
-          background: token.colorFillAlter,
-          textAlign: 'left'
-        }}
-      >
-        <Text style={{ fontSize: 13 }}>
-          {t('setup.llmHint')}
-        </Text>
-      </div>
-
-      <div style={{ marginTop: 32 }}>
-        <Button
-          type="default"
-          onClick={() => navigate('/settings')}
-          icon={<SettingOutlined />}
-          style={{ marginRight: 12 }}
-        >
-          {t('setup.goSettings')}
-        </Button>
-      </div>
-    </div>
-  )
-}
-
 // ─── Main Setup Wizard ───────────────────────────────────────────────────────
 
 const STEP_MODE = 0
 const STEP_ROLE = 1
 const STEP_PROJECT = 2
 const STEP_WORKSPACE = 3
-const STEP_LLM = 4
-const LAST_STEP = STEP_LLM
+const LAST_STEP = STEP_WORKSPACE
 
 const SetupWizard: React.FC = () => {
   // forceShow (set by the avatar-menu "引导" entry) re-opens the wizard even
@@ -856,8 +797,7 @@ const SetupWizard: React.FC = () => {
       { title: t('setup.stepMode') },
       { title: t('setup.stepRole') },
       { title: t('setup.stepProject') },
-      { title: t(mode === 'general' ? 'setup.stepWorkspaceGeneral' : 'setup.stepWorkspace') },
-      { title: t('setup.stepLLM') }
+      { title: t(mode === 'general' ? 'setup.stepWorkspaceGeneral' : 'setup.stepWorkspace') }
     ],
     [t, mode]
   )
@@ -900,7 +840,6 @@ const SetupWizard: React.FC = () => {
             />
           )}
           {step === STEP_WORKSPACE && <StepWorkspace mode={mode} required={workspaceRequired} />}
-          {step === STEP_LLM && <StepLLM />}
         </div>
       </div>
 
