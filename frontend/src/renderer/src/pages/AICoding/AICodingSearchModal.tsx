@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { Modal, Input, Tag, theme, Typography } from 'antd'
-import { SearchOutlined, FolderOpenOutlined, ClockCircleOutlined, PlusOutlined } from '@ant-design/icons'
+import { SearchOutlined, FolderOpenOutlined, ClockCircleOutlined } from '@ant-design/icons'
+import { Plus, Sparkles } from 'lucide'
+import { InteractiveMorphIcon } from '../../components/common/InteractiveMorphIcon'
 import { getAIToolIcon, AI_TOOL_SHORT_NAMES, AI_TOOL_NAMES, AI_TOOL_TAG_COLORS, AI_TOOL_TAG_STYLE } from './aiToolMeta'
 import { useT, getT } from '../../i18n'
 import type { AICodingSession, AICodingWorkspace, AIToolType } from '../../types/ai-coding'
@@ -289,7 +291,7 @@ export const AICodingSearchModal: React.FC<AICodingSearchModalProps> = ({
                 color: token.colorPrimary
               }}
             >
-              <PlusOutlined style={{ fontSize: 15 }} />
+              <InteractiveMorphIcon icon={Plus} hoverIcon={Sparkles} size={15} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

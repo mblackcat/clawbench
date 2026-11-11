@@ -1,17 +1,26 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { Button, Input, theme, App, Dropdown, Badge, Segmented, Tree, Tooltip } from 'antd'
+import { FolderOutlined } from '@ant-design/icons'
 import {
-  SyncOutlined,
-  CloudUploadOutlined,
-  CloudDownloadOutlined,
-  ReloadOutlined,
-  UnorderedListOutlined,
-  ApartmentOutlined,
-  FolderOutlined,
-  HistoryOutlined,
-  CaretDownOutlined,
-  CaretRightOutlined
-} from '@ant-design/icons'
+  ChevronDown,
+  ChevronRight,
+  List,
+  LayoutList,
+  FolderTree,
+  Network,
+  RotateCw,
+  RefreshCw,
+  History,
+  RotateCcw,
+  GitCommitVertical,
+  Check,
+  CloudUpload,
+  ArrowUpCircle,
+  CloudDownload,
+  ArrowDownCircle
+} from 'lucide'
+import { AntdMorphIcon } from '../../components/common/AntdMorphIcon'
+import { InteractiveMorphIcon } from '../../components/common/InteractiveMorphIcon'
 import type { TextAreaRef } from 'antd/es/input/TextArea'
 import { MONO_FONT_STACK } from '../../utils/mono-font'
 import type { VcsCommit, VcsCommitFile, VcsType } from '../../types/ipc'
@@ -526,7 +535,7 @@ const VcsChangesPanel: React.FC<VcsChangesPanelProps> = ({ workingDir, visible }
     >
       {/* Changes header: collapse caret, title + count badge, multi-VCS capsule, flat/tree toggle, refresh */}
       <div style={sectionHeaderStyle} onClick={() => toggleSection('changes')}>
-        <span style={caretStyle}>{sections.changes ? <CaretDownOutlined /> : <CaretRightOutlined />}</span>
+        <span style={caretStyle}><AntdMorphIcon icon={sections.changes ? ChevronDown : ChevronRight} size={12} spring="snappy" /></span>
         <Badge count={files.length} size="small" showZero={false} offset={[3, -2]}>
           <span style={{ fontWeight: 600, fontSize: 13, color: token.colorText }}>{t('coding.vcsChanges')}</span>
         </Badge>
@@ -545,14 +554,15 @@ const VcsChangesPanel: React.FC<VcsChangesPanelProps> = ({ workingDir, visible }
             value={viewMode}
             onChange={(v) => setViewMode(v as ViewMode)}
             options={[
-              { label: <UnorderedListOutlined />, value: 'flat' },
-              { label: <ApartmentOutlined />, value: 'tree' }
+              { label: <InteractiveMorphIcon icon={List} hoverIcon={LayoutList} size={12} />, value: 'flat' },
+              { label: <InteractiveMorphIcon icon={FolderTree} hoverIcon={Network} size={12} />, value: 'tree' }
             ]}
           />
           <Button
             type="text"
             size="small"
-            icon={<ReloadOutlined spin={loading} />}
+            loading={loading}
+            icon={<InteractiveMorphIcon icon={RotateCw} hoverIcon={RefreshCw} size={13} />}
             onClick={() => {
               void detectVcs()
               fetchFiles()
@@ -618,7 +628,7 @@ const VcsChangesPanel: React.FC<VcsChangesPanelProps> = ({ workingDir, visible }
                   <Button
                     type="text"
                     size="small"
-                    icon={<HistoryOutlined style={{ fontSize: 12 }} />}
+                    icon={<InteractiveMorphIcon icon={History} hoverIcon={RotateCcw} size={12} />}
                     disabled={messageHistory.length === 0}
                     style={{
                       position: 'absolute',
@@ -637,7 +647,7 @@ const VcsChangesPanel: React.FC<VcsChangesPanelProps> = ({ workingDir, visible }
               <Button
                 size="small"
                 type="primary"
-                icon={<SyncOutlined />}
+                icon={<InteractiveMorphIcon icon={GitCommitVertical} hoverIcon={Check} size={13} />}
                 loading={actionLoading === 'commit'}
                 onClick={handleCommit}
                 disabled={vcsType === 'none' || !commitMsg.trim() || files.length === 0}
@@ -648,7 +658,7 @@ const VcsChangesPanel: React.FC<VcsChangesPanelProps> = ({ workingDir, visible }
               {vcsType === 'git' && (
                 <Button
                   size="small"
-                  icon={<CloudUploadOutlined />}
+                  icon={<InteractiveMorphIcon icon={CloudUpload} hoverIcon={ArrowUpCircle} size={13} />}
                   loading={actionLoading === 'push'}
                   onClick={handlePush}
                   title={t('coding.vcsPush')}
@@ -656,7 +666,7 @@ const VcsChangesPanel: React.FC<VcsChangesPanelProps> = ({ workingDir, visible }
               )}
               <Button
                 size="small"
-                icon={<CloudDownloadOutlined />}
+                icon={<InteractiveMorphIcon icon={CloudDownload} hoverIcon={ArrowDownCircle} size={13} />}
                 loading={actionLoading === 'pull'}
                 onClick={handlePull}
                 disabled={vcsType === 'none'}
@@ -775,13 +785,13 @@ const VcsChangesPanel: React.FC<VcsChangesPanelProps> = ({ workingDir, visible }
         style={{ ...sectionHeaderStyle, borderTop: sections.changes ? `1px solid ${token.colorBorderSecondary}` : undefined }}
         onClick={() => toggleSection('history')}
       >
-        <span style={caretStyle}>{sections.history ? <CaretDownOutlined /> : <CaretRightOutlined />}</span>
+        <span style={caretStyle}><AntdMorphIcon icon={sections.history ? ChevronDown : ChevronRight} size={12} spring="snappy" /></span>
         <span style={{ fontWeight: 600, fontSize: 13, color: token.colorText }}>{t('coding.vcsHistory')}</span>
         <span style={{ flex: 1 }} />
         <Button
           type="text"
           size="small"
-          icon={<ReloadOutlined />}
+          icon={<InteractiveMorphIcon icon={RotateCw} hoverIcon={RefreshCw} size={13} />}
           title={t('coding.vcsHistoryRefresh')}
           onClick={(e) => {
             e.stopPropagation()

@@ -11,7 +11,10 @@ import {
   PlusOutlined,
   DownOutlined,
   UpOutlined,
-  ReloadOutlined, ThunderboltOutlined } from '@ant-design/icons'
+  ReloadOutlined
+} from '@ant-design/icons'
+import { Sparkles } from 'lucide'
+import { InteractiveMorphIcon } from '../../components/common/InteractiveMorphIcon'
 import { useNavigate } from 'react-router-dom'
 import {
   AI_TOOL_NAMES,
@@ -401,7 +404,7 @@ export const AICodingNewChatLanding: React.FC<AICodingNewChatLandingProps> = ({
                     color: token.colorPrimary
                   }}
                 >
-                  <ThunderboltOutlined style={{ fontSize: 20 }} />
+                  <InteractiveMorphIcon icon={Sparkles} hoverIcon={Sparkles} size={20} />
                 </div>
                 <Title level={4} style={{ margin: 0, fontWeight: 700, fontSize: 20 }}>
                   {t('coding.startNewChat')}

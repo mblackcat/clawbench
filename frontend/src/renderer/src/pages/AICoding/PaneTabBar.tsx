@@ -1,9 +1,22 @@
 import React, { useState, useMemo, useCallback } from 'react'
 import { Button, Dropdown, Spin, Tooltip, theme } from 'antd'
 import {
-  PlusOutlined, CodeOutlined, HistoryOutlined, CloseOutlined,
-  BranchesOutlined, MessageOutlined, ExportOutlined, FolderOpenOutlined
-} from '@ant-design/icons'
+  Terminal,
+  SquareTerminal,
+  GitBranch,
+  GitCommitVertical,
+  Code2,
+  SquareCode,
+  Folder,
+  FolderOpen,
+  X,
+  CircleX,
+  RotateCcw,
+  History,
+  MessageSquare
+} from 'lucide'
+import { InteractiveMorphIcon } from '../../components/common/InteractiveMorphIcon'
+import { AntdMorphIcon } from '../../components/common/AntdMorphIcon'
 import { getAIToolIcon, TOOLS_WITH_NATIVE_SESSIONS as NATIVE_SESSION_TOOLS } from './aiToolMeta'
 import { useT, getT } from '../../i18n'
 import { useVcsSelectionStore } from '../../stores/useVcsSelectionStore'
@@ -291,7 +304,7 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
                       style={{ display: 'inline-flex', alignItems: 'center', padding: 2, borderRadius: 4, cursor: 'pointer' }}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <HistoryOutlined style={{ fontSize: 10, color: token.colorTextTertiary }} />
+                      <InteractiveMorphIcon icon={History} hoverIcon={RotateCcw} size={11} style={{ color: token.colorTextTertiary }} />
                     </span>
                   </Dropdown>
                 )}
@@ -302,7 +315,7 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
                   onClick={(e) => { e.stopPropagation(); onCloseTab(session.id) }}
                   onMouseDown={(e) => e.stopPropagation()}
                 >
-                  <CloseOutlined style={{ fontSize: 10, color: token.colorTextTertiary }} />
+                  <InteractiveMorphIcon icon={X} hoverIcon={RotateCcw} size={11} style={{ color: token.colorTextTertiary }} />
                 </span>
               </div>
             </Dropdown>
@@ -335,7 +348,7 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
                     transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
                   }}
                 >
-                  {m === 'chat' ? <MessageOutlined style={{ fontSize: 10 }} /> : <CodeOutlined style={{ fontSize: 10 }} />}
+                  {m === 'chat' ? <AntdMorphIcon icon={MessageSquare} size={11} /> : <AntdMorphIcon icon={Code2} size={11} />}
                   {m === 'chat' ? 'Chat' : 'CLI'}
                 </div>
               )
@@ -347,7 +360,7 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
         {workingDir && onToggleTerminalPanel && (
           <Tooltip title={t('coding.terminalPanel')}>
             <Button
-              type="text" size="small" icon={<CodeOutlined />}
+              type="text" size="small" icon={<InteractiveMorphIcon icon={Terminal} hoverIcon={SquareTerminal} size={14} />}
               onClick={onToggleTerminalPanel}
               style={{
                 color: terminalPanelOpen ? token.colorPrimary : token.colorTextSecondary,
@@ -361,7 +374,13 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
           <Tooltip title={isVsCode ? t('coding.openInVsCode') : t('coding.openInFileExplorer')}>
             <Button
               type="text" size="small"
-              icon={isVsCode ? <ExportOutlined /> : <FolderOpenOutlined />}
+              icon={
+                isVsCode ? (
+                  <InteractiveMorphIcon icon={Code2} hoverIcon={SquareCode} size={14} />
+                ) : (
+                  <InteractiveMorphIcon icon={Folder} hoverIcon={FolderOpen} size={14} />
+                )
+              }
               onClick={() => (onOpenWorkspace ? onOpenWorkspace(workingDir) : void openWorkspace(workingDir))}
               style={{ color: token.colorTextSecondary }}
               aria-label={isVsCode ? t('coding.openInVsCode') : t('coding.openInFileExplorer')}
@@ -373,7 +392,7 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
           <Tooltip title={t('coding.vcsChanges')}>
             <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
               <Button
-                type="text" size="small" icon={<BranchesOutlined />}
+                type="text" size="small" icon={<InteractiveMorphIcon icon={GitBranch} hoverIcon={GitCommitVertical} size={14} />}
                 onClick={onToggleGitPanel}
                 style={{
                   color: gitPanelOpen ? token.colorPrimary : token.colorTextSecondary,
@@ -402,7 +421,7 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
             <Button
               type="text"
               size="small"
-              icon={<CloseOutlined style={{ fontSize: 12 }} />}
+              icon={<InteractiveMorphIcon icon={X} hoverIcon={CircleX} size={12} />}
               onClick={onClose}
               style={{ color: token.colorTextSecondary }}
               aria-label={t('common.close')}

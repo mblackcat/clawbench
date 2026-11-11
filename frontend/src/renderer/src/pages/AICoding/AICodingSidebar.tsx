@@ -2,19 +2,28 @@ import React, { useMemo, useState, useRef, useCallback, useEffect } from 'react'
 import { Dropdown, Input, App, Button, theme, Tooltip, Spin, Tag, Badge } from 'antd'
 import type { MenuProps } from 'antd'
 import {
-  EllipsisOutlined,
   FolderOutlined,
   FolderOpenOutlined,
-  PlusOutlined,
   RightOutlined,
   SearchOutlined,
-  HistoryOutlined,
-  MenuFoldOutlined,
-  MenuUnfoldOutlined,
   HolderOutlined,
-  VerticalAlignTopOutlined,
   AppstoreOutlined,
-  ClockCircleOutlined, FolderAddOutlined } from '@ant-design/icons'
+  ClockCircleOutlined
+} from '@ant-design/icons'
+import {
+  Plus,
+  Sparkles,
+  Pin,
+  PinOff,
+  PanelLeftOpen,
+  PanelLeftClose,
+  MoreHorizontal,
+  History,
+  RotateCcw,
+  FolderPlus,
+  FolderOpen
+} from 'lucide'
+import { InteractiveMorphIcon } from '../../components/common/InteractiveMorphIcon'
 import AICodingSearchModal from './AICodingSearchModal'
 import {
   DndContext,
@@ -1729,7 +1738,13 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
             <Button
               type="text"
               size="small"
-              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              icon={
+                <InteractiveMorphIcon
+                  icon={collapsed ? PanelLeftOpen : PanelLeftClose}
+                  hoverIcon={collapsed ? PanelLeftClose : PanelLeftOpen}
+                  size={14}
+                />
+              }
               onClick={() => setCollapsed((v) => !v)}
               style={{ flexShrink: 0 }}
             />
@@ -1762,7 +1777,7 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
             <Button
               type="primary"
               ghost
-              icon={<PlusOutlined />}
+              icon={<InteractiveMorphIcon icon={Plus} hoverIcon={Sparkles} size={14} />}
               onClick={() => onOpenNewChat?.()}
               style={{ width: 30, height: 30, flexShrink: 0, borderRadius: '50%' }}
             />
@@ -1771,7 +1786,7 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
             <Button
               type="primary"
               ghost
-              icon={<FolderAddOutlined />}
+              icon={<InteractiveMorphIcon icon={FolderPlus} hoverIcon={FolderOpen} size={14} />}
               onClick={onNewWorkspace}
               style={{ width: 30, height: 30, flexShrink: 0, borderRadius: '50%' }}
             />
@@ -1865,7 +1880,7 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
               <Button
                 type="text"
                 size="small"
-                icon={<EllipsisOutlined />}
+                icon={<InteractiveMorphIcon icon={MoreHorizontal} hoverIcon={Sparkles} size={14} />}
                 onClick={() => setCollapsed(false)}
                 style={{ width: 30, height: 30, flexShrink: 0 }}
               />
@@ -1910,7 +1925,7 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
           <Button
             type="primary"
             ghost
-            icon={<PlusOutlined />}
+            icon={<InteractiveMorphIcon icon={Plus} hoverIcon={Sparkles} size={14} />}
             onClick={() => onOpenNewChat?.()}
             style={{
               flex: 1,
@@ -1935,7 +1950,7 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
             <Button
               type="primary"
               ghost
-              icon={<FolderAddOutlined />}
+              icon={<InteractiveMorphIcon icon={FolderPlus} hoverIcon={FolderOpen} size={14} />}
               onClick={onNewWorkspace}
               aria-label={t('coding.newWorkspace')}
               style={{
@@ -2389,21 +2404,23 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
                           )}
                           {/* Pin indicator - shifts left on hover */}
                           {ws.pinned && (
-                            <VerticalAlignTopOutlined
+                            <span
                               title={t('workbench.unpin')}
                               onClick={(e) => {
                                 e.stopPropagation()
                                 updateWorkspace(ws.id, { pinned: false })
                               }}
-                              className="cb-ws-pin-icon"
-                              style={{ fontSize: 12, color: token.colorTextTertiary, flexShrink: 0, padding: '2px', cursor: 'pointer' }}
+                              className="cb-ws-pin-icon cb-interactive-target"
+                              style={{ display: 'inline-flex', color: token.colorTextTertiary, flexShrink: 0, padding: '2px', cursor: 'pointer' }}
                               onMouseEnter={(e) => {
                                 ;(e.currentTarget as HTMLElement).style.color = token.colorPrimary
                               }}
                               onMouseLeave={(e) => {
                                 ;(e.currentTarget as HTMLElement).style.color = token.colorTextTertiary
                               }}
-                            />
+                            >
+                              <InteractiveMorphIcon icon={Pin} hoverIcon={PinOff} size={12} />
+                            </span>
                           )}
                           {/* Hover Actions: Add new session */}
                           <div
@@ -2420,9 +2437,15 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
                                 e.stopPropagation()
                                 onNewSession(ws.id)
                               }}
+                              className="cb-interactive-target"
                               style={{ display: 'inline-flex', padding: '2px', cursor: 'pointer' }}
                             >
-                              <PlusOutlined style={{ fontSize: 12, color: token.colorTextTertiary }} />
+                              <InteractiveMorphIcon
+                                icon={Plus}
+                                hoverIcon={Sparkles}
+                                size={12}
+                                style={{ color: token.colorTextTertiary }}
+                              />
                             </span>
                           </div>
                         </>
@@ -2527,14 +2550,15 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
                                 {row.title}
                               </span>
                               {isPinned && (
-                                <VerticalAlignTopOutlined
+                                <span
                                   title={t('workbench.unpin')}
+                                  className="cb-interactive-target"
                                   onClick={(e) => {
                                     e.stopPropagation()
                                     handleTogglePinSessionRow(row)
                                   }}
                                   style={{
-                                    fontSize: 11,
+                                    display: 'inline-flex',
                                     color: token.colorTextTertiary,
                                     flexShrink: 0,
                                     padding: '2px',
@@ -2546,7 +2570,9 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
                                   onMouseLeave={(e) => {
                                     ;(e.currentTarget as HTMLElement).style.color = token.colorTextTertiary
                                   }}
-                                />
+                                >
+                                  <InteractiveMorphIcon icon={Pin} hoverIcon={PinOff} size={11} />
+                                </span>
                               )}
                               <span style={{ marginLeft: isPinned ? 2 : 'auto', flexShrink: 0, fontSize: 11, color: token.colorTextQuaternary }}>
                                 {formatRelativeTime(row.modifiedAt)}
@@ -2573,7 +2599,7 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
                             ((e.currentTarget as HTMLElement).style.background = 'transparent')
                           }
                         >
-                          <HistoryOutlined style={{ fontSize: 12, flexShrink: 0 }} />
+                          <InteractiveMorphIcon icon={History} hoverIcon={RotateCcw} size={12} style={{ flexShrink: 0 }} />
                           <span>{t('coding.loadHistorySessions')}</span>
                         </div>
                       )}
@@ -2604,7 +2630,7 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
                             ((e.currentTarget as HTMLElement).style.background = 'transparent')
                           }
                         >
-                          <HistoryOutlined style={{ fontSize: 12, flexShrink: 0 }} />
+                          <InteractiveMorphIcon icon={History} hoverIcon={RotateCcw} size={12} style={{ flexShrink: 0 }} />
                           <span>{t('coding.loadMore')}</span>
                         </div>
                       )}

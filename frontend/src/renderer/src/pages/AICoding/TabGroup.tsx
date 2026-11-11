@@ -3,7 +3,9 @@ import { useShallow } from 'zustand/react/shallow'
 import { Allotment } from 'allotment'
 import type { AllotmentHandle } from 'allotment'
 import { App, Button, Tooltip, Typography, theme } from 'antd'
-import { CloseOutlined, MessageOutlined, PlusOutlined } from '@ant-design/icons'
+import { MessageOutlined } from '@ant-design/icons'
+import { Plus, Sparkles, X, RotateCcw } from 'lucide'
+import { InteractiveMorphIcon } from '../../components/common/InteractiveMorphIcon'
 import PaneTabBar from './PaneTabBar'
 import CodingChatPanel from './CodingChatPanel'
 import CodingTerminalView from './CodingTerminalView'
@@ -452,14 +454,14 @@ const TabGroup: React.FC<TabGroupProps> = ({
                 }}
                 style={{ display: 'inline-flex', alignItems: 'center', padding: 2, marginLeft: 'auto' }}
               >
-                <CloseOutlined style={{ fontSize: 10, color: token.colorTextTertiary }} />
+                <InteractiveMorphIcon icon={X} hoverIcon={RotateCcw} size={10} style={{ color: token.colorTextTertiary }} />
               </span>
             </div>
           )
         })}
       </div>
       <Tooltip title="New terminal">
-        <Button type="text" size="small" icon={<PlusOutlined />} onClick={handleNewTerminalTab} />
+        <Button type="text" size="small" icon={<InteractiveMorphIcon icon={Plus} hoverIcon={Sparkles} size={13} />} onClick={handleNewTerminalTab} />
       </Tooltip>
     </div>
   ) : null

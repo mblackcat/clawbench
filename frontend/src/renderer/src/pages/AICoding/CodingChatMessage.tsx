@@ -3,10 +3,11 @@ import { theme, Typography, Modal, Button } from 'antd'
 import {
   InfoCircleOutlined,
   ToolOutlined,
-  CaretRightOutlined, CaretDownOutlined,
-  CheckCircleFilled, CloseCircleFilled, DashboardOutlined,
-  EyeOutlined
+  CheckCircleFilled, CloseCircleFilled, DashboardOutlined
 } from '@ant-design/icons'
+import { ChevronDown, ChevronRight, Eye, Sparkles } from 'lucide'
+import { AntdMorphIcon } from '../../components/common/AntdMorphIcon'
+import { InteractiveMorphIcon } from '../../components/common/InteractiveMorphIcon'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { rehypeHighlightPlugin } from '../../utils/markdown-plugins'
@@ -128,7 +129,7 @@ const EditDiffPreview: React.FC<{ filePath: string; oldText: string; newText: st
           type="link"
           size="small"
           style={{ fontSize: 11, padding: 0, height: 'auto' }}
-          icon={<EyeOutlined />}
+          icon={<InteractiveMorphIcon icon={Eye} hoverIcon={Sparkles} size={13} />}
           onClick={() => setOpen(true)}
         >
           {t('coding.viewFullDiff')}
@@ -277,7 +278,7 @@ const ToolCallBlock: React.FC<{
           fontSize: 12
         }}
       >
-        {expanded ? <CaretDownOutlined /> : <CaretRightOutlined />}
+        <AntdMorphIcon icon={expanded ? ChevronDown : ChevronRight} size={12} spring="snappy" />
         {result ? (
           result.isError
             ? <CloseCircleFilled style={{ color: token.colorError, fontSize: 13 }} />
@@ -345,7 +346,7 @@ const ToolResultBlock: React.FC<{ content: string; isError?: boolean; onToggle?:
           background: isError ? token.colorErrorBg : token.colorFillQuaternary, fontSize: 12
         }}
       >
-        {expanded ? <CaretDownOutlined /> : <CaretRightOutlined />}
+        <AntdMorphIcon icon={expanded ? ChevronDown : ChevronRight} size={12} spring="snappy" />
         {isError
           ? <CloseCircleFilled style={{ color: token.colorError, fontSize: 13 }} />
           : <CheckCircleFilled style={{ color: token.colorSuccess, fontSize: 13 }} />
