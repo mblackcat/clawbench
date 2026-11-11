@@ -7,7 +7,8 @@
 
 import React, { useCallback, useState } from 'react'
 import { App, Button, Tooltip, Typography, theme } from 'antd'
-import { LoadingOutlined, ReloadOutlined, SyncOutlined } from '@ant-design/icons'
+import { LoadingOutlined } from '@ant-design/icons'
+import { RotateCw, RefreshCw } from 'lucide'
 import { InteractiveMorphIcon } from './common/InteractiveMorphIcon'
 import { useUpdaterStore } from '../stores/useUpdaterStore'
 import { useT } from '../i18n'
@@ -101,7 +102,7 @@ const ClientUpdatePanel: React.FC = () => {
             size="small"
             aria-label={t('statusbar.checkUpdate')}
             loading={checking || status === 'checking'}
-            icon={<InteractiveMorphIcon icon={<ReloadOutlined />} hoverIcon={<SyncOutlined />} size={12} />}
+            icon={<InteractiveMorphIcon icon={RotateCw} hoverIcon={RefreshCw} size={12} />}
             onClick={(e) => {
               e.stopPropagation()
               void handleCheck()

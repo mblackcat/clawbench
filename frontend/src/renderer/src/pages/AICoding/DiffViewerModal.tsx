@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Modal, Segmented, Button, Spin, Tooltip, theme } from 'antd'
-import { CloseOutlined, DownOutlined, FileOutlined, UpOutlined } from '@ant-design/icons'
+import { FileOutlined } from '@ant-design/icons'
+import { ChevronUp, ChevronDown, Columns2, Split, Rows2, Rows, X, RotateCcw } from 'lucide'
+import { AntdMorphIcon } from '../../components/common/AntdMorphIcon'
+import { InteractiveMorphIcon } from '../../components/common/InteractiveMorphIcon'
 import { MONO_FONT_STACK } from '../../utils/mono-font'
 import { useT } from '../../i18n'
 import type { VcsCommitFile, VcsType } from '../../types/ipc'
@@ -56,19 +59,13 @@ function diffPalette(token: ReturnType<typeof theme.useToken>['token']) {
   }
 }
 
-// Two inline icons for the view-mode capsule — a split pane and stacked rows.
+// Unified morph icons for the view-mode capsule — a split pane and stacked rows.
 const SplitViewIcon: React.FC = () => (
-  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden>
-    <rect x="1.5" y="2.5" width="5.5" height="11" rx="1" stroke="currentColor" strokeWidth="1.2" />
-    <rect x="9" y="2.5" width="5.5" height="11" rx="1" stroke="currentColor" strokeWidth="1.2" />
-  </svg>
+  <InteractiveMorphIcon icon={Columns2} hoverIcon={Split} size={13} />
 )
 
 const InlineViewIcon: React.FC = () => (
-  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden>
-    <rect x="1.5" y="2.5" width="13" height="11" rx="1" stroke="currentColor" strokeWidth="1.2" />
-    <path d="M1.5 6.2h13M1.5 9.8h13" stroke="currentColor" strokeWidth="1.2" />
-  </svg>
+  <InteractiveMorphIcon icon={Rows2} hoverIcon={Rows} size={13} />
 )
 
 const UNVIEWABLE_KEYS: Record<DiffUnviewableReason, string> = {
@@ -222,7 +219,7 @@ const DiffViewerModal: React.FC<DiffViewerModalProps> = ({
           }
         ]}
       />
-      <Button type="text" size="small" icon={<CloseOutlined />} onClick={onClose} />
+      <Button type="text" size="small" icon={<InteractiveMorphIcon icon={X} hoverIcon={RotateCcw} size={14} />} onClick={onClose} />
     </div>
   )
 
@@ -430,7 +427,7 @@ const FileDiffBlock: React.FC<FileDiffBlockProps> = ({ file, viewMode, colors, s
               bar(
                 node.key,
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
-                  {isOpen ? <UpOutlined style={{ fontSize: 10 }} /> : <DownOutlined style={{ fontSize: 10 }} />}
+                  <AntdMorphIcon icon={isOpen ? ChevronUp : ChevronDown} size={11} spring="snappy" />
                   {isOpen ? t('coding.diffCollapseLines') : t('coding.diffExpandLines', node.lines.length)}
                 </span>,
                 { textAlign: 'center' },

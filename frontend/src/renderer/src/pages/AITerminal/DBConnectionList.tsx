@@ -1,11 +1,13 @@
 import React, { useCallback, useState } from 'react'
 import { Typography, Button, Tooltip, App, Dropdown, theme } from 'antd'
 import {
-  PlusOutlined, DatabaseOutlined, TableOutlined,
+  DatabaseOutlined, TableOutlined,
   DeleteOutlined, EditOutlined, ApiOutlined, DisconnectOutlined,
   CodeOutlined, ReloadOutlined, RightOutlined, DownOutlined,
   LoadingOutlined, HddOutlined
 } from '@ant-design/icons'
+import { Plus, Sparkles, Pencil, FileEdit, Trash2, Flame } from 'lucide'
+import { InteractiveMorphIcon } from '../../components/common/InteractiveMorphIcon'
 import { useAITerminalStore } from '../../stores/useAITerminalStore'
 import { useT } from '../../i18n'
 import type { DBConnection } from '../../types/ai-terminal'
@@ -154,7 +156,7 @@ const DBConnectionList: React.FC<Props> = ({ onNew, onEdit }) => {
         }}>
           <Text strong style={{ fontSize: 11, color: token.colorTextTertiary }}>{t('terminal.dbConnections')}</Text>
           <Tooltip title={t('terminal.newDBConnTooltip')}>
-            <Button type="text" size="small" icon={<PlusOutlined style={{ fontSize: 11 }} />} onClick={onNew} style={{ width: 22, height: 22 }} />
+            <Button type="text" size="small" icon={<InteractiveMorphIcon icon={Plus} hoverIcon={Sparkles} size={11} />} onClick={onNew} style={{ width: 22, height: 22 }} />
           </Tooltip>
         </div>
 
@@ -271,13 +273,13 @@ const DBConnectionList: React.FC<Props> = ({ onNew, onEdit }) => {
                           )}
                           <Tooltip title={t('terminal.edit')}>
                             <Button
-                              type="text" size="small" icon={<EditOutlined style={{ fontSize: 11 }} />}
+                              type="text" size="small" icon={<InteractiveMorphIcon icon={Pencil} hoverIcon={FileEdit} size={11} />}
                               onClick={() => onEdit(conn)}
                               style={{ width: 22, height: 22 }}
                             />
                           </Tooltip>
                           <Button
-                            type="text" size="small" danger icon={<DeleteOutlined style={{ fontSize: 11 }} />}
+                            type="text" size="small" danger icon={<InteractiveMorphIcon icon={Trash2} hoverIcon={Flame} size={11} />}
                             onClick={() => handleDelete(conn)}
                             style={{ width: 22, height: 22 }}
                           />

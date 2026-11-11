@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Modal, Typography, Tabs, App, theme } from 'antd'
-import { CopyOutlined, CheckOutlined } from '@ant-design/icons'
-import { InteractiveMorphIcon } from './common/InteractiveMorphIcon'
+import { Copy, Check } from 'lucide'
+import { AntdMorphIcon } from './common/AntdMorphIcon'
 import { useT } from '../i18n'
 
 const { Title, Paragraph, Text, Link } = Typography
@@ -55,11 +55,7 @@ const CopyableCode: React.FC<{
         }}
         title="Copy"
       >
-        <InteractiveMorphIcon
-          icon={copied ? <CheckOutlined /> : <CopyOutlined />}
-          swapKey={copied}
-          triggerScope="self"
-        />
+        <AntdMorphIcon icon={copied ? Check : Copy} size={14} spring="bouncy" />
       </span>
     </div>
   )

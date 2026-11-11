@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { App, Dropdown, type MenuProps } from 'antd'
-import { CopyOutlined, SnippetsOutlined, SelectOutlined, SearchOutlined } from '@ant-design/icons'
+import { Copy, Check, Clipboard, ClipboardCheck, CheckSquare, Sparkles, Search } from 'lucide'
+import { InteractiveMorphIcon } from '../../components/common/InteractiveMorphIcon'
 import type { Terminal } from '@xterm/xterm'
 import { useAICodingStore } from '../../stores/useAICodingStore'
 import { dismissCodingTarget } from '../../stores/useAttentionStore'
@@ -188,11 +189,11 @@ const CodingTerminalView: React.FC<CodingTerminalViewProps> = ({ sessionId, acti
   // that has mouse tracking on (omp): drag-selection there needs a modifier
   // (Shift, or Option on macOS), which nothing in the UI would otherwise say.
   const menuItems: MenuProps['items'] = [
-    { key: 'copy', label: t('terminal.copy'), icon: <CopyOutlined />, onClick: xterm.copy },
-    { key: 'paste', label: t('terminal.paste'), icon: <SnippetsOutlined />, onClick: handlePaste },
+    { key: 'copy', label: t('terminal.copy'), icon: <InteractiveMorphIcon icon={Copy} hoverIcon={Check} size={13} />, onClick: xterm.copy },
+    { key: 'paste', label: t('terminal.paste'), icon: <InteractiveMorphIcon icon={Clipboard} hoverIcon={ClipboardCheck} size={13} />, onClick: handlePaste },
     { type: 'divider' },
-    { key: 'selectAll', label: t('terminal.selectAll'), icon: <SelectOutlined />, onClick: xterm.selectAll },
-    { key: 'search', label: t('terminal.search'), icon: <SearchOutlined />, onClick: () => setSearchOpen(true) }
+    { key: 'selectAll', label: t('terminal.selectAll'), icon: <InteractiveMorphIcon icon={CheckSquare} hoverIcon={Sparkles} size={13} />, onClick: xterm.selectAll },
+    { key: 'search', label: t('terminal.search'), icon: <InteractiveMorphIcon icon={Search} hoverIcon={Sparkles} size={13} />, onClick: () => setSearchOpen(true) }
   ]
 
   if (!sessionExists) return null

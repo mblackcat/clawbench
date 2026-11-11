@@ -1,12 +1,9 @@
 import React, { useCallback, useRef, useState } from 'react'
 import { App, Dropdown, type MenuProps } from 'antd'
 import {
-  CopyOutlined,
-  SnippetsOutlined,
-  SelectOutlined,
-  ClearOutlined,
-  SearchOutlined,
-} from '@ant-design/icons'
+  Copy, Check, Clipboard, ClipboardCheck, CheckSquare, Sparkles, Trash2, Flame, Search
+} from 'lucide'
+import { InteractiveMorphIcon } from '../../components/common/InteractiveMorphIcon'
 import type { Terminal } from '@xterm/xterm'
 import { useAITerminalStore } from '../../stores/useAITerminalStore'
 import { useT } from '../../i18n'
@@ -134,13 +131,13 @@ const TerminalPanel: React.FC<Props> = ({ sessionId }) => {
   }, [xterm])
 
   const menuItems: MenuProps['items'] = [
-    { key: 'copy', label: t('terminal.copy'), icon: <CopyOutlined />, onClick: xterm.copy },
-    { key: 'paste', label: t('terminal.paste'), icon: <SnippetsOutlined />, onClick: handlePaste },
+    { key: 'copy', label: t('terminal.copy'), icon: <InteractiveMorphIcon icon={Copy} hoverIcon={Check} size={13} />, onClick: xterm.copy },
+    { key: 'paste', label: t('terminal.paste'), icon: <InteractiveMorphIcon icon={Clipboard} hoverIcon={ClipboardCheck} size={13} />, onClick: handlePaste },
     { type: 'divider' },
-    { key: 'selectAll', label: t('terminal.selectAll'), icon: <SelectOutlined />, onClick: xterm.selectAll },
-    { key: 'clear', label: t('terminal.clear'), icon: <ClearOutlined />, onClick: xterm.clear },
+    { key: 'selectAll', label: t('terminal.selectAll'), icon: <InteractiveMorphIcon icon={CheckSquare} hoverIcon={Sparkles} size={13} />, onClick: xterm.selectAll },
+    { key: 'clear', label: t('terminal.clear'), icon: <InteractiveMorphIcon icon={Trash2} hoverIcon={Flame} size={13} />, onClick: xterm.clear },
     { type: 'divider' },
-    { key: 'search', label: t('terminal.search'), icon: <SearchOutlined />, onClick: () => setSearchOpen(true) },
+    { key: 'search', label: t('terminal.search'), icon: <InteractiveMorphIcon icon={Search} hoverIcon={Sparkles} size={13} />, onClick: () => setSearchOpen(true) },
   ]
 
   return (

@@ -6,7 +6,10 @@ import {
   DashboardOutlined,
   DollarOutlined,
   DiffOutlined,
-  MessageOutlined, ThunderboltOutlined } from '@ant-design/icons'
+  MessageOutlined
+} from '@ant-design/icons'
+import { Sparkles } from 'lucide'
+import { AntdMorphIcon } from '../../components/common/AntdMorphIcon'
 import { useT } from '../../i18n'
 import { MONO_FONT_STACK } from '../../utils/mono-font'
 import { useAICodingStore } from '../../stores/useAICodingStore'
@@ -494,7 +497,7 @@ const CodingSessionStatusBar: React.FC<CodingSessionStatusBarProps> = ({
             {toolIcon ? (
               <span style={{ display: 'inline-flex', alignItems: 'center' }}>{toolIcon}</span>
             ) : (
-              <ThunderboltOutlined style={{ fontSize: 11, color: token.colorPrimary }} />
+              <AntdMorphIcon icon={Sparkles} size={11} style={{ color: token.colorPrimary }} />
             )}
             <span style={{ fontSize: 11 }}>
               {modelName}

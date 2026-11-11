@@ -7,7 +7,19 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Spin, Tag, Tooltip, theme, Typography, Button } from 'antd'
-import { CodeOutlined, FolderOpenOutlined, PlusOutlined, DiffOutlined, ExportOutlined } from '@ant-design/icons'
+import {
+  Folder,
+  FolderOpen,
+  Plus,
+  Sparkles,
+  Terminal,
+  SquareTerminal,
+  GitBranch,
+  GitCommitVertical,
+  Code2,
+  SquareCode
+} from 'lucide'
+import { InteractiveMorphIcon } from '../../components/common/InteractiveMorphIcon'
 import { useNavigate } from 'react-router-dom'
 import { AI_TOOL_NAMES, AI_TOOL_TAG_COLORS, AI_TOOL_TAG_STYLE, renderAIToolTagLabel } from './aiToolMeta'
 import { useT } from '../../i18n'
@@ -183,7 +195,7 @@ const WorkspaceLandingPanel: React.FC<WorkspaceLandingPanelProps> = ({
         {/* Workspace header */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <FolderOpenOutlined style={{ fontSize: 18, color: token.colorPrimary }} />
+            <InteractiveMorphIcon icon={Folder} hoverIcon={FolderOpen} size={18} style={{ color: token.colorPrimary }} />
             <Text style={{ fontSize: 18, fontWeight: 600 }}>{workspace.title}</Text>
             {vcsType !== 'none' && (
               <Tag color="default" style={{ ...AI_TOOL_TAG_STYLE, marginInlineEnd: 0 }}>
@@ -241,7 +253,7 @@ const WorkspaceLandingPanel: React.FC<WorkspaceLandingPanelProps> = ({
                 onMouseLeave={(e) => hoverOut(e)}
                 style={{ ...cardBase, minWidth: 130 }}
               >
-                <PlusOutlined style={{ fontSize: 14, color: token.colorPrimary }} />
+                <InteractiveMorphIcon icon={Plus} hoverIcon={Sparkles} size={14} style={{ color: token.colorPrimary }} />
                 <Text style={{ fontSize: 13 }}>{t('coding.newChat')}</Text>
               </div>
             </div>
@@ -274,7 +286,7 @@ const WorkspaceLandingPanel: React.FC<WorkspaceLandingPanelProps> = ({
               onMouseLeave={(e) => hoverOut(e)}
               style={cardBase}
             >
-              <CodeOutlined style={{ fontSize: 16, color: token.colorTextSecondary }} />
+              <InteractiveMorphIcon icon={Terminal} hoverIcon={SquareTerminal} size={16} style={{ color: token.colorTextSecondary }} />
               <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                 <Text style={{ fontSize: 13 }}>{t('coding.landingTerminal')}</Text>
                 <Text style={{ fontSize: 11, color: token.colorTextQuaternary }}>
@@ -290,9 +302,11 @@ const WorkspaceLandingPanel: React.FC<WorkspaceLandingPanelProps> = ({
               onMouseLeave={(e) => hoverOut(e)}
               style={cardBase}
             >
-              {isVsCode
-                ? <ExportOutlined style={{ fontSize: 16, color: token.colorTextSecondary }} />
-                : <FolderOpenOutlined style={{ fontSize: 16, color: token.colorTextSecondary }} />}
+              {isVsCode ? (
+                <InteractiveMorphIcon icon={Code2} hoverIcon={SquareCode} size={16} style={{ color: token.colorTextSecondary }} />
+              ) : (
+                <InteractiveMorphIcon icon={Folder} hoverIcon={FolderOpen} size={16} style={{ color: token.colorTextSecondary }} />
+              )}
               <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                 <Text style={{ fontSize: 13 }}>
                   {isVsCode ? t('coding.landingVsCode') : t('coding.landingFileExplorer')}
@@ -322,7 +336,7 @@ const WorkspaceLandingPanel: React.FC<WorkspaceLandingPanelProps> = ({
                   background: changesOpen ? token.colorPrimaryBg : token.colorBgContainer
                 }}
               >
-                <DiffOutlined style={{ fontSize: 16, color: token.colorTextSecondary }} />
+                <InteractiveMorphIcon icon={GitBranch} hoverIcon={GitCommitVertical} size={16} style={{ color: token.colorTextSecondary }} />
                 <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                   <Text style={{ fontSize: 13 }}>{t('coding.landingChanges')}</Text>
                   <Text style={{ fontSize: 11, color: token.colorTextQuaternary }}>

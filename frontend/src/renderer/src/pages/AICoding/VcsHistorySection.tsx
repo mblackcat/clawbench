@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, Spin, theme } from 'antd'
-import { CaretDownOutlined, CaretRightOutlined, LoadingOutlined } from '@ant-design/icons'
+import { LoadingOutlined } from '@ant-design/icons'
+import { ChevronDown, ChevronRight } from 'lucide'
+import { AntdMorphIcon } from '../../components/common/AntdMorphIcon'
 import { MONO_FONT_STACK } from '../../utils/mono-font'
 import type { VcsCommit, VcsCommitFile, VcsType } from '../../types/ipc'
 import { useT } from '../../i18n'
@@ -317,7 +319,7 @@ const VcsHistorySection: React.FC<VcsHistorySectionProps> = ({
               }}
             >
               <span style={{ flexShrink: 0, width: 14, color: token.colorTextTertiary, fontSize: 10 }}>
-                {open ? <CaretDownOutlined /> : <CaretRightOutlined />}
+                <AntdMorphIcon icon={open ? ChevronDown : ChevronRight} size={11} spring="snappy" />
               </span>
               <span
                 style={{

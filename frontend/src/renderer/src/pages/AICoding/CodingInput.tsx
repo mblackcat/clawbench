@@ -1,10 +1,11 @@
 import React, { useState, useRef, useCallback, useLayoutEffect, useMemo, useEffect, KeyboardEvent } from 'react'
 import { Input, Button, Dropdown, Tooltip, theme } from 'antd'
 import {
-  SendOutlined, StopOutlined, PauseCircleOutlined, PaperClipOutlined,
   CloseCircleFilled, BulbOutlined, QuestionCircleOutlined, EditOutlined,
-  UnlockOutlined, ThunderboltOutlined, HighlightOutlined, RocketOutlined, CheckOutlined
+  UnlockOutlined, HighlightOutlined, RocketOutlined, CheckOutlined
 } from '@ant-design/icons'
+import { Send, Zap, Paperclip, FileUp, Pause, CirclePause, Square, Octagon, Sparkles } from 'lucide'
+import { InteractiveMorphIcon } from '../../components/common/InteractiveMorphIcon'
 import { useT } from '../../i18n'
 import { MONO_FONT_STACK } from '../../utils/mono-font'
 import type { AIToolType, CodingContentBlock, CodingImage, CodingMode, CodingEffort, CodingPendingFile } from '../../types/ai-coding'
@@ -336,7 +337,7 @@ const CodingInput: React.FC<CodingInputProps> = ({
             <Button
               type="text"
               size="small"
-              icon={<ThunderboltOutlined style={{ color: token.colorPrimary }} />}
+              icon={<InteractiveMorphIcon icon={Zap} hoverIcon={Sparkles} size={13} style={{ color: token.colorPrimary }} />}
               style={{
                 fontSize: 12,
                 color: token.colorTextSecondary,
@@ -383,7 +384,7 @@ const CodingInput: React.FC<CodingInputProps> = ({
             <Button
               type="text"
               size="small"
-              icon={<PaperClipOutlined />}
+              icon={<InteractiveMorphIcon icon={Paperclip} hoverIcon={FileUp} size={14} />}
               onClick={handleSelectFiles}
               disabled={isStreaming}
             />
@@ -395,7 +396,7 @@ const CodingInput: React.FC<CodingInputProps> = ({
               <Tooltip title={t('coding.interruptTask')}>
                 <Button
                   size="small"
-                  icon={<PauseCircleOutlined />}
+                  icon={<InteractiveMorphIcon icon={Pause} hoverIcon={CirclePause} size={14} />}
                   onClick={onInterrupt}
                 />
               </Tooltip>
@@ -403,7 +404,7 @@ const CodingInput: React.FC<CodingInputProps> = ({
                 <Button
                   size="small"
                   danger
-                  icon={<StopOutlined />}
+                  icon={<InteractiveMorphIcon icon={Square} hoverIcon={Octagon} size={14} />}
                   onClick={onStop}
                 />
               </Tooltip>
@@ -414,7 +415,7 @@ const CodingInput: React.FC<CodingInputProps> = ({
           {!isStreaming && (
             <Button
               type="primary"
-              icon={<SendOutlined />}
+              icon={<InteractiveMorphIcon icon={Send} hoverIcon={Zap} size={14} />}
               onClick={handleSend}
               disabled={!hasContent}
             />

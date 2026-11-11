@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Spin, theme } from 'antd'
-import { CheckCircleOutlined, UpOutlined, DownOutlined } from '@ant-design/icons'
-import { InteractiveMorphIcon } from './common/InteractiveMorphIcon'
+import { CheckCircleOutlined } from '@ant-design/icons'
+import { ChevronUp, ChevronDown } from 'lucide'
+import { AntdMorphIcon } from './common/AntdMorphIcon'
 import { useT } from '../i18n'
 
 interface ThinkingBlockProps {
@@ -68,11 +69,7 @@ const ThinkingBlock: React.FC<ThinkingBlockProps> = ({ content, isStreaming, com
         )}
         <span style={{ flex: 1 }}>{isStreaming ? t('coding.thinking') : t('coding.thinkingProcess')}</span>
         {!isStreaming && (
-          <InteractiveMorphIcon
-            icon={expanded ? <UpOutlined /> : <DownOutlined />}
-            swapKey={expanded}
-            size={arrowSize}
-          />
+          <AntdMorphIcon icon={expanded ? ChevronUp : ChevronDown} size={arrowSize} spring="snappy" />
         )}
       </div>
       {/* Content */}

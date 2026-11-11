@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import { Button, Space, Typography, Input, Spin, App, Tooltip, theme } from 'antd'
-import { PlayCircleOutlined, ClearOutlined } from '@ant-design/icons'
+import { Play, Zap, Trash2, Flame } from 'lucide'
+import { InteractiveMorphIcon } from '../../components/common/InteractiveMorphIcon'
 import { HotTable } from '@handsontable/react'
 import { registerAllModules } from 'handsontable/registry'
 import 'handsontable/dist/handsontable.full.min.css'
@@ -197,7 +198,7 @@ const DBQueryEditor: React.FC<Props> = ({ tabId, connectionId }) => {
             <Button
               type="primary"
               size="small"
-              icon={<PlayCircleOutlined />}
+              icon={<InteractiveMorphIcon icon={Play} hoverIcon={Zap} size={14} />}
               onClick={() => handleExecute()}
               loading={loading}
               disabled={!sql.trim()}
@@ -207,7 +208,7 @@ const DBQueryEditor: React.FC<Props> = ({ tabId, connectionId }) => {
             <Button
               type="text"
               size="small"
-              icon={<ClearOutlined />}
+              icon={<InteractiveMorphIcon icon={Trash2} hoverIcon={Flame} size={14} />}
               onClick={() => { setSql(''); setResult(null); setError(null) }}
             >
               {t('db.clear')}

@@ -1,17 +1,30 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Tag, Button, Typography, Tooltip, Popconfirm, Switch, Popover, App, Spin } from 'antd'
 import {
-  DownloadOutlined,
-  GlobalOutlined,
   FolderOutlined,
   ReloadOutlined,
-  DeleteOutlined,
   ArrowUpOutlined,
-  AppstoreOutlined,
-  SettingOutlined,
-  PoweroffOutlined,
   LoadingOutlined
 } from '@ant-design/icons'
+import {
+  Globe,
+  ExternalLink,
+  RotateCw,
+  RefreshCw,
+  Boxes,
+  Layers,
+  Power,
+  Zap,
+  Settings,
+  SlidersHorizontal,
+  ArrowUpCircle,
+  CircleChevronsUp,
+  Trash2,
+  Flame,
+  Download,
+  ArrowDownCircle
+} from 'lucide'
+import { InteractiveMorphIcon } from '../../components/common/InteractiveMorphIcon'
 import { theme } from 'antd'
 import type { ToolDetectionResult, PackageManagerInfo, MirrorSourceStatus, MirrorToolId } from '../../types/local-env'
 import { AI_CODING_TOOL_ID_SET, MIRROR_TOOL_ID_SET } from '../../types/local-env'
@@ -295,13 +308,17 @@ const EnvCard: React.FC<EnvCardProps> = ({
       {homepageUrl && (
         <Tooltip title={t('localEnv.officialWebsite')}>
           <button type="button" className="cb-notch-btn" onClick={() => openExternalLink(homepageUrl)}>
-            <GlobalOutlined style={{ fontSize: 13 }} />
+            <InteractiveMorphIcon icon={Globe} hoverIcon={ExternalLink} size={13} />
           </button>
         </Tooltip>
       )}
       <Tooltip title={t('localEnv.refreshDetect')}>
         <button type="button" className="cb-notch-btn" onClick={() => onRefresh(tool.toolId)}>
-          <ReloadOutlined spin={refreshing} style={{ fontSize: 13 }} />
+          {refreshing ? (
+            <ReloadOutlined spin style={{ fontSize: 13 }} />
+          ) : (
+            <InteractiveMorphIcon icon={RotateCw} hoverIcon={RefreshCw} size={13} />
+          )}
         </button>
       </Tooltip>
     </>
@@ -398,7 +415,7 @@ const EnvCard: React.FC<EnvCardProps> = ({
                   <Button
                     type="link"
                     size="small"
-                    icon={<AppstoreOutlined />}
+                    icon={<InteractiveMorphIcon icon={Boxes} hoverIcon={Layers} size={13} />}
                     style={{ padding: '2px 0', height: 'auto', fontSize: 12 }}
                     onClick={() => onOpenPackages('pip', inst.path)}
                   >
@@ -411,7 +428,7 @@ const EnvCard: React.FC<EnvCardProps> = ({
               <Button
                 type="link"
                 size="small"
-                icon={<AppstoreOutlined />}
+                icon={<InteractiveMorphIcon icon={Boxes} hoverIcon={Layers} size={13} />}
                 style={{ padding: '2px 0', height: 'auto', fontSize: 12, alignSelf: 'flex-start' }}
                 onClick={() => onOpenPackages('npm')}
               >
@@ -458,7 +475,7 @@ const EnvCard: React.FC<EnvCardProps> = ({
                 className={`cb-round-action-btn cb-round-action-toggle ${codingEnabled ? 'active' : 'inactive'}`}
                 onClick={() => onCodingEnabledChange(tool.toolId, !codingEnabled)}
               >
-                <PoweroffOutlined style={{ fontSize: 13 }} />
+                <InteractiveMorphIcon icon={Power} hoverIcon={Zap} active={codingEnabled} size={13} />
               </button>
             </Tooltip>
           )}
@@ -479,7 +496,7 @@ const EnvCard: React.FC<EnvCardProps> = ({
                   className="cb-round-action-btn cb-round-action-neutral"
                   style={{ color: mirrorStatus?.enabled ? token.colorPrimary : undefined }}
                 >
-                  <SettingOutlined style={{ fontSize: 13 }} />
+                  <InteractiveMorphIcon icon={Settings} hoverIcon={SlidersHorizontal} size={13} />
                 </button>
               </Tooltip>
             </Popover>
@@ -494,7 +511,16 @@ const EnvCard: React.FC<EnvCardProps> = ({
                 disabled={upgrading}
                 onClick={() => onUpgrade(tool.toolId)}
               >
-                <ArrowUpOutlined spin={upgrading} style={{ fontSize: 13, color: token.colorSuccess }} />
+                {upgrading ? (
+                  <ArrowUpOutlined spin style={{ fontSize: 13, color: token.colorSuccess }} />
+                ) : (
+                  <InteractiveMorphIcon
+                    icon={ArrowUpCircle}
+                    hoverIcon={CircleChevronsUp}
+                    size={13}
+                    style={{ color: token.colorSuccess }}
+                  />
+                )}
               </button>
             </Tooltip>
           )}
@@ -513,7 +539,7 @@ const EnvCard: React.FC<EnvCardProps> = ({
                   className={`cb-round-action-btn cb-round-action-danger${uninstalling ? ' is-loading' : ''}`}
                   disabled={uninstalling}
                 >
-                  {uninstalling ? <LoadingOutlined spin style={{ fontSize: 13 }} /> : <DeleteOutlined style={{ fontSize: 13 }} />}
+                  {uninstalling ? <LoadingOutlined spin style={{ fontSize: 13 }} /> : <InteractiveMorphIcon icon={Trash2} hoverIcon={Flame} size={13} />}
                 </button>
               </Tooltip>
             </Popconfirm>
@@ -530,9 +556,9 @@ const EnvCard: React.FC<EnvCardProps> = ({
                 {installing ? (
                   <LoadingOutlined spin style={{ fontSize: 14 }} />
                 ) : viaPkgMgr ? (
-                  <DownloadOutlined style={{ fontSize: 14 }} />
+                  <InteractiveMorphIcon icon={Download} hoverIcon={ArrowDownCircle} size={14} />
                 ) : (
-                  <GlobalOutlined style={{ fontSize: 14 }} />
+                  <InteractiveMorphIcon icon={Globe} hoverIcon={ExternalLink} size={14} />
                 )}
               </button>
             </Tooltip>

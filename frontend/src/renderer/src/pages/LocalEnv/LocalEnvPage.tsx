@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Row, Col, Spin, Button, Typography, App, theme, Divider } from 'antd'
-import { ReloadOutlined } from '@ant-design/icons'
+import { RotateCw, RefreshCw } from 'lucide'
+import { InteractiveMorphIcon } from '../../components/common/InteractiveMorphIcon'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useLocalEnvStore } from '../../stores/useLocalEnvStore'
 import EnvCard from './EnvCard'
@@ -250,7 +251,7 @@ const LocalEnvPage: React.FC = () => {
           <Text type="secondary">{t('localEnv.subtitle')}</Text>
         </div>
         <Button
-          icon={<ReloadOutlined />}
+          icon={<InteractiveMorphIcon icon={RotateCw} hoverIcon={RefreshCw} size={14} />}
           onClick={handleRefresh}
           loading={detecting}
         >

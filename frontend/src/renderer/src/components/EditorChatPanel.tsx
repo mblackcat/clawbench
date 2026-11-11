@@ -1,11 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { Input, Button, Typography, theme, Tooltip, Empty } from 'antd'
 import {
-  SendOutlined,
-  StopOutlined,
-  ClearOutlined,
   RobotOutlined,
-  CloseOutlined,
   LoadingOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
@@ -14,6 +10,7 @@ import {
   EditOutlined,
   ReloadOutlined
 } from '@ant-design/icons'
+import { Send, Zap, Trash2, Flame, X, RotateCcw, Square, Octagon } from 'lucide'
 import { InteractiveMorphIcon } from './common/InteractiveMorphIcon'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -677,10 +674,10 @@ const EditorChatPanel: React.FC<EditorChatPanelProps> = ({
         </Text>
         <ModelSelector size="small" />
         <Tooltip title={t('editor.clearChat')}>
-          <Button type="text" size="small" icon={<InteractiveMorphIcon icon={<ClearOutlined />} />} onClick={handleClear} disabled={streaming} />
+          <Button type="text" size="small" icon={<InteractiveMorphIcon icon={Trash2} hoverIcon={Flame} size={14} />} onClick={handleClear} disabled={streaming} />
         </Tooltip>
         <Tooltip title={t('editor.closePanel')}>
-          <Button type="text" size="small" icon={<InteractiveMorphIcon icon={<CloseOutlined />} />} onClick={onClose} />
+          <Button type="text" size="small" icon={<InteractiveMorphIcon icon={X} hoverIcon={RotateCcw} size={14} />} onClick={onClose} />
         </Tooltip>
       </div>
 
@@ -747,11 +744,11 @@ const EditorChatPanel: React.FC<EditorChatPanelProps> = ({
         />
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
           {streaming ? (
-            <Button danger icon={<InteractiveMorphIcon icon={<StopOutlined />} />} onClick={handleCancel}>
+            <Button danger icon={<InteractiveMorphIcon icon={Square} hoverIcon={Octagon} size={14} />} onClick={handleCancel}>
               {t('editor.stop')}
             </Button>
           ) : (
-            <Button type="primary" icon={<InteractiveMorphIcon icon={<SendOutlined />} />} onClick={handleSend} disabled={!inputValue.trim()}>
+            <Button type="primary" icon={<InteractiveMorphIcon icon={Send} hoverIcon={Zap} size={14} />} onClick={handleSend} disabled={!inputValue.trim()}>
               {t('editor.send')}
             </Button>
           )}

@@ -1,6 +1,7 @@
 import React from 'react'
 import { Button, Tooltip, Dropdown, theme } from 'antd'
-import { PlusOutlined, ThunderboltOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
+import { Plus, Sparkles, Zap, Pencil, FileEdit, Trash2, Flame } from 'lucide'
+import { InteractiveMorphIcon } from '../../components/common/InteractiveMorphIcon'
 import { useAITerminalStore } from '../../stores/useAITerminalStore'
 import { useT } from '../../i18n'
 import type { QuickCommand } from '../../types/ai-terminal'
@@ -34,15 +35,15 @@ const QuickBar: React.FC<Props> = ({ onNew, onEdit }) => {
       flexShrink: 0,
       overflowX: 'auto'
     }}>
-      <ThunderboltOutlined style={{ color: token.colorTextTertiary, fontSize: 12, flexShrink: 0 }} />
+      <InteractiveMorphIcon icon={Zap} hoverIcon={Sparkles} size={12} style={{ color: token.colorTextTertiary, flexShrink: 0 }} />
       {applicableCommands.map(cmd => (
         <Dropdown
           key={cmd.id}
           trigger={['contextMenu']}
           menu={{
             items: [
-              { key: 'edit', label: t('terminal.edit'), icon: <EditOutlined /> },
-              { key: 'delete', label: t('common.delete'), icon: <DeleteOutlined />, danger: true }
+              { key: 'edit', label: t('terminal.edit'), icon: <InteractiveMorphIcon icon={Pencil} hoverIcon={FileEdit} size={13} /> },
+              { key: 'delete', label: t('common.delete'), icon: <InteractiveMorphIcon icon={Trash2} hoverIcon={Flame} size={13} />, danger: true }
             ],
             onClick: ({ key }) => {
               if (key === 'edit') onEdit(cmd)
@@ -63,7 +64,7 @@ const QuickBar: React.FC<Props> = ({ onNew, onEdit }) => {
         <Button
           type="dashed"
           size="small"
-          icon={<PlusOutlined />}
+          icon={<InteractiveMorphIcon icon={Plus} hoverIcon={Sparkles} size={12} />}
           onClick={onNew}
           style={{ fontSize: 12, flexShrink: 0 }}
         />

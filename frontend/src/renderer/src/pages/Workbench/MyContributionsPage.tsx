@@ -5,15 +5,24 @@
 
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { Typography, Tag, Tooltip, theme, Button, App, Tabs, Empty, Checkbox, Spin } from 'antd';
+import { CloseOutlined } from '@ant-design/icons';
 import {
-  EditOutlined,
-  CloudUploadOutlined,
-  ArrowLeftOutlined,
-  ExportOutlined,
-  CloseOutlined,
-  CaretRightOutlined,
-  DownloadOutlined
-} from '@ant-design/icons';
+  Pencil,
+  FileEdit,
+  RotateCw,
+  RefreshCw,
+  Upload,
+  Sparkles,
+  ExternalLink,
+  ArrowUpRight,
+  Play,
+  Zap,
+  Download,
+  ArrowDownCircle,
+  ArrowLeft,
+  ChevronLeft
+} from 'lucide';
+import { InteractiveMorphIcon } from '../../components/common/InteractiveMorphIcon';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { applicationManager } from '../../services/applicationManager';
 import { ApiClientError } from '../../services/apiClient';
@@ -634,19 +643,23 @@ const MyContributionsPage: React.FC = () => {
     if (item.hasLocal && item.localId) {
       const localId = item.localId;
       actions.push(
-        renderRoundAction('edit', t('mine.edit'), <EditOutlined style={{ fontSize: 14 }} />, () =>
+        renderRoundAction('edit', t('mine.edit'), <InteractiveMorphIcon icon={Pencil} hoverIcon={FileEdit} size={14} />, () =>
           handleEdit(localId, app?.type)
         ),
         renderRoundAction(
           'publish',
           isPublished || item.status === 'pending_publish' ? t('mine.republish') : t('mine.publish'),
-          <CloudUploadOutlined style={{ fontSize: 14, color: token.colorPrimary }} />,
+          isPublished || item.status === 'pending_publish' ? (
+            <InteractiveMorphIcon icon={RotateCw} hoverIcon={RefreshCw} size={14} style={{ color: token.colorPrimary }} />
+          ) : (
+            <InteractiveMorphIcon icon={Upload} hoverIcon={Sparkles} size={14} style={{ color: token.colorPrimary }} />
+          ),
           () => handlePublish(localId)
         )
       );
       if (isLink && app) {
         actions.push(
-          renderRoundAction('open', t('workbench.open'), <ExportOutlined style={{ fontSize: 14 }} />, () =>
+          renderRoundAction('open', t('workbench.open'), <InteractiveMorphIcon icon={ExternalLink} hoverIcon={ArrowUpRight} size={14} />, () =>
             handleOpenLink(app), 'primary')
         );
       } else if (isApp) {
@@ -654,7 +667,7 @@ const MyContributionsPage: React.FC = () => {
           renderRoundAction(
             'run',
             t('mine.run'),
-            <CaretRightOutlined style={{ fontSize: 14, marginLeft: 2 }} />,
+            <InteractiveMorphIcon icon={Play} hoverIcon={Zap} size={14} style={{ marginLeft: 2 }} />,
             () => handleRun(localId, item.name),
             'primary'
           )
@@ -665,7 +678,7 @@ const MyContributionsPage: React.FC = () => {
         renderRoundAction(
           'install',
           isInstalling ? t('mine.installing') : t('mine.installLocal'),
-          <DownloadOutlined style={{ fontSize: 14 }} />,
+          <InteractiveMorphIcon icon={Download} hoverIcon={ArrowDownCircle} size={14} />,
           () => handleInstallRemote(item),
           'primary',
           isInstalling
@@ -841,7 +854,10 @@ const MyContributionsPage: React.FC = () => {
   return (
     <div style={{ padding: 24 }}>
       <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center', gap: 12 }}>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(backTarget)}>
+        <Button
+          icon={<InteractiveMorphIcon icon={ArrowLeft} hoverIcon={ChevronLeft} size={14} />}
+          onClick={() => navigate(backTarget)}
+        >
           {t('common.back')}
         </Button>
         <Title level={4} style={{ margin: 0 }}>{t('mine.title')}</Title>

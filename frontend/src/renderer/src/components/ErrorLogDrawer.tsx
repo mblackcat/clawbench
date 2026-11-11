@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Drawer, Button, Typography, Tag, Empty, Divider, theme, Segmented, Badge } from 'antd'
-import { DeleteOutlined } from '@ant-design/icons'
+import { Trash2, Flame } from 'lucide'
+import { InteractiveMorphIcon } from './common/InteractiveMorphIcon'
 import { useTaskStore } from '../stores/useTaskStore'
 import type { SystemLogEntry } from '../stores/useTaskStore'
 import { useNotificationStore } from '../stores/useNotificationStore'
@@ -298,7 +299,7 @@ const ErrorLogDrawer: React.FC<ErrorLogDrawerProps> = ({ open, onClose }) => {
           />
           <Button
             size="small"
-            icon={<DeleteOutlined />}
+            icon={<InteractiveMorphIcon icon={Trash2} hoverIcon={Flame} size={14} />}
             onClick={handleClear}
             disabled={isEmpty}
           >

@@ -117,27 +117,9 @@
   transform: none !important;
 }
 
-/* Icon glyph swap (components/common/InteractiveMorphIcon): short spring cross-fade */
-@keyframes cb-morph-in {
-  from {
-    opacity: 0;
-    transform: scale(0.6) rotate(-12deg);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-.cb-morph-layer-in {
-  animation: cb-morph-in var(--dur-2, 180ms) var(--ease-spring, cubic-bezier(0.34, 1.35, 0.64, 1));
-}
-
 /* Icon micro-interactions (components/common/InteractiveMorphIcon) follow the motion switch */
 :root[data-motion='agile'] .cb-morph-icon,
-:root[data-motion='off'] .cb-morph-icon,
-:root[data-motion='agile'] .cb-morph-icon .cb-morph-layer,
-:root[data-motion='off'] .cb-morph-icon .cb-morph-layer {
+:root[data-motion='off'] .cb-morph-icon {
   transform: none !important;
   transition: none !important;
   animation: none !important;

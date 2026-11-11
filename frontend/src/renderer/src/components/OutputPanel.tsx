@@ -1,8 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { Typography, Progress, Tag, Button, Space, Empty, theme } from 'antd'
 import {
-  UpOutlined,
-  DownOutlined,
   StopOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
@@ -13,6 +11,8 @@ import {
   ExclamationCircleOutlined,
   CloseOutlined
 } from '@ant-design/icons'
+import { ChevronUp, ChevronDown } from 'lucide'
+import { AntdMorphIcon } from './common/AntdMorphIcon'
 import { useTaskStore } from '../stores/useTaskStore'
 import type { SubAppOutput, TaskStatus } from '../types/subapp'
 import { MONO_FONT_STACK } from '../utils/mono-font'
@@ -190,7 +190,7 @@ const OutputPanel: React.FC<OutputPanelProps> = ({ taskId }) => {
             <Button
               type="text"
               size="small"
-              icon={collapsed ? <UpOutlined /> : <DownOutlined />}
+              icon={<AntdMorphIcon icon={collapsed ? ChevronUp : ChevronDown} size={13} spring="snappy" />}
               onClick={toggleCollapsed}
             />
             <Button
@@ -306,7 +306,7 @@ const OutputPanel: React.FC<OutputPanelProps> = ({ taskId }) => {
           <Button
             type="text"
             size="small"
-            icon={collapsed ? <UpOutlined /> : <DownOutlined />}
+            icon={<AntdMorphIcon icon={collapsed ? ChevronUp : ChevronDown} size={13} spring="snappy" />}
             onClick={toggleCollapsed}
           />
           <Button

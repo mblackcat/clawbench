@@ -13,7 +13,7 @@
  */
 import React from 'react'
 import { Badge, theme } from 'antd'
-import { ExclamationCircleOutlined, WarningOutlined } from '@ant-design/icons'
+import { AlertCircle, AlertTriangle } from 'lucide'
 import { InteractiveMorphIcon } from '../common/InteractiveMorphIcon'
 import { useTaskStore } from '../../stores/useTaskStore'
 import { useNotificationStore } from '../../stores/useNotificationStore'
@@ -73,8 +73,8 @@ export const LogsBadgeIcon: React.FC<LogsBadgeIconProps> = ({ state, size = 16, 
     >
       {hasAlert ? (
         <InteractiveMorphIcon
-          icon={<ExclamationCircleOutlined />}
-          hoverIcon={<WarningOutlined />}
+          icon={AlertCircle}
+          hoverIcon={AlertTriangle}
           size={size}
           className={attentionHasAction ? 'cb-attention-flash' : undefined}
           style={{ color: token.colorError }}

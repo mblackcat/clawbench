@@ -6,7 +6,8 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import { Modal, Button, Alert, Spin, Typography, App, theme } from 'antd'
-import { CopyOutlined, CheckOutlined } from '@ant-design/icons'
+import { Copy, Check } from 'lucide'
+import { AntdMorphIcon } from './common/AntdMorphIcon'
 import { apiClient, ApiClientError } from '../services/apiClient'
 import type { AppShareInfo } from '../types/api'
 import { useT } from '../i18n'
@@ -87,7 +88,7 @@ export const AppShareModal: React.FC<AppShareModalProps> = ({ open, appId, appNa
       width={480}
       footer={
         shareInfo ? (
-          <Button type="primary" icon={copied ? <CheckOutlined /> : <CopyOutlined />} onClick={handleCopyLink}>
+          <Button type="primary" icon={<AntdMorphIcon icon={copied ? Check : Copy} size={14} spring="bouncy" />} onClick={handleCopyLink}>
             {t('share.copyLink')}
           </Button>
         ) : null
