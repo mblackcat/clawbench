@@ -1,12 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { Modal, Input, Button, Space, Tag, Form, Radio, Dropdown, App } from 'antd'
-import {
-  PlusOutlined,
-  FolderOpenOutlined,
-  EditOutlined,
-  SwapOutlined,
-  DeleteOutlined
-} from '@ant-design/icons'
+import { FolderOpenOutlined } from '@ant-design/icons'
+import { ArrowLeftRight, Repeat, Pencil, FileEdit, Trash2, Flame, Plus, Sparkles } from 'lucide'
+import { InteractiveMorphIcon } from './common/InteractiveMorphIcon'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { useT } from '../i18n'
 import type { Workspace } from '../types/workspace'
@@ -140,7 +136,7 @@ const WorkspaceSwitcher: React.FC = () => {
               <Button
                 type="text"
                 size="small"
-                icon={<SwapOutlined />}
+                icon={<InteractiveMorphIcon icon={ArrowLeftRight} hoverIcon={Repeat} size={13} />}
                 onClick={(e) => {
                   e.stopPropagation()
                   handleSwitch(ws.id)
@@ -151,7 +147,7 @@ const WorkspaceSwitcher: React.FC = () => {
             <Button
               type="text"
               size="small"
-              icon={<EditOutlined />}
+              icon={<InteractiveMorphIcon icon={Pencil} hoverIcon={FileEdit} size={13} />}
               onClick={(e) => handleEditWorkspace(ws, e)}
               title={t('workspace.edit')}
             />
@@ -159,7 +155,7 @@ const WorkspaceSwitcher: React.FC = () => {
               type="text"
               size="small"
               danger
-              icon={<DeleteOutlined />}
+              icon={<InteractiveMorphIcon icon={Trash2} hoverIcon={Flame} size={13} />}
               onClick={(e) => handleDeleteWorkspace(ws, e)}
               title={t('workspace.delete')}
             />
@@ -171,8 +167,8 @@ const WorkspaceSwitcher: React.FC = () => {
     {
       key: '__add__',
       label: (
-        <Space size={4}>
-          <PlusOutlined />
+        <Space size={4} className="cb-interactive-target" style={{ width: '100%' }}>
+          <InteractiveMorphIcon icon={Plus} hoverIcon={Sparkles} size={14} />
           <span>{t('workspace.add')}</span>
         </Space>
       ),

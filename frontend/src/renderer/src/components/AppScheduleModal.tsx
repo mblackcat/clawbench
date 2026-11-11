@@ -14,7 +14,8 @@ import {
   Divider,
   theme
 } from 'antd'
-import { PlayCircleOutlined, PauseCircleOutlined, DeleteOutlined } from '@ant-design/icons'
+import { Play, Zap, Pause, CirclePause, Trash2, Flame } from 'lucide'
+import { InteractiveMorphIcon } from './common/InteractiveMorphIcon'
 import dayjs from 'dayjs'
 import type { SubAppManifest } from '../types/subapp'
 import type { AppScheduleInput } from '../types/app-schedule'
@@ -170,7 +171,7 @@ const AppScheduleModal: React.FC<AppScheduleModalProps> = ({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             {schedule ? (
-              <Button danger icon={<DeleteOutlined />} onClick={handleDelete} loading={saving} disabled={saving}>
+              <Button danger icon={<InteractiveMorphIcon icon={Trash2} hoverIcon={Flame} size={14} />} onClick={handleDelete} loading={saving} disabled={saving}>
                 {t('appSchedule.delete')}
               </Button>
             ) : null}
@@ -181,11 +182,11 @@ const AppScheduleModal: React.FC<AppScheduleModalProps> = ({
               {t('task.save')}
             </Button>
             {schedule?.enabled ? (
-              <Button danger icon={<PauseCircleOutlined />} onClick={handleStop} loading={saving} disabled={saving}>
+              <Button danger icon={<InteractiveMorphIcon icon={Pause} hoverIcon={CirclePause} size={14} />} onClick={handleStop} loading={saving} disabled={saving}>
                 {t('appSchedule.stop')}
               </Button>
             ) : (
-              <Button type="primary" icon={<PlayCircleOutlined />} onClick={handleStart} loading={saving} disabled={saving}>
+              <Button type="primary" icon={<InteractiveMorphIcon icon={Play} hoverIcon={Zap} size={14} />} onClick={handleStart} loading={saving} disabled={saving}>
                 {t('appSchedule.start')}
               </Button>
             )}
