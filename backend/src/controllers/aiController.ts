@@ -277,6 +277,32 @@ export async function generateTitleHandler(
       return;
     }
 
+    // Only the owner may retitle a conversation: check before spending a model call
+    if (conversationId !== undefined && conversationId !== null) {
+      if (typeof conversationId !== 'string' || !conversationId) {
+        res.status(400).json({
+          success: false,
+          error: { code: 'INVALID_INPUT', message: 'conversationId must be a string' },
+        });
+        return;
+      }
+      const conversation = await getConversationById(conversationId);
+      if (!conversation) {
+        res.status(404).json({
+          success: false,
+          error: { code: 'NOT_FOUND', message: 'Conversation not found' },
+        });
+        return;
+      }
+      if (conversation.userId !== req.userId) {
+        res.status(403).json({
+          success: false,
+          error: { code: 'FORBIDDEN', message: 'Access denied' },
+        });
+        return;
+      }
+    }
+
     const resolvedModel = typeof modelId === 'string' ? await resolveChatModel(modelId) : undefined;
     if (!resolvedModel) {
       res.status(404).json({
