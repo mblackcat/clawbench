@@ -3,8 +3,7 @@ import { Input, Button, Dropdown, Tooltip, theme } from 'antd'
 import {
   SendOutlined, StopOutlined, PauseCircleOutlined, PaperClipOutlined,
   CloseCircleFilled, BulbOutlined, QuestionCircleOutlined, EditOutlined,
-  FolderOutlined, BranchesOutlined, DollarOutlined, MessageOutlined, DashboardOutlined, UnlockOutlined,
-  ThunderboltOutlined, HighlightOutlined, RocketOutlined, CheckOutlined
+  UnlockOutlined, ThunderboltOutlined, HighlightOutlined, RocketOutlined, CheckOutlined
 } from '@ant-design/icons'
 import { useT } from '../../i18n'
 import { MONO_FONT_STACK } from '../../utils/mono-font'
@@ -104,36 +103,6 @@ const CodingInput: React.FC<CodingInputProps> = ({
   const textAreaRef = useRef<any>(null)
   const { token } = theme.useToken()
   const t = useT()
-
-  // Git branch
-  const [gitBranch, setGitBranch] = useState<string>('')
-  useEffect(() => {
-    if (!workingDir) { setGitBranch(''); return }
-    let cancelled = false
-    const fetch = () => {
-      window.api.git.listBranches(workingDir)
-        .then((r: any) => { if (!cancelled && r?.current) setGitBranch(r.current) })
-        .catch(() => { if (!cancelled) setGitBranch('') })
-    }
-    fetch()
-    const timer = setInterval(fetch, 15_000)
-    return () => { cancelled = true; clearInterval(timer) }
-  }, [workingDir])
-
-  // Shorten path for display
-  const shortDir = useMemo(() => {
-    if (!workingDir) return ''
-    let p = workingDir
-    // Replace home dir with ~
-    if (p.startsWith('/Users/')) {
-      const parts = p.split('/')
-      if (parts.length >= 3) p = '~/' + parts.slice(3).join('/')
-    } else if (p.startsWith('C:\\Users\\')) {
-      const parts = p.split('\\')
-      if (parts.length >= 3) p = '~\\' + parts.slice(3).join('\\')
-    }
-    return p
-  }, [workingDir])
 
   const slashCommands = useMemo(() => {
     if (toolType === 'claude') return CLAUDE_SLASH_COMMANDS.map(c => ({ ...c, desc: t(c.descKey) }))
@@ -570,69 +539,6 @@ const CodingInput: React.FC<CodingInputProps> = ({
           background: token.colorBgContainer,
         }}
       />
-
-      {/* Status info tags */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap', minHeight: 22 }}>
-        {shortDir && (
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 3,
-            padding: '1px 8px', borderRadius: 4, fontSize: 11, lineHeight: '18px',
-            background: 'rgba(22,119,255,0.08)', color: token.colorPrimary,
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 240,
-          }}>
-            <FolderOutlined style={{ fontSize: 10 }} />
-            {shortDir}
-          </span>
-        )}
-        {gitBranch && (
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 3,
-            padding: '1px 8px', borderRadius: 4, fontSize: 11, lineHeight: '18px',
-            background: 'rgba(82,196,26,0.08)', color: '#52c41a',
-            whiteSpace: 'nowrap',
-          }}>
-            <BranchesOutlined style={{ fontSize: 10 }} />
-            {gitBranch}
-          </span>
-        )}
-        {messageCount !== undefined && messageCount > 0 && (
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 3,
-            padding: '1px 8px', borderRadius: 4, fontSize: 11, lineHeight: '18px',
-            background: 'rgba(114,46,209,0.08)', color: '#722ed1',
-            whiteSpace: 'nowrap',
-          }}>
-            <MessageOutlined style={{ fontSize: 10 }} />
-            {t('coding.turnsCount', String(messageCount))}
-          </span>
-        )}
-        {contextUsage && ((contextUsage.usedTokens || 0) > 0 || (contextUsage.inputTokens || 0) > 0) && (
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 3,
-            padding: '1px 8px', borderRadius: 4, fontSize: 11, lineHeight: '18px',
-            background: 'rgba(19,194,194,0.08)', color: '#08979c',
-            whiteSpace: 'nowrap',
-          }}>
-            <DashboardOutlined style={{ fontSize: 10 }} />
-            {(() => {
-              const used = contextUsage.usedTokens ?? ((contextUsage.inputTokens || 0) + (contextUsage.cachedInputTokens || 0))
-              const total = contextUsage.contextWindow || 0
-              return total > 0 ? `${Math.round((used / total) * 100)}% ctx` : `${used.toLocaleString()} ctx`
-            })()}
-          </span>
-        )}
-        {costUsd !== undefined && costUsd > 0 && (
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 3,
-            padding: '1px 8px', borderRadius: 4, fontSize: 11, lineHeight: '18px',
-            background: 'rgba(250,173,20,0.08)', color: '#d48806',
-            whiteSpace: 'nowrap',
-          }}>
-            <DollarOutlined style={{ fontSize: 10 }} />
-            ${costUsd.toFixed(4)}
-          </span>
-        )}
-      </div>
     </div>
   )
 }

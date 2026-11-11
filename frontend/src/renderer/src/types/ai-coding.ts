@@ -76,6 +76,7 @@ export interface AICodingSession {
   status: SessionStatus
   lastActivity: SessionActivity
   costUsd?: number          // accumulated cost (Claude result events)
+  model?: string            // active model name
   durationMs?: number       // elapsed time
   startedAt?: number        // launch timestamp
   title?: string            // auto-generated session title

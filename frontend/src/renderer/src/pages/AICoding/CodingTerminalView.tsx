@@ -136,6 +136,7 @@ const CodingTerminalView: React.FC<CodingTerminalViewProps> = ({ sessionId, acti
     timers.push(...[50, 250, 500].map((ms) => window.setTimeout(() => h.forceFit(), ms)))
 
     gate.release(snapshotOffset)
+    h.setReplayDone?.()
   }, [sessionId])
 
   // Keyboard paste that delivered nothing: tell the user why (as the menu does)

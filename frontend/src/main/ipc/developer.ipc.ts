@@ -310,9 +310,17 @@ export function registerDeveloperIpc(): void {
     return detectAllTerminals({}, Boolean(forceRefresh))
   })
 
-  ipcMain.handle('developer:open-in-ide', async (_event, appPath: string) => {
+  ipcMain.handle('developer:open-in-ide', async (_event, appPath: string, customIdePath?: unknown) => {
     const configuredPath = (settingsStore.get('localIdePath') as string) || ''
-    const idePath = configuredPath || detectLocalIde()
+    // A caller-chosen IDE is only honoured when it is the configured IDE or one
+    // the host scan found — never an arbitrary executable from the renderer.
+    let requestedPath = ''
+    if (typeof customIdePath === 'string' && customIdePath) {
+      const known = new Set([configuredPath, ...detectAllIdes().map((ide) => ide.path)].filter(Boolean))
+      if (!known.has(customIdePath)) throw new Error('Unknown IDE path')
+      requestedPath = customIdePath
+    }
+    const idePath = requestedPath || configuredPath || detectLocalIde()
 
     if (!idePath) {
       throw new Error('未找到本地 IDE，请在「设置 → 通用」中配置 IDE 路径')
@@ -325,7 +333,13 @@ export function registerDeveloperIpc(): void {
     if (process.platform === 'darwin' && idePath.endsWith('.app')) {
       spawn('open', ['-a', idePath, appPath], { detached: true, stdio: 'ignore' }).unref()
     } else {
-      spawn(idePath, [appPath], { detached: true, stdio: 'ignore' }).unref()
+      // VS Code's `code.cmd` launcher needs a shell on Windows.
+      const isCmdOrBat = /\.(cmd|bat)$/i.test(idePath)
+      spawn(isCmdOrBat ? `"${idePath}"` : idePath, isCmdOrBat ? [`"${appPath}"`] : [appPath], {
+        detached: true,
+        stdio: 'ignore',
+        shell: isCmdOrBat
+      }).unref()
     }
     return true
   })

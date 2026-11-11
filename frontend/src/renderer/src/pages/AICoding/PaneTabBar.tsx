@@ -1,17 +1,16 @@
 import React, { useState, useMemo, useCallback } from 'react'
-import { Button, Dropdown, Spin, Tooltip, Typography, theme } from 'antd'
+import { Button, Dropdown, Spin, Tooltip, theme } from 'antd'
 import {
   PlusOutlined, CodeOutlined, HistoryOutlined, CloseOutlined,
-  DollarOutlined, BranchesOutlined, MessageOutlined
+  BranchesOutlined, MessageOutlined, ExportOutlined, FolderOpenOutlined
 } from '@ant-design/icons'
 import { getAIToolIcon, TOOLS_WITH_NATIVE_SESSIONS as NATIVE_SESSION_TOOLS } from './aiToolMeta'
 import { useT, getT } from '../../i18n'
 import { useVcsSelectionStore } from '../../stores/useVcsSelectionStore'
 import { useAttentionStore } from '../../stores/useAttentionStore'
+import { useWorkspaceOpener } from '../../hooks/useWorkspaceOpener'
 import { EnvToolIcon, hasEnvToolIcon } from '../../components/ToolIcons'
 import type { AIToolType, AICodingSession, ClaudeViewMode } from '../../types/ai-coding'
-
-const { Text } = Typography
 
 const TOOLS_WITH_NATIVE_SESSIONS: Set<AIToolType> = new Set(NATIVE_SESSION_TOOLS)
 const TOOLS_WITH_CHAT_VIEW: Set<AIToolType> = new Set(['claude', 'codex'])
@@ -60,6 +59,9 @@ interface PaneTabBarProps {
   gitPanelOpen?: boolean
   onToggleGitPanel?: () => void
   isFocused?: boolean
+  onClose?: () => void
+  /** Override for the "open in VS Code / file manager" button (defaults to useWorkspaceOpener). */
+  onOpenWorkspace?: (workingDir: string) => void
 }
 
 const PaneTabBar: React.FC<PaneTabBarProps> = ({
@@ -71,9 +73,12 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
   terminalPanelOpen, onToggleTerminalPanel,
   gitPanelOpen, onToggleGitPanel,
   isFocused,
+  onClose,
+  onOpenWorkspace
 }) => {
   const t = useT()
   const { token } = theme.useToken()
+  const { isVsCode, openWorkspace } = useWorkspaceOpener()
   // Pending AI Coding attention per session: action (needs the user) wins over completion
   const attentionItems = useAttentionStore((s) => s.items)
   const attentionMap = useMemo(() => {
@@ -155,21 +160,12 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
-      {/* Fixed buttons */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '0 4px 0 8px', flexShrink: 0 }}>
-        <Tooltip title={t('coding.newSession')}>
-          <Button type="text" size="small" icon={<PlusOutlined />} onClick={onNewSession} />
-        </Tooltip>
-      </div>
-
-      {/* Separator */}
-      <div style={{ width: 1, height: 18, background: token.colorBorderSecondary, flexShrink: 0 }} />
-
       {/* Scrollable tab area */}
       <div style={{
         flex: 1, display: 'flex', alignItems: 'center', gap: 0,
         overflow: 'hidden', minWidth: 0,
         overflowX: 'auto',
+        paddingLeft: 4,
       }}>
         <style>{`
           .pane-tab-scroll::-webkit-scrollbar { display: none; }
@@ -233,7 +229,10 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
                   e.dataTransfer.effectAllowed = 'move'
                   onTabDragStart?.(session.id, paneId)
                 }}
-                onClick={() => onSelectTab(session.id)}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onSelectTab(session.id)
+                }}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 5,
                   padding: '0 8px', height: 37,
@@ -311,14 +310,8 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
         })}
       </div>
 
-      {/* Right zone: cost, Claude toggle, embedded terminal, git */}
+      {/* Right zone: Claude toggle, embedded terminal, git */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 8px', flexShrink: 0 }}>
-        {activeSession?.costUsd !== undefined && activeSession.costUsd > 0 && (
-          <Text style={{ fontSize: 11, color: token.colorTextSecondary }}>
-            <DollarOutlined /> {activeSession.costUsd.toFixed(4)}
-          </Text>
-        )}
-
         {activeToolType && TOOLS_WITH_CHAT_VIEW.has(activeToolType) && claudeViewMode && onClaudeViewModeChange && (
           <div style={{
             display: 'inline-flex', alignItems: 'center', borderRadius: 8,
@@ -349,7 +342,6 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
             })}
           </div>
         )}
-
         {/* Gated on workingDir, not on an active session: the workspace landing
             view renders this bar with no tabs and still needs both entries. */}
         {workingDir && onToggleTerminalPanel && (
@@ -361,6 +353,18 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
                 color: terminalPanelOpen ? token.colorPrimary : token.colorTextSecondary,
                 background: terminalPanelOpen ? token.colorPrimaryBg : undefined,
               }}
+            />
+          </Tooltip>
+        )}
+
+        {workingDir && (
+          <Tooltip title={isVsCode ? t('coding.openInVsCode') : t('coding.openInFileExplorer')}>
+            <Button
+              type="text" size="small"
+              icon={isVsCode ? <ExportOutlined /> : <FolderOpenOutlined />}
+              onClick={() => (onOpenWorkspace ? onOpenWorkspace(workingDir) : void openWorkspace(workingDir))}
+              style={{ color: token.colorTextSecondary }}
+              aria-label={isVsCode ? t('coding.openInVsCode') : t('coding.openInFileExplorer')}
             />
           </Tooltip>
         )}
@@ -391,6 +395,18 @@ const PaneTabBar: React.FC<PaneTabBarProps> = ({
                 </span>
               )}
             </span>
+          </Tooltip>
+        )}
+        {onClose && (
+          <Tooltip title={t('common.close')}>
+            <Button
+              type="text"
+              size="small"
+              icon={<CloseOutlined style={{ fontSize: 12 }} />}
+              onClick={onClose}
+              style={{ color: token.colorTextSecondary }}
+              aria-label={t('common.close')}
+            />
           </Tooltip>
         )}
       </div>

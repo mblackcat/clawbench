@@ -83,13 +83,17 @@ const TerminalPanel: React.FC<Props> = ({ sessionId }) => {
     if (snapshot.data) term.write(snapshot.data)
     gate.release(snapshot.offset)
     h.fit()
+    h.setReplayDone?.()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
 
   const handleSelection = useCallback((text: string) => {
     useAITerminalStore.getState().setSelectedText(text)
-    // Show a "Copied" toast near the top of the terminal — selection already
-    // lands on the clipboard inside useXterm.
+  }, [])
+
+  // Show a "Copied" toast near the top of the terminal after an explicit copy
+  // (selection no longer lands on the clipboard by itself).
+  const showCopiedToast = useCallback(() => {
     const el = hostRef.current
     if (!el) return
     const rect = el.getBoundingClientRect()
@@ -114,6 +118,7 @@ const TerminalPanel: React.FC<Props> = ({ sessionId }) => {
     onResize: handleResize,
     onReady: handleReady,
     onSelection: handleSelection,
+    onCopy: showCopiedToast,
     onSearchResults: setSearchResults,
     onPasteResult: handlePasteResult,
   })

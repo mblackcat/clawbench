@@ -245,7 +245,7 @@ export interface ClawBenchAPI {
     detectTerminal: () => Promise<string | null>
     getAvailableIdes: (forceRefresh?: boolean) => Promise<DetectedEnvironmentItem[]>
     getAvailableTerminals: (forceRefresh?: boolean) => Promise<DetectedEnvironmentItem[]>
-    openInIde: (appPath: string) => Promise<void>
+    openInIde: (appPath: string, idePath?: string) => Promise<boolean>
     openFileInEditor: (filePath: string) => Promise<void>
     openSSHConfig: () => Promise<void>
     openAppDirectory: (appPath: string) => Promise<void>
@@ -796,9 +796,25 @@ export interface ClawBenchAPI {
       blocks: import('./ai-coding').CodingContentBlock[]
       timestamp: number
     }>>
+    deleteNativeSession: (workingDir: string, toolType: string, sessionId: string) => Promise<boolean>
     getSessionOutput: (sessionId: string) => Promise<string>
     getRawSessionOutput: (sessionId: string) => Promise<string>
     getRawSessionSnapshot: (sessionId: string) => Promise<{ data: string; offset: number }>
+    getSessionStats: (sessionId: string) => Promise<{
+      sessionId: string
+      toolType: import('./ai-coding').AIToolType
+      model?: string
+      costUsd: number
+      contextUsage?: {
+        inputTokens?: number
+        cachedInputTokens?: number
+        outputTokens?: number
+        usedTokens?: number
+        contextWindow?: number
+      }
+      contextWindow?: number
+      updatedAt: number
+    } | null>
     getGroups: () => Promise<import('./ai-coding').AICodingGroup[]>
     createGroup: (name: string) => Promise<import('./ai-coding').AICodingGroup>
     renameGroup: (

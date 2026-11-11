@@ -196,6 +196,7 @@ interface AICodingState {
   setPaneActiveTab: (paneId: string, sessionId: string) => void
   addTabToPane: (paneId: string, sessionId: string) => void
   removeTabFromPane: (paneId: string, sessionId: string) => void
+  closeSessionTabs: (sessionId: string) => Promise<void>
   setFocusedPane: (paneId: string) => void
   setSplitSizes: (path: number[], sizes: number[]) => void
 }
@@ -258,11 +259,17 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
     }
   },
   deleteSession: async (id) => {
-    const { activeSessionId: aid, sessionMessages: sm, sessionStreaming: ss, sessionStreamingBlocks: sb, sessionModes: smo, sessionContextUsage: scu } = get()
-    await window.api.aiCoding.deleteSession(id); const sessions = await window.api.aiCoding.getSessions()
-    const nm = { ...sm }; const ns = { ...ss }; const nb = { ...sb }; const nmo = { ...smo }; const ncu = { ...scu }; delete nm[id]; delete ns[id]; delete nb[id]; delete nmo[id]; delete ncu[id]
-    set({ sessions, activeSessionId: aid === id ? null : aid, sessionMessages: nm, sessionStreaming: ns, sessionStreamingBlocks: nb, sessionModes: nmo, sessionContextUsage: ncu })
     dismissCodingTarget(id)
+    await get().closeSessionTabs(id)
+    const { sessionMessages: sm, sessionStreaming: ss, sessionStreamingBlocks: sb, sessionModes: smo, sessionContextUsage: scu, sessionPendingQuestions: spq, sessionPendingPermissions: spp } = get()
+    await window.api.aiCoding.deleteSession(id)
+    const sessions = await window.api.aiCoding.getSessions()
+    const nm = { ...sm }; const ns = { ...ss }; const nb = { ...sb }; const nmo = { ...smo }; const ncu = { ...scu }
+    const nq = { ...spq }; const np = { ...spp }
+    delete nm[id]; delete ns[id]; delete nb[id]; delete nmo[id]; delete ncu[id]; delete nq[id]; delete np[id]
+    // Read activeSessionId after the awaits: closeSessionTabs may have moved it.
+    const curActive = get().activeSessionId
+    set({ sessions, activeSessionId: curActive === id ? null : curActive, sessionMessages: nm, sessionStreaming: ns, sessionStreamingBlocks: nb, sessionModes: nmo, sessionContextUsage: ncu, sessionPendingQuestions: nq, sessionPendingPermissions: np })
     _dropStaleTabs()
   },
   stopSession: async (id) => { await window.api.aiCoding.stopSession(id); const sessions = await window.api.aiCoding.getSessions(); set(s => ({ sessions, sessionStreaming: { ...s.sessionStreaming, [id]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [id]: [] } })) },
@@ -456,16 +463,39 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
         if (et === 'context_usage') {
           const pb = parseClaudeEvent(event as Record<string, unknown>)
           const usageBlock = pb.find((b): b is Extract<CodingContentBlock, { type: 'context_usage' }> => b.type === 'context_usage')
+          const eventModel = (event as any).model as string | undefined
           if (usageBlock) {
-            set(s => ({
-              sessionContextUsage: { ...s.sessionContextUsage, [sessionId]: usageBlock },
-              sessionStreamingBlocks: {
-                ...s.sessionStreamingBlocks,
-                [sessionId]: [
-                  ...(s.sessionStreamingBlocks[sessionId] || []).filter(b => b.type !== 'context_usage'),
-                  usageBlock
-                ]
+            set(s => {
+              const prev = s.sessionContextUsage[sessionId]
+              const mergedUsage: Extract<CodingContentBlock, { type: 'context_usage' }> = {
+                type: 'context_usage',
+                inputTokens: usageBlock.inputTokens ?? prev?.inputTokens,
+                cachedInputTokens: usageBlock.cachedInputTokens ?? prev?.cachedInputTokens,
+                outputTokens: usageBlock.outputTokens ?? prev?.outputTokens,
+                contextWindow: usageBlock.contextWindow ?? prev?.contextWindow,
+                usedTokens: usageBlock.usedTokens ?? prev?.usedTokens ??
+                  (((usageBlock.inputTokens ?? prev?.inputTokens) || 0) +
+                   ((usageBlock.cachedInputTokens ?? prev?.cachedInputTokens) || 0) +
+                   ((usageBlock.outputTokens ?? prev?.outputTokens) || 0)),
               }
+              const updatedSessions = eventModel
+                ? s.sessions.map(sess => sess.id === sessionId ? { ...sess, model: eventModel } : sess)
+                : s.sessions
+              return {
+                sessionContextUsage: { ...s.sessionContextUsage, [sessionId]: mergedUsage },
+                sessions: updatedSessions,
+                sessionStreamingBlocks: {
+                  ...s.sessionStreamingBlocks,
+                  [sessionId]: [
+                    ...(s.sessionStreamingBlocks[sessionId] || []).filter(b => b.type !== 'context_usage'),
+                    mergedUsage
+                  ]
+                }
+              }
+            })
+          } else if (eventModel) {
+            set(s => ({
+              sessions: s.sessions.map(sess => sess.id === sessionId ? { ...sess, model: eventModel } : sess)
             }))
           }
           return
@@ -561,14 +591,43 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
             if (resultText) ab.push({ type: 'text', text: resultText })
           }
           const usage = (event as any).usage
-          if (usage && !ab.some(b => b.type === 'context_usage')) ab.push({ type: 'context_usage', inputTokens: usage.inputTokens, cachedInputTokens: usage.cachedInputTokens, outputTokens: usage.outputTokens, usedTokens: usage.usedTokens, contextWindow: usage.contextWindow })
-          const cost = typeof (event as any).cost_usd === 'number' ? (event as any).cost_usd : undefined
-          if (ab.length > 0) {
-            const m: CodingMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: ab, timestamp: Date.now(), costUsd: cost }
-            set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } }))
-          } else {
-            set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } }))
+          let usageBlock: Extract<CodingContentBlock, { type: 'context_usage' }> | undefined
+          if (usage) {
+            usageBlock = {
+              type: 'context_usage',
+              inputTokens: usage.inputTokens,
+              cachedInputTokens: usage.cachedInputTokens,
+              outputTokens: usage.outputTokens,
+              usedTokens: usage.usedTokens ??
+                (((usage.inputTokens || 0) + (usage.cachedInputTokens || 0) + (usage.outputTokens || 0)) || undefined),
+              contextWindow: usage.contextWindow,
+            }
+            if (!ab.some(b => b.type === 'context_usage')) {
+              ab.push(usageBlock)
+            }
           }
+          const cost = typeof (event as any).cost_usd === 'number' ? (event as any).cost_usd : undefined
+          const resultModel = typeof (event as any).model === 'string' ? (event as any).model : undefined
+          set(s => {
+            const updatedSessions = s.sessions.map(sess => {
+              if (sess.id !== sessionId) return sess
+              return {
+                ...sess,
+                ...(cost !== undefined ? { costUsd: cost } : {}),
+                ...(resultModel ? { model: resultModel } : {}),
+              }
+            })
+            const newMessages = ab.length > 0
+              ? [...(s.sessionMessages[sessionId] || []), { id: genMsgId(), sessionId, role: 'assistant' as const, blocks: ab, timestamp: Date.now(), costUsd: cost }]
+              : (s.sessionMessages[sessionId] || [])
+            return {
+              sessions: updatedSessions,
+              ...(usageBlock ? { sessionContextUsage: { ...s.sessionContextUsage, [sessionId]: usageBlock } } : {}),
+              sessionMessages: { ...s.sessionMessages, [sessionId]: newMessages },
+              sessionStreaming: { ...s.sessionStreaming, [sessionId]: false },
+              sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] }
+            }
+          })
           const sess = get().sessions.find((s) => s.id === sessionId)
           raiseCodingCompletion(sessionId, sess?.title, getSessionMeta(get(), sessionId))
           return
@@ -877,14 +936,17 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
   },
 
   addTabToPane: (paneId, sessionId) => {
-    const root = get().globalLayout
+    const root = get().globalLayout ?? get().getOrCreateLayout()
     if (!root) return
-    const newRoot = updateLeaf(root, paneId, leaf => ({
+    const leaves = collectLeaves(root)
+    const resolvedPaneId = leaves.some(l => l.id === paneId) ? paneId : leaves[0]?.id
+    if (!resolvedPaneId) return
+    const newRoot = updateLeaf(root, resolvedPaneId, leaf => ({
       ...leaf,
       tabIds: leaf.tabIds.includes(sessionId) ? leaf.tabIds : [...leaf.tabIds, sessionId],
       activeTabId: sessionId,
     }))
-    set({ globalLayout: newRoot, activeSessionId: sessionId, focusedPaneId: paneId })
+    set({ globalLayout: newRoot, activeSessionId: sessionId, focusedPaneId: resolvedPaneId })
     void get().hydrateSessionTranscript(sessionId)
     _persistLayout(newRoot)
   },
@@ -908,16 +970,63 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
         activeSessionId: nextLeaf?.activeTabId || null,
       })
     } else {
+      const nextActiveInLeaf = leaf.activeTabId === sessionId ? (newTabs[0] || null) : leaf.activeTabId
       root = updateLeaf(root, paneId, l => ({
         ...l,
         tabIds: newTabs,
-        activeTabId: l.activeTabId === sessionId ? (newTabs[0] || null) : l.activeTabId,
+        activeTabId: nextActiveInLeaf,
       }))
-      set({ globalLayout: root })
+      const currentActive = get().activeSessionId
+      const newActive = currentActive === sessionId ? nextActiveInLeaf : currentActive
+      set({ globalLayout: root, activeSessionId: newActive })
     }
 
     _persistLayout(root)
   },
+  closeSessionTabs: async (sessionId) => {
+    dismissCodingTarget(sessionId)
+    let root = get().globalLayout
+    if (!root) return
+
+    const leaves = collectLeaves(root)
+    let changed = false
+    for (const leaf of leaves) {
+      if (!leaf.tabIds.includes(sessionId)) continue
+      changed = true
+      const newTabs = leaf.tabIds.filter((id) => id !== sessionId)
+      if (newTabs.length === 0) {
+        root = removeLeaf(root, leaf.id) || createDefaultLayout([])
+      } else {
+        root = updateLeaf(root, leaf.id, (l) => ({
+          ...l,
+          tabIds: newTabs,
+          activeTabId: l.activeTabId === sessionId ? newTabs[0] || null : l.activeTabId
+        }))
+      }
+    }
+
+    if (changed) {
+      const remainingLeaves = collectLeaves(root)
+      const focused = get().focusedPaneId && remainingLeaves.some((l) => l.id === get().focusedPaneId)
+        ? get().focusedPaneId
+        : remainingLeaves[0]?.id || null
+      const currentActive = get().activeSessionId
+      let nextActive = currentActive
+      if (currentActive === sessionId) {
+        const activeLeaf = remainingLeaves.find((l) => l.id === focused) || remainingLeaves[0]
+        nextActive = activeLeaf?.activeTabId || null
+      }
+      set({ globalLayout: root, focusedPaneId: focused, activeSessionId: nextActive })
+      _persistLayout(root)
+    }
+
+    try {
+      await get().stopSession(sessionId)
+    } catch {
+      // ignore
+    }
+  },
+
 
   setFocusedPane: (paneId) => set({ focusedPaneId: paneId }),
 

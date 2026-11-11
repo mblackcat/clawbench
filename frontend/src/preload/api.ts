@@ -167,7 +167,8 @@ export const api = {
       ipcRenderer.invoke('developer:get-available-ides', forceRefresh),
     getAvailableTerminals: (forceRefresh?: boolean) =>
       ipcRenderer.invoke('developer:get-available-terminals', forceRefresh),
-    openInIde: (appPath: string) => ipcRenderer.invoke('developer:open-in-ide', appPath),
+    openInIde: (appPath: string, idePath?: string) =>
+      ipcRenderer.invoke('developer:open-in-ide', appPath, idePath),
     openFileInEditor: (filePath: string) => ipcRenderer.invoke('developer:open-file-in-editor', filePath),
     openSSHConfig: () => ipcRenderer.invoke('developer:open-ssh-config'),
     openAppDirectory: (appPath: string) =>
@@ -774,6 +775,8 @@ export const api = {
       ipcRenderer.invoke('ai-coding:list-native-sessions', workingDir, toolType),
     loadNativeSessionTranscript: (workingDir: string, toolType: string, sessionId: string) =>
       ipcRenderer.invoke('ai-coding:load-native-session-transcript', workingDir, toolType, sessionId),
+    deleteNativeSession: (workingDir: string, toolType: string, sessionId: string) =>
+      ipcRenderer.invoke('ai-coding:delete-native-session', workingDir, toolType, sessionId),
 
     // Session output
     getSessionOutput: (sessionId: string) =>
@@ -782,6 +785,8 @@ export const api = {
       ipcRenderer.invoke('ai-coding:get-raw-session-output', sessionId),
     getRawSessionSnapshot: (sessionId: string) =>
       ipcRenderer.invoke('ai-coding:get-raw-session-snapshot', sessionId) as Promise<{ data: string; offset: number }>,
+    getSessionStats: (sessionId: string) =>
+      ipcRenderer.invoke('ai-coding:get-session-stats', sessionId),
 
     getGroups: () => ipcRenderer.invoke('ai-coding:get-groups'),
     createGroup: (name: string) => ipcRenderer.invoke('ai-coding:create-group', name),

@@ -39,20 +39,49 @@ export interface XtermHelpers {
    * which would leave a subscription writing into a disposed terminal.
    */
   onDispose: (cleanup: () => void) => void
+  /**
+   * Call once the history replay has been handed to `term.write()`. OSC 52
+   * stays suppressed until xterm has finished *parsing* everything written up
+   * to this call, not merely queued it.
+   */
+  setReplayDone?: () => void
 }
 
 export type PasteOutcome = 'ok' | 'empty' | 'non-text' | 'failed'
 
 /**
- * Read the clipboard and forward text via `onInput`. An empty readText() is
+ * Safely paste text into an xterm instance.
+ *
+ * Clipboard text must never go straight to the PTY: embedded newlines would
+ * act as Enter and submit a multi-line paste at its first line break.
+ * `term.paste()` normalises line endings to \r and wraps the text in
+ * bracketed paste (DECSET 2004: ESC[200~ … ESC[201~) when the TUI enabled it.
+ * For multi-line text we wrap it ourselves even before the TUI has negotiated
+ * bracketed paste (startup, reconnect, ConPTY delays), so TUIs like agy don't
+ * submit the first line and drop the rest.
+ */
+export function pasteIntoTerm(term: Terminal, text: string): void {
+  if (!text) return
+  if ((text.includes('\n') || text.includes('\r')) && !term.modes?.bracketedPasteMode) {
+    const normalized = text.replace(/\r?\n/g, '\r')
+    term.input(`\x1b[200~${normalized}\x1b[201~`, true)
+    return
+  }
+  term.paste(text)
+}
+
+/**
+ * Read the clipboard and paste text into `term`. An empty readText() is
  * probed so hosts can tell an image/file payload ('non-text') from a truly
  * empty clipboard ('empty').
  */
-async function pasteFromClipboard(onInput: (data: string) => void): Promise<PasteOutcome> {
+async function pasteFromClipboard(getTerm: () => Terminal | null): Promise<PasteOutcome> {
   try {
     const text = await navigator.clipboard.readText()
     if (text) {
-      onInput(text)
+      const term = getTerm()
+      if (!term) return 'failed'
+      pasteIntoTerm(term, text)
       return 'ok'
     }
     try {
@@ -81,6 +110,8 @@ export interface UseXtermOptions {
   onReady?: (term: Terminal, helpers: XtermHelpers) => void | Promise<void>
   /** Fires on every completed selection, with the selected text. */
   onSelection?: (text: string) => void
+  /** Text was explicitly copied to the clipboard (Cmd/Ctrl+C or `copy()`). */
+  onCopy?: (text: string) => void
   /** Match count / active index for a search bar. */
   onSearchResults?: (result: { resultIndex: number; resultCount: number }) => void
   /**
@@ -194,11 +225,57 @@ export function useXterm(options: UseXtermOptions): UseXtermResult {
     searchRef.current = searchAddon
     searchAddon.onDidChangeResults((result) => cbRef.current.onSearchResults?.(result))
 
+    // ── OSC 52 clipboard ────────────────────────────────────────────────────
+    //
+    // Every coding CLI we host emits OSC 52: Claude Code on each copy, omp and
+    // grok on copy, agy on copy *and* as clipboard queries (ESC]52;c;?). Those
+    // sequences land in the PTY replay ring buffer, so a session switch
+    // (remount → replay) would re-execute all of them.
+    //
+    // Replay guard: OSC 52 is ignored until the replayed history has actually
+    // been *parsed*. term.write() only queues — the parser runs on a later
+    // task — so the flag is flipped from an empty write's callback, which fires
+    // only after every chunk queued before it has been parsed.
+    let isReplayDone = false
+    let replayDoneQueued = false
+    const setReplayDone = (): void => {
+      if (isReplayDone || replayDoneQueued) return
+      replayDoneQueued = true
+      try {
+        term.write('', () => { isReplayDone = true })
+      } catch {
+        // Disposed mid-replay — nothing left to guard.
+      }
+    }
+
     // OSC 52 — lets a TUI (or a remote shell over SSH) put text on the host
     // clipboard, which is how copying out of tmux/nvim inside these agents works.
     try {
-      term.loadAddon(new ClipboardAddon())
+      term.loadAddon(new ClipboardAddon(undefined, {
+        readText: (type) => (type === 'c' ? navigator.clipboard.readText() : Promise.resolve('')),
+        writeText: (type, text) => {
+          // Empty text means the payload was not canonical base64 — the addon
+          // turns that into "clear the clipboard". Never let a TUI wipe it.
+          if (type !== 'c' || !text) return Promise.resolve()
+          return navigator.clipboard.writeText(text).catch(() => { /* denied */ })
+        }
+      }))
     } catch { /* non-fatal */ }
+
+    // Gate in front of the addon (the most recently registered OSC handler runs
+    // first; returning true swallows the sequence). Only a live sequence from
+    // the terminal the user is actually working in may touch the clipboard —
+    // a TUI copies in response to the user's own keystroke or drag, and xterm
+    // focuses its textarea on mousedown. That keeps out replayed history,
+    // background panes (split groups, the AI Terminal assistant pane) and copies
+    // triggered remotely (IM bridge). Swallowing queries here also stops a
+    // replayed `ESC]52;c;?` from injecting a clipboard report into the PTY.
+    const osc52Allowed = (): boolean =>
+      isReplayDone &&
+      document.hasFocus() &&
+      !!term.textarea &&
+      document.activeElement === term.textarea
+    term.parser.registerOscHandler(52, () => !osc52Allowed())
 
     term.loadAddon(new WebLinksAddon((_event, uri) => window.open(uri, '_blank')))
 
@@ -241,6 +318,19 @@ export function useXterm(options: UseXtermOptions): UseXtermResult {
       if (helperTextarea && helperTextarea.value !== '') helperTextarea.value = ''
     }
     helperTextarea?.addEventListener('compositionstart', handleCompositionStart, true)
+
+    // Native paste (context menu, Edit menu, middle click) goes through the same
+    // bracketed-paste path as Cmd/Ctrl+V.
+    const handleNativePaste = (e: ClipboardEvent): void => {
+      const text = e.clipboardData?.getData('text/plain')
+      if (text && termRef.current === term) {
+        e.preventDefault()
+        e.stopPropagation()
+        pasteIntoTerm(term, text)
+        if (helperTextarea) helperTextarea.value = ''
+      }
+    }
+    helperTextarea?.addEventListener('paste', handleNativePaste, true)
 
     // Lock the textarea position once we've seen a correct anchor.
     //
@@ -396,16 +486,31 @@ export function useXterm(options: UseXtermOptions): UseXtermResult {
       if (event.type === 'keydown' && (event.key === 'v' || event.key === 'V')) {
         const matchesPaste = isMac
           ? event.metaKey && !event.ctrlKey && !event.altKey
-          : event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey
+          : event.ctrlKey && !event.metaKey && !event.altKey
         if (matchesPaste) {
           // preventDefault so the browser does not also fire its native `paste`
           // event on xterm's hidden textarea — that would write it twice.
           event.preventDefault()
-          void pasteFromClipboard((text) => cbRef.current.onInput(text)).then((outcome) => {
+          void pasteFromClipboard(() => (termRef.current === term ? term : null)).then((outcome) => {
             if (outcome === 'non-text' || outcome === 'failed') cbRef.current.onPasteResult?.(outcome)
           })
           return false
         }
+      }
+      // Shift+Insert — the traditional terminal paste chord (Windows/Linux).
+      if (
+        event.type === 'keydown' &&
+        event.key === 'Insert' &&
+        event.shiftKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.metaKey
+      ) {
+        event.preventDefault()
+        void pasteFromClipboard(() => (termRef.current === term ? term : null)).then((outcome) => {
+          if (outcome === 'non-text' || outcome === 'failed') cbRef.current.onPasteResult?.(outcome)
+        })
+        return false
       }
       if (event.type === 'keydown' && (event.key === 'c' || event.key === 'C')) {
         const matchesCopy = isMac
@@ -415,7 +520,9 @@ export function useXterm(options: UseXtermOptions): UseXtermResult {
         // is a selection — otherwise it must still reach the TUI to interrupt.
         if (matchesCopy && term.hasSelection()) {
           event.preventDefault()
-          navigator.clipboard.writeText(term.getSelection()).catch(() => { /* denied */ })
+          const text = term.getSelection()
+          navigator.clipboard.writeText(text).catch(() => { /* denied */ })
+          cbRef.current.onCopy?.(text)
           return false
         }
       }
@@ -424,13 +531,12 @@ export function useXterm(options: UseXtermOptions): UseXtermResult {
 
     term.onData((data) => cbRef.current.onInput(data))
 
-    // A completed selection lands on the clipboard right away, so "select here,
-    // paste there" works without a second step.
+    // Notify the host of selection changes without writing to the OS clipboard.
+    // Copy-on-select overwrote the clipboard unsolicited on resize, layout
+    // reflow, window focus and route re-entry (e.g. switching to an AI Work tab).
+    // Explicit copying is Cmd/Ctrl+C (above) and copy().
     term.onSelectionChange(() => {
-      const selection = term.getSelection()
-      if (!selection) return
-      navigator.clipboard.writeText(selection).catch(() => { /* denied */ })
-      cbRef.current.onSelection?.(selection)
+      cbRef.current.onSelection?.(term.getSelection())
     })
 
     // ── Host wiring ─────────────────────────────────────────────────────────
@@ -442,8 +548,13 @@ export function useXterm(options: UseXtermOptions): UseXtermResult {
       if (disposed) cleanup()
       else hostCleanups.push(cleanup)
     }
-    Promise.resolve(cbRef.current.onReady?.(term, { fit, forceFit, waitForLayout, onDispose }))
+    Promise.resolve(cbRef.current.onReady?.(term, { fit, forceFit, waitForLayout, onDispose, setReplayDone }))
       .catch(() => { /* host reports its own failures into the terminal */ })
+      // Fallback for hosts that never call setReplayDone (or bail out early).
+      // Still routed through the write queue so it trails anything written.
+      .finally(() => {
+        if (!disposed) setReplayDone()
+      })
 
     const resizeObserver = new ResizeObserver(() => fit())
     resizeObserver.observe(containerEl)
@@ -477,6 +588,7 @@ export function useXterm(options: UseXtermOptions): UseXtermResult {
       }
       helperTextarea?.removeEventListener('compositionstart', handleCompositionStart, true)
       helperTextarea?.removeEventListener('compositionupdate', handleCompositionUpdate)
+      helperTextarea?.removeEventListener('paste', handleNativePaste, true)
       styleObserver?.disconnect()
       containerEl.removeEventListener('mousedown', handleClickReset)
       for (const el of scrollTargets) {
@@ -504,11 +616,14 @@ export function useXterm(options: UseXtermOptions): UseXtermResult {
 
   const copy = useCallback(() => {
     const selection = termRef.current?.getSelection()
-    if (selection) navigator.clipboard.writeText(selection).catch(() => { /* denied */ })
+    if (selection) {
+      navigator.clipboard.writeText(selection).catch(() => { /* denied */ })
+      cbRef.current.onCopy?.(selection)
+    }
   }, [])
 
   const paste = useCallback(
-    (): Promise<PasteOutcome> => pasteFromClipboard((text) => cbRef.current.onInput(text)),
+    (): Promise<PasteOutcome> => pasteFromClipboard(() => termRef.current),
     []
   )
 

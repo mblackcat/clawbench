@@ -4,6 +4,7 @@ import type { MenuProps } from 'antd'
 import {
   EllipsisOutlined,
   FolderOutlined,
+  FolderOpenOutlined,
   PlusOutlined,
   RightOutlined,
   SearchOutlined,
@@ -11,8 +12,10 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   HolderOutlined,
-  VerticalAlignTopOutlined
-} from '@ant-design/icons'
+  VerticalAlignTopOutlined,
+  AppstoreOutlined,
+  ClockCircleOutlined, FolderAddOutlined } from '@ant-design/icons'
+import AICodingSearchModal from './AICodingSearchModal'
 import {
   DndContext,
   closestCenter,
@@ -31,7 +34,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { AI_TOOL_NAMES, AI_TOOL_SHORT_NAMES, AI_TOOL_TAG_COLORS, AI_TOOL_TAG_STYLE, getAIToolIcon, TOOLS_WITH_NATIVE_SESSIONS } from './aiToolMeta'
 import { useT } from '../../i18n'
 import { useAICodingStore } from '../../stores/useAICodingStore'
-import { useAttentionStore } from '../../stores/useAttentionStore'
+import { useAttentionStore, dismissCodingTarget } from '../../stores/useAttentionStore'
 import { useVcsSelectionStore } from '../../stores/useVcsSelectionStore'
 import { MONO_FONT_STACK } from '../../utils/mono-font'
 import type { AICodingSession, AICodingWorkspace, AIToolType } from '../../types/ai-coding'
@@ -42,6 +45,8 @@ interface AICodingSidebarProps {
   onNewSession: (workspaceId: string) => void
   onSelectSession: (sessionId: string) => void
   onSelectWorkspace: (workspaceId: string) => void
+  onOpenNewChat?: () => void
+  onNativeSessionsChange?: (map: Record<string, NativeSessionState>) => void
 }
 
 const NATIVE_HISTORY_PAGE_SIZE = 5
@@ -124,8 +129,8 @@ export function isGenericTitle(title?: string): boolean {
   if (!title) return true
   const trimmed = title.trim()
   if (GENERIC_TOOL_TITLES.has(trimmed.toLowerCase())) return true
-  if (/^Session\s+[0-9a-f]{8}/i.test(trimmed)) return true
-  if (/(?:session|会话)$/i.test(trimmed)) return true
+  if (/^(?:Session|Chat)\s+[0-9a-f]{8}/i.test(trimmed)) return true
+  if (/(?:session|会话|chat)$/i.test(trimmed)) return true
   return false
 }
 function loadCollapsedWorkspaceIds(): Set<string> {
@@ -161,6 +166,24 @@ function loadCollapsedGroupIds(): Set<string> {
 function persistCollapsedGroupIds(ids: Set<string>): void {
   try {
     localStorage.setItem(GROUP_COLLAPSE_STORAGE_KEY, JSON.stringify([...ids]))
+  } catch {
+    // ignore storage failures
+  }
+}
+
+const RECENTS_COLLAPSE_STORAGE_KEY = 'cb-workbench-collapsed-recents'
+
+function loadRecentsCollapsed(): boolean {
+  try {
+    return localStorage.getItem(RECENTS_COLLAPSE_STORAGE_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
+function persistRecentsCollapsed(collapsed: boolean): void {
+  try {
+    localStorage.setItem(RECENTS_COLLAPSE_STORAGE_KEY, String(collapsed))
   } catch {
     // ignore storage failures
   }
@@ -209,6 +232,29 @@ function isSessionRowArchived(row: SidebarSessionRow, archived: Set<string>): bo
   if (row.nativeSessionId && archived.has(nativeArchiveKey(row.toolType, row.nativeSessionId))) return true
   if (row.openedSessionId && archived.has(openedArchiveKey(row.openedSessionId))) return true
   return false
+}
+
+export function createSessionRowMenuItems(options: {
+  isPinned: boolean
+  onTogglePin: () => void
+  onArchive: () => void
+  onDelete: () => void
+  pinLabel: string
+  unpinLabel: string
+  archiveLabel: string
+  deleteLabel: string
+}): NonNullable<MenuProps['items']> {
+  return [
+    {
+      key: 'pin',
+      label: options.isPinned ? options.unpinLabel : options.pinLabel,
+      onClick: options.onTogglePin
+    },
+    { type: 'divider' },
+    { key: 'archive', label: options.archiveLabel, onClick: options.onArchive },
+    { type: 'divider' },
+    { key: 'delete', label: options.deleteLabel, danger: true, onClick: options.onDelete }
+  ]
 }
 
 export const PINNED_SESSIONS_STORAGE_KEY = 'cb-workbench-pinned-sessions'
@@ -266,23 +312,25 @@ const SortableWorkspaceHandleContext = React.createContext<{
   attributes: ReturnType<typeof useSortable>['attributes'] | undefined
 }>({ listeners: undefined, attributes: undefined })
 
-/** Drag handle for a sortable workspace row. Spreads the nearest
- *  SortableWorkspaceItem's pointer listeners onto a grip icon. */
-const WorkspaceDragHandle: React.FC = () => {
+/** Wraps only the workspace header row with the nearest SortableWorkspaceItem's
+ *  drag listeners so child session rows and rename inputs don't initiate workspace drags. */
+const SortableWorkspaceHeader: React.FC<{ disabled?: boolean; children: React.ReactNode }> = ({
+  disabled,
+  children
+}) => {
   const { listeners, attributes } = React.useContext(SortableWorkspaceHandleContext)
-  const { token } = theme.useToken()
   return (
-    <HolderOutlined
-      {...attributes}
-      {...listeners}
-      style={{ fontSize: 10, flexShrink: 0, cursor: 'grab', color: token.colorTextQuaternary, padding: '2px' }}
-    />
+    <div
+      {...(!disabled ? attributes : undefined)}
+      {...(!disabled ? listeners : undefined)}
+      style={{ outline: 'none' }}
+    >
+      {children}
+    </div>
   )
 }
 
-/** Wraps a workspace block as a @dnd-kit sortable item. The block's children are
- *  rendered inside the transformed node; a <WorkspaceDragHandle /> anywhere in the
- *  header picks up the drag listeners via context. */
+/** Wraps a workspace block as a @dnd-kit sortable item. */
 const SortableWorkspaceItem: React.FC<{ id: string; children: React.ReactNode }> = ({ id, children }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
   return (
@@ -290,7 +338,7 @@ const SortableWorkspaceItem: React.FC<{ id: string; children: React.ReactNode }>
       <div
         ref={setNodeRef}
         style={{
-          transform: CSS.Transform.toString(transform),
+          transform: CSS.Translate.toString(transform),
           transition,
           opacity: isDragging ? 0.4 : 1
         }}
@@ -428,11 +476,15 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
   onNewWorkspace,
   onNewSession,
   onSelectSession,
-  onSelectWorkspace
+  onSelectWorkspace,
+  onOpenNewChat,
+  onNativeSessionsChange
 }) => {
   const t = useT()
   const { token } = theme.useToken()
   const { modal, message } = App.useApp()
+
+  const [searchModalOpen, setSearchModalOpen] = useState(false)
 
   const workspaces = useAICodingStore((s) => s.workspaces)
   const sessions = useAICodingStore((s) => s.sessions)
@@ -442,6 +494,8 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
   const updateWorkspace = useAICodingStore((s) => s.updateWorkspace)
   const renameGroup = useAICodingStore((s) => s.renameGroup)
   const deleteGroup = useAICodingStore((s) => s.deleteGroup)
+  const deleteSession = useAICodingStore((s) => s.deleteSession)
+  const closeSessionTabs = useAICodingStore((s) => s.closeSessionTabs)
   const attentionItems = useAttentionStore((s) => s.items)
   const codingAttentionIds = useMemo(
     () => attentionItems.filter((i) => i.source === 'ai-coding' && i.targetId).map((i) => i.targetId as string),
@@ -458,14 +512,17 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
   const [filterText, setFilterText] = useState('')
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => loadCollapsedGroupIds())
   const [collapsedWorkspaces, setCollapsedWorkspaces] = useState<Set<string>>(() => loadCollapsedWorkspaceIds())
+  const collapsedWorkspacesRef = useRef(collapsedWorkspaces)
+  collapsedWorkspacesRef.current = collapsedWorkspaces
+  const [recentsCollapsed, setRecentsCollapsed] = useState<boolean>(() => loadRecentsCollapsed())
   const [archivedSessionKeys, setArchivedSessionKeys] = useState<Set<string>>(() => loadArchivedSessionKeys())
   const [pinnedSessionKeys, setPinnedSessionKeys] = useState<Set<string>>(() => loadPinnedSessionKeys())
   const openedSessionMap = useMemo(() => new Map(sessions.map((s) => [s.id, s])), [sessions])
 
-  // Drag sensors: require a small hold+move before a drag starts so clicks on the
-  // row's chevron/title/plus/rename-input don't accidentally trigger a reorder.
+  // Drag sensors: require pointer movement before a drag starts so stationary
+  // clicks of any duration never activate drag mode, flicker opacity, or swallow clicks.
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { delay: 150, tolerance: 5 } })
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
   )
 
   const [renameTarget, setRenameTarget] = useState<{
@@ -705,7 +762,15 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
         const existing = prev[wsId]?.sessions || []
         const targetSet = new Set(targetTools)
         const kept = existing.filter(s => !targetSet.has(s.toolType))
-        const merged = [...kept, ...scanned].sort((a, b) => b.modifiedAt - a.modifiedAt)
+        const rawMerged = [...kept, ...scanned].sort((a, b) => b.modifiedAt - a.modifiedAt)
+        const seenInWs = new Set<string>()
+        const merged = rawMerged.filter((s) => {
+          if (!s.sessionId) return false
+          const k = `${s.toolType}:${s.sessionId}`
+          if (seenInWs.has(k)) return false
+          seenInWs.add(k)
+          return true
+        })
 
         if (
           existing.length === merged.length &&
@@ -791,6 +856,10 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
   }, [collapsedGroups])
 
   useEffect(() => {
+    persistRecentsCollapsed(recentsCollapsed)
+  }, [recentsCollapsed])
+
+  useEffect(() => {
     persistArchivedSessionKeys(archivedSessionKeys)
   }, [archivedSessionKeys])
 
@@ -798,16 +867,19 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
     persistPinnedSessionKeys(pinnedSessionKeys)
   }, [pinnedSessionKeys])
 
-  // On initial mount / workspaces change: only scan uncollapsed workspaces.
-  // Collapsed workspaces are deferred until explicitly expanded by user.
+  useEffect(() => {
+    onNativeSessionsChange?.(nativeSessionsMap)
+  }, [nativeSessionsMap, onNativeSessionsChange])
+
+  // On initial mount / workspaces change: scan all workspaces for native sessions
+  // so the top-level Recents group and New Chat view reflect recent conversations.
   useEffect(() => {
     for (const ws of workspaces) {
-      if (collapsedWorkspaces.has(ws.id)) continue
       const state = nativeSessionsMap[ws.id]
       if (state?.workingDir === ws.workingDir && (state.loaded || state.loading)) continue
       fetchNativeSessions(ws.id)
     }
-  }, [workspaces, collapsedWorkspaces, nativeSessionsMap, fetchNativeSessions])
+  }, [workspaces, nativeSessionsMap, fetchNativeSessions])
 
   // Active opened non-terminal tools by workspace. Closed sessions are not scanned.
   const openToolsByWorkspace = useMemo(() => {
@@ -870,14 +942,37 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
     return () => clearInterval(timer)
   }, [workspaces, openToolsByWorkspace, fetchNativeSessions, hasPendingOpenedSessions])
 
+  // Map of opened session ID -> resolved toolSessionId (including provisional matches)
+  const sessionToolIdMap = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const ws of workspaces) {
+      const wsSessions = sessions.filter((s) => s.workspaceId === ws.id && s.toolType !== 'terminal')
+      const wsNatives = nativeSessionsMap[ws.id]?.sessions || []
+      const links = resolveNativeSessionLinks(wsSessions, wsNatives)
+      for (const link of links) {
+        if (link.sessionId && link.toolSessionId) {
+          map.set(link.sessionId, link.toolSessionId)
+        }
+      }
+    }
+    for (const s of sessions) {
+      if (s.toolSessionId) {
+        map.set(s.id, s.toolSessionId)
+      }
+    }
+    return map
+  }, [workspaces, sessions, nativeSessionsMap])
+
   /** Resume a native session into a workspace */
   const handleResumeNativeSession = useCallback(async (wsId: string, toolType: AIToolType, nativeSessionId: string, title?: string) => {
     try {
-      const existingSession = sessions.find(s =>
-        s.workspaceId === wsId &&
+      const matchesNative = (s: AICodingSession): boolean =>
         s.toolType === toolType &&
-        s.toolSessionId === nativeSessionId
-      )
+        (s.toolSessionId === nativeSessionId || sessionToolIdMap.get(s.id) === nativeSessionId)
+
+      const existingSession =
+        sessions.find(s => s.workspaceId === wsId && matchesNative(s)) ||
+        sessions.find(s => matchesNative(s))
       if (existingSession) {
         onSelectSession(existingSession.id)
         return
@@ -901,7 +996,229 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
     } catch {
       message.error(t('coding.createSessionFailed'))
     }
-  }, [createSession, updateSession, sessions, pinnedSessionKeys, onSelectSession, message, t])
+  }, [createSession, updateSession, sessions, sessionToolIdMap, pinnedSessionKeys, onSelectSession, message, t])
+
+  // Global Ctrl+K / Cmd+K search shortcut
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setSearchModalOpen(true)
+      }
+    }
+    window.addEventListener('keydown', handleGlobalKeyDown)
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown)
+  }, [])
+
+  // Handle session selection from Search Modal: locate and pulse in sidebar
+  const handleSelectFromSearch = useCallback(
+    async (
+      sessionId: string,
+      workspaceId: string,
+      nativeToolType?: AIToolType,
+      nativeTitle?: string
+    ) => {
+      const ws = workspaces.find((w) => w.id === workspaceId)
+      if (ws) {
+        setCollapsedGroups((prev) => {
+          if (!prev.has(ws.groupId)) return prev
+          const next = new Set(prev)
+          next.delete(ws.groupId)
+          return next
+        })
+      }
+      setCollapsedWorkspaces((prev) => {
+        if (!prev.has(workspaceId)) return prev
+        const next = new Set(prev)
+        next.delete(workspaceId)
+        return next
+      })
+
+      if (collapsed) {
+        setCollapsed(false)
+      }
+
+      if (nativeToolType && !sessionId.startsWith('opened-')) {
+        await handleResumeNativeSession(workspaceId, nativeToolType, sessionId, nativeTitle)
+      } else {
+        onSelectSession(sessionId)
+      }
+
+      setTimeout(() => {
+        const target =
+          document.querySelector(`[data-cb-session-id="${sessionId}"]`) ||
+          document.querySelector(`[data-cb-ws-id="${workspaceId}"]`)
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+          target.classList.add('cb-locate-flash')
+          setTimeout(() => target.classList.remove('cb-locate-flash'), 1400)
+        }
+      }, 150)
+    },
+    [collapsed, handleResumeNativeSession, onSelectSession, workspaces]
+  )
+
+  const activeNativeSessionId = useMemo(() => {
+    if (!activeSessionId) return undefined
+    return sessionToolIdMap.get(activeSessionId)
+  }, [activeSessionId, sessionToolIdMap])
+
+  const activeToolType = useMemo(() => {
+    if (!activeSessionId) return undefined
+    return sessions.find((s) => s.id === activeSessionId)?.toolType
+  }, [activeSessionId, sessions])
+
+  /** Unified check for whether a session row or recents item matches the current active session/tab. */
+  const isRowActive = useCallback(
+    (row: {
+      openedSessionId?: string
+      sessionId?: string
+      nativeSessionId?: string
+      toolType?: AIToolType
+    }) => {
+      if (!activeSessionId) return false
+      const openedId = row.openedSessionId || row.sessionId
+      if (openedId && openedId === activeSessionId) return true
+
+      if (activeNativeSessionId && row.nativeSessionId && row.toolType) {
+        if (row.toolType === activeToolType && row.nativeSessionId === activeNativeSessionId) {
+          return true
+        }
+      }
+
+      if (activeNativeSessionId && openedId) {
+        const rowNativeId = sessionToolIdMap.get(openedId)
+        if (rowNativeId && rowNativeId === activeNativeSessionId && row.toolType === activeToolType) {
+          return true
+        }
+      }
+
+      return false
+    },
+    [activeSessionId, activeNativeSessionId, activeToolType, sessionToolIdMap]
+  )
+
+  // Compute recent conversations for the fixed "Recents" group
+  const recentConversations = useMemo(() => {
+    const list: Array<{
+      key: string
+      sessionId?: string
+      nativeSessionId?: string
+      toolType: AIToolType
+      title: string
+      modifiedAt: number
+      workspaceId: string
+      workspaceTitle: string
+      isNative: boolean
+    }> = []
+    const wsMap = new Map(workspaces.map((w) => [w.id, w]))
+    const seenNativeKeys = new Set<string>()
+    const seenItemKeys = new Set<string>()
+
+    const allNativesByKey = new Map<string, SidebarNativeSession>()
+    for (const [wsId, st] of Object.entries(nativeSessionsMap)) {
+      if (!wsMap.has(wsId)) continue
+      for (const ns of st.sessions || []) {
+        if (!ns.sessionId) continue
+        const natKey = `${ns.toolType}:${ns.sessionId}`
+        const prev = allNativesByKey.get(natKey)
+        if (!prev || ns.modifiedAt > prev.modifiedAt) {
+          allNativesByKey.set(natKey, ns)
+        }
+      }
+    }
+
+    // Prefer active session, then newest updatedAt when deduplicating opened sessions
+    const orderedSessions = [...sessions].sort((a, b) => {
+      if (a.id === activeSessionId && b.id !== activeSessionId) return -1
+      if (b.id === activeSessionId && a.id !== activeSessionId) return 1
+      return (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0)
+    })
+
+    for (const s of orderedSessions) {
+      if (s.toolType === 'terminal') continue
+      if (archivedSessionKeys.has(openedArchiveKey(s.id))) continue
+      const ws = wsMap.get(s.workspaceId)
+      if (!ws) continue
+
+      const toolSessionId = sessionToolIdMap.get(s.id) || s.toolSessionId
+      const nativeKey = toolSessionId ? `${s.toolType}:${toolSessionId}` : ''
+      if (nativeKey && seenNativeKeys.has(nativeKey)) continue
+      const nativeSession = nativeKey ? allNativesByKey.get(nativeKey) : undefined
+
+      if (nativeKey) seenNativeKeys.add(nativeKey)
+      if (nativeSession && archivedSessionKeys.has(nativeArchiveKey(s.toolType, nativeSession.sessionId))) {
+        continue
+      }
+
+      const itemKey = `recent-opened-${s.id}`
+      if (seenItemKeys.has(itemKey)) continue
+      seenItemKeys.add(itemKey)
+
+      const displayTitle =
+        (!isGenericTitle(s.title) && s.title) ||
+        nativeSession?.title ||
+        s.title ||
+        `${AI_TOOL_SHORT_NAMES[s.toolType] || s.toolType} chat`
+
+      const modifiedAt = Math.max(
+        s.updatedAt || 0,
+        s.createdAt || 0,
+        nativeSession?.modifiedAt || 0
+      )
+
+      list.push({
+        key: itemKey,
+        sessionId: s.id,
+        nativeSessionId: toolSessionId,
+        toolType: s.toolType,
+        title: displayTitle,
+        modifiedAt,
+        workspaceId: s.workspaceId,
+        workspaceTitle: ws.title || '',
+        isNative: false
+      })
+    }
+
+    // Prefer more specific (deeper) workspace paths if a native session appears under nested workspaces
+    const nativeEntries = Object.entries(nativeSessionsMap)
+      .filter(([wsId]) => wsMap.has(wsId))
+      .sort(([aId], [bId]) => {
+        const aLen = wsMap.get(aId)?.workingDir?.length || 0
+        const bLen = wsMap.get(bId)?.workingDir?.length || 0
+        return bLen - aLen
+      })
+
+    for (const [wsId, st] of nativeEntries) {
+      const ws = wsMap.get(wsId)
+      if (!ws) continue
+      for (const ns of st.sessions || []) {
+        if (!ns.sessionId) continue
+        const natKey = `${ns.toolType}:${ns.sessionId}`
+        if (seenNativeKeys.has(natKey)) continue
+        seenNativeKeys.add(natKey)
+        if (archivedSessionKeys.has(nativeArchiveKey(ns.toolType, ns.sessionId))) continue
+
+        const itemKey = `recent-native-${wsId}-${ns.toolType}-${ns.sessionId}`
+        if (seenItemKeys.has(itemKey)) continue
+        seenItemKeys.add(itemKey)
+
+        list.push({
+          key: itemKey,
+          nativeSessionId: ns.sessionId,
+          toolType: ns.toolType,
+          title: ns.title || `${AI_TOOL_SHORT_NAMES[ns.toolType] || ns.toolType} session`,
+          modifiedAt: ns.modifiedAt,
+          workspaceId: wsId,
+          workspaceTitle: ws.title || '',
+          isNative: true
+        })
+      }
+    }
+
+    list.sort((a, b) => b.modifiedAt - a.modifiedAt)
+    return list.slice(0, 5)
+  }, [sessions, activeSessionId, nativeSessionsMap, workspaces, sessionToolIdMap, archivedSessionKeys])
 
   const handleTogglePinSessionRow = useCallback((row: SidebarSessionRow) => {
     const isCurrentlyPinned = isSessionRowPinned(row, pinnedSessionKeys, openedSessionMap)
@@ -933,12 +1250,25 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
   /** Hide a conversation from the history list without deleting it. Records both
    * the native key (so it stays hidden across restarts) and the opened-session
    * key (so a session still hidden before it links to a native id doesn't pop
-   * back when the link arrives). */
-  const handleArchiveSessionRow = useCallback((row: SidebarSessionRow) => {
+   * back when the link arrives). Also closes any open tab for this session. */
+  const handleArchiveSessionRow = useCallback(async (row: SidebarSessionRow) => {
     const keys: string[] = []
     if (row.nativeSessionId) keys.push(nativeArchiveKey(row.toolType, row.nativeSessionId))
     if (row.openedSessionId) keys.push(openedArchiveKey(row.openedSessionId))
     if (keys.length === 0) return
+
+    // Auto-close any opened tab for this session
+    const openedIds = new Set<string>()
+    if (row.openedSessionId) openedIds.add(row.openedSessionId)
+    if (row.nativeSessionId) {
+      sessions
+        .filter((s) => s.toolType === row.toolType && s.toolSessionId === row.nativeSessionId)
+        .forEach((s) => openedIds.add(s.id))
+    }
+    for (const sid of openedIds) {
+      await closeSessionTabs(sid)
+    }
+
     setArchivedSessionKeys((prev) => {
       if (keys.every((k) => prev.has(k))) return prev
       const next = new Set(prev)
@@ -946,7 +1276,87 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
       return next
     })
     message.success(t('coding.sessionArchived'))
-  }, [message, t])
+  }, [closeSessionTabs, message, sessions, t])
+
+  const handleDeleteSessionRow = useCallback((row: SidebarSessionRow, wsId: string) => {
+    modal.confirm({
+      title: t('coding.deleteSession'),
+      content: t('coding.deleteSessionConfirm', row.title || row.key),
+      okText: t('common.delete'),
+      okButtonProps: { danger: true },
+      cancelText: t('common.cancel'),
+      onOk: async () => {
+        try {
+          // 1. Collect all opened sessions matching this row
+          const openedIds = new Set<string>()
+          if (row.openedSessionId) openedIds.add(row.openedSessionId)
+          if (row.nativeSessionId) {
+            sessions
+              .filter((s) => s.toolType === row.toolType && s.toolSessionId === row.nativeSessionId)
+              .forEach((s) => openedIds.add(s.id))
+          }
+
+          // 2. Automatically close open tabs for this session
+          for (const sid of openedIds) {
+            await closeSessionTabs(sid)
+          }
+
+          // 3. Delete opened session record(s)
+          for (const sid of openedIds) {
+            await deleteSession(sid)
+          }
+
+          // 4. Delete native CLI session record on disk if present
+          if (row.nativeSessionId) {
+            const ws = workspaces.find((w) => w.id === wsId)
+            if (ws?.workingDir) {
+              await window.api.aiCoding.deleteNativeSession(ws.workingDir, row.toolType, row.nativeSessionId)
+            }
+            dismissCodingTarget(row.nativeSessionId)
+            setNativeSessionsMap((prev) => {
+              const existing = prev[wsId]
+              if (!existing) return prev
+              return {
+                ...prev,
+                [wsId]: {
+                  ...existing,
+                  sessions: existing.sessions.filter(
+                    (s) => !(s.toolType === row.toolType && s.sessionId === row.nativeSessionId)
+                  )
+                }
+              }
+            })
+          }
+
+          // 5. Clean up pin & archive keys
+          const pinKeys: string[] = []
+          if (row.nativeSessionId) pinKeys.push(nativePinKey(row.toolType, row.nativeSessionId))
+          if (row.openedSessionId) pinKeys.push(openedPinKey(row.openedSessionId))
+          for (const sid of openedIds) pinKeys.push(openedPinKey(sid))
+          setPinnedSessionKeys((prev) => {
+            const next = new Set(prev)
+            for (const k of pinKeys) next.delete(k)
+            return next
+          })
+
+          const archiveKeys: string[] = []
+          if (row.nativeSessionId) archiveKeys.push(nativeArchiveKey(row.toolType, row.nativeSessionId))
+          if (row.openedSessionId) archiveKeys.push(openedArchiveKey(row.openedSessionId))
+          for (const sid of openedIds) archiveKeys.push(openedArchiveKey(sid))
+          setArchivedSessionKeys((prev) => {
+            const next = new Set(prev)
+            for (const k of archiveKeys) next.delete(k)
+            return next
+          })
+
+          message.success(t('coding.sessionDeleted'))
+        } catch (err) {
+          console.error('Delete session failed:', err)
+          message.error(t('coding.deleteSessionFailed'))
+        }
+      }
+    })
+  }, [closeSessionTabs, deleteSession, message, modal, sessions, t, workspaces])
 
   /** Persist a within-group workspace reorder. Pinned and unpinned are separate
    *  sortable sections, so cross-section drags are rejected. After a valid drag
@@ -1023,15 +1433,16 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
   }, [])
 
   const toggleWorkspace = useCallback((wsId: string) => {
-    const willExpand = collapsedWorkspaces.has(wsId)
+    const willExpand = collapsedWorkspacesRef.current.has(wsId)
     setCollapsedWorkspaces((prev) => {
       const next = new Set(prev)
       if (next.has(wsId)) next.delete(wsId)
       else next.add(wsId)
+      collapsedWorkspacesRef.current = next
       return next
     })
     if (willExpand) fetchNativeSessions(wsId)
-  }, [collapsedWorkspaces, fetchNativeSessions])
+  }, [fetchNativeSessions])
 
   const filteredWorkspaces = useMemo(() => {
     if (!filterText.trim()) return workspaces
@@ -1047,11 +1458,18 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
     [groups]
   )
 
-  // Workspace that owns the active session — used to highlight its collapsed-rail avatar.
+  // Workspace that owns the active session — used to highlight its collapsed-rail avatar and collapsed workspace header.
   const activeWorkspaceId = useMemo(() => {
     if (!activeSessionId) return undefined
-    return sessions.find((s) => s.id === activeSessionId)?.workspaceId
-  }, [activeSessionId, sessions])
+    const s = sessions.find((s) => s.id === activeSessionId)
+    if (s?.workspaceId) return s.workspaceId
+    for (const [wsId, st] of Object.entries(nativeSessionsMap)) {
+      if (st.sessions?.some((ns) => ns.sessionId === activeSessionId)) {
+        return wsId
+      }
+    }
+    return undefined
+  }, [activeSessionId, sessions, nativeSessionsMap])
 
   // Collapsed-rail items: workspace avatars grouped with dividers, capped at COLLAPSED_RAIL_MAX total.
   const collapsedRailItems = useMemo(() => {
@@ -1120,6 +1538,55 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
     return () => window.clearTimeout(timer)
   }, [collapsed, filteredWorkspaces, sortedGroups, collapsedWorkspaces, collapsedGroups])
 
+  // Ensure native sessions are scanned for the active workspace, but preserve
+  // the workspace's open/closed state as chosen by the user.
+  useEffect(() => {
+    if (!activeSessionId) return
+    const activeSession = sessions.find((s) => s.id === activeSessionId)
+    if (!activeSession?.workspaceId) return
+    const ws = workspaces.find((w) => w.id === activeSession.workspaceId)
+    if (!ws) return
+
+    setCollapsedGroups((prev) => {
+      if (!prev.has(ws.groupId)) return prev
+      const next = new Set(prev)
+      next.delete(ws.groupId)
+      return next
+    })
+
+    ensureNativeSessions(ws.id)
+  }, [activeSessionId, sessions, workspaces, ensureNativeSessions])
+
+  // Scroll active session or workspace folder into view when tab switches
+  useEffect(() => {
+    if (!activeSessionId || collapsed) return
+    const timer = window.setTimeout(() => {
+      const currentSessions = useAICodingStore.getState().sessions
+      const activeSession = currentSessions.find((s) => s.id === activeSessionId)
+      const wsId = activeSession?.workspaceId
+      const isWsCollapsed = wsId ? collapsedWorkspacesRef.current.has(wsId) : false
+
+      if (isWsCollapsed && wsId) {
+        // If workspace is closed, lock / scroll into view the workspace folder row directly
+        const safeWsId = wsId.replace(/["\\]/g, '\\$&')
+        const wsEl = sidebarRootRef.current?.querySelector(`[data-cb-ws-id="${safeWsId}"]`) as HTMLElement | null
+        wsEl?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
+      } else {
+        // If workspace is open, lock / scroll to the active session row in the workspace tree
+        const safeSessionId = activeSessionId.replace(/["\\]/g, '\\$&')
+        const wsSessionEl = sidebarRootRef.current?.querySelector(
+          `[data-cb-session-id="${safeSessionId}"]:not([data-cb-recent-key])`
+        ) as HTMLElement | null
+        const recentEl = sidebarRootRef.current?.querySelector(
+          `[data-cb-recent-key][data-cb-session-id="${safeSessionId}"]`
+        ) as HTMLElement | null
+        const target = wsSessionEl || recentEl
+        target?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
+      }
+    }, 60)
+    return () => window.clearTimeout(timer)
+  }, [activeSessionId, collapsed])
+
   const startRename = (type: 'workspace' | 'group', id: string, current: string) => {
     setRenameTarget({ type, id })
     setRenameValue(current)
@@ -1186,17 +1653,18 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
     { key: 'delete', label: t('coding.deleteGroupMenu'), danger: true, onClick: () => handleDeleteGroup(groupId) }
   ]
 
-  const buildSessionRowMenu = (row: SidebarSessionRow): MenuProps['items'] => {
+  const buildSessionRowMenu = (row: SidebarSessionRow, wsId: string): MenuProps['items'] => {
     const isPinned = isSessionRowPinned(row, pinnedSessionKeys, openedSessionMap)
-    return [
-      {
-        key: 'pin',
-        label: isPinned ? t('workbench.unpin') : t('workbench.pin'),
-        onClick: () => handleTogglePinSessionRow(row)
-      },
-      { type: 'divider' },
-      { key: 'archive', label: t('coding.archiveSession'), onClick: () => handleArchiveSessionRow(row) }
-    ]
+    return createSessionRowMenuItems({
+      isPinned,
+      onTogglePin: () => handleTogglePinSessionRow(row),
+      onArchive: () => void handleArchiveSessionRow(row),
+      onDelete: () => handleDeleteSessionRow(row, wsId),
+      pinLabel: t('workbench.pin'),
+      unpinLabel: t('workbench.unpin'),
+      archiveLabel: t('coding.archiveSession'),
+      deleteLabel: t('coding.deleteSession')
+    })
   }
 
   const rowBase: React.CSSProperties = {
@@ -1248,13 +1716,12 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           {!collapsed && (
-            <Tooltip title={t('coding.newWorkspace')}>
+            <Tooltip title={t('coding.searchSessions')}>
               <Button
                 type="text"
                 size="small"
-                icon={<PlusOutlined />}
-                onClick={onNewWorkspace}
-                style={{ color: token.colorPrimary }}
+                icon={<SearchOutlined style={{ fontSize: 13, color: token.colorTextSecondary }} />}
+                onClick={() => setSearchModalOpen(true)}
               />
             </Tooltip>
           )}
@@ -1283,12 +1750,30 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
             padding: '8px 0 6px'
           }}
         >
-          <Tooltip title={t('coding.newWorkspace')} placement="right">
+          <Tooltip title={t('coding.searchSessions')} placement="right">
             <Button
               type="text"
+              icon={<SearchOutlined style={{ fontSize: 14, color: token.colorTextSecondary }} />}
+              onClick={() => setSearchModalOpen(true)}
+              style={{ width: 30, height: 30, flexShrink: 0 }}
+            />
+          </Tooltip>
+          <Tooltip title={t('coding.newChat')} placement="right">
+            <Button
+              type="primary"
+              ghost
               icon={<PlusOutlined />}
+              onClick={() => onOpenNewChat?.()}
+              style={{ width: 30, height: 30, flexShrink: 0, borderRadius: '50%' }}
+            />
+          </Tooltip>
+          <Tooltip title={t('coding.newWorkspace')} placement="right">
+            <Button
+              type="primary"
+              ghost
+              icon={<FolderAddOutlined />}
               onClick={onNewWorkspace}
-              style={{ color: token.colorPrimary, width: 30, height: 30, flexShrink: 0 }}
+              style={{ width: 30, height: 30, flexShrink: 0, borderRadius: '50%' }}
             />
           </Tooltip>
 
@@ -1389,7 +1874,7 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
         </div>
       )}
 
-      {/* Search + Tree card */}
+      {/* Content card */}
       {!collapsed && (
       <div style={{
         background: token.colorBgLayout,
@@ -1400,20 +1885,205 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
         flexDirection: 'column',
         overflow: 'hidden'
       }}>
-        {/* Search */}
-        <div style={{ padding: '6px 8px 4px', flexShrink: 0 }}>
-          <Input
-            size="small"
-            placeholder={t('coding.searchWorkspace')}
-            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary, fontSize: 12 }} />}
-            allowClear
-            value={filterText}
-            onChange={(e) => setFilterText(e.target.value)}
-          />
+        <style>{`
+          .cb-ws-row .cb-ws-hover-actions {
+            display: none !important;
+          }
+          .cb-ws-row:hover .cb-ws-hover-actions {
+            display: inline-flex !important;
+          }
+          .cb-ws-row:hover .cb-ws-pin-icon {
+            margin-right: 2px !important;
+          }
+          @keyframes cb-locate-pulse {
+            0%, 100% { background: transparent; }
+            50% { background: rgba(59, 130, 246, 0.28); }
+          }
+          .cb-locate-flash {
+            animation: cb-locate-pulse 0.6s ease-in-out 2 !important;
+            border-radius: 4px;
+          }
+        `}</style>
+
+        {/* Top Fixed New Chat & Add Workspace Buttons */}
+        <div style={{ padding: '6px 8px 4px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Button
+            type="primary"
+            ghost
+            icon={<PlusOutlined />}
+            onClick={() => onOpenNewChat?.()}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              height: 32,
+              borderRadius: token.borderRadiusSM,
+              fontWeight: 600,
+              fontSize: 13,
+              borderColor: token.colorPrimary,
+              background: token.colorBgContainer
+            }}
+          >
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {t('coding.newChat')}
+            </span>
+          </Button>
+          <Tooltip title={t('coding.newWorkspace')}>
+            <Button
+              type="primary"
+              ghost
+              icon={<FolderAddOutlined />}
+              onClick={onNewWorkspace}
+              aria-label={t('coding.newWorkspace')}
+              style={{
+                width: 32,
+                height: 32,
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 0,
+                borderRadius: token.borderRadiusSM,
+                borderColor: token.colorPrimary,
+                background: token.colorBgContainer
+              }}
+            />
+          </Tooltip>
         </div>
 
         {/* Tree */}
         <div style={{ flex: 1, overflow: 'auto', padding: '2px 0' }}>
+          {/* Recents Group */}
+          {workspaces.length > 0 && (
+            <div style={{ marginBottom: 6, paddingBottom: 6, borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
+              <div
+                data-cb-recents-header="true"
+                onClick={() => setRecentsCollapsed((prev) => !prev)}
+                style={{
+                  ...rowBase,
+                  padding: '2px 8px',
+                  minHeight: 22,
+                  gap: 5,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: token.colorTextTertiary,
+                  display: 'flex',
+                  alignItems: 'center',
+                  cursor: 'pointer',
+                  userSelect: 'none',
+                  borderRadius: token.borderRadiusSM
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = token.colorFillTertiary
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = 'transparent'
+                }}
+              >
+                <ClockCircleOutlined style={{ fontSize: 11, flexShrink: 0, color: token.colorTextTertiary }} />
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {t('coding.recents')}
+                </span>
+                <RightOutlined
+                  style={{
+                    fontSize: 10,
+                    flexShrink: 0,
+                    transition: 'transform 0.18s',
+                    transform: recentsCollapsed ? 'rotate(0deg)' : 'rotate(90deg)',
+                    color: token.colorTextQuaternary
+                  }}
+                />
+              </div>
+              {!recentsCollapsed && (
+                <div data-cb-recents-list="true">
+                  {recentConversations.length > 0 ? (
+                    recentConversations.map((item) => {
+                      const isSelected = isRowActive({
+                        sessionId: item.sessionId,
+                        nativeSessionId: item.nativeSessionId,
+                        toolType: item.toolType
+                      })
+                      return (
+                        <div
+                          key={item.key}
+                          data-cb-recent-key={item.key}
+                          data-cb-session-id={item.sessionId || item.nativeSessionId}
+                          onClick={() => {
+                            if (item.sessionId) {
+                              onSelectSession(item.sessionId)
+                            } else if (item.nativeSessionId) {
+                              handleResumeNativeSession(item.workspaceId, item.toolType, item.nativeSessionId, item.title)
+                            }
+                          }}
+                          style={{
+                            ...rowBase,
+                            padding: '2.5px 8px',
+                            minHeight: 23,
+                            gap: 6,
+                            fontSize: 12,
+                            color: isSelected ? token.colorPrimary : token.colorTextSecondary,
+                            background: isSelected ? token.colorPrimaryBg : 'transparent',
+                            borderRadius: token.borderRadiusSM
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isSelected) (e.currentTarget as HTMLElement).style.background = token.colorFillSecondary
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isSelected) (e.currentTarget as HTMLElement).style.background = 'transparent'
+                          }}
+                        >
+                          <span style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
+                            {getAIToolIcon(item.toolType, 12)}
+                          </span>
+                          <span
+                            title={item.title}
+                            style={{
+                              flex: 1,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              lineHeight: '18px'
+                            }}
+                          >
+                            {item.title}
+                          </span>
+                          {item.workspaceTitle && (
+                            <Tag
+                              bordered={false}
+                              title={item.workspaceTitle}
+                              style={{
+                                margin: 0,
+                                maxWidth: 62,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                borderRadius: 4,
+                                fontSize: 10,
+                                lineHeight: '16px',
+                                paddingInline: 4,
+                                background: token.colorFillTertiary,
+                                color: token.colorTextTertiary
+                              }}
+                            >
+                              {item.workspaceTitle}
+                            </Tag>
+                          )}
+                        </div>
+                      )
+                    })
+                  ) : (
+                    <div style={{ padding: '3px 8px 3px 20px', fontSize: 11, color: token.colorTextQuaternary }}>
+                      {t('coding.noRecentSessions')}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
         {sortedGroups.map((group, groupIndex) => {
           const isCollapsed = collapsedGroups.has(group.id)
           const groupWorkspaces = filteredWorkspaces
@@ -1445,7 +2115,7 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
                 ((e.currentTarget as HTMLElement).style.background = 'transparent')
               }
             >
-              <FolderOutlined style={{ fontSize: 12, flexShrink: 0 }} />
+              <AppstoreOutlined style={{ fontSize: 12, flexShrink: 0, color: token.colorTextTertiary }} />
               {isRenamingGroup ? (
                 <Input
                   size="small"
@@ -1514,6 +2184,7 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
                   const isRenamingWs =
                     renameTarget?.type === 'workspace' && renameTarget.id === ws.id
                   const isWsCollapsed = collapsedWorkspaces.has(ws.id)
+                  const isWsActive = isWsCollapsed && ws.id === activeWorkspaceId
                   const nativeState = nativeSessionsMap[ws.id]
                   const nativeVisibleCount = nativeSessionVisibleCounts[ws.id] || NATIVE_HISTORY_PAGE_SIZE
                   const availableNativeSessions = nativeState?.sessions || []
@@ -1561,7 +2232,7 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
                         provisional?.title ||
                         nativeSession?.title ||
                         session.title ||
-                        `${AI_TOOL_SHORT_NAMES[session.toolType] || session.toolType} session`,
+                        `${AI_TOOL_SHORT_NAMES[session.toolType] || session.toolType} chat`,
                       modifiedAt: Math.max(session.updatedAt || 0, nativeSession?.modifiedAt || 0),
                       nativeSessionId: toolSessionId,
                       openedSessionId: session.id
@@ -1588,6 +2259,8 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
                   const wsRowContent = (
                     <div
                       data-cb-ws-id={ws.id}
+                      data-cb-active={isWsActive ? 'true' : undefined}
+                      className="cb-ws-row"
                       style={{
                         ...rowBase,
                         padding: '2.5px 8px',
@@ -1595,34 +2268,56 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
                         gap: 4,
                         fontSize: 13,
                         lineHeight: '19px',
-                        color: token.colorText,
-                        background: 'transparent'
+                        color: isWsActive ? token.colorPrimary : token.colorText,
+                        background: isWsActive ? token.colorPrimaryBg : 'transparent',
+                        borderRadius: token.borderRadiusSM
                       }}
-                      onMouseEnter={(e) =>
-                        ((e.currentTarget as HTMLElement).style.background =
-                          token.colorFillSecondary)
-                      }
-                      onMouseLeave={(e) =>
-                        ((e.currentTarget as HTMLElement).style.background = 'transparent')
-                      }
+                      onClick={() => {
+                        if (isRenamingWs) return
+                        toggleWorkspace(ws.id)
+                        onSelectWorkspace(ws.id)
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isWsActive) {
+                          (e.currentTarget as HTMLElement).style.background =
+                            token.colorFillSecondary
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLElement).style.background =
+                          isWsActive ? token.colorPrimaryBg : 'transparent'
+                      }}
                     >
-                      {/* Drag handle */}
-                      <WorkspaceDragHandle />
-                      {/* Expand/collapse toggle */}
-                      <RightOutlined
-                        style={{
-                          fontSize: 10,
-                          flexShrink: 0,
-                          transition: 'transform 0.18s',
-                          transform: isWsCollapsed ? 'rotate(0deg)' : 'rotate(90deg)',
-                          color: token.colorTextQuaternary,
-                          padding: '2px'
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          toggleWorkspace(ws.id)
-                        }}
-                      />
+                      {/* Folder open/close icon */}
+                      {isWsCollapsed ? (
+                        <FolderOutlined
+                          style={{
+                            fontSize: 13,
+                            flexShrink: 0,
+                            color: ws.id === activeWorkspaceId ? token.colorPrimary : token.colorTextSecondary,
+                            cursor: 'pointer',
+                            padding: '2px'
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            toggleWorkspace(ws.id)
+                          }}
+                        />
+                      ) : (
+                        <FolderOpenOutlined
+                          style={{
+                            fontSize: 13,
+                            flexShrink: 0,
+                            color: token.colorPrimary,
+                            cursor: 'pointer',
+                            padding: '2px'
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            toggleWorkspace(ws.id)
+                          }}
+                        />
+                      )}
                       {isRenamingWs ? (
                         <Input
                           size="small"
@@ -1646,10 +2341,6 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
                               minWidth: 0
                             }}
                             title={ws.workingDir}
-                            onClick={() => {
-                              toggleWorkspace(ws.id)
-                              onSelectWorkspace(ws.id)
-                            }}
                           >
                             <span
                               style={{
@@ -1657,7 +2348,9 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
                                 textOverflow: 'ellipsis',
                                 whiteSpace: 'nowrap',
                                 lineHeight: '19px',
-                                paddingBottom: 1
+                                paddingBottom: 1,
+                                color: isWsActive ? token.colorPrimary : undefined,
+                                fontWeight: isWsActive ? 600 : undefined
                               }}
                             >
                               {ws.title}
@@ -1694,7 +2387,7 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
                               )}
                             </span>
                           )}
-                          {/* Pin indicator */}
+                          {/* Pin indicator - shifts left on hover */}
                           {ws.pinned && (
                             <VerticalAlignTopOutlined
                               title={t('workbench.unpin')}
@@ -1702,6 +2395,7 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
                                 e.stopPropagation()
                                 updateWorkspace(ws.id, { pinned: false })
                               }}
+                              className="cb-ws-pin-icon"
                               style={{ fontSize: 12, color: token.colorTextTertiary, flexShrink: 0, padding: '2px', cursor: 'pointer' }}
                               onMouseEnter={(e) => {
                                 ;(e.currentTarget as HTMLElement).style.color = token.colorPrimary
@@ -1711,20 +2405,26 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
                               }}
                             />
                           )}
-                          {/* Add new session */}
-                          <PlusOutlined
+                          {/* Hover Actions: Add new session */}
+                          <div
+                            className="cb-ws-hover-actions"
                             style={{
-                              fontSize: 12,
-                              color: token.colorTextTertiary,
-                              flexShrink: 0,
-                              padding: '2px'
+                              display: 'none',
+                              alignItems: 'center',
+                              flexShrink: 0
                             }}
-                            title={t('coding.newSession')}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              onNewSession(ws.id)
-                            }}
-                          />
+                          >
+                            <span
+                              title={t('coding.newChat')}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                onNewSession(ws.id)
+                              }}
+                              style={{ display: 'inline-flex', padding: '2px', cursor: 'pointer' }}
+                            >
+                              <PlusOutlined style={{ fontSize: 12, color: token.colorTextTertiary }} />
+                            </span>
+                          </div>
                         </>
                       )}
                     </div>
@@ -1732,16 +2432,22 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
 
                   return (
                     <SortableWorkspaceItem key={ws.id} id={ws.id}>
-                      <Dropdown
-                        menu={{ items: buildWorkspaceMenu(ws) }}
-                        trigger={['contextMenu']}
-                      >
-                        {wsRowContent}
-                      </Dropdown>
+                      <SortableWorkspaceHeader disabled={isRenamingWs}>
+                        <Dropdown
+                          menu={{ items: buildWorkspaceMenu(ws) }}
+                          trigger={['contextMenu']}
+                        >
+                          {wsRowContent}
+                        </Dropdown>
+                      </SortableWorkspaceHeader>
 
                       {/* Sessions — hidden when workspace is collapsed */}
                       {!isWsCollapsed && sessionRows.map((row) => {
-                        const isSelected = activeSessionId === row.openedSessionId
+                        const isSelected = isRowActive({
+                          openedSessionId: row.openedSessionId,
+                          nativeSessionId: row.nativeSessionId,
+                          toolType: row.toolType
+                        })
                         const sessionHasAttention =
                           (!!row.openedSessionId && codingAttentionSet.has(row.openedSessionId)) ||
                           (!!row.nativeSessionId && codingAttentionSet.has(row.nativeSessionId))
@@ -1749,10 +2455,12 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
                         return (
                           <Dropdown
                             key={row.key}
-                            menu={{ items: buildSessionRowMenu(row) }}
+                            menu={{ items: buildSessionRowMenu(row, ws.id) }}
                             trigger={['contextMenu']}
                           >
                             <div
+                              data-cb-session-id={row.openedSessionId || row.nativeSessionId}
+                              data-cb-session-key={row.key}
                               onClick={() => {
                                 if (row.openedSessionId) {
                                   onSelectSession(row.openedSessionId)
@@ -1952,6 +2660,18 @@ const AICodingSidebar: React.FC<AICodingSidebarProps> = ({
         }}
       />
       )}
+
+      {/* Search Modal */}
+      <AICodingSearchModal
+        open={searchModalOpen}
+        onClose={() => setSearchModalOpen(false)}
+        onNewChat={() => onOpenNewChat?.()}
+        onOpenFolder={onNewWorkspace}
+        onSelectSession={handleSelectFromSearch}
+        workspaces={workspaces}
+        sessions={sessions}
+        nativeSessionsMap={nativeSessionsMap}
+      />
     </div>
   )
 }

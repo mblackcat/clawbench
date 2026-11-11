@@ -7,7 +7,9 @@ import { CloseOutlined, MessageOutlined, PlusOutlined } from '@ant-design/icons'
 import PaneTabBar from './PaneTabBar'
 import CodingChatPanel from './CodingChatPanel'
 import CodingTerminalView from './CodingTerminalView'
+import CodingSessionStatusBar from './CodingSessionStatusBar'
 import { useAICodingStore } from '../../stores/useAICodingStore'
+import { findLeaf } from '../../types/split-layout'
 import { useT } from '../../i18n'
 import type { AIToolType, ClaudeViewMode } from '../../types/ai-coding'
 import { EMPTY_KEEP_ALIVE, nextKeepAlive } from '../../utils/terminal-keep-alive'
@@ -208,7 +210,10 @@ const TabGroup: React.FC<TabGroupProps> = ({
 
   const handlePaneClick = useCallback(() => {
     setFocusedPane(paneId)
-    if (activeTabId) setActiveSession(activeTabId)
+    const root = useAICodingStore.getState().globalLayout
+    const leaf = root ? findLeaf(root, paneId) : null
+    const targetSessionId = leaf?.activeTabId ?? activeTabId
+    if (targetSessionId) setActiveSession(targetSessionId)
   }, [paneId, activeTabId, setFocusedPane, setActiveSession])
 
   const [terminalOpen, setTerminalOpen] = useState(false)
@@ -325,8 +330,16 @@ const TabGroup: React.FC<TabGroupProps> = ({
 
   const activeIsChat = !!activeSession && CHAT_VIEW_TOOLS.has(activeSession.toolType) && claudeViewMode === 'chat'
 
+  // Session status bar for coding tools (omp draws its own; a terminal is a plain shell)
+  const showStatusBar =
+    !!activeTabId &&
+    !!activeSession &&
+    activeSession.toolType !== 'omp' &&
+    activeSession.toolType !== 'terminal'
+
   const activeContent = (
-    <div style={{ position: 'relative', height: '100%', width: '100%', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
+    <div style={{ position: 'relative', flex: 1, minHeight: 0, width: '100%', overflow: 'hidden' }}>
       {activeTabId && activeSession ? (
         activeIsChat && (
           <CodingChatPanel
@@ -373,6 +386,15 @@ const TabGroup: React.FC<TabGroupProps> = ({
           </div>
         )
       })}
+    </div>
+    {showStatusBar && (
+      <CodingSessionStatusBar
+        sessionId={activeTabId!}
+        session={activeSession!}
+        workingDir={activeWorkingDir}
+        onToggleGitPanel={onToggleGitPanel}
+      />
+    )}
     </div>
   )
 

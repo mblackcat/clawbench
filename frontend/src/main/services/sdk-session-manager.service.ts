@@ -27,6 +27,7 @@ import type {
 } from '@anthropic-ai/claude-agent-sdk'
 import { createMessageQueue, type MessageQueue } from './coding-adapters/message-queue'
 import { processClaudeMessage, createClaudeStreamState, type ClaudeStreamState } from './coding-adapters/claude-stream'
+import { resolveClaudeContextWindow } from './coding-adapters/claude-context'
 import { scanAndMergeInstructions } from './coding-adapters/instructions'
 import type { CodingStreamEvent } from './coding-adapters/stream-events'
 import { createTerminalExecMcp, TERMINAL_EXEC_MCP_NAME, type TerminalExecTarget } from './terminal-exec-mcp'
@@ -120,6 +121,15 @@ interface SDKSessionState {
   execTarget?: TerminalExecTarget
   /** Server-side streaming accumulation state. */
   streamState: ClaudeStreamState
+  lastModel?: string
+  lastCostUsd?: number
+  lastUsage?: {
+    inputTokens?: number
+    cachedInputTokens?: number
+    outputTokens?: number
+    usedTokens?: number
+    contextWindow?: number
+  }
   /** Callbacks registered by ai-coding.service.ts. */
   onEvent?: (sessionId: string, data: Record<string, unknown>) => void
   onClose?: (sessionId: string) => void
@@ -255,6 +265,41 @@ export function detectManagedInteractiveState(
 // ── Forward events to renderer + service layer ──
 
 function emit(sessionId: string, state: SDKSessionState, event: CodingStreamEvent): void {
+  // Window when an event doesn't carry one: derive it from the session's model
+  // (`[1m]` configured → 1M) rather than assuming 200k.
+  const fallbackWindow = (usedTokens?: number): number => resolveClaudeContextWindow({
+    models: [state.streamState.configuredModel, state.lastModel],
+    reported: state.streamState.contextWindow,
+    usedTokens,
+  })
+  if (event.type === 'context_usage') {
+    if (event.model) state.lastModel = event.model
+    if (event.usage) {
+      const u = event.usage
+      const prev = state.lastUsage
+      const usedTokens = u.usedTokens ?? prev?.usedTokens ?? (((u.inputTokens ?? prev?.inputTokens) || 0) + ((u.cachedInputTokens ?? prev?.cachedInputTokens) || 0) + ((u.outputTokens ?? prev?.outputTokens) || 0))
+      state.lastUsage = {
+        inputTokens: u.inputTokens ?? prev?.inputTokens,
+        cachedInputTokens: u.cachedInputTokens ?? prev?.cachedInputTokens,
+        outputTokens: u.outputTokens ?? prev?.outputTokens,
+        usedTokens,
+        contextWindow: u.contextWindow ?? prev?.contextWindow ?? fallbackWindow(usedTokens),
+      }
+    }
+  } else if (event.type === 'result') {
+    if (event.model) state.lastModel = event.model
+    if (typeof event.cost_usd === 'number') state.lastCostUsd = event.cost_usd
+    if (event.usage) {
+      state.lastUsage = {
+        inputTokens: event.usage.inputTokens,
+        cachedInputTokens: event.usage.cachedInputTokens,
+        outputTokens: event.usage.outputTokens,
+        usedTokens: event.usage.usedTokens,
+        contextWindow: event.usage.contextWindow ?? fallbackWindow(event.usage.usedTokens),
+      }
+    }
+  }
+
   // Keep the IM ring buffer roughly in sync with streamed content.
   switch (event.type) {
     case 'delta':
@@ -280,6 +325,26 @@ function emit(sessionId: string, state: SDKSessionState, event: CodingStreamEven
   BrowserWindow.getAllWindows().forEach((win) => {
     win.webContents.send('ai-coding:pipe-event', { sessionId, event })
   })
+}
+
+export function getLiveSDKStats(sessionId: string): {
+  model?: string
+  costUsd?: number
+  contextUsage?: {
+    inputTokens?: number
+    cachedInputTokens?: number
+    outputTokens?: number
+    usedTokens?: number
+    contextWindow?: number
+  }
+} | null {
+  const state = sdkSessions.get(sessionId)
+  if (!state) return null
+  return {
+    model: state.lastModel,
+    costUsd: state.lastCostUsd,
+    contextUsage: state.lastUsage,
+  }
 }
 
 // ── Local slash command interception (uses Query control methods) ──
@@ -317,7 +382,17 @@ async function handleLocalSlashCommand(
     if (q) {
       try {
         await q.setModel(modelName)
+        state.lastModel = modelName
+        // New model may have a different window (e.g. `sonnet[1m]`); re-resolve on the next request.
+        state.streamState.configuredModel = modelName
+        state.streamState.contextWindow = undefined
         emitLocalSystem(sessionId, state, `模型已切换为: ${modelName}`)
+        // Carry the new model's window so the status bar doesn't keep the old one until the next request.
+        emit(sessionId, state, {
+          type: 'context_usage',
+          model: modelName,
+          usage: { contextWindow: resolveClaudeContextWindow({ models: [modelName] }) },
+        })
       } catch (err: any) {
         emitLocalSystem(sessionId, state, `切换模型失败: ${err?.message || String(err)}`)
       }
