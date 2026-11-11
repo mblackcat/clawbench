@@ -15,6 +15,7 @@ import type { SubAppManifest } from '../types/subapp'
 import type { RemoteTaskItem } from '../types/ipc'
 import AppParamFields, { type AppParamFieldsHandle } from './AppParamFields'
 import AppScheduleModal from './AppScheduleModal'
+import { AppIcon } from './AppIcon'
 import { useAppScheduleStore } from '../stores/useAppScheduleStore'
 import { useT } from '../i18n'
 
@@ -29,6 +30,8 @@ interface ParamDrawerProps {
   open: boolean
   onClose: () => void
   manifest: SubAppManifest | null
+  /** Icon override (server-configured market / builtin icon); defaults to manifest.icon */
+  icon?: string
   initialValues?: Record<string, unknown>
   resolveSlot: (
     appId: string,
@@ -45,6 +48,7 @@ const ParamDrawer: React.FC<ParamDrawerProps> = ({
   open,
   onClose,
   manifest,
+  icon,
   initialValues,
   resolveSlot,
   onSubmit,
@@ -107,6 +111,15 @@ const ParamDrawer: React.FC<ParamDrawerProps> = ({
           justifyContent: 'center'
         }}
       />
+      {manifest && (
+        <AppIcon
+          icon={icon || manifest.icon}
+          name={manifest.name}
+          category={manifest.category}
+          size={22}
+          style={{ marginInlineEnd: 2 }}
+        />
+      )}
       <Text strong ellipsis style={{ minWidth: 0, flex: 1 }}>
         {manifest ? manifest.name : ''}
       </Text>
@@ -147,6 +160,9 @@ const ParamDrawer: React.FC<ParamDrawerProps> = ({
       />
     </Tooltip>
   ) : null
+  // Background clicks don't close the drawer (avoids losing typed params) unless
+  // the manifest explicitly opts in with mask_closable / maskClosable: true
+  const maskClosable = Boolean(manifest?.mask_closable ?? manifest?.maskClosable ?? false)
 
   return (
     <Drawer
@@ -158,6 +174,7 @@ const ParamDrawer: React.FC<ParamDrawerProps> = ({
       width={400}
       open={open}
       onClose={onClose}
+      maskClosable={maskClosable}
       destroyOnHidden
       // Keep above layout chrome; no-drag is enforced globally in theme-overhaul.css
       zIndex={1100}

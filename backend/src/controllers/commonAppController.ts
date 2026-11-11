@@ -24,6 +24,18 @@ import { storageService } from '../services/storage';
 import { logger } from '../utils/logger';
 import { validatePackageManifestId } from '../utils/zip';
 
+/** TEXT column on MySQL holds 64 KB; keep data URIs comfortably below that. */
+const MAX_ICON_LENGTH = 60000;
+
+/** Icon: http(s) URL, server-relative path, or an inline image data URI (no other schemes). */
+function isValidCommonAppIcon(icon: unknown): icon is string {
+  if (typeof icon !== 'string') return false;
+  const v = icon.trim();
+  if (v === '') return true;
+  if (v.length > MAX_ICON_LENGTH) return false;
+  return /^https?:\/\//i.test(v) || (v.startsWith('/') && !v.startsWith('//')) || /^data:image\//i.test(v);
+}
+
 /** Storage namespace for common-app archives (never collides with marketplace application_id dirs). */
 function commonAppStorageNamespace(appKey: string): string {
   return `builtin-${appKey.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
@@ -79,7 +91,7 @@ export async function updateCommonAppHandler(req: AuthRequest, res: Response): P
       return;
     }
 
-    const { name, description, version, enabled, sortOrder, pinned, config } = req.body;
+    const { name, description, version, icon, enabled, sortOrder, pinned, config } = req.body;
 
     if (name !== undefined && (typeof name !== 'string' || name.trim().length === 0)) {
       res.status(400).json({
@@ -98,6 +110,17 @@ export async function updateCommonAppHandler(req: AuthRequest, res: Response): P
         error: {
           code: 'VALIDATION_ERROR',
           message: 'Description must be a string',
+        },
+      });
+      return;
+    }
+
+    if (icon !== undefined && icon !== null && !isValidCommonAppIcon(icon)) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: `Icon must be null or an http(s) URL, a /path or a data:image URI (max ${MAX_ICON_LENGTH} chars)`,
         },
       });
       return;
@@ -162,6 +185,7 @@ export async function updateCommonAppHandler(req: AuthRequest, res: Response): P
     if (name !== undefined) input.name = name.trim();
     if (description !== undefined) input.description = description.trim();
     if (version !== undefined) input.version = version === null ? null : version.trim();
+    if (icon !== undefined) input.icon = icon === null || icon.trim() === '' ? null : icon.trim();
     if (enabled !== undefined) input.enabled = enabled;
     if (sortOrder !== undefined) input.sortOrder = sortOrder;
     if (pinned !== undefined) input.pinned = pinned;

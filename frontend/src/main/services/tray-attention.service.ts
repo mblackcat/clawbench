@@ -301,12 +301,9 @@ function buildTrayMenu(): Menu {
   const template: Electron.MenuItemConstructorOptions[] = [
     {
       label: mainT('tray.open'),
+      // Same as a left-click: show the window and open (= clear) the first attention
       click: () => {
-        try {
-          showMainWindow()
-        } catch (err) {
-          logger.warn('Show main window failed:', err)
-        }
+        onTrayActivate()
       }
     }
   ]

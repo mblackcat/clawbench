@@ -11,6 +11,8 @@ interface ConfirmRunDialogProps {
   onCancel: () => void
   appName: string
   params: Record<string, unknown> | null
+  /** Close on background click. Default false (avoids accidental dismissal). */
+  maskClosable?: boolean
 }
 
 const ConfirmRunDialog: React.FC<ConfirmRunDialogProps> = ({
@@ -18,7 +20,8 @@ const ConfirmRunDialog: React.FC<ConfirmRunDialogProps> = ({
   onConfirm,
   onCancel,
   appName,
-  params
+  params,
+  maskClosable = false
 }) => {
   const t = useT()
   const hasParams = params && Object.keys(params).length > 0
@@ -32,6 +35,7 @@ const ConfirmRunDialog: React.FC<ConfirmRunDialogProps> = ({
         </Space>
       }
       open={open}
+      maskClosable={maskClosable}
       onOk={onConfirm}
       onCancel={onCancel}
       okText={t('paramDrawer.run')}

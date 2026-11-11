@@ -7,6 +7,7 @@ import { generateToken, calculateExpiresAt } from '../utils/jwt';
 import { createAuthToken } from '../repositories/authTokenRepository';
 import { createUser } from '../repositories/userRepository';
 import { createProject } from '../repositories/projectRepository';
+import { createCommonAppExecutionError } from '../repositories/commonAppRepository';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -222,6 +223,51 @@ describe('Common Apps API', () => {
         .put('/api/v1/common-apps/clean-workspace')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({ pinned: false });
+    });
+
+    it('should update and clear the icon of a common app', async () => {
+      const response = await request(app)
+        .put('/api/v1/common-apps/clean-workspace')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ icon: 'https://example.com/icon.png' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.commonApp.icon).toBe('https://example.com/icon.png');
+
+      const getRes = await request(app)
+        .get('/api/v1/common-apps')
+        .set('Authorization', `Bearer ${adminToken}`);
+      const cleanApp = getRes.body.data.commonApps.find((a: any) => a.appKey === 'clean-workspace');
+      expect(cleanApp.icon).toBe('https://example.com/icon.png');
+
+      const clearRes = await request(app)
+        .put('/api/v1/common-apps/clean-workspace')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ icon: null });
+      expect(clearRes.status).toBe(200);
+      expect(clearRes.body.data.commonApp.icon).toBeNull();
+    });
+
+    it('should reject icons with unsupported schemes', async () => {
+      for (const icon of ['javascript:alert(1)', '//evil.example/x.png', 123]) {
+        const response = await request(app)
+          .put('/api/v1/common-apps/clean-workspace')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ icon });
+        expect(response.status).toBe(400);
+      }
+    });
+
+    it('should report per-app error counts', async () => {
+      await createCommonAppExecutionError({ appKey: 'env-check', userId: adminUserId, message: 'boom' });
+      await createCommonAppExecutionError({ appKey: 'env-check', userId: adminUserId, message: 'boom 2' });
+
+      const getRes = await request(app)
+        .get('/api/v1/common-apps')
+        .set('Authorization', `Bearer ${adminToken}`);
+      const apps = getRes.body.data.commonApps;
+      expect(apps.find((a: any) => a.appKey === 'env-check').errorCount).toBe(2);
+      expect(apps.find((a: any) => a.appKey === 'clean-workspace').errorCount).toBe(0);
     });
 
     it('should still include disabled apps in the global list', async () => {

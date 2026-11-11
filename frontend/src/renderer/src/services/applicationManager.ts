@@ -8,6 +8,8 @@ import type { Application, ApplicationDetail, ApplicationType } from '../types/a
 import { localStorageManager } from './localStorageManager';
 import { builtinAppKeyFromId, isBuiltinAppId } from '../utils/app-status';
 import { useSettingsStore } from '../stores/useSettingsStore';
+import { runAfterInstallIfEnabled } from '../utils/run-after-install';
+import type { SubAppManifest } from '../types/subapp';
 
 /**
  * 已安装应用的最小结构（用于版本检查）。与各处本地定义的 SubAppInfo 结构兼容。
@@ -187,6 +189,12 @@ class ApplicationManager {
       if (isBuiltinAppId(applicationId)) {
         await window.api.subapp.clearBuiltinRemoved(applicationId).catch(() => undefined);
       }
+
+      // manifest.run_after_install: kick off one run (fire-and-forget, never fails the install)
+      void runAfterInstallIfEnabled(
+        (result.manifest?.id as string | undefined) || applicationId,
+        result.manifest as Partial<SubAppManifest> | undefined
+      );
 
       return true;
     } catch (error) {

@@ -14,7 +14,8 @@ vi.mock('../project.service', () => ({
   enrichBuiltinAppParams: (...args: unknown[]) => enrich(...args)
 }))
 vi.mock('../../store/auth.store', () => ({
-  getUser: () => ({ id: 'u1', name: 'Ann', email: 'a@x', feishuId: 'f1' })
+  getUser: () => ({ id: 'u1', name: 'Ann', email: 'a@x', feishuId: 'f1' }),
+  getFeishuPlatformAppId: () => 'cli_test'
 }))
 const { resolvePython, installReqs } = vi.hoisted(() => ({ resolvePython: vi.fn(), installReqs: vi.fn() }))
 vi.mock('../python-runner.service', () => ({
@@ -60,7 +61,7 @@ describe('gateSubAppRun', () => {
     expect(enrich.mock.calls[0][2]).toEqual({ a: 1 })
     expect(res).toMatchObject({
       ok: true,
-      params: { a: 1, __app_config: { k: 1 }, __user: { userId: 'u1', feishuId: 'f1' } }
+      params: { a: 1, __app_config: { k: 1 }, __user: { userId: 'u1', feishuId: 'f1', platformAppId: 'cli_test' } }
     })
   })
 

@@ -16,6 +16,7 @@ import {
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { applicationManager } from '../../services/applicationManager';
+import { ApiClientError } from '../../services/apiClient';
 import type { Application } from '../../types/api';
 import { useSubAppStore } from '../../stores/useSubAppStore';
 import { useAuthStore, useIsAdmin } from '../../stores/useAuthStore';
@@ -30,7 +31,7 @@ import { seedTaskFromExecuteResult, describeEarlyTerminal } from '../../utils/su
 import { isAuthoredByCurrentUser } from '../../utils/app-identity';
 import { isBuiltinAppId, resolveLocalAppStatus, type AppCardStatus } from '../../utils/app-status';
 import { AppVersionTag } from '../../components/AppStatusTag';
-import { AppIcon } from '../../components/AppIcon';
+import { AppIcon, getMarketAppIcon } from '../../components/AppIcon';
 import { FolderCard } from '../../components/FolderCard';
 
 const { Title, Text } = Typography;
@@ -59,6 +60,8 @@ interface MineItem {
   /** Server version when known */
   remoteVersion?: string
   description: string
+  /** Server icon/cover (market metadata), else manifest.icon */
+  icon?: string
   category: MineTabKey
   /** Local manifest when on disk */
   manifest?: SubAppManifest
@@ -266,6 +269,7 @@ const MyContributionsPage: React.FC = () => {
         version: manifest.version || remoteVersion || '1.0.0',
         remoteVersion,
         description: manifest.description || '',
+        icon: getMarketAppIcon(serverMatch) || manifest.icon,
         category: toTabKey(manifest.type),
         manifest,
         appType,
@@ -285,6 +289,7 @@ const MyContributionsPage: React.FC = () => {
         version: app.version || '1.0.0',
         remoteVersion: app.version,
         description: app.description || '',
+        icon: getMarketAppIcon(app),
         category: toTabKey(app.type),
         appType: app.published ? 'published' : 'local',
         status: 'remote_only',
@@ -563,13 +568,19 @@ const MyContributionsPage: React.FC = () => {
       cancelText: t('common.cancel'),
       onOk: async () => {
         try {
-          await applicationManager.deleteApplication(applicationId);
+          try {
+            await applicationManager.deleteApplication(applicationId);
+          } catch (error) {
+            // 404: the cloud record is already gone (e.g. deleted from another client) → treat as deleted
+            if (!(error instanceof ApiClientError && error.status === 404)) throw error;
+          }
           message.success(t('mine.deleteRemoteSuccess'));
           await loadApps();
           setIsJiggleMode(false);
         } catch (error) {
           console.error('Failed to delete remote app:', error);
-          message.error(t('mine.deleteRemoteFailed'));
+          const reason = error instanceof Error ? error.message : '';
+          message.error(reason ? t('mine.deleteFailedReason', reason) : t('mine.deleteRemoteFailed'));
         }
       }
     });
@@ -703,7 +714,7 @@ const MyContributionsPage: React.FC = () => {
             width: 'calc(100% - 74px)'
           }}
         >
-          <AppIcon icon={app?.icon} name={item.name} category={app?.category} size={28} />
+          <AppIcon icon={item.icon || app?.icon} name={item.name} category={app?.category} size={28} />
           <Tooltip title={item.name}>
             <Text
               strong

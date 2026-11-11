@@ -27,9 +27,22 @@ export interface SubAppManifest {
   python_requirements?: string
   supported_workspace_types?: string[]
   confirm_before_run?: boolean
+  /** Close the params drawer on background click. Default false (avoids accidental dismissal). */
+  mask_closable?: boolean
+  maskClosable?: boolean
+  /** Execute once automatically right after a marketplace install. Default false. */
+  run_after_install?: boolean
   params?: ParamDef[]
   min_sdk_version?: string
   published?: boolean // 是否已发布到服务端
+}
+
+/** An installed sub-app as listed by `subapp:list` (manifest + install dir). */
+export interface SubAppInfo {
+  id: string
+  manifest: SubAppManifest
+  path: string
+  source: 'user'
 }
 
 /**

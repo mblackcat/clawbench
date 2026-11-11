@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { TaskInfo, TaskStatus, SubAppOutput } from '../types/subapp'
+import { useAttentionStore } from './useAttentionStore'
 
 /** How long the transient error alert (avatar ring pulse) stays visible. */
 export const ERROR_ALERT_DURATION_MS = 6000
@@ -184,6 +185,13 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   clearCompleted: () => {
     get().dismissErrorAlert()
+    // Clearing finished tasks also clears their workbench completion attentions
+    // (otherwise the tray / sidebar red dot outlives the tasks it pointed at)
+    try {
+      useAttentionStore.getState().dismissBySource('workbench')
+    } catch {
+      // attention store unavailable (tests / early boot)
+    }
     set((state) => {
       const tasks: Record<string, TaskInfo> = {}
       for (const [id, task] of Object.entries(state.tasks)) {
@@ -198,9 +206,12 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   addSystemLog: (entry: SystemLogEntry) => {
+    // Routine background info logs (heartbeats, update checks…) must not light
+    // the logs red dot, otherwise it never stays cleared
+    const isAlertLevel = entry.level === 'error' || entry.message.includes('[local-env]')
     set((state) => ({
       systemLogs: [...state.systemLogs.slice(-499), entry],
-      hasUnreadLogs: true
+      hasUnreadLogs: isAlertLevel ? true : state.hasUnreadLogs
     }))
   },
 

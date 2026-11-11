@@ -146,16 +146,31 @@ describe('useTaskStore error alert & unread logs', () => {
 
   it('tracks unread system logs', () => {
     const store = useTaskStore.getState()
-    store.addSystemLog({ level: 'info', message: 'installed', timestamp: Date.now() })
+    store.addSystemLog({ level: 'error', message: 'install failed', timestamp: Date.now() })
     expect(useTaskStore.getState().hasUnreadLogs).toBe(true)
 
     store.markLogsRead()
     expect(useTaskStore.getState().hasUnreadLogs).toBe(false)
     expect(useTaskStore.getState().systemLogs.length).toBe(1)
 
-    store.addSystemLog({ level: 'info', message: 'again', timestamp: Date.now() })
+    store.addSystemLog({ level: 'error', message: 'again', timestamp: Date.now() })
     store.clearSystemLogs()
     expect(useTaskStore.getState().hasUnreadLogs).toBe(false)
     expect(useTaskStore.getState().systemLogs.length).toBe(0)
+  })
+
+  it('does not set hasUnreadLogs on routine background info logs, but does for errors', () => {
+    const store = useTaskStore.getState()
+    store.markLogsRead()
+    store.addSystemLog({ level: 'info', message: '[IM] Heartbeat ok', timestamp: Date.now() })
+    store.addSystemLog({ level: 'info', message: '[AutoUpdate] Checking for updates...', timestamp: Date.now() })
+    expect(useTaskStore.getState().hasUnreadLogs).toBe(false)
+
+    store.addSystemLog({ level: 'info', message: '[local-env] node installed', timestamp: Date.now() })
+    expect(useTaskStore.getState().hasUnreadLogs).toBe(true)
+
+    store.markLogsRead()
+    store.addSystemLog({ level: 'error', message: '[Store] Failed to parse config file', timestamp: Date.now() })
+    expect(useTaskStore.getState().hasUnreadLogs).toBe(true)
   })
 })

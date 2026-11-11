@@ -23,12 +23,16 @@ import {
   SyncOutlined,
   DeleteOutlined,
   EditOutlined,
+  CaretRightOutlined,
 } from '@ant-design/icons';
 import { applicationManager } from '../../services/applicationManager';
 import { localStorageManager } from '../../services/localStorageManager';
 import { apiClient } from '../../services/apiClient';
 import type { ApplicationDetail } from '../../types/api';
 import { useT } from '../../i18n';
+import { normalizeAppType } from '../../utils/app-match';
+import { AppIcon, getMarketAppIcon } from '../../components/AppIcon';
+import { useRunInstalledApp, resolveInstalledSubApp } from '../../hooks/useRunInstalledApp';
 
 const { Title, Paragraph, Text } = Typography;
 
@@ -43,6 +47,23 @@ const AppDetailPage: React.FC = () => {
   const [hasUpdate, setHasUpdate] = useState(false);
   const [operating, setOperating] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
+  const { runApp, paramDrawer } = useRunInstalledApp();
+  const canRun = isInstalled && !!app && normalizeAppType(app.type) === 'app';
+
+  const handleRun = async () => {
+    if (!app || !appId) return;
+    const local = await resolveInstalledSubApp(appId, app.name);
+    if (!local) {
+      message.error(t('workbench.runFailed'));
+      return;
+    }
+    await runApp(
+      local.id || local.manifest.id,
+      app.name || local.manifest.name,
+      local.manifest,
+      getMarketAppIcon(app)
+    );
+  };
 
   useEffect(() => {
     if (appId) {
@@ -187,23 +208,31 @@ const AppDetailPage: React.FC = () => {
       <Card>
         <div style={{ marginBottom: 24 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <Title level={3} style={{ marginBottom: 8 }}>
-                {app.name}
-              </Title>
-              <Space>
-                <Tag color="blue">{app.category}</Tag>
-                <Tag color={app.published ? 'success' : 'warning'}>
-                  {app.published ? t('appDetail.published') : t('appDetail.unpublished')}
-                </Tag>
-                {isInstalled && <Tag color="success">{t('appDetail.installed')}</Tag>}
-                {hasUpdate && <Tag color="orange">{t('appDetail.hasUpdate')}</Tag>}
-              </Space>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <AppIcon icon={getMarketAppIcon(app)} name={app.name} category={app.category} size={48} />
+              <div>
+                <Title level={3} style={{ marginBottom: 8, marginTop: 0 }}>
+                  {app.name}
+                </Title>
+                <Space>
+                  <Tag color="blue">{app.category}</Tag>
+                  <Tag color={app.published ? 'success' : 'warning'}>
+                    {app.published ? t('appDetail.published') : t('appDetail.unpublished')}
+                  </Tag>
+                  {isInstalled && <Tag color="success">{t('appDetail.installed')}</Tag>}
+                  {hasUpdate && <Tag color="orange">{t('appDetail.hasUpdate')}</Tag>}
+                </Space>
+              </div>
             </div>
             <Space>
               {isOwner && (
                 <Button icon={<EditOutlined />} onClick={handleEdit}>
                   {t('appDetail.edit')}
+                </Button>
+              )}
+              {canRun && (
+                <Button type="primary" icon={<CaretRightOutlined />} onClick={handleRun}>
+                  {t('workbench.run')}
                 </Button>
               )}
               {!isInstalled && (
@@ -307,6 +336,8 @@ const AppDetailPage: React.FC = () => {
           </>
         )}
       </Card>
+
+      {paramDrawer}
     </div>
   );
 };

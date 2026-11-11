@@ -257,4 +257,59 @@ describe('ParamDrawer dynamic options', () => {
     expect(document.body.textContent).toContain('Other App')
     expect(selectedModel()).toBe('other-old')
   })
+
+  const renderWithManifest = async (m: SubAppManifest, onClose: () => void): Promise<void> => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    mounted.push({ root, container })
+    await act(async () => {
+      root.render(
+        <AntdApp>
+          <ParamDrawer
+            open
+            onClose={onClose}
+            manifest={m}
+            initialValues={{ proxy_url: 'http://proxy', model: 'old' }}
+            resolveSlot={vi.fn()}
+            onSubmit={vi.fn()}
+          />
+        </AntdApp>
+      )
+      await Promise.resolve()
+    })
+  }
+
+  const clickMask = async (): Promise<void> => {
+    const mask = document.querySelector<HTMLElement>('.ant-drawer-mask')
+    expect(mask).toBeTruthy()
+    await act(async () => {
+      mask?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      await Promise.resolve()
+    })
+  }
+
+  it('does not close on a background mask click by default, only via the close button', async () => {
+    const onClose = vi.fn()
+    await renderWithManifest(manifest, onClose)
+
+    await clickMask()
+    expect(onClose).not.toHaveBeenCalled()
+
+    const closeBtn = document.querySelector<HTMLButtonElement>('.ant-drawer-header button[aria-label]')
+    expect(closeBtn).toBeTruthy()
+    await act(async () => {
+      closeBtn?.click()
+      await Promise.resolve()
+    })
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('closes on a background mask click only when mask_closable is explicitly true', async () => {
+    const onClose = vi.fn()
+    await renderWithManifest({ ...manifest, mask_closable: true }, onClose)
+
+    await clickMask()
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
 })

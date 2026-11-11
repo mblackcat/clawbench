@@ -157,6 +157,7 @@ const AppScheduleModal: React.FC<AppScheduleModalProps> = ({
   return (
     <Modal
       open={open}
+      maskClosable={false}
       onCancel={onClose}
       title={
         <Space size={6}>

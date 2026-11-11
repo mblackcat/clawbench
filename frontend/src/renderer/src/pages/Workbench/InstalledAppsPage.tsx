@@ -46,9 +46,10 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useNavigate, useLocation } from 'react-router-dom';
-import type { SubAppManifest } from '../../types/subapp';
+import type { SubAppManifest, SubAppInfo } from '../../types/subapp';
 import { resolveAppPublished } from '../../types/subapp';
 import { useSubAppStore } from '../../stores/useSubAppStore';
+import { useRunAfterInstallStore } from '../../stores/useRunAfterInstallStore';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore';
@@ -65,7 +66,7 @@ import type { AppPreviewLocationState } from '../../hooks/useProtocolOpenApp';
 import CreateTypeModal from '../../components/CreateTypeModal';
 import NavBookmarkBar from '../../components/NavBookmarkBar';
 import { FolderCard } from '../../components/FolderCard';
-import { AppIcon } from '../../components/AppIcon';
+import { AppIcon, getMarketAppIcon } from '../../components/AppIcon';
 import { AppStatusTag, AppVersionTag } from '../../components/AppStatusTag';
 import {
   BUILTIN_APP_ID_PREFIX,
@@ -90,12 +91,6 @@ const { Title, Text } = Typography;
 type ViewMode = 'tiled' | 'tabbed';
 const VIEW_MODE_STORAGE_KEY = 'workbench.viewMode';
 
-interface SubAppInfo {
-  id: string
-  manifest: SubAppManifest
-  path: string
-  source: 'user'
-}
 
 // Publication status. Renamed from 'installed' (which was misleading — every
 // card here is favorited) to 'published' so the tag actually conveys useful
@@ -115,6 +110,8 @@ interface AppWithType extends SubAppInfo {
   origin: AppOrigin
   /** Marketplace applicationId when matched (id first, then name). */
   applicationId?: string
+  /** Server-configured icon (market app metadata / admin-set builtin icon); overrides manifest.icon */
+  remoteIcon?: string
 }
 
 /**
@@ -151,7 +148,7 @@ interface SortableCardProps {
   onCopyPrompt: (id: string) => void
   onTryPrompt: (id: string) => void
   onViewDetail: (id: string) => void
-  onShowDetail: (id: string, manifest: SubAppManifest) => void
+  onShowDetail: (id: string, manifest: SubAppManifest, icon?: string) => void
   /** 更新到最新版本（市场 / 服务端归档 / 自带版本） */
   onUpdate: (app: AppWithType) => void
   /** 重置为线上 / 自带版本（本地版本高于基线时） */
@@ -194,6 +191,7 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
 }) => {
   const { id, manifest, status, origin } = appWithType;
   const app = manifest;
+  const cardIcon = appWithType.remoteIcon || manifest.icon;
   const manifestType = app.type || 'app';
   const isBuiltin = origin === 'builtin';
   const isDraft = status === 'draft';
@@ -328,12 +326,12 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
         style={{ cursor: 'pointer' }}
         onClick={(e) => {
           e.stopPropagation();
-          onShowDetail(id, manifest);
+          onShowDetail(id, manifest, cardIcon);
         }}
       >
         {/* Header: icon + single-line title (leaves room for the notch actions) */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 32, width: onShare ? 'calc(100% - 104px)' : 'calc(100% - 74px)' }}>
-          <AppIcon icon={manifest.icon} name={app.name} category={manifest.category} size={28} />
+          <AppIcon icon={cardIcon} name={app.name} category={manifest.category} size={28} />
           <Tooltip
             title={
               <div>
@@ -407,7 +405,7 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
                   className="cb-round-action-btn cb-round-action-neutral"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onShowDetail(id, manifest);
+                    onShowDetail(id, manifest, cardIcon);
                   }}
                 >
                   <SyncOutlined spin style={{ color: token.colorPrimary, fontSize: 13 }} />
@@ -600,6 +598,8 @@ const InstalledAppsPage: React.FC = () => {
   const [marketByName, setMarketByName] = useState<Map<string, Application>>(new Map());
   /** Builtin server (or bundled) version keyed by full app id. */
   const [builtinRemoteVersion, setBuiltinRemoteVersion] = useState<Map<string, string>>(new Map());
+  /** Admin-configured builtin icons by full app id (refreshed on every sync) */
+  const [builtinIcons, setBuiltinIcons] = useState<Map<string, string>>(new Map());
   /** appKeys whose server has an admin-published archive (update pulls server bytes). */
   const [builtinHasArchive, setBuiltinHasArchive] = useState<Set<string>>(new Set());
   /** Builtins pinned by an admin (server common_apps.pinned); empty in local mode. */
@@ -613,6 +613,7 @@ const InstalledAppsPage: React.FC = () => {
   const [registeredShortcutDigits, setRegisteredShortcutDigits] = useState<Set<number>>(new Set());
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerManifest, setDrawerManifest] = useState<SubAppManifest | null>(null);
+  const [drawerIcon, setDrawerIcon] = useState<string | undefined>(undefined);
   const [drawerAppId, setDrawerAppId] = useState<string>('');
   const [drawerInitialValues, setDrawerInitialValues] = useState<Record<string, unknown>>({});
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -743,6 +744,18 @@ const InstalledAppsPage: React.FC = () => {
       );
       setBuiltinRemoteVersion(versions);
       setBuiltinHasArchive(archiveKeys);
+    }
+
+    // Icons: global list, overlaid by the project list (both carry the admin icon)
+    const icons = new Map<string, string>();
+    for (const res of [globalRes, projectRes]) {
+      if (res.status !== 'fulfilled' || !res.value) continue;
+      for (const ca of res.value.commonApps) {
+        if (ca.icon) icons.set(`${BUILTIN_APP_ID_PREFIX}${ca.appKey}`, ca.icon);
+      }
+    }
+    if (globalRes.status === 'fulfilled' || (projectRes.status === 'fulfilled' && projectRes.value)) {
+      setBuiltinIcons(icons);
     }
 
     if (activeProjectId) {
@@ -881,6 +894,7 @@ const InstalledAppsPage: React.FC = () => {
     marketById,
     marketByName,
     builtinRemoteVersion,
+    builtinIcons,
     enabledBuiltinKeys
   ]);
 
@@ -918,8 +932,10 @@ const InstalledAppsPage: React.FC = () => {
 
         let remoteVersion: string | undefined;
         let applicationId: string | undefined;
+        let remoteIcon: string | undefined;
         if (builtin) {
           remoteVersion = builtinRemoteVersion.get(info.id);
+          remoteIcon = builtinIcons.get(info.id);
         } else {
           let market = marketById.get(info.id);
           if (!market) {
@@ -929,6 +945,7 @@ const InstalledAppsPage: React.FC = () => {
           if (market) {
             remoteVersion = market.version;
             applicationId = market.applicationId;
+            remoteIcon = getMarketAppIcon(market);
           }
           if (!remoteVersion) {
             const upd = updateMap[info.id];
@@ -946,7 +963,7 @@ const InstalledAppsPage: React.FC = () => {
           remoteVersion
         });
 
-        return { ...info, appType, status, remoteVersion, origin, applicationId };
+        return { ...info, appType, status, remoteVersion, origin, applicationId, remoteIcon };
       });
 
     // Sort: pinned apps first (within their type group — grouping happens
@@ -1105,6 +1122,7 @@ const InstalledAppsPage: React.FC = () => {
     if (hasRequiredParams || manifest.confirm_before_run) {
       setDrawerAppId(appId);
       setDrawerManifest(manifest);
+      setDrawerIcon(undefined);
       setDrawerInitialValues(buildInitialAppParams(appId, params));
       setDrawerOpen(true);
       return;
@@ -1113,9 +1131,10 @@ const InstalledAppsPage: React.FC = () => {
   }, []);
 
   /** Always open the detail sidebar for the given app. */
-  const handleShowDetail = useCallback((appId: string, manifest: SubAppManifest) => {
+  const handleShowDetail = useCallback((appId: string, manifest: SubAppManifest, icon?: string) => {
     setDrawerAppId(appId);
     setDrawerManifest(manifest);
+    setDrawerIcon(icon);
     setDrawerInitialValues(buildInitialAppParams(appId, manifest.params || []));
     setDrawerOpen(true);
   }, []);
@@ -1153,6 +1172,18 @@ const InstalledAppsPage: React.FC = () => {
     if (app.origin === 'own') return app.status !== 'draft';
     return !!app.applicationId;
   };
+
+  // run_after_install with an unfilled required param: open its params drawer
+  // once the freshly installed app shows up (useRunAfterInstallPrompt navigates here)
+  const runAfterInstallPending = useRunAfterInstallStore((s) => s.pending);
+  useEffect(() => {
+    if (!runAfterInstallPending) return;
+    const target = appInfos.find((i) => i.id === runAfterInstallPending.appId);
+    if (!target) return;
+    useRunAfterInstallStore.getState().clear();
+    setActiveTab('app');
+    handleShowDetail(target.id, target.manifest);
+  }, [runAfterInstallPending, appInfos, handleShowDetail]);
 
   const handleDrawerSubmit = async (params: Record<string, unknown>) => {
     setDrawerOpen(false);
@@ -1631,6 +1662,7 @@ const InstalledAppsPage: React.FC = () => {
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         manifest={drawerManifest}
+        icon={drawerIcon}
         initialValues={drawerInitialValues}
         resolveSlot={window.api.subapp.resolveSlot}
         onSubmit={handleDrawerSubmit}

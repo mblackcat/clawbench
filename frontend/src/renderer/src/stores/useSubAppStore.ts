@@ -1,14 +1,7 @@
 import { create } from 'zustand'
-import type { SubAppManifest } from '../types/subapp'
+import type { SubAppManifest, SubAppInfo } from '../types/subapp'
 import { applicationManager, type UpdateInfo } from '../services/applicationManager'
 import { useAuthStore } from './useAuthStore'
-
-interface SubAppInfo {
-  id: string
-  manifest: SubAppManifest
-  path: string
-  source: 'user'
-}
 
 interface SubAppState {
   apps: SubAppManifest[]

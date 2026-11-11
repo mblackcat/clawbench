@@ -26,17 +26,26 @@ import { mainT } from '../utils/i18n'
 const preparingApps = new Set<string>()
 
 /**
- * Best-effort requirements install for a freshly installed app (sha256-cached;
- * targets the interpreter the app will run with).
+ * Best-effort requirements install for a freshly installed/updated app
+ * (sha256-cached; targets the interpreter the app will run with), started in
+ * the background so the install IPC reply isn't held up for as long as pip
+ * takes (minutes, plus waiting on the venv lock). The files are already in
+ * place, and every run path awaits `installAppRequirements` itself before
+ * launching (same lock, then a cache hit), so a run never starts ahead of its
+ * dependencies.
  */
-async function ensureAppRequirements(appId: string, installedAppPath?: string): Promise<void> {
+function ensureAppRequirementsInBackground(appId: string, installedAppPath?: string): void {
   const appPath = installedAppPath || getSubAppPath(appId)
   if (!appPath) return
-  try {
-    await installAppRequirements(appPath)
-  } catch (reqErr) {
-    logger.warn(`Failed to install requirements for ${appId}:`, reqErr)
-  }
+  installAppRequirements(appPath)
+    .then((res) => {
+      if (!res.success) {
+        logger.warn(`Failed to install requirements for ${appId}: ${res.error ?? 'unknown error'}`)
+      }
+    })
+    .catch((reqErr) => {
+      logger.warn(`Failed to install requirements for ${appId}:`, reqErr)
+    })
 }
 
 /**
@@ -325,7 +334,7 @@ export function registerSubAppIpc(): void {
         throw new Error(result.error || '安装失败')
       }
 
-      await ensureAppRequirements(appId, result.targetDir)
+      ensureAppRequirementsInBackground(appId, result.targetDir)
 
       logger.info(`[Marketplace] Installed: ${result.manifest?.name} (${appId})`)
       recordDownloadEvent(appId, result.manifest?.version)
@@ -365,7 +374,7 @@ export function registerSubAppIpc(): void {
         throw new Error(result.error || (force ? '重置失败' : '更新失败'))
       }
 
-      await ensureAppRequirements(appId, result.targetDir)
+      ensureAppRequirementsInBackground(appId, result.targetDir)
 
       logger.info(`[Marketplace] ${force ? 'Reset' : 'Updated'}: ${result.manifest?.name} (${appId})`)
       recordDownloadEvent(appId, result.manifest?.version)

@@ -16,6 +16,7 @@ import { useTaskStore } from '../../stores/useTaskStore'
 import { useAutoWeather } from '../../stores/useWeatherStore'
 import { useSubAppExecution } from '../../hooks/useSubAppExecution'
 import { useProtocolOpenApp } from '../../hooks/useProtocolOpenApp'
+import { useRunAfterInstallPrompt } from '../../hooks/useRunAfterInstallPrompt'
 import { useAICodingStore } from '../../stores/useAICodingStore'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { localStorageManager } from '../../services/localStorageManager'
@@ -65,6 +66,8 @@ const AppLayout: React.FC = () => {
 
   // 初始化 subapp 执行监听
   useSubAppExecution()
+  // run_after_install apps with unfilled required params → open their params drawer
+  useRunAfterInstallPrompt()
 
   // Share links / landing page (clawbench://open-app): locate and preview the app
   useProtocolOpenApp()

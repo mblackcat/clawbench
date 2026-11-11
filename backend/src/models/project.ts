@@ -70,6 +70,8 @@ export interface CommonApp {
   description: string | null;
   /** 版本号（内置应用随包发布） */
   version: string | null;
+  /** 图标 URL 或 data URI（admin 可编辑） */
+  icon: string | null;
   /** 是否为内置应用（区分用户后续开发的 app） */
   builtin: boolean;
   enabled: boolean;
@@ -80,6 +82,8 @@ export interface CommonApp {
   downloadCount: number;
   /** 客户端上报的运行次数 */
   executionCount: number;
+  /** 客户端上报的报错次数（仅 list/get 时统计填充） */
+  errorCount?: number;
   /** admin 上传的服务端归档相对路径（为空表示无服务端内容，客户端回退自带版本） */
   filePath: string | null;
   fileSize: number | null;
@@ -126,12 +130,15 @@ export interface CommonAppResponse {
   name: string;
   description: string | null;
   version: string | null;
+  icon: string | null;
   builtin: boolean;
   enabled: boolean;
   sortOrder: number;
   pinned: boolean;
   downloadCount: number;
   executionCount: number;
+  /** 客户端上报的报错次数 */
+  errorCount: number;
   /** 服务端是否已有 admin 上传的归档 */
   hasArchive: boolean;
   config: Record<string, any>;
@@ -176,6 +183,7 @@ export interface CommonAppRow {
   name: string;
   description: string | null;
   version: string | null;
+  icon?: string | null;
   builtin: number; // 0/1
   enabled: number; // SQLite uses 0/1 for boolean
   sort_order: number;
@@ -245,6 +253,7 @@ export function commonAppRowToCommonApp(row: CommonAppRow): CommonApp {
     name: row.name,
     description: row.description,
     version: row.version ?? null,
+    icon: row.icon ?? null,
     builtin: row.builtin === 1,
     enabled: row.enabled === 1,
     sortOrder: row.sort_order,
@@ -310,12 +319,14 @@ export function commonAppToResponse(
     name: app.name,
     description: app.description,
     version: app.version,
+    icon: app.icon ?? null,
     builtin: app.builtin,
     enabled: app.enabled,
     sortOrder: app.sortOrder,
     pinned: app.pinned,
     downloadCount: app.downloadCount,
     executionCount: app.executionCount,
+    errorCount: app.errorCount ?? 0,
     hasArchive: !!app.filePath,
     config: mergedConfig !== undefined ? mergedConfig : app.config,
     createdAt: app.createdAt,
