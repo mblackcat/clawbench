@@ -463,16 +463,39 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
         if (et === 'context_usage') {
           const pb = parseClaudeEvent(event as Record<string, unknown>)
           const usageBlock = pb.find((b): b is Extract<CodingContentBlock, { type: 'context_usage' }> => b.type === 'context_usage')
+          const eventModel = (event as any).model as string | undefined
           if (usageBlock) {
-            set(s => ({
-              sessionContextUsage: { ...s.sessionContextUsage, [sessionId]: usageBlock },
-              sessionStreamingBlocks: {
-                ...s.sessionStreamingBlocks,
-                [sessionId]: [
-                  ...(s.sessionStreamingBlocks[sessionId] || []).filter(b => b.type !== 'context_usage'),
-                  usageBlock
-                ]
+            set(s => {
+              const prev = s.sessionContextUsage[sessionId]
+              const mergedUsage: Extract<CodingContentBlock, { type: 'context_usage' }> = {
+                type: 'context_usage',
+                inputTokens: usageBlock.inputTokens ?? prev?.inputTokens,
+                cachedInputTokens: usageBlock.cachedInputTokens ?? prev?.cachedInputTokens,
+                outputTokens: usageBlock.outputTokens ?? prev?.outputTokens,
+                contextWindow: usageBlock.contextWindow ?? prev?.contextWindow,
+                usedTokens: usageBlock.usedTokens ?? prev?.usedTokens ??
+                  (((usageBlock.inputTokens ?? prev?.inputTokens) || 0) +
+                   ((usageBlock.cachedInputTokens ?? prev?.cachedInputTokens) || 0) +
+                   ((usageBlock.outputTokens ?? prev?.outputTokens) || 0)),
               }
+              const updatedSessions = eventModel
+                ? s.sessions.map(sess => sess.id === sessionId ? { ...sess, model: eventModel } : sess)
+                : s.sessions
+              return {
+                sessionContextUsage: { ...s.sessionContextUsage, [sessionId]: mergedUsage },
+                sessions: updatedSessions,
+                sessionStreamingBlocks: {
+                  ...s.sessionStreamingBlocks,
+                  [sessionId]: [
+                    ...(s.sessionStreamingBlocks[sessionId] || []).filter(b => b.type !== 'context_usage'),
+                    mergedUsage
+                  ]
+                }
+              }
+            })
+          } else if (eventModel) {
+            set(s => ({
+              sessions: s.sessions.map(sess => sess.id === sessionId ? { ...sess, model: eventModel } : sess)
             }))
           }
           return
@@ -568,14 +591,43 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
             if (resultText) ab.push({ type: 'text', text: resultText })
           }
           const usage = (event as any).usage
-          if (usage && !ab.some(b => b.type === 'context_usage')) ab.push({ type: 'context_usage', inputTokens: usage.inputTokens, cachedInputTokens: usage.cachedInputTokens, outputTokens: usage.outputTokens, usedTokens: usage.usedTokens, contextWindow: usage.contextWindow })
-          const cost = typeof (event as any).cost_usd === 'number' ? (event as any).cost_usd : undefined
-          if (ab.length > 0) {
-            const m: CodingMessage = { id: genMsgId(), sessionId, role: 'assistant', blocks: ab, timestamp: Date.now(), costUsd: cost }
-            set(s => ({ sessionMessages: { ...s.sessionMessages, [sessionId]: [...(s.sessionMessages[sessionId] || []), m] }, sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } }))
-          } else {
-            set(s => ({ sessionStreaming: { ...s.sessionStreaming, [sessionId]: false }, sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] } }))
+          let usageBlock: Extract<CodingContentBlock, { type: 'context_usage' }> | undefined
+          if (usage) {
+            usageBlock = {
+              type: 'context_usage',
+              inputTokens: usage.inputTokens,
+              cachedInputTokens: usage.cachedInputTokens,
+              outputTokens: usage.outputTokens,
+              usedTokens: usage.usedTokens ??
+                (((usage.inputTokens || 0) + (usage.cachedInputTokens || 0) + (usage.outputTokens || 0)) || undefined),
+              contextWindow: usage.contextWindow,
+            }
+            if (!ab.some(b => b.type === 'context_usage')) {
+              ab.push(usageBlock)
+            }
           }
+          const cost = typeof (event as any).cost_usd === 'number' ? (event as any).cost_usd : undefined
+          const resultModel = typeof (event as any).model === 'string' ? (event as any).model : undefined
+          set(s => {
+            const updatedSessions = s.sessions.map(sess => {
+              if (sess.id !== sessionId) return sess
+              return {
+                ...sess,
+                ...(cost !== undefined ? { costUsd: cost } : {}),
+                ...(resultModel ? { model: resultModel } : {}),
+              }
+            })
+            const newMessages = ab.length > 0
+              ? [...(s.sessionMessages[sessionId] || []), { id: genMsgId(), sessionId, role: 'assistant' as const, blocks: ab, timestamp: Date.now(), costUsd: cost }]
+              : (s.sessionMessages[sessionId] || [])
+            return {
+              sessions: updatedSessions,
+              ...(usageBlock ? { sessionContextUsage: { ...s.sessionContextUsage, [sessionId]: usageBlock } } : {}),
+              sessionMessages: { ...s.sessionMessages, [sessionId]: newMessages },
+              sessionStreaming: { ...s.sessionStreaming, [sessionId]: false },
+              sessionStreamingBlocks: { ...s.sessionStreamingBlocks, [sessionId]: [] }
+            }
+          })
           const sess = get().sessions.find((s) => s.id === sessionId)
           raiseCodingCompletion(sessionId, sess?.title, getSessionMeta(get(), sessionId))
           return
@@ -884,14 +936,17 @@ export const useAICodingStore = create<AICodingState>((set, get) => ({
   },
 
   addTabToPane: (paneId, sessionId) => {
-    const root = get().globalLayout
+    const root = get().globalLayout ?? get().getOrCreateLayout()
     if (!root) return
-    const newRoot = updateLeaf(root, paneId, leaf => ({
+    const leaves = collectLeaves(root)
+    const resolvedPaneId = leaves.some(l => l.id === paneId) ? paneId : leaves[0]?.id
+    if (!resolvedPaneId) return
+    const newRoot = updateLeaf(root, resolvedPaneId, leaf => ({
       ...leaf,
       tabIds: leaf.tabIds.includes(sessionId) ? leaf.tabIds : [...leaf.tabIds, sessionId],
       activeTabId: sessionId,
     }))
-    set({ globalLayout: newRoot, activeSessionId: sessionId, focusedPaneId: paneId })
+    set({ globalLayout: newRoot, activeSessionId: sessionId, focusedPaneId: resolvedPaneId })
     void get().hydrateSessionTranscript(sessionId)
     _persistLayout(newRoot)
   },

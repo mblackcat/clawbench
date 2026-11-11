@@ -14,6 +14,7 @@ import VcsChangesPanel from './VcsChangesPanel'
 import AICodingNewWorkspaceDialog from './AICodingNewWorkspaceDialog'
 import AICodingNewSessionDialog from './AICodingNewSessionDialog'
 import WorkspaceLandingPanel from './WorkspaceLandingPanel'
+import AICodingNewChatLanding from './AICodingNewChatLanding'
 import PaneTabBar from './PaneTabBar'
 import { useT } from '../../i18n'
 import { useAICodingStore } from '../../stores/useAICodingStore'
@@ -54,6 +55,7 @@ const AICodingPage: React.FC = () => {
     setPaneActiveTab,
     removeTabFromPane,
     stopSession,
+    sendUserMessage,
   } = useAICodingStore(useShallow((s) => ({
     setActiveSession: s.setActiveSession,
     fetchAll: s.fetchAll,
@@ -63,6 +65,7 @@ const AICodingPage: React.FC = () => {
     setPaneActiveTab: s.setPaneActiveTab,
     removeTabFromPane: s.removeTabFromPane,
     stopSession: s.stopSession,
+    sendUserMessage: s.sendUserMessage,
   })))
 
   const activeSession = useMemo(
@@ -74,6 +77,10 @@ const AICodingPage: React.FC = () => {
   const [newWorkspaceOpen, setNewWorkspaceOpen] = useState(false)
   const [newSessionOpen, setNewSessionOpen] = useState(false)
   const [newSessionWorkspaceId, setNewSessionWorkspaceId] = useState<string | null>(null)
+
+  // New Chat hero landing view state
+  const [showNewChatView, setShowNewChatView] = useState(false)
+  const [nativeSessionsMap, setNativeSessionsMap] = useState<Record<string, any>>({})
 
   // Workspace whose landing view (quick start / terminal / changes) is shown.
   // Set by clicking a workspace title; cleared by picking a session tab.
@@ -266,18 +273,24 @@ const AICodingPage: React.FC = () => {
 
   // Handle session selection from sidebar
   const handleSelectSession = useCallback((sessionId: string) => {
+    setShowNewChatView(false)
     setLandingWorkspaceId(null)
     setActiveSession(sessionId)
     // Ensure the session is in a pane
     const currentLayout = getOrCreateLayout()
     const existingLeaf = findLeafBySessionId(currentLayout, sessionId)
     if (!existingLeaf) {
-      const targetPaneId = focusedPaneId || collectLeaves(currentLayout)[0]?.id
+      const leaves = collectLeaves(currentLayout)
+      const targetPaneId = (focusedPaneId && leaves.some((l) => l.id === focusedPaneId))
+        ? focusedPaneId
+        : leaves[0]?.id
       if (targetPaneId) {
         addTabToPane(targetPaneId, sessionId)
       }
+    } else {
+      setPaneActiveTab(existingLeaf.id, sessionId)
     }
-  }, [setActiveSession, getOrCreateLayout, focusedPaneId, addTabToPane])
+  }, [setActiveSession, getOrCreateLayout, focusedPaneId, addTabToPane, setPaneActiveTab])
 
   useEffect(() => {
     if (!pendingSessionId || loading) return
@@ -320,7 +333,10 @@ const AICodingPage: React.FC = () => {
         const session = await createSession(workspaceId, toolType, 'local')
         setLandingWorkspaceId(null)
         const currentLayout = getOrCreateLayout()
-        const targetPaneId = focusedPaneId || collectLeaves(currentLayout)[0]?.id
+        const leaves = collectLeaves(currentLayout)
+        const targetPaneId = (focusedPaneId && leaves.some((l) => l.id === focusedPaneId))
+          ? focusedPaneId
+          : leaves[0]?.id
         if (targetPaneId) {
           addTabToPane(targetPaneId, session.id)
         }
@@ -343,8 +359,41 @@ const AICodingPage: React.FC = () => {
 
   // Sidebar workspace title click — show that workspace's landing view.
   const handleSelectWorkspace = useCallback((workspaceId: string) => {
+    setShowNewChatView(false)
     setLandingWorkspaceId(workspaceId)
   }, [])
+
+  const handleOpenNewChat = useCallback(() => {
+    setShowNewChatView(true)
+    setLandingWorkspaceId(null)
+  }, [])
+
+  const handleStartNewChat = useCallback(
+    async ({ workspaceId, toolType, text }: { workspaceId: string; toolType: AIToolType; text: string }) => {
+      try {
+        // Keeps the tool's default permission mode — a new chat never silently
+        // escalates to bypassPermissions.
+        const session = await createSession(workspaceId, toolType, 'local')
+        setShowNewChatView(false)
+        setLandingWorkspaceId(null)
+        const currentLayout = getOrCreateLayout()
+        const leaves = collectLeaves(currentLayout)
+        const targetPaneId = (focusedPaneId && leaves.some((l) => l.id === focusedPaneId))
+          ? focusedPaneId
+          : leaves[0]?.id
+        if (targetPaneId) {
+          addTabToPane(targetPaneId, session.id)
+        }
+        setActiveSession(session.id)
+        if (text.trim()) {
+          void sendUserMessage(session.id, text.trim())
+        }
+      } catch {
+        message.error(t('coding.createSessionFailed'))
+      }
+    },
+    [createSession, getOrCreateLayout, focusedPaneId, addTabToPane, setActiveSession, sendUserMessage, message, t]
+  )
 
   // Tab picked from the landing view's tab bar: leave the landing view and
   // bring that tab forward in the pane that holds it.
@@ -377,9 +426,30 @@ const AICodingPage: React.FC = () => {
         onNewSession={handleNewSession}
         onSelectSession={handleSelectSession}
         onSelectWorkspace={handleSelectWorkspace}
+        onOpenNewChat={handleOpenNewChat}
+        onNativeSessionsChange={setNativeSessionsMap}
       />
       <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
-        {showLanding && landingWorkspace && (
+        {showNewChatView && (
+          <div
+            style={{
+              position: 'absolute', inset: 0, zIndex: 2,
+              display: 'flex', flexDirection: 'column', minHeight: 0,
+              background: token.colorBgContainer
+            }}
+          >
+            <AICodingNewChatLanding
+              workspaces={workspaces}
+              sessions={sessions}
+              nativeSessionsMap={nativeSessionsMap}
+              selectedWorkspaceId={landingWorkspaceId || activeSession?.workspaceId}
+              onStartChat={handleStartNewChat}
+              onNewWorkspace={handleNewWorkspace}
+              onClose={() => setShowNewChatView(false)}
+            />
+          </div>
+        )}
+        {showLanding && landingWorkspace && !showNewChatView && (
           <div
             style={{
               position: 'absolute', inset: 0, zIndex: 1,
@@ -417,14 +487,14 @@ const AICodingPage: React.FC = () => {
           // Kept mounted and laid out under the landing view (visibility, not
           // display:none) so terminals keep their size, PTYs see no resize, and
           // chats keep their scroll position for when a tab is picked.
-          <div style={{ flex: 1, minHeight: 0, minWidth: 0, width: '100%', height: '100%', visibility: showLanding ? 'hidden' : undefined }}>
+          <div style={{ flex: 1, minHeight: 0, minWidth: 0, width: '100%', height: '100%', visibility: (showLanding || showNewChatView) ? 'hidden' : undefined }}>
             <SplitContainer
               layout={layout}
               gitPanelOpen={vcsPanelOpen}
               onToggleGitPanel={toggleVcsPanel}
             />
           </div>
-        ) : !showLanding && (
+        ) : !showLanding && !showNewChatView && (
           <div style={{
             flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
             flexDirection: 'column', gap: 12, color: token.colorTextQuaternary

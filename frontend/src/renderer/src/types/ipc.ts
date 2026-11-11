@@ -734,6 +734,21 @@ export interface ClawBenchAPI {
     getSessionOutput: (sessionId: string) => Promise<string>
     getRawSessionOutput: (sessionId: string) => Promise<string>
     getRawSessionSnapshot: (sessionId: string) => Promise<{ data: string; offset: number }>
+    getSessionStats: (sessionId: string) => Promise<{
+      sessionId: string
+      toolType: import('./ai-coding').AIToolType
+      model?: string
+      costUsd: number
+      contextUsage?: {
+        inputTokens?: number
+        cachedInputTokens?: number
+        outputTokens?: number
+        usedTokens?: number
+        contextWindow?: number
+      }
+      contextWindow?: number
+      updatedAt: number
+    } | null>
     getGroups: () => Promise<import('./ai-coding').AICodingGroup[]>
     createGroup: (name: string) => Promise<import('./ai-coding').AICodingGroup>
     renameGroup: (

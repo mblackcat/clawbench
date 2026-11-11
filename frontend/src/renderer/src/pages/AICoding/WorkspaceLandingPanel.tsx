@@ -242,7 +242,7 @@ const WorkspaceLandingPanel: React.FC<WorkspaceLandingPanelProps> = ({
                 style={{ ...cardBase, minWidth: 130 }}
               >
                 <PlusOutlined style={{ fontSize: 14, color: token.colorPrimary }} />
-                <Text style={{ fontSize: 13 }}>{t('coding.newSession')}</Text>
+                <Text style={{ fontSize: 13 }}>{t('coding.newChat')}</Text>
               </div>
             </div>
           )}
