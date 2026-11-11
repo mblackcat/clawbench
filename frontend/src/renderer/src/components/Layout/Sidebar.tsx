@@ -6,7 +6,6 @@ import type { MenuProps } from 'antd'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { useAttentionStore } from '../../stores/useAttentionStore'
 import { useT } from '../../i18n'
-import { InteractiveMorphIcon } from '../common/InteractiveMorphIcon'
 import {
   WorkbenchIcon,
   AIChatIcon,
@@ -32,13 +31,11 @@ const OpenClawSvg = () => (
     <circle cx="75" cy="35" r="6" fill="var(--openclaw-eye, #050810)"/>
   </svg>
 )
+// Brand logo (no lucide equivalent) — kept as a static antd custom icon
 const OpenClawIcon: React.FC<{ active?: boolean; className?: string; style?: React.CSSProperties }> = ({
-  active,
   className,
   style
-}) => (
-  <InteractiveMorphIcon icon={<Icon component={OpenClawSvg} />} active={active} className={className} style={style} />
-)
+}) => <Icon component={OpenClawSvg} className={className} style={style} />
 
 /** Top-level menu keys, in menu order (used to resolve the selected entry). */
 const MENU_KEYS = ['/workbench', '/ai-chat', '/ai-coding', '/ai-terminal', '/ai-agents', '/local-env', '/copiper']

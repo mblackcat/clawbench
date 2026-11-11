@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Button, Space, Switch, theme, Typography } from 'antd'
-import { DownOutlined, UpOutlined } from '@ant-design/icons'
-import { InteractiveMorphIcon } from './common/InteractiveMorphIcon'
+import { ChevronUp, ChevronDown } from 'lucide'
+import { AntdMorphIcon } from './common/AntdMorphIcon'
 
 const { Text } = Typography
 
@@ -114,13 +114,7 @@ const AgentConfigCard: React.FC<AgentConfigCardProps> = ({
             <Button
               type="text"
               size="small"
-              icon={
-                <InteractiveMorphIcon
-                  icon={expanded ? <UpOutlined /> : <DownOutlined />}
-                  swapKey={expanded}
-                  size={10}
-                />
-              }
+              icon={<AntdMorphIcon icon={expanded ? ChevronUp : ChevronDown} size={11} spring="snappy" />}
               onClick={() => {
                 const next = !expanded
                 setExpanded(next)

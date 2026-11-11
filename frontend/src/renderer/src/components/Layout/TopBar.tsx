@@ -1,25 +1,35 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { App, Space, Button, Typography, Dropdown, Tooltip, Badge, Divider, theme } from 'antd'
 import {
-  LoginOutlined,
-  LogoutOutlined,
-  MinusOutlined,
-  CloseOutlined,
-  BorderOutlined,
-  BlockOutlined,
-  GlobalOutlined,
-  BgColorsOutlined,
-  SettingOutlined,
-  InfoCircleOutlined,
-  CompassOutlined,
-  CloudDownloadOutlined,
-  ThunderboltOutlined,
-  DesktopOutlined,
-  CopyOutlined,
-  CheckOutlined,
-  FontSizeOutlined,
-  DownloadOutlined
-} from '@ant-design/icons'
+  Copy,
+  Check,
+  Sun,
+  Moon,
+  Languages,
+  Globe,
+  Zap,
+  Sparkles,
+  Compass,
+  Navigation,
+  Settings,
+  SlidersHorizontal,
+  Monitor,
+  Wifi,
+  Info,
+  LogOut,
+  DoorOpen,
+  Minus,
+  ChevronDown,
+  Maximize2,
+  Minimize2,
+  X,
+  Flame,
+  CloudDownload,
+  ArrowDownCircle,
+  LogIn,
+  ALargeSmall,
+  AArrowUp
+} from 'lucide'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useT } from '../../i18n'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -44,11 +54,13 @@ import { LogsBadgeIcon, useLogsIndicator } from './LogsIndicator'
 import { type MotionMode, setMotionMode, useMotionMode } from '../../motion'
 import type { FontSizeMode } from '../../constants/font-size'
 import { InteractiveMorphIcon } from '../common/InteractiveMorphIcon'
+import { AntdMorphIcon } from '../common/AntdMorphIcon'
 import {
   PALETTE_CAPSULE,
   PALETTE_SWATCH,
   THEME_PALETTES,
   resolvePalette,
+  isDarkTheme,
   type CapsuleStyle
 } from '../../theme'
 import type { TaskInfo } from '../../types/subapp'
@@ -487,7 +499,7 @@ const TopBar: React.FC<TopBarProps> = ({ showLogsEntry = false, onToggleLogs }) 
     >
       {/* Group 1: 外观 / 语言 / 动效 / 氛围 */}
       <div style={menuRowBase}>
-        <BgColorsOutlined style={menuIconStyle} />
+        <AntdMorphIcon icon={isDarkTheme(currentTheme) ? Moon : Sun} size={15} spring="bouncy" style={menuIconStyle} />
         <Text style={{ fontSize: 13, flex: 1, minWidth: 0 }}>{t('topbar.theme')}</Text>
         <div
           style={{
@@ -537,7 +549,7 @@ const TopBar: React.FC<TopBarProps> = ({ showLogsEntry = false, onToggleLogs }) 
       </div>
 
       <div style={menuRowBase}>
-        <GlobalOutlined style={menuIconStyle} />
+        <AntdMorphIcon icon={language === 'en' ? Languages : Globe} size={15} spring="bouncy" style={menuIconStyle} />
         <Text style={{ fontSize: 13, flex: 1, minWidth: 0 }}>{t('topbar.language')}</Text>
         {renderCapsule(
           language === 'en',
@@ -556,7 +568,7 @@ const TopBar: React.FC<TopBarProps> = ({ showLogsEntry = false, onToggleLogs }) 
       </div>
 
       <div style={menuRowBase}>
-        <ThunderboltOutlined style={menuIconStyle} />
+        <AntdMorphIcon icon={motionMode === 'agile' ? Zap : Sparkles} size={15} spring="bouncy" style={menuIconStyle} />
         <Text style={{ fontSize: 13, flex: 1, minWidth: 0 }}>{t('topbar.motion')}</Text>
         {renderCapsule(
           motionMode === 'agile',
@@ -577,7 +589,12 @@ const TopBar: React.FC<TopBarProps> = ({ showLogsEntry = false, onToggleLogs }) 
       </div>
 
       <div style={menuRowBase}>
-        <FontSizeOutlined style={menuIconStyle} />
+        <AntdMorphIcon
+          icon={fontSize === 'large' ? AArrowUp : ALargeSmall}
+          size={15}
+          spring="bouncy"
+          style={menuIconStyle}
+        />
         <Text style={{ fontSize: 13, flex: 1, minWidth: 0 }}>{t('topbar.fontSize')}</Text>
         {renderCapsule(
           fontSize !== 'large',
@@ -665,7 +682,7 @@ const TopBar: React.FC<TopBarProps> = ({ showLogsEntry = false, onToggleLogs }) 
       {/* Group 2: 引导 / 设置 */}
       {renderActionRow(
         'guide',
-        <InteractiveMorphIcon icon={<CompassOutlined />} style={menuIconStyle} />,
+        <InteractiveMorphIcon icon={Compass} hoverIcon={Navigation} size={15} style={menuIconStyle} />,
         <span style={{ flex: 1 }}>{t('topbar.guide')}</span>,
         () => {
           setUserMenuOpen(false)
@@ -674,7 +691,7 @@ const TopBar: React.FC<TopBarProps> = ({ showLogsEntry = false, onToggleLogs }) 
       )}
       {renderActionRow(
         'settings',
-        <InteractiveMorphIcon icon={<SettingOutlined />} style={menuIconStyle} />,
+        <InteractiveMorphIcon icon={Settings} hoverIcon={SlidersHorizontal} size={15} style={menuIconStyle} />,
         <span style={{ flex: 1 }}>{t('menu.settings')}</span>,
         () => {
           setUserMenuOpen(false)
@@ -688,7 +705,7 @@ const TopBar: React.FC<TopBarProps> = ({ showLogsEntry = false, onToggleLogs }) 
       {/* Group 3: 本机 IP / 版本 / Fable 5 认证 */}
       {renderActionRow(
         'ip',
-        <InteractiveMorphIcon icon={<DesktopOutlined />} style={menuIconStyle} />,
+        <InteractiveMorphIcon icon={Monitor} hoverIcon={Wifi} size={15} style={menuIconStyle} />,
         <>
           <Text
             style={{ fontSize: 13, color: token.colorText, flex: 1, minWidth: 0, fontFamily: 'monospace' }}
@@ -702,11 +719,7 @@ const TopBar: React.FC<TopBarProps> = ({ showLogsEntry = false, onToggleLogs }) 
               size="small"
               aria-label={t('topbar.copyIp')}
               icon={
-                <InteractiveMorphIcon
-                  icon={copiedIp ? <CheckOutlined /> : <CopyOutlined />}
-                  swapKey={copiedIp}
-                  size={12}
-                />
+<AntdMorphIcon icon={copiedIp ? Check : Copy} size={12} spring="bouncy" />
               }
               onClick={(e) => {
                 e.stopPropagation()
@@ -721,7 +734,7 @@ const TopBar: React.FC<TopBarProps> = ({ showLogsEntry = false, onToggleLogs }) 
         }
       )}
       <div style={menuRowBase}>
-        <InfoCircleOutlined style={menuIconStyle} />
+        <InteractiveMorphIcon icon={Info} hoverIcon={Sparkles} size={15} style={menuIconStyle} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <ClientUpdatePanel />
         </div>
@@ -732,7 +745,12 @@ const TopBar: React.FC<TopBarProps> = ({ showLogsEntry = false, onToggleLogs }) 
       {/* Group 4: 退出 */}
       {renderActionRow(
         'logout',
-        <InteractiveMorphIcon icon={<LogoutOutlined />} style={{ ...menuIconStyle, color: token.colorError }} />,
+        <InteractiveMorphIcon
+          icon={LogOut}
+          hoverIcon={DoorOpen}
+          size={15}
+          style={{ ...menuIconStyle, color: token.colorError }}
+        />,
         <span>{t('topbar.logout')}</span>,
         () => {
           setUserMenuOpen(false)
@@ -864,7 +882,7 @@ const TopBar: React.FC<TopBarProps> = ({ showLogsEntry = false, onToggleLogs }) 
             <Button
               type="primary"
               size="small"
-              icon={<InteractiveMorphIcon icon={<CloudDownloadOutlined />} hoverIcon={<DownloadOutlined />} />}
+              icon={<InteractiveMorphIcon icon={CloudDownload} hoverIcon={ArrowDownCircle} size={13} />}
               onClick={installUpdate}
               style={{ height: 26, fontSize: 12, paddingInline: 10 }}
             >
@@ -981,7 +999,7 @@ const TopBar: React.FC<TopBarProps> = ({ showLogsEntry = false, onToggleLogs }) 
             <Button
               type="link"
               size="small"
-              icon={<InteractiveMorphIcon icon={<LoginOutlined />} />}
+              icon={<InteractiveMorphIcon icon={LogIn} hoverIcon={DoorOpen} size={13} />}
               onClick={() => navigate('/login')}
             >
               {t('topbar.login')}
@@ -998,17 +1016,21 @@ const TopBar: React.FC<TopBarProps> = ({ showLogsEntry = false, onToggleLogs }) 
               style={{ display: 'flex', alignItems: 'center', height: '100%', marginRight: -12 }}
             >
               <button className="cb-win-btn" onClick={handleWindowMinimize} title={t('topbar.minimize')}>
-                <InteractiveMorphIcon icon={<MinusOutlined />} size={12} />
+                <InteractiveMorphIcon icon={Minus} hoverIcon={ChevronDown} size={12} />
               </button>
               <button
                 className="cb-win-btn"
                 onClick={handleWindowMaximize}
                 title={isMaximized ? t('topbar.restore') : t('topbar.maximize')}
               >
-                <InteractiveMorphIcon icon={isMaximized ? <BlockOutlined /> : <BorderOutlined />} size={12} />
+                <InteractiveMorphIcon
+                  icon={isMaximized ? Minimize2 : Maximize2}
+                  hoverIcon={isMaximized ? Maximize2 : Minimize2}
+                  size={12}
+                />
               </button>
               <button className="cb-win-btn cb-win-btn-close" onClick={handleWindowClose} title={t('topbar.close')}>
-                <InteractiveMorphIcon icon={<CloseOutlined />} size={12} />
+                <InteractiveMorphIcon icon={X} hoverIcon={Flame} size={12} />
               </button>
             </div>
           </>

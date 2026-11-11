@@ -1,146 +1,46 @@
 import React from 'react'
-import Icon from '@ant-design/icons'
 import type { CustomIconComponentProps } from '@ant-design/icons/lib/components/Icon'
+import type { IconInput } from 'morphicons/react'
+import {
+  LayoutGrid,
+  Boxes,
+  CodeXml,
+  Sparkles,
+  Terminal,
+  SquareTerminal,
+  Server,
+  Cpu,
+  FileText,
+  ScrollText,
+  MessageSquare,
+  Bot,
+  Sheet,
+  FileSpreadsheet
+} from 'lucide'
 import { InteractiveMorphIcon } from '../common/InteractiveMorphIcon'
 
-/**
- * Main sidebar menu icons — monochrome, follow theme via currentColor.
- * Stroke-based 24×24 glyphs, optically balanced at 14–16px, with a spring
- * hover / press micro-interaction (see common/InteractiveMorphIcon).
- */
-
-// ── Workbench: 2×2 resource cards (apps / skills / prompts hub) ──
-const WorkbenchSvg = () => (
-  <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <rect x="3" y="3" width="7.5" height="7.5" rx="1.75" stroke="currentColor" strokeWidth="1.75" />
-    <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.75" stroke="currentColor" strokeWidth="1.75" />
-    <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.75" stroke="currentColor" strokeWidth="1.75" />
-    {/* Active / favorite card */}
-    <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.75" stroke="currentColor" strokeWidth="1.75" />
-    <path
-      d="M17.25 15.15l.62 1.45h1.55l-1.25.95.48 1.5-1.4-.95-1.4.95.48-1.5-1.25-.95h1.55l.62-1.45z"
-      fill="currentColor"
-    />
-  </svg>
-)
-
-// ── AI Chat: speech bubble with AI spark ──
-const AIChatSvg = () => (
-  <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path
-      d="M4.75 5.5A2.25 2.25 0 017 3.25h10A2.25 2.25 0 0119.25 5.5v6.25A2.25 2.25 0 0117 14H10.4L6.5 17.25V14H7A2.25 2.25 0 014.75 11.75V5.5z"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinejoin="round"
-    />
-    {/* AI spark inside bubble */}
-    <path
-      d="M12 6.4l.85 2.05H15l-1.7 1.3.65 2.05L12 10.55l-1.95 1.25.65-2.05-1.7-1.3h2.15L12 6.4z"
-      fill="currentColor"
-    />
-  </svg>
-)
-
-// ── AI Work (formerly AI Coding): workspace with sessions & AI spark ──
-const AICodingSvg = () => (
-  <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" xmlns="http://www.w3.org/2000/svg">
-    {/* Workspace window frame */}
-    <rect x="2.5" y="3.25" width="19" height="17.5" rx="2.75" stroke="currentColor" strokeWidth="1.75" />
-    {/* Left sidebar divider */}
-    <path d="M8.25 3.25v17.5" stroke="currentColor" strokeWidth="1.75" />
-    {/* Session indicators on sidebar */}
-    <circle cx="5.35" cy="7.75" r="1.1" fill="currentColor" />
-    <path d="M4.25 11.75h2.2M4.25 15.25h2.2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-    {/* AI sparkle in primary workspace */}
-    <path
-      d="M15 6.5c.35 2.65 2.2 4.5 4.85 4.85-2.65.35-4.5 2.2-4.85 4.85-.35-2.65-2.2-4.5-4.85-4.85 2.65-.35 4.5-2.2 4.85-4.85z"
-      fill="currentColor"
-    />
-    <circle cx="11.25" cy="7.25" r="0.8" fill="currentColor" />
-  </svg>
-)
-
-// ── CoPiper: structured table + pipe/export arrow ──
-const CopiperSvg = () => (
-  <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <rect x="2.75" y="3.75" width="13" height="16.5" rx="2" stroke="currentColor" strokeWidth="1.75" />
-    <path d="M2.75 8.5h13" stroke="currentColor" strokeWidth="1.75" />
-    <path d="M9.25 8.5v11.75" stroke="currentColor" strokeWidth="1.5" />
-    <path d="M2.75 13h13" stroke="currentColor" strokeWidth="1.25" />
-    <path d="M2.75 17h13" stroke="currentColor" strokeWidth="1.25" />
-    {/* Pipe / export */}
-    <path
-      d="M17.5 12h3.75m0 0L19 9.75M21.25 12L19 14.25"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-)
-
-// ── AI Terminal: CLI window with shell prompt & cursor ──
-const AITerminalSvg = () => (
-  <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <rect x="2.5" y="3.25" width="19" height="17.5" rx="2.75" stroke="currentColor" strokeWidth="1.75" />
-    <path d="M2.5 8.25h19" stroke="currentColor" strokeWidth="1.5" />
-    <circle cx="5.5" cy="5.75" r="0.85" fill="currentColor" />
-    <circle cx="8.25" cy="5.75" r="0.85" fill="currentColor" />
-    <path
-      d="M6.5 12.25l3 2.5-3 2.5"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <path d="M12 17.25h4.5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
-  </svg>
-)
-
-// ── Local Env: developer workstation monitor with stand and prompt ──
-const LocalEnvSvg = () => (
-  <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <rect x="2.5" y="3.25" width="19" height="13.5" rx="2.5" stroke="currentColor" strokeWidth="1.75" />
-    <path d="M12 16.75v3.75" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
-    <path d="M7.5 20.5h9" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
-    <path
-      d="M6.5 8l2.25 2-2.25 2"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <path d="M11.5 12h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-  </svg>
-)
-
-// ── Logs: structured document with lines ──
-const LogsSvg = () => (
-  <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <rect x="4" y="3" width="16" height="18" rx="2.5" stroke="currentColor" strokeWidth="1.75" />
-    <path d="M8 8h8" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
-    <path d="M8 12h8" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
-    <path d="M8 16h5.5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
-  </svg>
-)
-
 type MenuIconProps = Partial<CustomIconComponentProps> & {
-  /** Selected state (current route) — kept static, no hover bounce needed */
+  /** Selected state (current route) — shows the active glyph */
   active?: boolean
   /** Controlled hover state (defaults to hover detection on the parent menu item) */
   hovered?: boolean
 }
 
 /**
- * Wraps a glyph in InteractiveMorphIcon so the whole menu row / button drives a
- * spring hover + press micro-interaction (disabled with the motion switch).
+ * Main sidebar menu icons — lucide glyphs that morph (morphicons) into their
+ * hover / active glyph with spring physics. Monochrome via currentColor, and
+ * static when the motion switch is off (see common/InteractiveMorphIcon).
  */
-const makeMenuIcon = (Svg: React.FC): React.FC<MenuIconProps> => {
+const makeMenuIcon = (icon: IconInput, morphTo: IconInput): React.FC<MenuIconProps> => {
   const MenuIcon: React.FC<MenuIconProps> = ({ active, hovered, className, style }) => (
     <InteractiveMorphIcon
-      icon={<Icon component={Svg} />}
+      icon={icon}
+      hoverIcon={morphTo}
+      activeIcon={morphTo}
       active={active}
       hovered={hovered}
+      size={style?.fontSize !== undefined ? undefined : 16}
+      spring="bouncy"
       className={className}
       style={style}
     />
@@ -148,12 +48,19 @@ const makeMenuIcon = (Svg: React.FC): React.FC<MenuIconProps> => {
   return MenuIcon
 }
 
-export const WorkbenchIcon = makeMenuIcon(WorkbenchSvg)
-export const AIChatIcon = makeMenuIcon(AIChatSvg)
-export const AICodingIcon = makeMenuIcon(AICodingSvg)
+/** Workbench: LayoutGrid ⇄ Boxes */
+export const WorkbenchIcon = makeMenuIcon(LayoutGrid, Boxes)
+/** AI Chat: MessageSquare ⇄ Bot */
+export const AIChatIcon = makeMenuIcon(MessageSquare, Bot)
+/** AI Work / Coding: CodeXml ⇄ Sparkles */
+export const AICodingIcon = makeMenuIcon(CodeXml, Sparkles)
 /** Alias matching the user-facing name "AI Work" */
 export const AIWorkIcon = AICodingIcon
-export const CopiperIcon = makeMenuIcon(CopiperSvg)
-export const AITerminalIcon = makeMenuIcon(AITerminalSvg)
-export const LocalEnvIcon = makeMenuIcon(LocalEnvSvg)
-export const LogsIcon = makeMenuIcon(LogsSvg)
+/** CoPiper: Sheet ⇄ FileSpreadsheet (OSS-only module) */
+export const CopiperIcon = makeMenuIcon(Sheet, FileSpreadsheet)
+/** AI Terminal: Terminal ⇄ SquareTerminal */
+export const AITerminalIcon = makeMenuIcon(Terminal, SquareTerminal)
+/** Local Env: Server ⇄ Cpu */
+export const LocalEnvIcon = makeMenuIcon(Server, Cpu)
+/** Logs: FileText ⇄ ScrollText */
+export const LogsIcon = makeMenuIcon(FileText, ScrollText)

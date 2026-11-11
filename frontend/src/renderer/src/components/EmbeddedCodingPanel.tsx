@@ -4,7 +4,8 @@
  */
 import React, { useState, useEffect, useCallback } from 'react'
 import { Button, Tooltip, Spin, Typography, theme } from 'antd'
-import { CloseOutlined, CodeOutlined, PauseCircleOutlined, StopOutlined } from '@ant-design/icons'
+import { CodeOutlined } from '@ant-design/icons'
+import { X, RotateCcw, Pause, CirclePause, Square, Octagon, Code2, Sparkles } from 'lucide'
 import { InteractiveMorphIcon } from './common/InteractiveMorphIcon'
 import { useShallow } from 'zustand/react/shallow'
 import { useAICodingStore } from '../stores/useAICodingStore'
@@ -199,7 +200,7 @@ const EmbeddedCodingPanel: React.FC<EmbeddedCodingPanelProps> = ({
             <CodeOutlined style={{ color: token.colorPrimary }} />
             <Text strong style={{ fontSize: 13 }}>{t('codeEditor.selectCodingTool')}</Text>
           </div>
-          <Button type="text" size="small" icon={<InteractiveMorphIcon icon={<CloseOutlined />} />} onClick={onClose} />
+          <Button type="text" size="small" icon={<InteractiveMorphIcon icon={X} hoverIcon={RotateCcw} size={14} />} onClick={onClose} />
         </div>
 
         {/* Tool list */}
@@ -273,17 +274,17 @@ const EmbeddedCodingPanel: React.FC<EmbeddedCodingPanelProps> = ({
           {isStreaming && (
             <>
               <Tooltip title={t('coding.interruptTask')}>
-                <Button type="text" size="small" icon={<InteractiveMorphIcon icon={<PauseCircleOutlined />} />} onClick={handleInterrupt} />
+                <Button type="text" size="small" icon={<InteractiveMorphIcon icon={Pause} hoverIcon={CirclePause} size={14} />} onClick={handleInterrupt} />
               </Tooltip>
               <Tooltip title={t('coding.stopSession')}>
-                <Button type="text" size="small" danger icon={<InteractiveMorphIcon icon={<StopOutlined />} />} onClick={handleStop} />
+                <Button type="text" size="small" danger icon={<InteractiveMorphIcon icon={Square} hoverIcon={Octagon} size={14} />} onClick={handleStop} />
               </Tooltip>
             </>
           )}
           <Tooltip title={t('codeEditor.newCodingSession')}>
-            <Button type="text" size="small" icon={<InteractiveMorphIcon icon={<CodeOutlined />} />} onClick={handleNewSession} />
+            <Button type="text" size="small" icon={<InteractiveMorphIcon icon={Code2} hoverIcon={Sparkles} size={14} />} onClick={handleNewSession} />
           </Tooltip>
-          <Button type="text" size="small" icon={<InteractiveMorphIcon icon={<CloseOutlined />} />} onClick={onClose} />
+          <Button type="text" size="small" icon={<InteractiveMorphIcon icon={X} hoverIcon={RotateCcw} size={14} />} onClick={onClose} />
         </div>
       </div>
 

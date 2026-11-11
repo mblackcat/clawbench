@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { ConfigProvider, Layout, Tooltip, theme as antTheme } from 'antd'
-import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons'
+import { PanelLeftClose, PanelLeftOpen } from 'lucide'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import TopBar from './TopBar'
@@ -185,8 +185,10 @@ const AppLayout: React.FC = () => {
                   style={bottomBtnStyle(4)}
                 >
                   <InteractiveMorphIcon
-                    icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+                    icon={collapsed ? PanelLeftOpen : PanelLeftClose}
+                    hoverIcon={collapsed ? PanelLeftClose : PanelLeftOpen}
                     size={16}
+                    spring="bouncy"
                   />
                   {!collapsed && <span>{t('common.collapseSidebar')}</span>}
                 </div>
