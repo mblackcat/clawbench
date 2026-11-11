@@ -27,8 +27,8 @@ afterEach(() => {
 describe('getClaudeConfiguredModel', () => {
   /** Isolated env: user settings live in a temp CLAUDE_CONFIG_DIR. */
   const setup = (): { env: NodeJS.ProcessEnv; userDir: string; workDir: string } => {
-    const userDir = tempDir('vb-claude-cfg-')
-    const workDir = tempDir('vb-claude-ws-')
+    const userDir = tempDir('cb-claude-cfg-')
+    const workDir = tempDir('cb-claude-ws-')
     return { env: { CLAUDE_CONFIG_DIR: userDir }, userDir, workDir }
   }
 
@@ -116,10 +116,10 @@ describe('getNativeSessionStats (claude) context window', () => {
 
   /** Fake home + one transcript whose lines record the API id (no `[1m]`). */
   const setupTranscript = (configuredModel: string | undefined, extraLines: unknown[] = []): string => {
-    const home = tempDir('vb-claude-home-')
+    const home = tempDir('cb-claude-home-')
     process.env.HOME = home
     process.env.USERPROFILE = home
-    const workDir = tempDir('vb-claude-ws-')
+    const workDir = tempDir('cb-claude-ws-')
     if (configuredModel) writeJson(path.join(home, '.claude', 'settings.json'), { env: { ANTHROPIC_MODEL: configuredModel } })
     const dirName = path.resolve(workDir).replace(/\\/g, '/').replace(/\/+$/, '').replace(/[^a-zA-Z0-9]/g, '-')
     const projectDir = path.join(home, '.claude', 'projects', dirName)
