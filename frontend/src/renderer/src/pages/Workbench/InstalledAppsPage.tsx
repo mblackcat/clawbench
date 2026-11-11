@@ -10,27 +10,40 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Typography, Empty, Button, Tag, Tooltip, theme, App, Space, Segmented, Tabs, Divider, Spin } from 'antd';
 import {
   SyncOutlined,
-  CaretRightOutlined,
   MoreOutlined,
-  DeleteOutlined,
-  HolderOutlined,
-  ThunderboltOutlined,
-  CopyOutlined,
-  RocketOutlined,
-  CompassOutlined,
-  PlusOutlined,
-  SnippetsOutlined,
   LinkOutlined,
   ExportOutlined,
   CloseOutlined,
   AppstoreOutlined,
   ProfileOutlined,
-  FileTextOutlined,
-  CloudDownloadOutlined,
-  PushpinOutlined,
-  PushpinFilled,
-  ShareAltOutlined
+  FileTextOutlined
 } from '@ant-design/icons';
+import {
+  Compass,
+  Navigation,
+  FileText,
+  Plus,
+  Sparkles,
+  RotateCw,
+  RefreshCw,
+  Pin,
+  PinOff,
+  Share2,
+  Send,
+  Trash2,
+  Flame,
+  CloudDownload,
+  ArrowDownCircle,
+  RotateCcw,
+  Play,
+  Zap,
+  Copy,
+  ClipboardCheck,
+  Rocket,
+  ScrollText,
+  GripVertical
+} from 'lucide';
+import { InteractiveMorphIcon } from '../../components/common/InteractiveMorphIcon';
 import {
   DndContext,
   closestCenter,
@@ -229,7 +242,7 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
       {isBuiltin && adminPinned ? (
         <Tooltip title={t('workbench.pinnedByAdmin')}>
           <span className="cb-notch-btn">
-            <PushpinFilled style={{ color: token.colorPrimary, fontSize: 13 }} />
+            <InteractiveMorphIcon icon={Pin} hoverIcon={PinOff} size={13} style={{ color: token.colorPrimary }} />
           </span>
         </Tooltip>
       ) : (
@@ -243,11 +256,13 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
                 onTogglePin(id);
               }}
             >
-              {pinned ? (
-                <PushpinFilled style={{ color: token.colorPrimary, fontSize: 13 }} />
-              ) : (
-                <PushpinOutlined style={{ fontSize: 13 }} />
-              )}
+              <InteractiveMorphIcon
+                icon={Pin}
+                hoverIcon={pinned ? PinOff : Pin}
+                activeIcon={pinned ? Pin : PinOff}
+                size={13}
+                style={pinned ? { color: token.colorPrimary } : undefined}
+              />
             </button>
           </Tooltip>
         )
@@ -262,7 +277,7 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
               onShare(appWithType);
             }}
           >
-            <ShareAltOutlined style={{ fontSize: 13 }} />
+            <InteractiveMorphIcon icon={Share2} hoverIcon={Send} size={13} />
           </button>
         </Tooltip>
       )}
@@ -274,7 +289,7 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
           className="cb-notch-btn"
           style={{ cursor: 'grab', touchAction: 'none' }}
         >
-          <HolderOutlined style={{ fontSize: 13 }} />
+          <InteractiveMorphIcon icon={GripVertical} size={13} />
         </div>
       </Tooltip>
     </>
@@ -305,16 +320,16 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
   const typeActions =
     manifestType === 'ai-skill'
       ? [
-          actionBtn('detail', t('skillDetail.detail'), 'neutral', <FileTextOutlined style={{ fontSize: 13 }} />, () => onViewDetail(id)),
-          actionBtn('activate', t('workbench.activateSkill'), 'primary', <ThunderboltOutlined style={{ fontSize: 14 }} />, () => onActivateSkill(id, app.name))
+          actionBtn('detail', t('skillDetail.detail'), 'neutral', <InteractiveMorphIcon icon={FileText} hoverIcon={ScrollText} size={13} />, () => onViewDetail(id)),
+          actionBtn('activate', t('workbench.activateSkill'), 'primary', <InteractiveMorphIcon icon={Zap} hoverIcon={Sparkles} size={14} />, () => onActivateSkill(id, app.name))
         ]
       : manifestType === 'prompt'
         ? [
-            actionBtn('copy', t('workbench.copy'), 'neutral', <CopyOutlined style={{ fontSize: 13 }} />, () => onCopyPrompt(id)),
-            actionBtn('try', t('workbench.tryIt'), 'primary', <RocketOutlined style={{ fontSize: 14 }} />, () => onTryPrompt(id))
+            actionBtn('copy', t('workbench.copy'), 'neutral', <InteractiveMorphIcon icon={Copy} hoverIcon={ClipboardCheck} size={13} />, () => onCopyPrompt(id)),
+            actionBtn('try', t('workbench.tryIt'), 'primary', <InteractiveMorphIcon icon={Rocket} hoverIcon={Sparkles} size={14} />, () => onTryPrompt(id))
           ]
         : [
-            actionBtn('run', t('workbench.run'), 'primary', <CaretRightOutlined style={{ fontSize: 14, marginLeft: 2 }} />, () => onRun(id, app.name, manifest))
+            actionBtn('run', t('workbench.run'), 'primary', <InteractiveMorphIcon icon={Play} hoverIcon={Zap} size={14} style={{ marginLeft: 2 }} />, () => onRun(id, app.name, manifest))
           ];
 
   return (
@@ -412,11 +427,11 @@ const SortableAppCard: React.FC<SortableCardProps> = ({
                 </button>
               </Tooltip>
             )}
-            {actionBtn('delete', t('workbench.delete'), 'danger', <DeleteOutlined style={{ fontSize: 13 }} />, () => onUninstall(id, app.name))}
+            {actionBtn('delete', t('workbench.delete'), 'danger', <InteractiveMorphIcon icon={Trash2} hoverIcon={Flame} size={13} />, () => onUninstall(id, app.name))}
             {needsUpdate &&
-              actionBtn('update', t('appStatus.updateAction'), 'neutral', <CloudDownloadOutlined style={{ fontSize: 14, color: token.colorPrimary }} />, () => onUpdate(appWithType))}
+              actionBtn('update', t('appStatus.updateAction'), 'neutral', <InteractiveMorphIcon icon={CloudDownload} hoverIcon={ArrowDownCircle} size={14} style={{ color: token.colorPrimary }} />, () => onUpdate(appWithType))}
             {needsReset &&
-              actionBtn('reset', t('appStatus.reset'), 'neutral', <SyncOutlined style={{ fontSize: 13, color: token.colorWarning }} />, () => onReset(appWithType))}
+              actionBtn('reset', t('appStatus.reset'), 'neutral', <InteractiveMorphIcon icon={RotateCcw} hoverIcon={RefreshCw} size={13} style={{ color: token.colorWarning }} />, () => onReset(appWithType))}
             {typeActions}
           </div>
         </div>
@@ -1548,19 +1563,19 @@ const InstalledAppsPage: React.FC = () => {
             ]}
           />
           {!isLocalMode && (
-            <Button icon={<CompassOutlined />} onClick={() => navigate('/workbench/library', { state: { from: '/workbench/installed' } })}>
+            <Button icon={<InteractiveMorphIcon icon={Compass} hoverIcon={Navigation} size={14} />} onClick={() => navigate('/workbench/library', { state: { from: '/workbench/installed' } })}>
               {t('workbench.discover')}
             </Button>
           )}
           <Space.Compact>
-            <Button icon={<SnippetsOutlined />} onClick={() => navigate('/workbench/my-contributions', { state: { from: '/workbench/installed' } })}>
+            <Button icon={<InteractiveMorphIcon icon={FileText} hoverIcon={Sparkles} size={14} />} onClick={() => navigate('/workbench/my-contributions', { state: { from: '/workbench/installed' } })}>
               {t('workbench.mine')}
             </Button>
-            <Button icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>
+            <Button icon={<InteractiveMorphIcon icon={Plus} hoverIcon={Sparkles} size={14} />} onClick={() => setCreateModalOpen(true)}>
               {t('workbench.create')}
             </Button>
           </Space.Compact>
-          <Button icon={<SyncOutlined />} onClick={handleRefresh} loading={loading}>
+          <Button icon={<InteractiveMorphIcon icon={RotateCw} hoverIcon={RefreshCw} size={14} />} onClick={handleRefresh} loading={loading}>
             {t('workbench.refresh')}
           </Button>
         </div>
